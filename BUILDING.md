@@ -3,7 +3,9 @@
 ## Prerequisites
 
 - A complete Chromium checkout with `depot_tools` and all DEPS synchronized.
-- Linux or WSL for Chromium native compilation.
+- Linux or WSL for Chromium native compilation. On Apple silicon macOS, use an
+  x86_64 container as described in
+  [docs/BUILDING_MACOS_CONTAINER.md](docs/BUILDING_MACOS_CONTAINER.md).
 - A compatible HarmonyOS SDK/NDK and Rust toolchain supplied by the developer.
 - DevEco Studio/Hvigor for the ArkUI HAP shell.
 
@@ -11,6 +13,12 @@ The SDK and signing files are intentionally not redistributed by this project.
 Place or link the unpacked SDK at `src/ohos_sdk` after applying the adapter.
 The adapter also expects the WebView interface tree at
 `../deps_code/webview`; `scripts/apply-adapter.sh` installs the published copy.
+It also applies `patches/deps/` to the DEPS checkouts, which must be clean.
+
+The adapter links against the SDK's LLVM 19 runtime layout
+(`native/llvm/lib/clang/19/lib/aarch64-unknown-linux-ohos`). The public DevEco
+native SDK ships LLVM 15.0.4; aliasing the 15.0.4 runtimes to that layout links
+and runs on OpenHarmony 7.0, as described in the macOS container guide.
 
 ## Prepare Chromium
 

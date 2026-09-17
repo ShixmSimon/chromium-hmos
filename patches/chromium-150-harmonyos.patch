@@ -1689,7 +1689,7 @@ index 18417167ff..38aa1a32c5 100644
    shared_library("chrome_dll") {
      configs += [ "//build/config/compiler:wexit_time_destructors" ]
 diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
-index df8f9455d2..c81f699ebf 100644
+index df8f9455d2..74457b394d 100644
 --- a/chrome/app/chrome_main_delegate.cc
 +++ b/chrome/app/chrome_main_delegate.cc
 @@ -77,6 +77,7 @@
@@ -1751,7 +1751,7 @@ index df8f9455d2..c81f699ebf 100644
  #if BUILDFLAG(IS_ANDROID)
    CHECK_EQ(base::android::GetLibraryProcessType(),
 diff --git a/chrome/app/chromium_strings.grd b/chrome/app/chromium_strings.grd
-index a154b12dc4..9b285c3b2d 100644
+index a154b12dc4..933fdc683c 100644
 --- a/chrome/app/chromium_strings.grd
 +++ b/chrome/app/chromium_strings.grd
 @@ -293,12 +293,24 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->
@@ -2548,10 +2548,21 @@ index 057be98e71..2ce5179569 100644
    // Chrome on Android does not use default MessageLoop. It has its own
    // Android specific MessageLoop
 diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
-index edab63d18f..763cbffbac 100644
+index edab63d18f..cd433eea9b 100644
 --- a/chrome/browser/chrome_content_browser_client.cc
 +++ b/chrome/browser/chrome_content_browser_client.cc
-@@ -623,7 +623,7 @@
+@@ -72,6 +72,10 @@
+ #include "chrome/browser/chrome_content_browser_client_binder_policies.h"
+ #include "chrome/browser/chrome_content_browser_client_navigation_throttles.h"
+ #include "chrome/browser/chrome_content_browser_client_parts.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
+ #include "chrome/browser/content_settings/cookie_settings_factory.h"
+ #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+ #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
+@@ -623,7 +627,7 @@
  #endif
  
  #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
@@ -2560,7 +2571,7 @@ index edab63d18f..763cbffbac 100644
  #include "components/webapps/isolated_web_apps/scheme.h"
  #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
          // BUILDFLAG(IS_CHROMEOS)
-@@ -2838,7 +2838,7 @@ void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
+@@ -2838,7 +2842,7 @@ void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
      command_line->AppendSwitchASCII(switches::kMetricsClientID,
                                      client_info->client_id);
    }
@@ -2569,6 +2580,40 @@ index edab63d18f..763cbffbac 100644
  #if !BUILDFLAG(IS_ANDROID)
    pid_t pid;
    if (crash_reporter::GetHandlerSocket(nullptr, &pid)) {
+@@ -5015,6 +5019,33 @@ void ChromeContentBrowserClient::OverrideWebPreferences(
+       base::FeatureList::IsEnabled(features::kTouchDragAndDrop);
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (chrome::ohos::IsAuraShellMobilePhoneUi()) {
++    // Phones follow Chrome for Android: honor <meta viewport> and scale
++    // desktop-width pages to the screen instead of overflowing it.
++    web_prefs->viewport_enabled = true;
++    web_prefs->viewport_meta_enabled = true;
++    web_prefs->viewport_style = blink::mojom::ViewportStyle::kMobile;
++    web_prefs->shrinks_viewport_contents_to_fit = true;
++    web_prefs->main_frame_resizes_are_orientation_changes = true;
++    web_prefs->double_tap_to_zoom_enabled = true;
++    web_prefs->default_minimum_page_scale_factor = 0.25f;
++    web_prefs->default_maximum_page_scale_factor = 5.0f;
++
++    // Ozone OHOS registers no touchscreen device; report the phone's touch
++    // input so pages see touch events and (pointer: coarse).
++    web_prefs->touch_event_feature_detection_enabled = true;
++    web_prefs->pointer_events_max_touch_points = 10;
++    web_prefs->available_pointer_types =
++        static_cast<int>(blink::mojom::PointerType::kPointerCoarseType);
++    web_prefs->primary_pointer_type =
++        blink::mojom::PointerType::kPointerCoarseType;
++    web_prefs->available_hover_types =
++        static_cast<int>(blink::mojom::HoverType::kHoverNone);
++    web_prefs->primary_hover_type = blink::mojom::HoverType::kHoverNone;
++  }
++#endif
++
+   for (auto& parts : extra_parts_) {
+     parts->OverrideWebPreferences(web_contents, main_frame_site, web_prefs);
+   }
 diff --git a/chrome/browser/commerce/BUILD.gn b/chrome/browser/commerce/BUILD.gn
 index 6943877c92..14f2ae6145 100644
 --- a/chrome/browser/commerce/BUILD.gn
@@ -5147,7 +5192,7 @@ index 8742211082..a48a48fde2 100644
  // promos, if any, based on the promo priority and the profile state. The promo
  // between the ProfileMenu and the AvatarButton should always be aligned.
 diff --git a/chrome/browser/signin/signin_ui_util.cc b/chrome/browser/signin/signin_ui_util.cc
-index e6cf35d6ac..d7ec9e51ff 100644
+index e6cf35d6ac..14f50a1978 100644
 --- a/chrome/browser/signin/signin_ui_util.cc
 +++ b/chrome/browser/signin/signin_ui_util.cc
 @@ -600,7 +600,11 @@ void RecordProfileMenuClick(const Profile& profile) {
@@ -8823,7 +8868,7 @@ index e98843b1ba..087aae24fc 100644
  #endif
  
 diff --git a/chrome/browser/ui/webui/intro/intro_ui.cc b/chrome/browser/ui/webui/intro/intro_ui.cc
-index d6f4943969..0628030b24 100644
+index d6f4943969..3a72bea098 100644
 --- a/chrome/browser/ui/webui/intro/intro_ui.cc
 +++ b/chrome/browser/ui/webui/intro/intro_ui.cc
 @@ -11,6 +11,7 @@
@@ -8834,7 +8879,31 @@ index d6f4943969..0628030b24 100644
  #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
  #include "chrome/browser/profiles/profile.h"
  #include "chrome/browser/profiles/profile_avatar_icon_util.h"
-@@ -49,6 +50,11 @@ int GetBackupCardDescriptionId(bool is_first_run_desktop_refresh_enabled) {
+@@ -21,8 +22,10 @@
+ #include "chrome/grit/branded_strings.h"
+ #include "chrome/grit/chrome_unscaled_resources.h"
+ #include "chrome/grit/generated_resources.h"
++#if !BUILDFLAG(IS_OHOS)
+ #include "chrome/grit/intro_resources.h"
+ #include "chrome/grit/intro_resources_map.h"
++#endif
+ #include "chrome/grit/signin_resources.h"
+ #include "components/regional_capabilities/regional_capabilities_service.h"
+ #include "components/signin/public/base/signin_buildflags.h"
+@@ -36,6 +39,7 @@
+ #include "ui/webui/webui_util.h"
+ 
+ namespace {
++#if !BUILDFLAG(IS_OHOS)
+ int GetBackupCardDescriptionId(bool is_first_run_desktop_refresh_enabled) {
+   if (!syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
+     return IDS_UNO_FRE_BACKUP_CARD_DESCRIPTION;
+@@ -45,10 +49,16 @@ int GetBackupCardDescriptionId(bool is_first_run_desktop_refresh_enabled) {
+              ? IDS_UNO_FRE_REFRESH_BACKUP_CARD_DESCRIPTION_WITH_PASSWORDS
+              : IDS_UNO_FRE_BACKUP_CARD_DESCRIPTION_WITH_PASSWORDS;
+ }
++#endif  // !BUILDFLAG(IS_OHOS)
+ }  // namespace
  
  IntroUI::IntroUI(content::WebUI* web_ui)
      : ui::MojoWebUIController(web_ui, /*enable_chrome_send=*/true) {
@@ -8846,7 +8915,7 @@ index d6f4943969..0628030b24 100644
    auto* profile = Profile::FromWebUI(web_ui);
  
    content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
-@@ -221,6 +227,7 @@ IntroUI::IntroUI(content::WebUI* web_ui)
+@@ -221,6 +231,7 @@ IntroUI::IntroUI(content::WebUI* web_ui)
        is_device_managed, chrome::kChromeUIIntroHost);
    intro_handler_ = intro_handler.get();
    web_ui->AddMessageHandler(std::move(intro_handler));
@@ -9326,7 +9395,7 @@ index abb709b793..ca8f0d5614 100644
    void OnCanPinToTaskbarResult(const std::optional<std::string>& js_callback_id,
                                 shell_integration::DefaultWebClientState state,
 diff --git a/chrome/browser/ui/webui/settings/settings_localized_strings_provider.cc b/chrome/browser/ui/webui/settings/settings_localized_strings_provider.cc
-index 1d656809ee..b24e24c7af 100644
+index 1d656809ee..3e8549796b 100644
 --- a/chrome/browser/ui/webui/settings/settings_localized_strings_provider.cc
 +++ b/chrome/browser/ui/webui/settings/settings_localized_strings_provider.cc
 @@ -47,6 +47,9 @@
@@ -11937,15 +12006,80 @@ index 7606b7fb65..9bb11f81fa 100644
  
  // Feature flag for supporting the new private SecureConnect functions in
  // unaffiliated contexts via the consent flow.
+diff --git a/components/embedder_support/BUILD.gn b/components/embedder_support/BUILD.gn
+index 847ba42327..f4c4894f7f 100644
+--- a/components/embedder_support/BUILD.gn
++++ b/components/embedder_support/BUILD.gn
+@@ -65,6 +65,10 @@ static_library("user_agent") {
+     "//third_party/blink/public/common:headers",
+     "//ui/base",
+   ]
++
++  if (is_ohos) {
++    libs = [ "deviceinfo_ndk.z" ]
++  }
+ }
+ 
+ source_set("unit_tests") {
 diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedder_support/user_agent_utils.cc
-index 608bea5cb3..aae0b33d8f 100644
+index 608bea5cb3..58a495a641 100644
 --- a/components/embedder_support/user_agent_utils.cc
 +++ b/components/embedder_support/user_agent_utils.cc
-@@ -213,16 +213,21 @@ const blink::UserAgentBrandList GetUserAgentBrandFullVersionListInternal(
+@@ -42,6 +42,14 @@
+ #include "base/win/windows_version.h"
+ #endif  // BUILDFLAG(IS_WIN)
+ 
++#if BUILDFLAG(IS_OHOS)
++#include <deviceinfo.h>
++
++#include <string_view>
++
++#include "base/strings/string_split.h"
++#endif
++
+ #if BUILDFLAG(IS_MAC)
+ #include "base/mac/mac_util.h"
+ #endif
+@@ -213,21 +221,69 @@ const blink::UserAgentBrandList GetUserAgentBrandFullVersionListInternal(
  
  // Internal function to handle return the full or "reduced" user agent string,
  // depending on the Reduce User-Agent reduction phase features.
 -std::string GetUserAgentInternal() {
++#if BUILDFLAG(IS_OHOS)
++// Follows ArkWeb's default User-Agent. Sites such as Baidu recognize
++// HarmonyOS phones by the ArkWeb token and serve desktop pages otherwise.
++std::string BuildOhosUserAgent(const std::string& product, bool mobile) {
++  // For example "OpenHarmony-7.0.0.105".
++  const char* os_full_name = OH_GetOSFullName();
++  std::string_view os_name = os_full_name ? os_full_name : "";
++  const size_t separator = os_name.find('-');
++  std::string version = separator == std::string_view::npos
++                            ? std::string()
++                            : std::string(os_name.substr(separator + 1));
++  std::vector<std::string_view> components = base::SplitStringPiece(
++      version, ".", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
++  std::string major_minor =
++      components.size() >= 2
++          ? base::StrCat({components[0], ".", components[1]})
++          : version;
++
++  const std::string device_class =
++      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
++          "ohos-device-class");
++  std::string_view device_type = "Phone";
++  if (device_class == "tablet") {
++    device_type = "Tablet";
++  } else if (device_class == "2in1") {
++    device_type = "PC";
++  }
++
++  return base::StrCat(
++      {"Mozilla/5.0 (", device_type, "; OpenHarmony ", major_minor,
++       ") AppleWebKit/537.36 (KHTML, like Gecko) ", product,
++       " Safari/537.36 ArkWeb/", version, mobile ? " Mobile" : ""});
++}
++#endif  // BUILDFLAG(IS_OHOS)
++
 +std::string GetUserAgentInternal(
 +    std::optional<bool> mobile_override = std::nullopt) {
    std::string product = GetProductAndVersion();
@@ -11953,9 +12087,15 @@ index 608bea5cb3..aae0b33d8f 100644
      product.insert(0, "Headless");
    }
  
--#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_OHOS)
++  return BuildOhosUserAgent(
++      product,
++      mobile_override.value_or(
++          base::CommandLine::ForCurrentProcess()->HasSwitch(
++              kUseMobileUserAgent)));
++#else
+ #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 -  if (base::CommandLine::ForCurrentProcess()->HasSwitch(kUseMobileUserAgent)) {
-+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || BUILDFLAG(IS_OHOS)
 +  const bool use_mobile_user_agent = mobile_override.value_or(
 +      base::CommandLine::ForCurrentProcess()->HasSwitch(kUseMobileUserAgent));
 +  if (use_mobile_user_agent) {
@@ -11966,7 +12106,13 @@ index 608bea5cb3..aae0b33d8f 100644
  #endif
  
    return ShouldSendUserAgentUnifiedPlatform()
-@@ -287,6 +292,8 @@ std::string GetUserAgentPlatform() {
+              ? BuildUnifiedPlatformUserAgentFromProduct(product)
+              : BuildUserAgentFromProduct(product);
++#endif  // BUILDFLAG(IS_OHOS)
+ }
+ 
+ // Generate random order list based on the input size and seed.
+@@ -287,6 +343,8 @@ std::string GetUserAgentPlatform() {
    return "X11; ";  // strange, but that's what Firefox uses
  #elif BUILDFLAG(IS_ANDROID)
    return "Linux; ";
@@ -11975,7 +12121,7 @@ index 608bea5cb3..aae0b33d8f 100644
  #elif BUILDFLAG(IS_FUCHSIA)
    return "";
  #elif BUILDFLAG(IS_IOS)
-@@ -321,6 +328,8 @@ std::string GetUnifiedPlatform() {
+@@ -321,6 +379,8 @@ std::string GetUnifiedPlatform() {
    return "Macintosh; Intel Mac OS X 10_15_7";
  #elif BUILDFLAG(IS_WIN)
    return "Windows NT 10.0; Win64; x64";
@@ -11984,7 +12130,7 @@ index 608bea5cb3..aae0b33d8f 100644
  #elif BUILDFLAG(IS_FUCHSIA)
    return "Fuchsia";
  #elif BUILDFLAG(IS_LINUX)
-@@ -382,7 +391,8 @@ std::string BuildCpuInfo() {
+@@ -382,7 +442,8 @@ std::string BuildCpuInfo() {
  std::string GetOSVersion(IncludeAndroidBuildNumber include_android_build_number,
                           IncludeAndroidModel include_android_model) {
    std::string os_version;
@@ -11994,7 +12140,7 @@ index 608bea5cb3..aae0b33d8f 100644
    int32_t os_major_version = 0;
    int32_t os_minor_version = 0;
    int32_t os_bugfix_version = 0;
-@@ -422,6 +432,9 @@ std::string GetOSVersion(IncludeAndroidBuildNumber include_android_build_number,
+@@ -422,6 +483,9 @@ std::string GetOSVersion(IncludeAndroidBuildNumber include_android_build_number,
  #elif BUILDFLAG(IS_ANDROID)
                        "%s%s", android_version_str.c_str(),
                        android_info_str.c_str()
@@ -12004,7 +12150,7 @@ index 608bea5cb3..aae0b33d8f 100644
  #else
                        ""
  #endif
-@@ -471,6 +484,23 @@ std::string GetUserAgent() {
+@@ -471,6 +535,23 @@ std::string GetUserAgent() {
    return GetUserAgentInternal();
  }
  
@@ -12028,7 +12174,7 @@ index 608bea5cb3..aae0b33d8f 100644
  const blink::UserAgentBrandList GetUserAgentBrandMajorVersionList(
      std::optional<blink::UserAgentBrandVersion> additional_brand_version) {
    return GetUserAgentBrandMajorVersionListInternal(additional_brand_version);
-@@ -575,7 +605,7 @@ bool GetMobileBitForUAMetadata() {
+@@ -575,7 +656,7 @@ bool GetMobileBitForUAMetadata() {
    }
  #endif
  
@@ -12037,7 +12183,7 @@ index 608bea5cb3..aae0b33d8f 100644
    return base::CommandLine::ForCurrentProcess()->HasSwitch(kUseMobileUserAgent);
  #else
    return false;
-@@ -809,6 +839,8 @@ std::string BuildOSCpuInfoFromOSVersionAndCpuType(const std::string& os_version,
+@@ -809,6 +890,8 @@ std::string BuildOSCpuInfoFromOSVersionAndCpuType(const std::string& os_version,
                        os_version.c_str()
  #elif BUILDFLAG(IS_ANDROID)
                        "Android %s", os_version.c_str()
@@ -12315,6 +12461,33 @@ index 1a1ed28363..ecdafba52b 100644
  
  source_set("browser_binding") {
    visibility = [
+diff --git a/components/pdf/renderer/pdf_view_web_plugin_client.h b/components/pdf/renderer/pdf_view_web_plugin_client.h
+index e3c73965fd..35cf23915a 100644
+--- a/components/pdf/renderer/pdf_view_web_plugin_client.h
++++ b/components/pdf/renderer/pdf_view_web_plugin_client.h
+@@ -12,7 +12,11 @@
+ #include "base/memory/weak_ptr.h"
+ #include "mojo/public/cpp/bindings/remote.h"
+ #include "pdf/pdf_view_web_plugin.h"
++#include "services/screen_ai/buildflags/buildflags.h"
++
++#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
+ #include "services/screen_ai/public/mojom/screen_ai_service.mojom.h"
++#endif
+ 
+ namespace blink {
+ class WebLocalFrame;
+@@ -110,8 +114,10 @@ class PdfViewWebPluginClient : public chrome_pdf::PdfViewWebPlugin::Client {
+ 
+   raw_ptr<blink::WebPluginContainer> plugin_container_;
+ 
++#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
+   mojo::Remote<screen_ai::mojom::ScreenAIAnnotator> screen_ai_annotator_;
+   base::RepeatingClosure ocr_disconnect_callback_;
++#endif
+ 
+   base::WeakPtrFactory<PdfViewWebPluginClient> weak_factory_{this};
+ };
 diff --git a/components/policy/core/common/cloud/cloud_policy_util.cc b/components/policy/core/common/cloud/cloud_policy_util.cc
 index 779f412187..ebef093d97 100644
 --- a/components/policy/core/common/cloud/cloud_policy_util.cc
@@ -12483,7 +12656,7 @@ index 152e6892be..f5b845b92e 100644
    return ANDROID_PLATFORM;
  #endif
 diff --git a/components/search_engines/template_url_prepopulate_data.cc b/components/search_engines/template_url_prepopulate_data.cc
-index 23c3c13f2f..f866cf9192 100644
+index 23c3c13f2f..f2103d0a04 100644
 --- a/components/search_engines/template_url_prepopulate_data.cc
 +++ b/components/search_engines/template_url_prepopulate_data.cc
 @@ -6,6 +6,7 @@
@@ -18617,8 +18790,21 @@ index 58c9057fbd..28d325f88d 100644
  // NSIG is 64 to account for real-time signals.
  static_assert(std::size(kSignalNames) == 32, "kSignalNames length");
  #else
+diff --git a/third_party/dav1d/BUILD.gn b/third_party/dav1d/BUILD.gn
+index d75d823713..3dd0e6a39a 100644
+--- a/third_party/dav1d/BUILD.gn
++++ b/third_party/dav1d/BUILD.gn
+@@ -60,7 +60,7 @@ config("public_dav1d_config") {
+     defines = [ "CONFIG_LOG=1" ]
+   }
+ 
+-  if (!is_android && !is_apple && !is_win) {
++  if (!is_android && !is_apple && !is_win && !is_ohos) {
+     defines += [
+       "HAVE_PTHREAD_GETAFFINITY_NP=1",
+       "HAVE_PTHREAD_SETAFFINITY_NP=1",
 diff --git a/third_party/libaddressinput/BUILD.gn b/third_party/libaddressinput/BUILD.gn
-index ad4ca5ad5b..083d77dbd3 100644
+index ad4ca5ad5b..61fa09f587 100644
 --- a/third_party/libaddressinput/BUILD.gn
 +++ b/third_party/libaddressinput/BUILD.gn
 @@ -35,7 +35,13 @@ grit_strings("strings") {
@@ -19747,6 +19933,28 @@ index 41725080f2..cc29706194 100644
      if (is_fullscreen || is_menu) {
        ui::ZOrderLevel root_z_order = ui::ZOrderLevel::kNormal;
        internal::NativeWidgetPrivate* native_widget =
+diff --git a/ui/webui/resources/js/BUILD.gn b/ui/webui/resources/js/BUILD.gn
+index 4fba94dd93..2a107b5714 100644
+--- a/ui/webui/resources/js/BUILD.gn
++++ b/ui/webui/resources/js/BUILD.gn
+@@ -50,7 +50,7 @@ build_webui("build") {
+     ]
+   }
+ 
+-  if (enable_dice_support || is_chromeos) {
++  if (enable_dice_support || is_chromeos || is_ohos) {
+     ts_files += [ "batch_upload_promo/batch_upload_promo_proxy.ts" ]
+   }
+ 
+@@ -63,7 +63,7 @@ build_webui("build") {
+     mojo_files += [ "$root_gen_dir/ui/webui/resources/js/browser_command/browser_command.mojom-webui.ts" ]
+   }
+ 
+-  if (enable_dice_support || is_chromeos) {
++  if (enable_dice_support || is_chromeos || is_ohos) {
+     mojo_files_deps += [ "./batch_upload_promo:mojo_bindings_ts__generator" ]
+     mojo_files += [ "$root_gen_dir/ui/webui/resources/js/batch_upload_promo/batch_upload_promo.mojom-webui.ts" ]
+   }
 diff --git a/ui/webui/resources/js/batch_upload_promo/BUILD.gn b/ui/webui/resources/js/batch_upload_promo/BUILD.gn
 index 85b2e2c7c1..70e8fcbfd0 100644
 --- a/ui/webui/resources/js/batch_upload_promo/BUILD.gn

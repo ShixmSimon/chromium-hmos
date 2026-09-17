@@ -22,8 +22,24 @@ if [[ -n "$(git -C "${chromium_src}" status --porcelain)" ]]; then
   exit 1
 fi
 
+# DEPS repositories are separate checkouts; their OHOS changes are listed in
+# patches/deps/series as "<path relative to src> <patch file>".
+readonly deps_patch_root="${project_root}/patches/deps"
+while read -r deps_path deps_patch; do
+  [[ -z "${deps_path}" || "${deps_path}" == \#* ]] && continue
+  if [[ -n "$(git -C "${chromium_src}/${deps_path}" status --porcelain)" ]]; then
+    echo "${deps_path} must be clean before applying the adapter." >&2
+    exit 1
+  fi
+done <"${deps_patch_root}/series"
+
 git -C "${chromium_src}" apply --binary \
   "${project_root}/patches/chromium-150-harmonyos.patch"
+while read -r deps_path deps_patch; do
+  [[ -z "${deps_path}" || "${deps_path}" == \#* ]] && continue
+  git -C "${chromium_src}/${deps_path}" apply --binary \
+    "${deps_patch_root}/${deps_patch}"
+done <"${deps_patch_root}/series"
 rsync -a "${project_root}/overlay/" "${chromium_src}/"
 
 deps_root="$(dirname "${chromium_src}")/deps_code/webview"

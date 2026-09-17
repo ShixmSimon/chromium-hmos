@@ -226,7 +226,6 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
       "--no-first-run",
       "--disable-fre",
       "--hide-crash-restore-bubble",
-      "--enable-features=UseOzonePlatform",
       "--ozone-platform=ohos",
       "--in-process-gpu",
       "--no-zygote",
@@ -239,7 +238,9 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   };
 
   arguments.push_back("--use-gl=angle");
-  arguments.push_back("--use-angle=vulkan");
+  // The device Vulkan driver lacks VK_KHR_display required by ANGLE's Linux
+  // Vulkan display; use ANGLE on the native HarmonyOS EGL/GLES instead.
+  arguments.push_back("--use-angle=gles-egl");
 
   AppendSwitchWithValue(&arguments, "--ohos-ui-profile", config.ui_profile);
   AppendSwitchWithValue(&arguments, "--ohos-ui-family", config.ui_family);
@@ -247,6 +248,11 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   AppendSwitchWithValue(&arguments, "--ohos-color-scheme", config.color_scheme);
   AppendSwitchWithValue(&arguments, "--user-data-dir", config.user_data_dir);
   AppendSwitchWithValue(&arguments, "--lang", config.application_locale);
+
+  // A repeated --enable-features switch would replace this list.
+  arguments.push_back(config.ui_family == "mobile_phone"
+                          ? "--enable-features=UseOzonePlatform,OverlayScrollbar"
+                          : "--enable-features=UseOzonePlatform");
 
   if (config.ui_family == "mobile_phone") {
     arguments.push_back("--use-mobile-user-agent");

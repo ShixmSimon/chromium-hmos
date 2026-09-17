@@ -1,0 +1,26 @@
+diff --git a/src/dawn/common/BUILD.gn b/src/dawn/common/BUILD.gn
+index 85c2eb41d..2bd4b6d5c 100644
+--- a/src/dawn/common/BUILD.gn
++++ b/src/dawn/common/BUILD.gn
+@@ -303,7 +303,7 @@ dawn_generator("dawn_gpu_info_gen") {
+ # This GN file is discovered by all Chromium builds, but common doesn't support
+ # all of Chromium's OSes so we explicitly make the target visible only on
+ # systems we know Dawn is able to compile on.
+-if (is_win || is_linux || is_chromeos || is_mac || is_fuchsia || is_android ||
++if (is_win || is_linux || is_chromeos || is_mac || is_fuchsia || is_android || is_ohos ||
+     is_ios || is_wasm) {
+   static_library("common") {
+     sources = [
+diff --git a/src/dawn/native/SystemEvent.cpp b/src/dawn/native/SystemEvent.cpp
+index bb987fde1..a7d3ea506 100644
+--- a/src/dawn/native/SystemEvent.cpp
++++ b/src/dawn/native/SystemEvent.cpp
+@@ -38,7 +38,7 @@
+ #include <poll.h>
+ #include <unistd.h>
+ #elif DAWN_PLATFORM_IS(POSIX)
+-#include <sys/poll.h>
++#include <poll.h>
+ #include <unistd.h>
+ #endif
+ 

@@ -1,0 +1,9 @@
+v8 v8.patch
+third_party/angle third_party_angle.patch
+third_party/dawn third_party_dawn.patch
+third_party/ffmpeg third_party_ffmpeg.patch
+third_party/pdfium third_party_pdfium.patch
+third_party/perfetto third_party_perfetto.patch
+third_party/skia third_party_skia.patch
+third_party/vulkan-loader/src third_party_vulkan-loader_src.patch
+third_party/webrtc third_party_webrtc.patch

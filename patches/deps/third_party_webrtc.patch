@@ -1,0 +1,53 @@
+diff --git a/rtc_base/physical_socket_server.cc b/rtc_base/physical_socket_server.cc
+index 9d9927e..4e3d8f2 100644
+--- a/rtc_base/physical_socket_server.cc
++++ b/rtc_base/physical_socket_server.cc
+@@ -597,7 +597,14 @@ int PhysicalSocket::DoReadFromSocket(void* buffer,
+   }
+   if (timestamp || ecn) {
+     struct cmsghdr* cmsg;
++#if defined(OS_OHOS)
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wsign-compare"
++#endif
+     for (cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
++#if defined(OS_OHOS)
++#pragma clang diagnostic pop
++#endif
+       if (ecn) {
+         if ((cmsg->cmsg_type == IPV6_TCLASS &&
+              cmsg->cmsg_level == IPPROTO_IPV6) ||
+diff --git a/rtc_base/platform_thread_types.cc b/rtc_base/platform_thread_types.cc
+index 20bf4af..1ef3b95 100644
+--- a/rtc_base/platform_thread_types.cc
++++ b/rtc_base/platform_thread_types.cc
+@@ -11,8 +11,10 @@
+ #include "rtc_base/platform_thread_types.h"
+ 
+ // IWYU pragma: begin_keep
+-#if defined(WEBRTC_LINUX)
++#if defined(WEBRTC_LINUX) || defined(OS_OHOS)
++#if !defined(OS_OHOS)
+ #include <linux/prctl.h>
++#endif
+ #include <sys/prctl.h>
+ #include <sys/syscall.h>
+ 
+@@ -50,7 +52,7 @@ PlatformThreadId CurrentThreadId() {
+   return gettid();
+ #elif defined(WEBRTC_FUCHSIA)
+   return zx_thread_self();
+-#elif defined(WEBRTC_LINUX)
++#elif defined(WEBRTC_LINUX) || defined(OS_OHOS)
+   return syscall(__NR_gettid);
+ #elif defined(__EMSCRIPTEN__)
+   return static_cast<PlatformThreadId>(pthread_self());
+@@ -118,7 +120,7 @@ void SetCurrentThreadName(const char* name) {
+   } __except (EXCEPTION_EXECUTE_HANDLER) {  // NOLINT
+   }
+ #pragma warning(pop)
+-#elif defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID)
++#elif defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID) || defined(OS_OHOS)
+   prctl(PR_SET_NAME, reinterpret_cast<unsigned long>(name));  // NOLINT
+ #elif defined(WEBRTC_MAC) || defined(WEBRTC_IOS)
+   pthread_setname_np(name);

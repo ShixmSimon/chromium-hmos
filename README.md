@@ -36,6 +36,12 @@ endorsed by Google, Chromium, Huawei, or the OpenHarmony project.
 
 - `patches/chromium-150-harmonyos.patch`: all modifications to files tracked by
   upstream Chromium.
+- `patches/deps/`: OHOS changes to DEPS repositories (V8, ANGLE, Dawn, FFmpeg,
+  PDFium, Skia, WebRTC, and others), listed in `patches/deps/series`. See
+  [docs/OHOS_DEVICE_FIXES.md](docs/OHOS_DEVICE_FIXES.md).
+- `tools/macos-container/`: build and deploy scripts for Apple silicon macOS
+  through Apple `container` and Rosetta; see
+  [docs/BUILDING_MACOS_CONTAINER.md](docs/BUILDING_MACOS_CONTAINER.md).
 - `overlay/`: new HarmonyOS, ArkWeb, Ozone, Aura shell, and ArkUI source files.
 - `external/deps_code/webview/`: WebView interface sources required by the
   adapter.

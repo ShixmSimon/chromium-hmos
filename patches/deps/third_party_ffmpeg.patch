@@ -1,0 +1,26 @@
+diff --git a/ffmpeg_generated.gni b/ffmpeg_generated.gni
+index 145ceba..28e13d5 100644
+--- a/ffmpeg_generated.gni
++++ b/ffmpeg_generated.gni
+@@ -16,7 +16,7 @@ ffmpeg_nasm_include_dirs = []
+ ffmpeg_c_deps = []
+ ffmpeg_asm_deps = []
+ 
+-use_linux_config = is_linux || is_chromeos || is_fuchsia
++use_linux_config = is_linux || is_chromeos || is_fuchsia || is_ohos
+ 
+ ffmpeg_asm_deps += [
+   "libavcodec/x86/sbrdsp.asm",
+diff --git a/ffmpeg_options.gni b/ffmpeg_options.gni
+index a6a012e..4e6a9a0 100644
+--- a/ffmpeg_options.gni
++++ b/ffmpeg_options.gni
+@@ -63,7 +63,7 @@ if (current_cpu == "x86") {
+ os_config = current_os
+ if ((is_linux || is_chromeos) && is_msan) {
+   os_config = "linux-noasm"
+-} else if (is_chromeos || is_fuchsia) {
++} else if (is_chromeos || is_fuchsia || is_ohos) {
+   os_config = "linux"
+ } else if (is_win && !is_clang) {
+   os_config = "win-msvc"
