@@ -4,6 +4,8 @@
 #ifndef UI_OZONE_PLATFORM_OHOS_OHOS_VSYNC_PROVIDER_H_
 #define UI_OZONE_PLATFORM_OHOS_OHOS_VSYNC_PROVIDER_H_
 
+#include <cstdint>
+
 #include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/synchronization/lock.h"
@@ -21,7 +23,9 @@ namespace ui {
 // scrolling on a 120 Hz display.
 class OhosVSyncProvider final : public gfx::VSyncProvider {
  public:
-  OhosVSyncProvider();
+  // |window_id| ties the connection to the window whose frame rate is being
+  // requested; 0 falls back to an unassociated connection.
+  explicit OhosVSyncProvider(int32_t window_id);
   OhosVSyncProvider(const OhosVSyncProvider&) = delete;
   OhosVSyncProvider& operator=(const OhosVSyncProvider&) = delete;
   ~OhosVSyncProvider() override;

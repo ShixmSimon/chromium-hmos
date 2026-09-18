@@ -104,7 +104,7 @@ export interface AuraStartupConfig {
   icuDataFd?: number;
   icuDataOffset?: number;
   icuDataLength?: number;
-  jitless: true;
+  jitless: boolean;
   fullscreenRequested: boolean;
   windowRole?: 'browser' | 'pwa';
   targetWidget?: number;
@@ -183,7 +183,7 @@ export class DeviceRoutingPolicy {
       isFoldable: routing.identity.isFoldable,
       foldStatus: routing.identity.foldStatus,
       colorScheme,
-      jitless: true,
+      jitless: false,
       fullscreenRequested: routing.fullscreenRequested
     };
   }

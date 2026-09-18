@@ -125,7 +125,8 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
       return nullptr;
     }
 
-    auto vsync_provider = std::make_unique<OhosVSyncProvider>();
+    auto vsync_provider = std::make_unique<OhosVSyncProvider>(
+        GetOhosApplicationWindowIdForWidget(widget));
     auto gl_surface = base::MakeRefCounted<OhosNativeViewGLSurfaceEGL>(
         display->GetAs<gl::GLDisplayEGL>(), widget,
         reinterpret_cast<EGLNativeWindowType>(surface->window),

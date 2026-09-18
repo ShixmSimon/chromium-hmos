@@ -34,9 +34,17 @@ constexpr int32_t kMaxFrameRate = 120;
 
 }  // namespace
 
-OhosVSyncProvider::OhosVSyncProvider()
+OhosVSyncProvider::OhosVSyncProvider(int32_t window_id)
     : interval_(kFallbackInterval) {
-  native_vsync_ = OH_NativeVSync_Create(kVSyncName, sizeof(kVSyncName) - 1);
+  // A connection bound to the window is what lets the system apply the
+  // requested frame rate to it; an unassociated one gets whatever rate the
+  // system picked for the app.
+  native_vsync_ =
+      window_id > 0
+          ? OH_NativeVSync_Create_ForAssociatedWindow(
+                static_cast<uint64_t>(window_id), kVSyncName,
+                sizeof(kVSyncName) - 1)
+          : OH_NativeVSync_Create(kVSyncName, sizeof(kVSyncName) - 1);
   if (!native_vsync_) {
     LOG(ERROR) << "OHOS NativeVSync unavailable; display timing falls back to "
                << kFallbackInterval.InMillisecondsF() << " ms";
@@ -161,6 +169,13 @@ base::TimeDelta OhosVSyncProvider::ReadHardwareInterval() {
     return base::TimeDelta();
   }
   const base::TimeDelta period = base::Nanoseconds(period_ns);
+  {
+    base::AutoLock lock(lock_);
+    if (period != interval_) {
+      VLOG(1) << "OHOS display period now " << period.InMillisecondsF()
+              << " ms";
+    }
+  }
   if (period < kMinInterval || period > kMaxInterval) {
     LOG(WARNING) << "OHOS NativeVSync reported an implausible period of "
                  << period.InMillisecondsF() << " ms";
