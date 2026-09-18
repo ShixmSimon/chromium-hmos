@@ -6,12 +6,20 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace ohos_nweb {
 
 inline constexpr char kChromiumHomeUrl[] = "chrome://newtab/";
 inline constexpr char kDefaultUiProfile[] = "phone";
 inline constexpr char kDefaultUiFamily[] = "mobile_phone";
+
+// A Chromium switch added by the embedder. An empty value adds a
+// valueless switch.
+struct AuraAdditionalSwitch {
+  std::string key;
+  std::string value;
+};
 
 struct AuraStartupConfig {
   std::string start_url = kChromiumHomeUrl;
@@ -34,8 +42,12 @@ struct AuraStartupConfig {
   int icu_data_fd = -1;
   int64_t icu_data_offset = 0;
   int64_t icu_data_length = 0;
-  bool jitless = true;
+  // Set by embedders on devices that refuse executable memory.
+  bool jitless = false;
   bool fullscreen_requested = true;
+  // Runs without a window next to another web engine, e.g. for Sync.
+  bool headless = false;
+  std::vector<AuraAdditionalSwitch> additional_switches;
 };
 
 struct AuraSurfaceState {

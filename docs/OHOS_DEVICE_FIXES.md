@@ -55,6 +55,58 @@ HarmonyOS by the ArkWeb User-Agent token.
   Huawei ArkWeb 144's ANGLE has an OHOS Vulkan WSI.
 - Phone UI enables `OverlayScrollbar` in the single `--enable-features` switch.
 
+## Rendering performance
+
+Scrolling dropped frames on a HarmonyOS 26 phone (120 Hz panel). Four causes,
+each measured with a synthetic scroll on a 400-row page, sampling
+`requestAnimationFrame` intervals through DevTools:
+
+| Change | Average frame | Frames over 20 ms |
+| --- | --- | --- |
+| Before | 16.6 ms (60 fps) | 2 of 639 |
+| Real VSync + GPU rasterization | 16.6 ms (60 fps) | 2 |
+| 120 Hz frame rate range | 11.8 ms (85 fps) | 0 |
+| DVSync | 8.4 ms (119 fps) | 0 |
+
+- `gpu/config/gpu_finch_features.cc`: `kDefaultEnableGpuRasterization` listed
+  Apple, Windows, ChromeOS and Android, so OHOS fell into the disabled branch
+  and every tile was painted by the CPU while the GPU only composited.
+  `chrome://gpu` reported `rasterization: disabled_software`.
+- `ui/ozone/platform/ohos/ohos_vsync_provider.{h,cc}` (new): the platform
+  handed the compositor a `FixedVSyncProvider` at 60 Hz whose phase was
+  whenever the surface was created, unrelated to the panel. It now follows
+  HarmonyOS NativeVSync, re-reads the period once a second for variable
+  refresh rate panels, asks for a 60-120 Hz range (HarmonyOS keeps an app at
+  60 Hz otherwise) and enables DVSync.
+- `ui/ozone/platform/ohos/ohos_screen.cc`: reports the panel's refresh rate
+  from `OH_NativeDisplayManager_GetDefaultDisplayRefreshRate`.
+
+Still open: renderer, compositor and GPU share one process, because HarmonyOS
+documents native child processes as tablet and 2-in-1 only; phones return
+`NCP_ERR_MULTI_PROCESS_DISABLED`.
+
+## Windowless runtime
+
+An embedder can host the engine without a window, for browser services such as
+a sync backend, through `ChromiumHarmonyOSStartHeadless(config_json)`:
+
+- The runtime starts with `--no-startup-window` and no GPU, and does not open
+  the DevTools or MCP ports, which any local app could reach.
+- `chrome/browser/ui/ohos/aura_shell_runtime_bridge.cc` holds a
+  `ScopedKeepAlive` in that mode, otherwise the browser process loads the
+  profile and exits immediately.
+- `chrome/app/chrome_main_delegate.cc` appends `--disable-sync` on OHOS because
+  upstream ships no Google sync backend; an embedder with its own backend opts
+  back in with `--ohos-enable-sync`.
+- The startup config takes `additionalSwitches`, and `jitless` now follows the
+  config instead of being forced on. HarmonyOS documents writable code memory
+  as tablet and 2-in-1 only, but a developer-signed app on a phone can map
+  executable pages, so V8 keeps its compilers; set `jitless` where the device
+  refuses (for example Secure Shield Mode).
+- `ohos_chrome_main_runner.cc` logs through the NDK, because the ArkWeb
+  `WVLOG_*` macros compile out when `enable_arkweb=false` and startup failures
+  were invisible.
+
 ## Known issues
 
 - `eglCreateSync` fails on the native EGL, which loses a WebGL context and

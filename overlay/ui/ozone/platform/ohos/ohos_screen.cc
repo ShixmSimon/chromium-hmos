@@ -1,5 +1,7 @@
 #include "ui/ozone/platform/ohos/ohos_screen.h"
 
+#include <window_manager/oh_display_manager.h>
+
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/task/single_thread_task_runner.h"
@@ -25,6 +27,12 @@ OhosScreen::OhosScreen() {
 
   display::Display display(kOhosPrimaryDisplayId);
   display.SetScaleAndBounds(scale, bounds);
+  uint32_t refresh_rate = 0;
+  if (OH_NativeDisplayManager_GetDefaultDisplayRefreshRate(
+          &refresh_rate) == DISPLAY_MANAGER_OK &&
+      refresh_rate > 0) {
+    display.set_display_frequency(static_cast<float>(refresh_rate));
+  }
   display_list_.AddDisplay(display, display::DisplayList::Type::PRIMARY);
 
   SetOhosDisplayMetricsChangedCallback(base::BindRepeating(

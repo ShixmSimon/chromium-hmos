@@ -10,6 +10,7 @@
 #include "ui/ozone/common/egl_util.h"
 #include "ui/ozone/common/gl_ozone_egl.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
+#include "ui/ozone/platform/ohos/ohos_vsync_provider.h"
 
 namespace ui {
 namespace {
@@ -124,8 +125,7 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
       return nullptr;
     }
 
-    auto vsync_provider = std::make_unique<gfx::FixedVSyncProvider>(
-        base::TimeTicks::Now(), base::Seconds(1) / 60);
+    auto vsync_provider = std::make_unique<OhosVSyncProvider>();
     auto gl_surface = base::MakeRefCounted<OhosNativeViewGLSurfaceEGL>(
         display->GetAs<gl::GLDisplayEGL>(), widget,
         reinterpret_cast<EGLNativeWindowType>(surface->window),

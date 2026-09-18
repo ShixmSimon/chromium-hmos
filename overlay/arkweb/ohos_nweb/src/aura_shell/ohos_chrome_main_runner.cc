@@ -27,12 +27,33 @@ extern "C" int ChromeMain(int argc, const char** argv);
 namespace ohos_nweb {
 namespace {
 
+// The ArkWeb DFX logging macros compile out when enable_arkweb=false, which
+// would hide startup failures of a runtime that has no window to show them.
+#define AURA_LOG_I(...) \
+  OH_LOG_Print(LOG_APP, LOG_INFO, 0xc233, "AuraShell", __VA_ARGS__)
+#define AURA_LOG_E(...) \
+  OH_LOG_Print(LOG_APP, LOG_ERROR, 0xc233, "AuraShell", __VA_ARGS__)
+
+
 void AppendSwitchWithValue(std::vector<std::string>* arguments,
                            const std::string& name,
                            const std::string& value) {
   if (!value.empty()) {
     arguments->push_back(name + "=" + value);
   }
+}
+
+bool IsValidSwitchKey(const std::string& key) {
+  if (key.empty() || key.front() == '-') {
+    return false;
+  }
+  for (const char c : key) {
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+          c == '-' || c == '_')) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool ForwardChromiumLogToHilog(int severity,
@@ -61,23 +82,23 @@ bool InitializeIcuFromRawFile(const AuraStartupConfig& config) {
       config.icu_data_length <= 0 ||
       static_cast<uint64_t>(config.icu_data_length) >
           std::numeric_limits<size_t>::max()) {
-    WVLOG_E("AuraShell ICU rawfile descriptor is invalid");
+    AURA_LOG_E("AuraShell ICU rawfile descriptor is invalid");
     return false;
   }
 
   const int duplicated_fd = dup(config.icu_data_fd);
   if (duplicated_fd < 0) {
-    WVLOG_E("AuraShell failed to duplicate ICU rawfile descriptor");
+    AURA_LOG_E("AuraShell failed to duplicate ICU rawfile descriptor");
     return false;
   }
 
   const base::MemoryMappedFile::Region region = {
       config.icu_data_offset, static_cast<size_t>(config.icu_data_length)};
   if (!base::i18n::InitializeICUWithFileDescriptor(duplicated_fd, region)) {
-    WVLOG_E("AuraShell failed to initialize Chromium ICU data");
+    AURA_LOG_E("AuraShell failed to initialize Chromium ICU data");
     return false;
   }
-  WVLOG_I("AuraShell initialized Chromium ICU data from HAP rawfile");
+  AURA_LOG_I("AuraShell initialized Chromium ICU data from HAP rawfile");
 #endif
   return true;
 }
@@ -136,11 +157,13 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
   startup_config_ = config;
   arguments_ = BuildArgumentsLocked(config);
   started_ = true;
-  mcp_server_.Start();
+  if (!config.headless) {
+    mcp_server_.Start();
+  }
   chrome_thread_ =
       std::thread(&OhosChromeMainRunner::RunChromeMainOnThread, this);
   chrome_thread_.detach();
-  WVLOG_I(
+  AURA_LOG_I(
       "AuraShell Chromium runtime requested uiFamily=%{public}s "
       "startUrl=%{public}s",
       config.ui_family.c_str(), config.start_url.c_str());
@@ -199,7 +222,7 @@ void OhosChromeMainRunner::OnThemeFontChanged(const std::string& font_id) {
 }
 
 void OhosChromeMainRunner::Shutdown() {
-  WVLOG_I("AuraShell Chromium runtime shutdown requested");
+  AURA_LOG_I("AuraShell Chromium runtime shutdown requested");
   mcp_server_.Stop();
   chrome::ohos::ShutdownAuraShellBrowser();
 }
@@ -230,17 +253,30 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
       "--in-process-gpu",
       "--no-zygote",
       "--no-sandbox",
-      "--js-flags=--jitless --wasm-jitless",
       "--disable-component-update",
       "--disable-domain-reliability",
-      "--remote-debugging-address=127.0.0.1",
-      "--remote-debugging-port=9222",
   };
 
+  if (config.headless) {
+    // The host app owns the surfaces and GL context; any local app could
+    // reach debugging ports.
+    arguments.push_back("--no-startup-window");
+    arguments.push_back("--disable-gpu");
+    // This mode exists to host browser services, including a sync
+    // backend the embedder brings itself.
+    arguments.push_back("--ohos-enable-sync");
+  } else {
+    arguments.push_back("--remote-debugging-address=127.0.0.1");
+    arguments.push_back("--remote-debugging-port=9222");
+    if (config.jitless) {
+    arguments.push_back("--js-flags=--jitless --wasm-jitless");
+  }
+
   arguments.push_back("--use-gl=angle");
-  // The device Vulkan driver lacks VK_KHR_display required by ANGLE's Linux
-  // Vulkan display; use ANGLE on the native HarmonyOS EGL/GLES instead.
-  arguments.push_back("--use-angle=gles-egl");
+    // The device Vulkan driver lacks VK_KHR_display required by ANGLE's
+    // Linux Vulkan display; use ANGLE on the native HarmonyOS EGL/GLES.
+    arguments.push_back("--use-angle=gles-egl");
+  }
 
   AppendSwitchWithValue(&arguments, "--ohos-ui-profile", config.ui_profile);
   AppendSwitchWithValue(&arguments, "--ohos-ui-family", config.ui_family);
@@ -266,8 +302,22 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
     arguments.push_back("--single-process");
   }
 
-  arguments.push_back(config.start_url.empty() ? kChromiumHomeUrl
-                                               : config.start_url);
+  for (const AuraAdditionalSwitch& additional_switch :
+       config.additional_switches) {
+    if (!IsValidSwitchKey(additional_switch.key)) {
+      AURA_LOG_E("AuraShell ignored an invalid additional switch key");
+      continue;
+    }
+    arguments.push_back(
+        additional_switch.value.empty()
+            ? "--" + additional_switch.key
+            : "--" + additional_switch.key + "=" + additional_switch.value);
+  }
+
+  if (!config.headless) {
+    arguments.push_back(config.start_url.empty() ? kChromiumHomeUrl
+                                                 : config.start_url);
+  }
   return arguments;
 }
 
@@ -294,7 +344,7 @@ void OhosChromeMainRunner::RunChromeMainOnThread() {
     argv.push_back(argument.c_str());
   }
 
-  WVLOG_I("AuraShell starting ChromeMain argc=%{public}zu", argv.size());
+  AURA_LOG_I("AuraShell starting ChromeMain argc=%{public}zu", argv.size());
   const int exit_code = ChromeMain(static_cast<int>(argv.size()), argv.data());
   mcp_server_.Stop();
   chrome::ohos::NotifyAuraShellBrowserStopped();
@@ -302,7 +352,7 @@ void OhosChromeMainRunner::RunChromeMainOnThread() {
     std::lock_guard<std::mutex> lock(mutex_);
     started_ = false;
   }
-  WVLOG_I("AuraShell ChromeMain exited code=%{public}d", exit_code);
+  AURA_LOG_I("AuraShell ChromeMain exited code=%{public}d", exit_code);
   (void)exit_code;
 }
 

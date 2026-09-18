@@ -900,6 +900,19 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
   ReadNonNegativeIntegerField(dict, "icuDataOffset", &config.icu_data_offset);
   ReadNonNegativeIntegerField(dict, "icuDataLength", &config.icu_data_length);
 
+  if (const base::ListValue* switches = dict.FindList("additionalSwitches")) {
+    for (const base::Value& entry : *switches) {
+      const base::DictValue* item = entry.GetIfDict();
+      const std::string* key = item ? item->FindString("key") : nullptr;
+      if (!key) {
+        continue;
+      }
+      const std::string* value = item->FindString("value");
+      config.additional_switches.push_back(
+          {*key, value ? *value : std::string()});
+    }
+  }
+
   std::optional<bool> jitless = dict.FindBool("jitless");
   if (jitless.has_value()) {
     config.jitless = *jitless;
@@ -1233,6 +1246,19 @@ napi_value InitAuraShellNapi(napi_env env, napi_value exports) {
 }
 
 }  // namespace ohos_nweb
+
+// Starts Chromium without a window for embedders that only need browser
+// services. Startup failures after the runtime thread starts go to hilog.
+extern "C" __attribute__((visibility("default"))) bool
+ChromiumHarmonyOSStartHeadless(const char* config_json) {
+  if (!config_json) {
+    return false;
+  }
+  ohos_nweb::AuraStartupConfig config =
+      ohos_nweb::ParseStartupConfig(config_json);
+  config.headless = true;
+  return ohos_nweb::GetOhosChromeMainRunner().EnsureStarted(config);
+}
 
 EXTERN_C_START
 static napi_value Init(napi_env env, napi_value exports) {

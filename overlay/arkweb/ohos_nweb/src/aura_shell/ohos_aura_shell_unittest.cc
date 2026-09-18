@@ -338,11 +338,11 @@ TEST(NWebAuraShellTest, ChromiumArgumentsEnforceJitlessWasmPhoneFallback) {
   const std::vector<std::string> arguments =
       runner.BuildArgumentsForTesting(config);
 
-  EXPECT_TRUE(
+  EXPECT_FALSE(
       ContainsArgument(arguments, "--js-flags=--jitless --wasm-jitless"));
   EXPECT_TRUE(ContainsArgument(arguments, "--hide-crash-restore-bubble"));
   EXPECT_TRUE(ContainsArgument(arguments, "--use-gl=angle"));
-  EXPECT_TRUE(ContainsArgument(arguments, "--use-angle=vulkan"));
+  EXPECT_TRUE(ContainsArgument(arguments, "--use-angle=gles-egl"));
   EXPECT_TRUE(ContainsArgument(arguments, "--use-mobile-user-agent"));
   EXPECT_TRUE(ContainsArgument(arguments, "--single-process"));
   EXPECT_TRUE(ContainsArgument(
@@ -357,6 +357,55 @@ TEST(NWebAuraShellTest, ChromiumArgumentsEnforceJitlessWasmPhoneFallback) {
   EXPECT_FALSE(ContainsArgument(arguments, "--no-expose-wasm"));
 }
 
+TEST(NWebAuraShellTest, HeadlessRuntimeHasNoWindowGlOrDebugPorts) {
+  AuraStartupConfig config;
+  config.headless = true;
+
+  OhosChromeMainRunner runner;
+  const std::vector<std::string> arguments =
+      runner.BuildArgumentsForTesting(config);
+
+  EXPECT_TRUE(ContainsArgument(arguments, "--no-startup-window"));
+  EXPECT_TRUE(ContainsArgument(arguments, "--ohos-enable-sync"));
+  EXPECT_TRUE(ContainsArgument(arguments, "--disable-gpu"));
+  EXPECT_FALSE(ContainsArgument(arguments, "--use-gl=angle"));
+  EXPECT_FALSE(ContainsArgument(arguments, "--remote-debugging-port=9222"));
+  EXPECT_FALSE(ContainsArgument(arguments, kChromiumHomeUrl));
+}
+
+TEST(NWebAuraShellTest, AdditionalSwitchesAreAppended) {
+  AuraStartupConfig config;
+  config.headless = true;
+  config.additional_switches = {
+      {"sync-url", "http://192.168.1.20:8295/v2"},
+      {"enable-logging", ""},
+      {"--no-sandbox", ""},
+      {"Bad Key", "x"},
+  };
+
+  OhosChromeMainRunner runner;
+  const std::vector<std::string> arguments =
+      runner.BuildArgumentsForTesting(config);
+
+  EXPECT_TRUE(ContainsArgument(arguments,
+                               "--sync-url=http://192.168.1.20:8295/v2"));
+  EXPECT_TRUE(ContainsArgument(arguments, "--enable-logging"));
+  EXPECT_FALSE(ContainsArgument(arguments, "----no-sandbox"));
+  EXPECT_FALSE(ContainsArgument(arguments, "--Bad Key=x"));
+}
+
+TEST(NWebAuraShellTest, JitlessFollowsTheStartupConfig) {
+  AuraStartupConfig config;
+  OhosChromeMainRunner runner;
+
+  EXPECT_FALSE(ContainsArgument(runner.BuildArgumentsForTesting(config),
+                                "--js-flags=--jitless --wasm-jitless"));
+
+  config.jitless = true;
+  EXPECT_TRUE(ContainsArgument(runner.BuildArgumentsForTesting(config),
+                               "--js-flags=--jitless --wasm-jitless"));
+}
+
 TEST(NWebAuraShellTest, TabletUsesNativeChildProcessMode) {
   AuraStartupConfig config;
   config.device_class = "tablet";
@@ -368,7 +417,7 @@ TEST(NWebAuraShellTest, TabletUsesNativeChildProcessMode) {
 
   EXPECT_TRUE(ContainsArgument(arguments, "--renderer-process-limit=16"));
   EXPECT_TRUE(ContainsArgument(arguments, "--use-gl=angle"));
-  EXPECT_TRUE(ContainsArgument(arguments, "--use-angle=vulkan"));
+  EXPECT_TRUE(ContainsArgument(arguments, "--use-angle=gles-egl"));
   EXPECT_FALSE(ContainsArgument(arguments, "--use-mobile-user-agent"));
   EXPECT_FALSE(ContainsArgument(arguments, "--single-process"));
 }

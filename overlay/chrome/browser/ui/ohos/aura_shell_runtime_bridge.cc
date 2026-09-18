@@ -37,6 +37,9 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
+#include "chrome/common/chrome_switches.h"
+#include "components/keep_alive_registry/keep_alive_types.h"
+#include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "chrome/browser/printing/print_view_manager.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -82,6 +85,16 @@
 #include "url/gurl.h"
 
 namespace chrome::ohos {
+
+namespace {
+
+// A windowless runtime has no browser window to keep the process alive.
+std::unique_ptr<ScopedKeepAlive>& WindowlessKeepAlive() {
+  static base::NoDestructor<std::unique_ptr<ScopedKeepAlive>> keep_alive;
+  return *keep_alive;
+}
+
+}  // namespace
 namespace {
 
 constexpr int kMaxBrowserLookupAttempts = 50;
@@ -846,6 +859,7 @@ void NavigateOnUiThread(gfx::AcceleratedWidget widget, GURL url, int attempt) {
 }
 
 void ShutdownOnUiThread() {
+  WindowlessKeepAlive().reset();
   chrome::ExitIgnoreUnloadHandlers();
 }
 
@@ -1237,6 +1251,13 @@ void ReloadThemeFontsOnUiThread(std::string font_id) {
 }  // namespace
 
 void NotifyAuraShellBrowserStarted() {
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kNoStartupWindow) &&
+      !WindowlessKeepAlive()) {
+    WindowlessKeepAlive() = std::make_unique<ScopedKeepAlive>(
+        KeepAliveOrigin::BROWSER_PROCESS_OHOS,
+        KeepAliveRestartOption::DISABLED);
+  }
   ui::SetOhosSelectFileDialogRequestCallback(
       base::BindRepeating(&DispatchFilePickerRequest));
   RuntimeBridgeState& state = GetState();

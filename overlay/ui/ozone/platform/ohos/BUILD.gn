@@ -47,13 +47,19 @@ source_set("ohos") {
     "ohos_screen.h",
     "ohos_surface_factory.cc",
     "ohos_surface_factory.h",
+    "ohos_vsync_provider.cc",
+    "ohos_vsync_provider.h",
     "ozone_platform_ohos.cc",
     "ozone_platform_ohos.h",
   ]
 
   defines = [ "OZONE_IMPLEMENTATION" ]
 
-  libs = [ "ohinputmethod" ]
+  libs = [
+    "native_display_manager",
+    "native_vsync",
+    "ohinputmethod",
+  ]
 
   deps = [
     ":event_source",

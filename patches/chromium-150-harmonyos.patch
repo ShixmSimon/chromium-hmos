@@ -1689,7 +1689,7 @@ index 18417167ff..38aa1a32c5 100644
    shared_library("chrome_dll") {
      configs += [ "//build/config/compiler:wexit_time_destructors" ]
 diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
-index df8f9455d2..74457b394d 100644
+index df8f9455d2..62eba17ff5 100644
 --- a/chrome/app/chrome_main_delegate.cc
 +++ b/chrome/app/chrome_main_delegate.cc
 @@ -77,6 +77,7 @@
@@ -1710,7 +1710,7 @@ index df8f9455d2..74457b394d 100644
  #include "v8/include/v8-wasm-trap-handler-posix.h"
  #include "v8/include/v8.h"
  #endif
-@@ -1059,8 +1061,19 @@ std::optional<int> ChromeMainDelegate::BasicStartupComplete() {
+@@ -1059,8 +1061,23 @@ std::optional<int> ChromeMainDelegate::BasicStartupComplete() {
    ash::BootTimesRecorder::Get()->SaveChromeMainStats();
  #endif
  
@@ -1725,14 +1725,18 @@ index df8f9455d2..74457b394d 100644
 +  // Chromium component updates, and Google account sync in every process.
 +  mutable_command_line->AppendSwitch(switches::kDisableBackgroundNetworking);
 +  mutable_command_line->AppendSwitch(switches::kDisableComponentUpdate);
-+  mutable_command_line->AppendSwitch(syncer::kDisableSync);
++  // An embedder that ships its own sync backend asks for it explicitly,
++  // so only Google sync is off by default.
++  if (!mutable_command_line->HasSwitch("ohos-enable-sync")) {
++    mutable_command_line->AppendSwitch(syncer::kDisableSync);
++  }
 +#endif
 +
 +  const base::CommandLine& command_line = *mutable_command_line;
  
    // Only allow disabling web security via the command-line flag if the user has
    // specified a distinct profile directory. This still enables tests to disable
-@@ -1461,7 +1474,7 @@ void ChromeMainDelegate::PreSandboxStartup() {
+@@ -1461,7 +1478,7 @@ void ChromeMainDelegate::PreSandboxStartup() {
      CHECK(!loaded_locale.empty()) << "Locale could not be found for " << locale;
    }
  
@@ -1741,7 +1745,7 @@ index df8f9455d2..74457b394d 100644
    // Zygote needs to call InitCrashReporter() in RunZygote().
    if (process_type != switches::kZygoteProcess &&
        !command_line.HasSwitch(switches::kDisableCrashpadForTesting)) {
-@@ -1486,7 +1499,7 @@ void ChromeMainDelegate::PreSandboxStartup() {
+@@ -1486,7 +1503,7 @@ void ChromeMainDelegate::PreSandboxStartup() {
          v8::TryHandleWebAssemblyTrapPosix);
  #endif  // BUILDFLAG(IS_ANDROID)
    }
@@ -12386,6 +12390,31 @@ index e4827f7deb..74d3efdf38 100644
  // keep-sorted start case=no
          VARIATION_ENTRY(kIPHAutofillAccountNameEmailSuggestionFeature),
          VARIATION_ENTRY(kIPHAutofillAiOptInFeature),
+diff --git a/components/keep_alive_registry/keep_alive_types.cc b/components/keep_alive_registry/keep_alive_types.cc
+index 15e96dd5c7..947eaf5862 100644
+--- a/components/keep_alive_registry/keep_alive_types.cc
++++ b/components/keep_alive_registry/keep_alive_types.cc
+@@ -16,6 +16,8 @@ std::ostream& operator<<(std::ostream& out, const KeepAliveOrigin& origin) {
+       return out << "BROWSER_PROCESS_CHROMEOS";
+     case KeepAliveOrigin::BROWSER_PROCESS_FUCHSIA:
+       return out << "BROWSER_PROCESS_FUCHSIA";
++    case KeepAliveOrigin::BROWSER_PROCESS_OHOS:
++      return out << "BROWSER_PROCESS_OHOS";
+     case KeepAliveOrigin::SESSION_RESTORE:
+       return out << "SESSION_RESTORE";
+     case KeepAliveOrigin::HEADLESS_COMMAND:
+diff --git a/components/keep_alive_registry/keep_alive_types.h b/components/keep_alive_registry/keep_alive_types.h
+index 3bc7d30f06..6ce9b48efe 100644
+--- a/components/keep_alive_registry/keep_alive_types.h
++++ b/components/keep_alive_registry/keep_alive_types.h
+@@ -19,6 +19,7 @@ enum class KeepAliveOrigin {
+   BROWSER,
+   BROWSER_PROCESS_CHROMEOS,
+   BROWSER_PROCESS_FUCHSIA,
++  BROWSER_PROCESS_OHOS,
+   SESSION_RESTORE,
+   HEADLESS_COMMAND,
+ 
 diff --git a/components/metrics/debug/metrics_internals_utils.cc b/components/metrics/debug/metrics_internals_utils.cc
 index 0e3d153842..9b7f693551 100644
 --- a/components/metrics/debug/metrics_internals_utils.cc
@@ -13354,7 +13383,7 @@ index 1f8cde5f5d..b2d9d2453c 100644
      sources += [ "local_device_info_util_mac.mm" ]
      frameworks = [
 diff --git a/components/sync_device_info/device_info.h b/components/sync_device_info/device_info.h
-index 980032a34b..4090c42a9c 100644
+index 980032a34b..a65779c320 100644
 --- a/components/sync_device_info/device_info.h
 +++ b/components/sync_device_info/device_info.h
 @@ -153,7 +153,8 @@ class DeviceInfo {
@@ -13367,6 +13396,44 @@ index 980032a34b..4090c42a9c 100644
    };
  
    //
+@@ -208,11 +209,28 @@ class DeviceInfo {
+              const MobilePromoOnDesktopPromoTypeSet&
+                  desktop_to_ios_promo_receiving_types,
+              GlicExperimentalTriggeringState glic_experimental_triggering_state,
+-             std::optional<int> glic_experimental_triggering_version);
++             std::optional<int> glic_experimental_triggering_version,
++             SelfDeleteSupport self_delete_support =
++                 SelfDeleteSupport::kNotSupported);
+ 
+   DeviceInfo& operator=(const DeviceInfo&) = delete;
+ 
++  DeviceInfo(DeviceInfo&&);
++
+   ~DeviceInfo();
++  SelfDeleteSupport self_delete_support() const {
++    return self_delete_support_;
++  }
++  void set_self_delete_support(SelfDeleteSupport self_delete_support) {
++    self_delete_support_ = self_delete_support;
++  }
++  // Gets the OS in string form.
++  std::string GetOSString() const;
++  // Gets the device type in string form.
++  std::string GetDeviceTypeString() const;
++  // Converts the DeviceInfo values to a JS friendly DictionaryValue,
++  // which extension APIs can expose to third party apps.
++  base::DictValue ToValue() const;
+ 
+   std::unique_ptr<DeviceInfo> DeepCopyForTesting() const;
+ 
+@@ -414,6 +432,7 @@ class DeviceInfo {
+   // NOTE: when adding a member, don't forget to update
+   // |StoredDeviceInfoStillAccurate| in device_info_sync_bridge.cc or else
+   // changes in that member might not trigger uploads of updated DeviceInfos.
++  SelfDeleteSupport self_delete_support_;
+ };
+ 
+ }  // namespace syncer
 diff --git a/components/sync_device_info/device_info_proto_enum_util.cc b/components/sync_device_info/device_info_proto_enum_util.cc
 index aca2fe416a..cf18255bf8 100644
 --- a/components/sync_device_info/device_info_proto_enum_util.cc
@@ -16222,6 +16289,20 @@ index 09bedb08fc..a00b467788 100644
  
    sources += process_json_outputs
  
+diff --git a/gpu/config/gpu_finch_features.cc b/gpu/config/gpu_finch_features.cc
+index 0a1deaa88c..43189294a3 100644
+--- a/gpu/config/gpu_finch_features.cc
++++ b/gpu/config/gpu_finch_features.cc
+@@ -133,7 +133,8 @@ BASE_FEATURE(kNvidiaWaylandYuvHardwareConversionWorkaround,
+ // Android and Linux.
+ BASE_FEATURE(kDefaultEnableGpuRasterization,
+ #if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS) || \
+-    BUILDFLAG(IS_ANDROID) || BUILDFLAG(USE_WEBGPU_ON_VULKAN_VIA_GL_INTEROP)
++    BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS) || \
++    BUILDFLAG(USE_WEBGPU_ON_VULKAN_VIA_GL_INTEROP)
+              base::FEATURE_ENABLED_BY_DEFAULT
+ #else
+              base::FEATURE_DISABLED_BY_DEFAULT
 diff --git a/gpu/config/gpu_test_config.cc b/gpu/config/gpu_test_config.cc
 index 51567417cf..c10d688a99 100644
 --- a/gpu/config/gpu_test_config.cc
