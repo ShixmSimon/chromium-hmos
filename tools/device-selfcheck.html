@@ -1,0 +1,149 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OHOS adapter self-check</title>
+<style>
+  body{font:13px/1.45 system-ui,sans-serif;margin:0;padding:8px 10px 220px;background:#fff}
+  h2{font-size:14px;margin:10px 0 4px;border-bottom:1px solid #ddd;padding-bottom:2px}
+  .r{display:flex;gap:6px;padding:1px 0}
+  .n{flex:0 0 46%;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .v{flex:1;font-weight:600}
+  .ok{color:#0a0}.no{color:#c00}.wa{color:#b80}.info{color:#333;font-weight:400;font-size:12px}
+  #sum{font-size:15px;font-weight:700;padding:6px;background:#f4f4f4;border-radius:4px}
+</style>
+<div id="sum">running…</div>
+<div id="out"></div>
+<script>
+const out = document.getElementById('out');
+let pass = 0, fail = 0;
+
+function sect(t){ const h=document.createElement('h2'); h.textContent=t; out.appendChild(h); }
+const problems = [];
+function row(name, val, cls){
+  const d=document.createElement('div'); d.className='r';
+  d.innerHTML = '<span class="n"></span><span class="v '+(cls||'')+'"></span>';
+  d.children[0].textContent = name;
+  d.children[1].textContent = val;
+  out.appendChild(d);
+  if(cls==='ok') pass++; else if(cls==='no'){ fail++; problems.push(name); }
+}
+function has(name, obj, key){
+  const ok = obj && (key in obj);
+  row(name, ok ? 'present' : 'MISSING', ok ? 'ok' : 'no');
+  return ok;
+}
+
+// ---- The crash we just fixed -------------------------------------------
+sect('WebHID (the crash this build fixes)');
+(function(){
+  if (!('hid' in navigator)) { row('navigator.hid', 'absent (API not exposed)', 'wa'); return; }
+  row('navigator.hid', 'present', 'info');
+  try {
+    // Before the fix this reached DeviceService::BindHidManager, which built a
+    // HidManagerImpl around a null HidService and took down the browser.
+    navigator.hid.getDevices()
+      .then(d => row('hid.getDevices()', 'resolved, ' + d.length + ' devices', 'ok'))
+      .catch(e => row('hid.getDevices()', 'rejected: ' + e.name + ' (no crash)', 'ok'));
+  } catch (e) {
+    row('hid.getDevices()', 'threw: ' + e.name + ' (no crash)', 'ok');
+  }
+})();
+
+// ---- Other device-service backed APIs, same failure shape ---------------
+sect('Other device APIs (same "no platform impl" risk)');
+[['usb','navigator.usb','getDevices'],
+ ['serial','navigator.serial','getPorts'],
+ ['bluetooth','navigator.bluetooth',null]].forEach(([k,label,m])=>{
+  if(!(k in navigator)){ row(label,'absent','wa'); return; }
+  if(!m){ row(label,'present (not probed)','info'); return; }
+  try{
+    navigator[k][m]().then(r=>row(label+'.'+m+'()','resolved ('+(r.length||0)+')','ok'))
+                     .catch(e=>row(label+'.'+m+'()','rejected: '+e.name+' (no crash)','ok'));
+  }catch(e){ row(label+'.'+m+'()','threw: '+e.name+' (no crash)','ok'); }
+});
+
+// ---- The 10 features disabled by the platform-dict gap -----------------
+sect('Features gated off for OHOS');
+has('Element.ariaNotify', Element.prototype, 'ariaNotify');
+has('window.EyeDropper', window, 'EyeDropper');
+row('OrientationEvent', ('ondeviceorientation' in window) ? 'present' : 'MISSING',
+    ('ondeviceorientation' in window) ? 'ok' : 'no');
+has('navigator.mediaDevices', navigator, 'mediaDevices');
+
+// ---- Core web platform --------------------------------------------------
+sect('Core platform');
+row('WebAssembly', typeof WebAssembly==='object'?'yes':'no', typeof WebAssembly==='object'?'ok':'no');
+row('IndexedDB', 'indexedDB' in window ? 'yes':'no', 'indexedDB' in window?'ok':'no');
+row('ServiceWorker', 'serviceWorker' in navigator?'yes':'no','serviceWorker' in navigator?'ok':'no');
+row('WebSocket', 'WebSocket' in window?'yes':'no','WebSocket' in window?'ok':'no');
+row('Intl+ICU', (()=>{try{return new Intl.DateTimeFormat('zh-CN',{month:'long'}).format(new Date(2026,0,1));}catch(e){return 'ERR';}})(),'info');
+row('localStorage', (()=>{try{localStorage.setItem('_t','1');localStorage.removeItem('_t');return 'works';}catch(e){return 'ERR '+e.name;}})(),'ok');
+
+// ---- Graphics -----------------------------------------------------------
+sect('Graphics');
+(function(){
+  const c=document.createElement('canvas');
+  const gl=c.getContext('webgl2')||c.getContext('webgl');
+  if(!gl){ row('WebGL','NO CONTEXT','no'); return; }
+  row('WebGL version', gl.getParameter(gl.VERSION), 'ok');
+  const dbg=gl.getExtension('WEBGL_debug_renderer_info');
+  if(dbg) row('GL_RENDERER', String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)).slice(0,42), 'info');
+  row('2D canvas', c.getContext ? 'ok' : 'no', 'ok');
+})();
+row('WebGPU', 'gpu' in navigator ? 'present' : 'absent (expected off)', 'info');
+
+// ---- Media --------------------------------------------------------------
+sect('Media codecs');
+(function(){
+  const v=document.createElement('video');
+  [['H.264','video/mp4; codecs="avc1.42E01E"'],
+   ['VP9','video/webm; codecs="vp9"'],
+   ['AV1','video/mp4; codecs="av01.0.01M.08"'],
+   ['AAC','audio/mp4; codecs="mp4a.40.2"']].forEach(([n,t])=>{
+    const r=v.canPlayType(t);
+    row(n, r||'no', r==='probably'?'ok':(r?'wa':'no'));
+  });
+})();
+
+// ---- Network ------------------------------------------------------------
+sect('Network');
+(function(){
+  const t0=performance.now();
+  fetch('https://cloudflare-quic.com/', {mode:'no-cors', cache:'no-store'})
+    .then(()=>row('HTTPS fetch (cloudflare)', Math.round(performance.now()-t0)+'ms', 'ok'))
+    .catch(e=>row('HTTPS fetch (cloudflare)', 'FAILED: '+e.message.slice(0,30), 'no'));
+  fetch('https://expired.badssl.com/', {mode:'no-cors', cache:'no-store'})
+    .then(()=>row('expired cert', 'LOADED — cert check not enforced', 'no'))
+    .catch(()=>row('expired cert', 'blocked (correct)', 'ok'));
+  fetch('https://self-signed.badssl.com/', {mode:'no-cors', cache:'no-store'})
+    .then(()=>row('self-signed cert', 'LOADED — not enforced', 'no'))
+    .catch(()=>row('self-signed cert', 'blocked (correct)', 'ok'));
+  fetch('https://wrong.host.badssl.com/', {mode:'no-cors', cache:'no-store'})
+    .then(()=>row('wrong host cert', 'LOADED — not enforced', 'no'))
+    .catch(()=>row('wrong host cert', 'blocked (correct)', 'ok'));
+})();
+
+// ---- Environment --------------------------------------------------------
+sect('Environment');
+row('userAgent', navigator.userAgent, 'info');
+row('platform', navigator.platform || '(empty)', 'info');
+row('hardwareConcurrency', navigator.hardwareConcurrency, 'info');
+row('deviceMemory', navigator.deviceMemory ?? '(absent)', 'info');
+row('devicePixelRatio', devicePixelRatio, 'info');
+row('screen', screen.width+'x'+screen.height, 'info');
+row('languages', (navigator.languages||[]).join(','), 'info');
+if (navigator.userAgentData) {
+  navigator.userAgentData.getHighEntropyValues(['platformVersion','fullVersionList'])
+    .then(v=>{
+      row('UA-CH platform', v.platform+' '+v.platformVersion, 'info');
+      row('UA-CH versions', (v.fullVersionList||[]).map(b=>b.brand+'/'+b.version).join(' '), 'info');
+    }).catch(()=>{});
+}
+
+setTimeout(()=>{
+  const s=document.getElementById('sum');
+  s.textContent = 'checks: ' + pass + ' ok / ' + fail + ' problem'
+                + (fail ? ' — ' + problems.join(', ') : '');
+  s.style.color = fail ? '#c00' : '#0a0';
+}, 6000);
+</script>

@@ -17627,6 +17627,91 @@ index aab001a89e..742178de33 100644
    if (sandbox_string == kPrintBackendSandbox) {
      return Sandbox::kPrintBackend;
    }
+diff --git a/services/device/device_service.cc b/services/device/device_service.cc
+index 913b569371..d28523c9bf 100644
+--- a/services/device/device_service.cc
++++ b/services/device/device_service.cc
+@@ -7,6 +7,7 @@
+ #include <utility>
+ 
+ #include "base/functional/bind.h"
++#include "base/logging.h"
+ #include "base/memory/weak_ptr.h"
+ #include "base/task/single_thread_task_runner.h"
+ #include "base/task/thread_pool.h"
+@@ -21,6 +22,7 @@
+ #include "services/device/geolocation/public_ip_address_geolocator.h"
+ #include "services/device/geolocation/public_ip_address_location_notifier.h"
+ #include "services/device/hid/hid_manager_impl.h"
++#include "services/device/hid/hid_service.h"
+ #include "services/device/power_monitor/power_monitor_message_broadcaster.h"
+ #include "services/device/public/mojom/battery_monitor.mojom.h"
+ #include "services/device/serial/serial_port_manager_impl.h"
+@@ -208,6 +210,13 @@ void DeviceService::BindVibrationManager(
+ void DeviceService::BindHidManager(
+     mojo::PendingReceiver<mojom::HidManager> receiver) {
+   if (!hid_manager_) {
++    // Without a platform implementation HidManagerImpl would observe a null
++    // service and crash the browser process. Dropping the receiver instead
++    // surfaces to the page as navigator.hid failing, which is what a platform
++    // lacking HID support should look like.
++    if (!HidService::IsSupported() && !HidManagerImpl::IsHidServiceTesting()) {
++      return;
++    }
+     hid_manager_ = std::make_unique<HidManagerImpl>();
+   }
+   hid_manager_->AddReceiver(std::move(receiver));
+@@ -308,7 +317,12 @@ void DeviceService::BindSerialPortManager(
+   serial_port_manager_.AsyncCall(&SerialPortManagerImpl::Bind, FROM_HERE)
+       .WithArgs(std::move(receiver));
+ #else   // defined(IS_SERIAL_ENABLED_PLATFORM)
+-  NOTREACHED() << "Serial devices not supported on this platform.";
++  // blink exposes navigator.serial unconditionally (its runtime feature is
++  // plain "stable"), so a page can reach this on a platform with no serial
++  // backend. NOTREACHED() makes that a browser-process crash any site can
++  // trigger. Drop the receiver instead: the page sees the connection fail,
++  // which is what an unsupported API should look like.
++  DVLOG(1) << "Serial devices not supported on this platform.";
+ #endif  // defined(IS_SERIAL_ENABLED_PLATFORM)
+ }
+ 
+diff --git a/services/device/hid/hid_service.cc b/services/device/hid/hid_service.cc
+index 7f37eeded0..ef432b521d 100644
+--- a/services/device/hid/hid_service.cc
++++ b/services/device/hid/hid_service.cc
+@@ -85,6 +85,15 @@ std::unique_ptr<HidService> HidService::Create() {
+ #endif
+ }
+ 
++// static
++bool HidService::IsSupported() {
++#if ((BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)) ||     BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) ||           BUILDFLAG(IS_ANDROID)
++  return true;
++#else
++  return false;
++#endif
++}
++
+ void HidService::GetDevices(GetDevicesCallback callback) {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+ 
+diff --git a/services/device/hid/hid_service.h b/services/device/hid/hid_service.h
+index c7083b9985..3ab27bb732 100644
+--- a/services/device/hid/hid_service.h
++++ b/services/device/hid/hid_service.h
+@@ -58,6 +58,12 @@ class HidService {
+   // This function should be called on a thread with a MessageLoopForUI.
+   static std::unique_ptr<HidService> Create();
+ 
++  // Whether this platform has a HidService implementation at all. Create()
++  // returns null when it does not, and callers must not assume otherwise:
++  // HidManagerImpl only guards that with a DCHECK, so in a release build it
++  // dereferences the null service instead of failing the check.
++  static bool IsSupported();
++
+   HidService(const HidService&) = delete;
+   HidService& operator=(const HidService&) = delete;
+   virtual ~HidService();
 diff --git a/services/device/time_zone_monitor/BUILD.gn b/services/device/time_zone_monitor/BUILD.gn
 index 2009e857a5..e270520b0c 100644
 --- a/services/device/time_zone_monitor/BUILD.gn
