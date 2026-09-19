@@ -9,7 +9,7 @@ export interface AuraStartupConfig {
   displayWidth?: number;
   displayHeight?: number;
   displayDensity?: number;
-  jitless: true;
+  jitless: boolean;
   fullscreenRequested: boolean;
 }
 

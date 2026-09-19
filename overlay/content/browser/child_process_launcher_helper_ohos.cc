@@ -8,7 +8,7 @@
 #include "content/browser/child_process_launcher.h"
 #include "content/browser/child_process_launcher_helper.h"
 #include "content/browser/child_process_launcher_helper_posix.h"
-#include "content/public/browser/sandboxed_process_launcher_delegate.h"
+#include "content/browser/sandboxed_process_launcher_delegate.h"
 
 namespace content::internal {
 

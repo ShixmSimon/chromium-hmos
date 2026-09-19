@@ -168,7 +168,7 @@ gfx::AcceleratedWidget GetBrowserWidget(BrowserWindowInterface* browser) {
     return gfx::kNullAcceleratedWidget;
   }
   BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(
-      browser->GetBrowserForMigrationOnly());
+      browser);
   views::Widget* widget = browser_view ? browser_view->GetWidget() : nullptr;
   aura::Window* native_window = widget ? widget->GetNativeWindow() : nullptr;
   return native_window && native_window->GetHost()
@@ -426,7 +426,7 @@ std::unique_ptr<WebAppMenuModel> CreatePwaMenuModel(
     return nullptr;
   }
   auto model = std::make_unique<WebAppMenuModel>(
-      browser_view, browser->GetBrowserForMigrationOnly());
+      browser_view, browser);
   model->Init();
   return model;
 }
@@ -489,7 +489,7 @@ void ShowPwaMenuPopup(gfx::AcceleratedWidget widget,
   session->model = std::move(model);
   const int session_id = session->id;
   session->popup = std::make_unique<AppMenu>(
-      browser->GetBrowserForMigrationOnly(), session->model.get(),
+      browser, session->model.get(),
       views::MenuRunner::NO_FLAGS,
       base::BindRepeating(&SchedulePwaMenuSessionFinish, session_id));
   AppMenu* popup = session->popup.get();
@@ -658,7 +658,7 @@ BrowserTargetState BuildBrowserTargetState(gfx::AcceleratedWidget widget,
         target.side_panel_entry_id = SidePanelEntryIdToString(*entry_id);
       }
       BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(
-          browser->GetBrowserForMigrationOnly());
+          browser);
       SidePanel* side_panel =
           browser_view ? browser_view->side_panel() : nullptr;
       views::FocusManager* focus_manager =
@@ -910,7 +910,7 @@ void ApplyWindowStateOnUiThread(gfx::AcceleratedWidget widget, int attempt) {
   }
 
   if (BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(
-          browser->GetBrowserForMigrationOnly())) {
+          browser)) {
     browser_view->InvalidateLayout();
     browser_view->SchedulePaint();
   }
@@ -931,7 +931,7 @@ void ApplyUiFamilyOnUiThread(std::string ui_family) {
           GlobalBrowserCollection::GetInstance()) {
     browsers->ForEach([](BrowserWindowInterface* browser) {
       if (BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(
-              browser->GetBrowserForMigrationOnly())) {
+              browser)) {
         browser_view->OnOhosUiFamilyChanged();
       }
       return true;
@@ -973,7 +973,7 @@ void ApplyColorSchemeOnUiThread(std::string color_scheme) {
         }
       }
       if (BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(
-              browser->GetBrowserForMigrationOnly())) {
+              browser)) {
         browser_view->InvalidateLayout();
         browser_view->SchedulePaint();
       }
@@ -1085,7 +1085,7 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     const std::string requested_target =
         requested_target_value ? *requested_target_value : "webContents";
     BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(
-        browser->GetBrowserForMigrationOnly());
+        browser);
     SidePanelUI* side_panel_ui = SidePanelUI::From(browser);
     const bool focus_side_panel = requested_target == "sidePanel" &&
                                   browser_view && browser_view->side_panel() &&
@@ -1156,7 +1156,7 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     RequestAuraShellSystemShare(active);
   } else if (*name == "pwaMenu") {
     BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(
-        browser->GetBrowserForMigrationOnly());
+        browser);
     const bool is_pwa_window =
         browser->GetType() == BrowserWindowInterface::Type::TYPE_APP ||
         browser->GetType() == BrowserWindowInterface::Type::TYPE_APP_POPUP;
@@ -1195,7 +1195,7 @@ void ReloadAllTabsAfterThemeFontChange() {
       }
     }
     if (BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(
-            browser->GetBrowserForMigrationOnly())) {
+            browser)) {
       browser_view->InvalidateLayout();
       browser_view->SchedulePaint();
     }

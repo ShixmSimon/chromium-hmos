@@ -54,12 +54,14 @@ fi
   exit 1
 }
 
+# ANGLE links statically into libweb_engine.so in this configuration: the
+# shared libEGL_angle.so / libGLESv2_angle.so are never produced, and the
+# linked library carries no DT_NEEDED entry for them. Asserting on them
+# here failed correct builds.
 hap_entries="$(unzip -Z1 "${built_hap}")"
 for required_entry in \
   libs/arm64-v8a/libweb_engine.so \
   libs/arm64-v8a/libnweb_render.so \
-  libs/arm64-v8a/libEGL_angle.so \
-  libs/arm64-v8a/libGLESv2_angle.so \
   resources/rawfile/chromium/icudtl.dat \
   resources/rawfile/chromium/resources.pak; do
   grep -Fxq "${required_entry}" <<<"${hap_entries}" || {
