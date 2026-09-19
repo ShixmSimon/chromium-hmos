@@ -204,6 +204,15 @@ export class NativeContext {
   private onWindowAction: (action: string) => void = (_action: string): void => {};
   private onBrowserState: (stateJson: string) => void = (_stateJson: string): void => {};
   private onAuxiliaryWindowState: (stateJson: string) => void = (_stateJson: string): void => {};
+  // Set by callVoid when a native call is skipped or throws. Read by the caller
+  // to tell "engine never came up" apart from "engine is up but idle".
+  private lastError: string | null = null;
+
+  takeLastError(): string | null {
+    const e = this.lastError;
+    this.lastError = null;
+    return e;
+  }
 
   constructor(xComponentId: string) {
     this.xComponentId = xComponentId;
@@ -362,6 +371,7 @@ export class NativeContext {
   private callVoid(name: string, invoke: () => void): void {
     if (!this.nativeContext) {
       console.error(`${name} skipped because native context is not initialized`);
+      this.lastError = `${name}: native context missing`;
       return;
     }
 
@@ -369,6 +379,8 @@ export class NativeContext {
       invoke();
     } catch (error) {
       console.error(`${name} failed:`, error);
+      const e = error as Error;
+      this.lastError = `${name}: ${e && e.message ? e.message : String(error)}`;
     }
   }
 }

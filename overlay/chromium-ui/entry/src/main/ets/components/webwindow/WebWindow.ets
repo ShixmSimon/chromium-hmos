@@ -15,7 +15,7 @@
 
 import display from '@ohos.display';
 import { common } from '@kit.AbilityKit';
-import { window } from '@kit.ArkUI';
+import { promptAction, window } from '@kit.ArkUI';
 import { fileIo } from '@kit.CoreFileKit';
 import { i18n } from '@kit.LocalizationKit';
 import { AuraStartupConfig, CHROMIUM_HOME_URL } from '../../utils/DeviceType';
@@ -232,6 +232,7 @@ export struct WebWindow {
       this.attachIcuDataDescriptor(startupConfig);
       this.surfaceReady = false;
       this.setSurfaceReady(false);
+      this.showDiagnostic('1/2 onLoad 已触发 (libweb_engine.so 已加载)');
       this.nativeContext = new NativeContext(this.xComponentId);
       this.nativeContext.init(
         context as INativeContext,
@@ -249,6 +250,12 @@ export struct WebWindow {
       this.nativeContext.OnFocusChanged(this.appVisible);
       this.notifyCurrentBounds();
       this.requestXComponentFocus();
+      const swallowed = this.nativeContext.takeLastError();
+      if (swallowed) {
+        this.showDiagnostic(`2/2 初始化失败: ${swallowed}`);
+      } else {
+        this.showDiagnostic('2/2 引擎初始化完成');
+      }
     } catch (error) {
       this.closeIcuDataDescriptor();
       this.reportError(this.normalizeError(error));
@@ -851,7 +858,11 @@ export struct WebWindow {
 
   loadUrl(url: string): void {
     this.currentUrl = url;
-    this.nativeContext?.Navigate(url);
+    if (!this.nativeContext) {
+      this.showDiagnostic('导航失败: native context 未创建 (onLoad 未触发?)');
+      return;
+    }
+    this.nativeContext.Navigate(url);
   }
 
   private executePendingBrowserCommand(): void {
@@ -978,8 +989,20 @@ export struct WebWindow {
 
   private reportError(error: Error): void {
     console.error('WebWindow error:', error);
+    this.showDiagnostic(`引擎错误: ${error.message}`);
     if (this.onError) {
       this.onError(error);
+    }
+  }
+
+  // Every failure in this component used to reach console.error only, which on
+  // a device is indistinguishable from the engine simply doing nothing. Until
+  // the bring-up is verified these are surfaced.
+  private showDiagnostic(message: string): void {
+    try {
+      promptAction.showToast({ message: message, duration: 5000 });
+    } catch (e) {
+      console.error('showToast failed:', e);
     }
   }
 }
