@@ -1688,6 +1688,82 @@ index ce7ebbe4f6..dd33b6b893 100644
  if (is_win) {
    shared_library("chrome_dll") {
      configs += [ "//build/config/compiler:wexit_time_destructors" ]
+diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
+index b8eeec779c..baed23ae4d 100644
+--- a/chrome/app/chrome_main_delegate.cc
++++ b/chrome/app/chrome_main_delegate.cc
+@@ -66,6 +66,7 @@
+ #include "components/memory_system/parameters.h"
+ #include "components/metrics/persistent_histograms.h"
+ #include "components/sampling_profiler/thread_profiler.h"
++#include "components/sync/base/command_line_switches.h"
+ #include "components/startup_metric_utils/common/startup_metric_utils.h"
+ #include "components/variations/service/variations_network_clock.h"
+ #include "components/variations/variations_ids_provider.h"
+@@ -156,7 +157,8 @@
+ #include "net/android/network_change_notifier_factory_android.h"
+ #endif  // BUILDFLAG(IS_ANDROID)
+ 
+-#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC) && \
++    !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_OHOS)
+ #include "v8/include/v8-wasm-trap-handler-posix.h"
+ #include "v8/include/v8.h"
+ #endif
+@@ -1121,6 +1123,35 @@ std::optional<int> ChromeMainDelegate::BasicStartupComplete() {
+   const base::CommandLine& command_line =
+       *base::CommandLine::ForCurrentProcess();
+ #endif  // !defined(BUILDING_CHROME_RENDERER)
++#if BUILDFLAG(IS_OHOS)
++  // 154 exposes only a const reference here, so take the mutable process-wide
++  // instance explicitly.
++  base::CommandLine* mutable_command_line =
++      base::CommandLine::ForCurrentProcess();
++  // Chromium does not ship Google-backed browser services. Keep normal page
++  // navigation online while preventing browser-initiated background traffic,
++  // Chromium component updates, and Google account sync in every process.
++  mutable_command_line->AppendSwitch(switches::kDisableBackgroundNetworking);
++  mutable_command_line->AppendSwitch(switches::kDisableComponentUpdate);
++  // An embedder that ships its own sync backend asks for it explicitly,
++  // so only Google sync is off by default.
++  if (!mutable_command_line->HasSwitch("ohos-enable-sync")) {
++    mutable_command_line->AppendSwitch(syncer::kDisableSync);
++  }
++  // Bring-up only. Verifying this port means driving the browser through the
++  // device UI, and synthetic taps land on whatever happens to be focused --
++  // during this port that put keystrokes into an unrelated app and into a
++  // login form. DevTools over a forwarded port drives navigation and script
++  // without touching input focus at all.
++  //
++  // This opens a debugging port to anything that can reach localhost on the
++  // device, so it MUST NOT ship. Remove it, or gate it behind a build flag,
++  // before this build is handed to anyone.
++  if (!mutable_command_line->HasSwitch(switches::kRemoteDebuggingPort)) {
++    mutable_command_line->AppendSwitchASCII(switches::kRemoteDebuggingPort,
++                                            "9222");
++  }
++#endif
+ 
+   // Only allow disabling web security via the command-line flag if the user has
+   // specified a distinct profile directory. This still enables tests to disable
+@@ -1553,7 +1584,7 @@ void ChromeMainDelegate::PreSandboxStartup() {
+     CHECK(!loaded_locale.empty()) << "Locale could not be found for " << locale;
+   }
+ 
+-#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
++#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_OHOS)
+   // Zygote needs to call InitCrashReporter() in RunZygote().
+   if (process_type != switches::kZygoteProcess &&
+       !command_line.HasSwitch(switches::kDisableCrashpadForTesting)) {
+@@ -1578,7 +1609,7 @@ void ChromeMainDelegate::PreSandboxStartup() {
+         v8::TryHandleWebAssemblyTrapPosix);
+ #endif  // BUILDFLAG(IS_ANDROID)
+   }
+-#endif  // BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
++#endif  // BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_OHOS)
+ 
+ #if BUILDFLAG(IS_ANDROID)
+   CHECK_EQ(base::android::GetLibraryProcessType(),
 diff --git a/chrome/app/chromium_strings.grd b/chrome/app/chromium_strings.grd
 index d5f9a09fc0..a9b624b408 100644
 --- a/chrome/app/chromium_strings.grd
