@@ -1,2 +1,10 @@
 # Unified diff context markers intentionally contain a single leading space.
 *.patch -whitespace
+
+# Our own patches and scripts must stay LF on every platform. git apply reads a
+# patch verbatim, so a CRLF checkout on Windows corrupts every context line and
+# the patch will not apply to a LF tree. Scoped to our directories on purpose:
+# the vendored trees under overlay/ keep whatever line endings they shipped with.
+/patches/*.patch text eol=lf
+/scripts/*.sh text eol=lf
+/scripts/*.py text eol=lf
