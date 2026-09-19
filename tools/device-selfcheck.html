@@ -1,149 +1,157 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OHOS adapter self-check</title>
+<title>OHOS adapter — full check</title>
 <style>
-  body{font:13px/1.45 system-ui,sans-serif;margin:0;padding:8px 10px 220px;background:#fff}
-  h2{font-size:14px;margin:10px 0 4px;border-bottom:1px solid #ddd;padding-bottom:2px}
-  .r{display:flex;gap:6px;padding:1px 0}
-  .n{flex:0 0 46%;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .v{flex:1;font-weight:600}
-  .ok{color:#0a0}.no{color:#c00}.wa{color:#b80}.info{color:#333;font-weight:400;font-size:12px}
-  #sum{font-size:15px;font-weight:700;padding:6px;background:#f4f4f4;border-radius:4px}
+ body{font:12px/1.4 system-ui,sans-serif;margin:0;padding:8px 10px 200px}
+ .r{display:flex;gap:6px}.n{flex:0 0 46%}.v{flex:1;font-weight:600}
+ .ok{color:#0a0}.no{color:#c00}.wa{color:#b80}.info{color:#555;font-weight:400}
+ h2{font-size:13px;margin:10px 0 3px;border-bottom:1px solid #ddd}
+ #sum{font-size:14px;font-weight:700;padding:6px;background:#f4f4f4;border-radius:4px}
 </style>
 <div id="sum">running…</div>
 <div id="out"></div>
 <script>
-const out = document.getElementById('out');
-let pass = 0, fail = 0;
-
-function sect(t){ const h=document.createElement('h2'); h.textContent=t; out.appendChild(h); }
-const problems = [];
-function row(name, val, cls){
-  const d=document.createElement('div'); d.className='r';
-  d.innerHTML = '<span class="n"></span><span class="v '+(cls||'')+'"></span>';
-  d.children[0].textContent = name;
-  d.children[1].textContent = val;
-  out.appendChild(d);
-  if(cls==='ok') pass++; else if(cls==='no'){ fail++; problems.push(name); }
+// Everything this port needs checked, in one page. Results are POSTed back so
+// they can be read as text and diffed between builds, instead of being
+// squinted at one screenshot per screen.
+const out=document.getElementById('out'), rows=[];
+let ok=0,bad=0,gap=0;
+function sect(t){const h=document.createElement('h2');h.textContent=t;out.appendChild(h);
+  rows.push({flag:'',name:'--- '+t,value:''});}
+function row(name,value,cls){
+  const d=document.createElement('div');d.className='r';
+  d.innerHTML='<span class="n"></span><span class="v '+(cls||'')+'"></span>';
+  d.children[0].textContent=name;d.children[1].textContent=value;out.appendChild(d);
+  if(cls==='ok')ok++;else if(cls==='no')bad++;else if(cls==='wa')gap++;
+  rows.push({flag:cls==='ok'?'ok':cls==='no'?'!!':cls==='wa'?'--':'  ',name,value:String(value)});
 }
-function has(name, obj, key){
-  const ok = obj && (key in obj);
-  row(name, ok ? 'present' : 'MISSING', ok ? 'ok' : 'no');
-  return ok;
-}
+const P=[];                              // async probes to wait on
+function defer(p){P.push(p.catch(()=>{}));}
 
-// ---- The crash we just fixed -------------------------------------------
-sect('WebHID (the crash this build fixes)');
-(function(){
-  if (!('hid' in navigator)) { row('navigator.hid', 'absent (API not exposed)', 'wa'); return; }
-  row('navigator.hid', 'present', 'info');
-  try {
-    // Before the fix this reached DeviceService::BindHidManager, which built a
-    // HidManagerImpl around a null HidService and took down the browser.
-    navigator.hid.getDevices()
-      .then(d => row('hid.getDevices()', 'resolved, ' + d.length + ' devices', 'ok'))
-      .catch(e => row('hid.getDevices()', 'rejected: ' + e.name + ' (no crash)', 'ok'));
-  } catch (e) {
-    row('hid.getDevices()', 'threw: ' + e.name + ' (no crash)', 'ok');
-  }
-})();
+sect('Device APIs (the crash class)');
+['hid','serial','usb','bluetooth'].forEach(k=>
+  row('navigator.'+k, k in navigator?'present':'absent', k in navigator?'info':'wa'));
+if('hid' in navigator) defer(navigator.hid.getDevices()
+  .then(d=>row('hid.getDevices()','resolved '+d.length,'ok'))
+  .catch(e=>row('hid.getDevices()','rejected '+e.name+' (no crash)','ok')));
+if('serial' in navigator) defer(navigator.serial.getPorts()
+  .then(d=>row('serial.getPorts()','resolved '+d.length,'ok'))
+  .catch(e=>row('serial.getPorts()','rejected '+e.name+' (no crash)','ok')));
+if('usb' in navigator) defer(navigator.usb.getDevices()
+  .then(d=>row('usb.getDevices()','resolved '+d.length,'ok'))
+  .catch(e=>row('usb.getDevices()','rejected '+e.name+' (no crash)','ok')));
+if('bluetooth' in navigator) defer(navigator.bluetooth.getAvailability()
+  .then(v=>row('bluetooth.getAvailability()',String(v),'ok'))
+  .catch(e=>row('bluetooth.getAvailability()','rejected '+e.name+' (no crash)','ok')));
 
-// ---- Other device-service backed APIs, same failure shape ---------------
-sect('Other device APIs (same "no platform impl" risk)');
-[['usb','navigator.usb','getDevices'],
- ['serial','navigator.serial','getPorts'],
- ['bluetooth','navigator.bluetooth',null]].forEach(([k,label,m])=>{
-  if(!(k in navigator)){ row(label,'absent','wa'); return; }
-  if(!m){ row(label,'present (not probed)','info'); return; }
-  try{
-    navigator[k][m]().then(r=>row(label+'.'+m+'()','resolved ('+(r.length||0)+')','ok'))
-                     .catch(e=>row(label+'.'+m+'()','rejected: '+e.name+' (no crash)','ok'));
-  }catch(e){ row(label+'.'+m+'()','threw: '+e.name+' (no crash)','ok'); }
-});
+sect('Geolocation');
+if(!('geolocation' in navigator)) row('navigator.geolocation','absent','wa');
+else defer(new Promise(res=>{
+  navigator.geolocation.getCurrentPosition(
+    p=>{row('getCurrentPosition','FIX '+p.coords.latitude.toFixed(2)+','+p.coords.longitude.toFixed(2),'ok');res();},
+    e=>{row('getCurrentPosition','err '+e.code+' '+e.message.slice(0,30)+' (no crash)','ok');res();},
+    {timeout:8000});
+  setTimeout(()=>{row('getCurrentPosition','no callback in 10s','wa');res();},10000);
+}));
 
-// ---- The 10 features disabled by the platform-dict gap -----------------
-sect('Features gated off for OHOS');
-has('Element.ariaNotify', Element.prototype, 'ariaNotify');
-has('window.EyeDropper', window, 'EyeDropper');
-row('OrientationEvent', ('ondeviceorientation' in window) ? 'present' : 'MISSING',
-    ('ondeviceorientation' in window) ? 'ok' : 'no');
-has('navigator.mediaDevices', navigator, 'mediaDevices');
+sect('Sensors');
+['DeviceOrientationEvent','DeviceMotionEvent','Accelerometer','Gyroscope','AmbientLightSensor']
+  .forEach(s=>row(s, s in window?'present':'absent', s in window?'info':'wa'));
+defer(new Promise(res=>{
+  let got=false;
+  const h=e=>{if(got)return;got=true;row('deviceorientation event','alpha='+(e.alpha==null?'null':Math.round(e.alpha)),'ok');
+    window.removeEventListener('deviceorientation',h);res();};
+  window.addEventListener('deviceorientation',h);
+  setTimeout(()=>{if(!got){row('deviceorientation event','no event in 6s','wa');res();}},6000);
+}));
+if('Accelerometer' in window) defer(new Promise(res=>{
+  try{const a=new Accelerometer({frequency:10});let got=false;
+    a.addEventListener('reading',()=>{if(got)return;got=true;
+      row('Accelerometer reading','x='+(a.x||0).toFixed(2),'ok');try{a.stop()}catch(_){}res();});
+    a.addEventListener('error',e=>{row('Accelerometer','error '+e.error.name+' (no crash)','ok');res();});
+    a.start();
+    setTimeout(()=>{if(!got){row('Accelerometer reading','no reading in 6s','wa');try{a.stop()}catch(_){}res();}},6000);
+  }catch(e){row('Accelerometer','threw '+e.name,'no');res();}
+}));
 
-// ---- Core web platform --------------------------------------------------
+sect('Camera / mic / vibrate / battery');
+if(!navigator.mediaDevices) row('navigator.mediaDevices','absent','wa');
+else defer(navigator.mediaDevices.enumerateDevices()
+  .then(ds=>{const k={};ds.forEach(d=>k[d.kind]=(k[d.kind]||0)+1);
+    row('enumerateDevices()',ds.length+' '+JSON.stringify(k),'ok');})
+  .catch(e=>row('enumerateDevices()','rejected '+e.name+' (no crash)','ok')));
+row('navigator.vibrate','vibrate' in navigator?'present':'absent','vibrate' in navigator?'info':'wa');
+if('vibrate' in navigator){try{row('vibrate(1)',navigator.vibrate(1)?'accepted':'false','ok');}
+  catch(e){row('vibrate(1)','threw '+e.name,'no');}}
+if('getBattery' in navigator) defer(navigator.getBattery()
+  .then(b=>row('getBattery()',Math.round(b.level*100)+'% charging='+b.charging,'ok'))
+  .catch(e=>row('getBattery()','rejected '+e.name+' (no crash)','ok')));
+else row('navigator.getBattery','absent','wa');
+
+sect('Permission states');
+if(navigator.permissions) ['geolocation','camera','microphone','notifications'].forEach(nm=>
+  defer(navigator.permissions.query({name:nm})
+    .then(s=>row('perm '+nm,s.state,'info'))
+    .catch(e=>row('perm '+nm,'query failed '+e.name,'wa'))));
+
+sect('Feature mapping (Linux vs Android discriminators)');
+[['window.EyeDropper','EyeDropper' in window],
+ ['Element.ariaNotify','ariaNotify' in Element.prototype],
+ ['documentPictureInPicture','documentPictureInPicture' in window],
+ ['PressureObserver','PressureObserver' in window],
+ ['queryLocalFonts','queryLocalFonts' in window],
+ ['NDEFReader (WebNFC)','NDEFReader' in window],
+ ['navigator.contacts','contacts' in navigator]
+].forEach(([n,v])=>row(n,v?'present':'absent','info'));
+
 sect('Core platform');
-row('WebAssembly', typeof WebAssembly==='object'?'yes':'no', typeof WebAssembly==='object'?'ok':'no');
-row('IndexedDB', 'indexedDB' in window ? 'yes':'no', 'indexedDB' in window?'ok':'no');
-row('ServiceWorker', 'serviceWorker' in navigator?'yes':'no','serviceWorker' in navigator?'ok':'no');
-row('WebSocket', 'WebSocket' in window?'yes':'no','WebSocket' in window?'ok':'no');
-row('Intl+ICU', (()=>{try{return new Intl.DateTimeFormat('zh-CN',{month:'long'}).format(new Date(2026,0,1));}catch(e){return 'ERR';}})(),'info');
-row('localStorage', (()=>{try{localStorage.setItem('_t','1');localStorage.removeItem('_t');return 'works';}catch(e){return 'ERR '+e.name;}})(),'ok');
+[['WebAssembly',typeof WebAssembly==='object'],['IndexedDB','indexedDB' in window],
+ ['ServiceWorker','serviceWorker' in navigator],['WebSocket','WebSocket' in window],
+ ['WebGPU','gpu' in navigator]
+].forEach(([n,v])=>row(n,v?'yes':'no',v?'ok':'wa'));
+row('Intl zh-CN',(()=>{try{return new Intl.DateTimeFormat('zh-CN',{month:'long'}).format(new Date(2026,0,1));}catch(e){return 'ERR';}})(),'info');
+row('localStorage',(()=>{try{localStorage.setItem('_t','1');localStorage.removeItem('_t');return 'works';}catch(e){return 'ERR';}})(),'ok');
 
-// ---- Graphics -----------------------------------------------------------
 sect('Graphics');
-(function(){
-  const c=document.createElement('canvas');
-  const gl=c.getContext('webgl2')||c.getContext('webgl');
-  if(!gl){ row('WebGL','NO CONTEXT','no'); return; }
-  row('WebGL version', gl.getParameter(gl.VERSION), 'ok');
-  const dbg=gl.getExtension('WEBGL_debug_renderer_info');
-  if(dbg) row('GL_RENDERER', String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)).slice(0,42), 'info');
-  row('2D canvas', c.getContext ? 'ok' : 'no', 'ok');
-})();
-row('WebGPU', 'gpu' in navigator ? 'present' : 'absent (expected off)', 'info');
+(function(){const c=document.createElement('canvas');
+ const gl=c.getContext('webgl2')||c.getContext('webgl');
+ if(!gl){row('WebGL','NO CONTEXT','no');return;}
+ row('WebGL',gl.getParameter(gl.VERSION),'ok');
+ const d=gl.getExtension('WEBGL_debug_renderer_info');
+ if(d)row('GL_RENDERER',String(gl.getParameter(d.UNMASKED_RENDERER_WEBGL)),'info');})();
 
-// ---- Media --------------------------------------------------------------
 sect('Media codecs');
-(function(){
-  const v=document.createElement('video');
-  [['H.264','video/mp4; codecs="avc1.42E01E"'],
-   ['VP9','video/webm; codecs="vp9"'],
-   ['AV1','video/mp4; codecs="av01.0.01M.08"'],
-   ['AAC','audio/mp4; codecs="mp4a.40.2"']].forEach(([n,t])=>{
-    const r=v.canPlayType(t);
-    row(n, r||'no', r==='probably'?'ok':(r?'wa':'no'));
-  });
-})();
+(function(){const v=document.createElement('video');
+ [['H.264','video/mp4; codecs="avc1.42E01E"'],['VP9','video/webm; codecs="vp9"'],
+  ['AV1','video/mp4; codecs="av01.0.01M.08"'],['AAC','audio/mp4; codecs="mp4a.40.2"']]
+ .forEach(([n,t])=>{const r=v.canPlayType(t);row(n,r||'no',r==='probably'?'ok':(r?'wa':'no'));});})();
 
-// ---- Network ------------------------------------------------------------
-sect('Network');
-(function(){
-  const t0=performance.now();
-  fetch('https://cloudflare-quic.com/', {mode:'no-cors', cache:'no-store'})
-    .then(()=>row('HTTPS fetch (cloudflare)', Math.round(performance.now()-t0)+'ms', 'ok'))
-    .catch(e=>row('HTTPS fetch (cloudflare)', 'FAILED: '+e.message.slice(0,30), 'no'));
-  fetch('https://expired.badssl.com/', {mode:'no-cors', cache:'no-store'})
-    .then(()=>row('expired cert', 'LOADED — cert check not enforced', 'no'))
-    .catch(()=>row('expired cert', 'blocked (correct)', 'ok'));
-  fetch('https://self-signed.badssl.com/', {mode:'no-cors', cache:'no-store'})
-    .then(()=>row('self-signed cert', 'LOADED — not enforced', 'no'))
-    .catch(()=>row('self-signed cert', 'blocked (correct)', 'ok'));
-  fetch('https://wrong.host.badssl.com/', {mode:'no-cors', cache:'no-store'})
-    .then(()=>row('wrong host cert', 'LOADED — not enforced', 'no'))
-    .catch(()=>row('wrong host cert', 'blocked (correct)', 'ok'));
-})();
+sect('Network / TLS');
+defer(fetch('https://cloudflare-quic.com/',{mode:'no-cors',cache:'no-store'})
+  .then(()=>row('HTTPS fetch','ok','ok')).catch(e=>row('HTTPS fetch','FAILED '+e.message.slice(0,24),'no')));
+[['expired','https://expired.badssl.com/'],['self-signed','https://self-signed.badssl.com/'],
+ ['wrong-host','https://wrong.host.badssl.com/']].forEach(([n,u])=>
+ defer(fetch(u,{mode:'no-cors',cache:'no-store'})
+   .then(()=>row(n+' cert','LOADED — not enforced','no'))
+   .catch(()=>row(n+' cert','blocked (correct)','ok'))));
 
-// ---- Environment --------------------------------------------------------
 sect('Environment');
-row('userAgent', navigator.userAgent, 'info');
-row('platform', navigator.platform || '(empty)', 'info');
-row('hardwareConcurrency', navigator.hardwareConcurrency, 'info');
-row('deviceMemory', navigator.deviceMemory ?? '(absent)', 'info');
-row('devicePixelRatio', devicePixelRatio, 'info');
-row('screen', screen.width+'x'+screen.height, 'info');
-row('languages', (navigator.languages||[]).join(','), 'info');
-if (navigator.userAgentData) {
-  navigator.userAgentData.getHighEntropyValues(['platformVersion','fullVersionList'])
-    .then(v=>{
-      row('UA-CH platform', v.platform+' '+v.platformVersion, 'info');
-      row('UA-CH versions', (v.fullVersionList||[]).map(b=>b.brand+'/'+b.version).join(' '), 'info');
-    }).catch(()=>{});
-}
+row('userAgent',navigator.userAgent,'info');
+row('platform',navigator.platform||'(empty)','info');
+row('cores/mem/dpr',navigator.hardwareConcurrency+' / '+(navigator.deviceMemory??'?')+' / '+devicePixelRatio,'info');
+row('languages',(navigator.languages||[]).join(','),'info');
+if(navigator.userAgentData) defer(navigator.userAgentData
+  .getHighEntropyValues(['platformVersion','fullVersionList'])
+  .then(v=>{row('UA-CH platform',v.platform+' '+v.platformVersion,'info');
+    row('UA-CH brands',(v.fullVersionList||[]).map(b=>b.brand+'/'+b.version).join(' '),'info');}));
 
+// Give the slowest probes their full budget, then report.
 setTimeout(()=>{
-  const s=document.getElementById('sum');
-  s.textContent = 'checks: ' + pass + ' ok / ' + fail + ' problem'
-                + (fail ? ' — ' + problems.join(', ') : '');
-  s.style.color = fail ? '#c00' : '#0a0';
-}, 6000);
+  const summary='ok='+ok+' problem='+bad+' unavailable='+gap;
+  document.getElementById('sum').textContent=summary;
+  document.getElementById('sum').style.color=bad?'#c00':'#0a0';
+  fetch('/result',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({page:'full',summary,rows})}).catch(()=>{});
+},12000);
 </script>

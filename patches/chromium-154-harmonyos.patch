@@ -1688,69 +1688,6 @@ index ce7ebbe4f6..dd33b6b893 100644
  if (is_win) {
    shared_library("chrome_dll") {
      configs += [ "//build/config/compiler:wexit_time_destructors" ]
-diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
-index b8eeec779c..0c0e29ff5d 100644
---- a/chrome/app/chrome_main_delegate.cc
-+++ b/chrome/app/chrome_main_delegate.cc
-@@ -66,6 +66,7 @@
- #include "components/memory_system/parameters.h"
- #include "components/metrics/persistent_histograms.h"
- #include "components/sampling_profiler/thread_profiler.h"
-+#include "components/sync/base/command_line_switches.h"
- #include "components/startup_metric_utils/common/startup_metric_utils.h"
- #include "components/variations/service/variations_network_clock.h"
- #include "components/variations/variations_ids_provider.h"
-@@ -156,7 +157,8 @@
- #include "net/android/network_change_notifier_factory_android.h"
- #endif  // BUILDFLAG(IS_ANDROID)
- 
--#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_ANDROID)
-+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC) && \
-+    !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_OHOS)
- #include "v8/include/v8-wasm-trap-handler-posix.h"
- #include "v8/include/v8.h"
- #endif
-@@ -1121,6 +1123,22 @@ std::optional<int> ChromeMainDelegate::BasicStartupComplete() {
-   const base::CommandLine& command_line =
-       *base::CommandLine::ForCurrentProcess();
- #endif  // !defined(BUILDING_CHROME_RENDERER)
-+#if BUILDFLAG(IS_OHOS)
-+  // 154 exposes only a const reference here, so take the mutable process-wide
-+  // instance explicitly.
-+  base::CommandLine* mutable_command_line =
-+      base::CommandLine::ForCurrentProcess();
-+  // Chromium does not ship Google-backed browser services. Keep normal page
-+  // navigation online while preventing browser-initiated background traffic,
-+  // Chromium component updates, and Google account sync in every process.
-+  mutable_command_line->AppendSwitch(switches::kDisableBackgroundNetworking);
-+  mutable_command_line->AppendSwitch(switches::kDisableComponentUpdate);
-+  // An embedder that ships its own sync backend asks for it explicitly,
-+  // so only Google sync is off by default.
-+  if (!mutable_command_line->HasSwitch("ohos-enable-sync")) {
-+    mutable_command_line->AppendSwitch(syncer::kDisableSync);
-+  }
-+#endif
- 
-   // Only allow disabling web security via the command-line flag if the user has
-   // specified a distinct profile directory. This still enables tests to disable
-@@ -1553,7 +1571,7 @@ void ChromeMainDelegate::PreSandboxStartup() {
-     CHECK(!loaded_locale.empty()) << "Locale could not be found for " << locale;
-   }
- 
--#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
-+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_OHOS)
-   // Zygote needs to call InitCrashReporter() in RunZygote().
-   if (process_type != switches::kZygoteProcess &&
-       !command_line.HasSwitch(switches::kDisableCrashpadForTesting)) {
-@@ -1578,7 +1596,7 @@ void ChromeMainDelegate::PreSandboxStartup() {
-         v8::TryHandleWebAssemblyTrapPosix);
- #endif  // BUILDFLAG(IS_ANDROID)
-   }
--#endif  // BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
-+#endif  // BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_OHOS)
- 
- #if BUILDFLAG(IS_ANDROID)
-   CHECK_EQ(base::android::GetLibraryProcessType(),
 diff --git a/chrome/app/chromium_strings.grd b/chrome/app/chromium_strings.grd
 index d5f9a09fc0..a9b624b408 100644
 --- a/chrome/app/chromium_strings.grd
@@ -11988,7 +11925,7 @@ index 847ba42327..f4c4894f7f 100644
  
  source_set("unit_tests") {
 diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedder_support/user_agent_utils.cc
-index 5d96c60405..bc9574d4a2 100644
+index 5d96c60405..dd84e74416 100644
 --- a/components/embedder_support/user_agent_utils.cc
 +++ b/components/embedder_support/user_agent_utils.cc
 @@ -42,6 +42,14 @@
@@ -12006,7 +11943,7 @@ index 5d96c60405..bc9574d4a2 100644
  #if BUILDFLAG(IS_MAC)
  #include "base/mac/mac_util.h"
  #endif
-@@ -213,21 +221,69 @@ const blink::UserAgentBrandList GetUserAgentBrandFullVersionListInternal(
+@@ -213,21 +221,75 @@ const blink::UserAgentBrandList GetUserAgentBrandFullVersionListInternal(
  
  // Internal function to handle return the full or "reduced" user agent string,
  // depending on the Reduce User-Agent reduction phase features.
@@ -12039,9 +11976,15 @@ index 5d96c60405..bc9574d4a2 100644
 +    device_type = "PC";
 +  }
 +
++  // The OpenHarmony and ArkWeb tokens are what sites like Baidu key on to
++  // recognise a HarmonyOS phone, so they stay. But a UA naming no OS that
++  // anyone knows also gets treated as unclassifiable: google.com serves its
++  // no-JavaScript basic page against the token order above. Adding an Android
++  // token gives those sites something to match without taking the HarmonyOS
++  // markers away.
 +  return base::StrCat(
 +      {"Mozilla/5.0 (", device_type, "; OpenHarmony ", major_minor,
-+       ") AppleWebKit/537.36 (KHTML, like Gecko) ", product,
++       "; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) ", product,
 +       " Safari/537.36 ArkWeb/", version, mobile ? " Mobile" : ""});
 +}
 +#endif  // BUILDFLAG(IS_OHOS)
@@ -12078,7 +12021,7 @@ index 5d96c60405..bc9574d4a2 100644
  }
  
  // Generate random order list based on the input size and seed.
-@@ -287,6 +343,8 @@ std::string GetUserAgentPlatform() {
+@@ -287,6 +349,8 @@ std::string GetUserAgentPlatform() {
    return "X11; ";  // strange, but that's what Firefox uses
  #elif BUILDFLAG(IS_ANDROID)
    return "Linux; ";
@@ -12087,7 +12030,7 @@ index 5d96c60405..bc9574d4a2 100644
  #elif BUILDFLAG(IS_FUCHSIA)
    return "";
  #elif BUILDFLAG(IS_IOS)
-@@ -321,6 +379,8 @@ std::string GetUnifiedPlatform() {
+@@ -321,6 +385,8 @@ std::string GetUnifiedPlatform() {
    return "Macintosh; Intel Mac OS X 10_15_7";
  #elif BUILDFLAG(IS_WIN)
    return "Windows NT 10.0; Win64; x64";
@@ -12096,7 +12039,7 @@ index 5d96c60405..bc9574d4a2 100644
  #elif BUILDFLAG(IS_FUCHSIA)
    return "Fuchsia";
  #elif BUILDFLAG(IS_LINUX)
-@@ -398,7 +458,8 @@ std::string GetPosixCpuArchitecture() {
+@@ -398,7 +464,8 @@ std::string GetPosixCpuArchitecture() {
  std::string GetOSVersion(IncludeAndroidBuildNumber include_android_build_number,
                           IncludeAndroidModel include_android_model) {
    std::string os_version;
@@ -12106,7 +12049,7 @@ index 5d96c60405..bc9574d4a2 100644
    int32_t os_major_version = 0;
    int32_t os_minor_version = 0;
    int32_t os_bugfix_version = 0;
-@@ -438,6 +499,9 @@ std::string GetOSVersion(IncludeAndroidBuildNumber include_android_build_number,
+@@ -438,6 +505,9 @@ std::string GetOSVersion(IncludeAndroidBuildNumber include_android_build_number,
  #elif BUILDFLAG(IS_ANDROID)
                        "%s%s", android_version_str.c_str(),
                        android_info_str.c_str()
@@ -12116,7 +12059,7 @@ index 5d96c60405..bc9574d4a2 100644
  #else
                        ""
  #endif
-@@ -487,6 +551,23 @@ std::string GetUserAgent() {
+@@ -487,6 +557,23 @@ std::string GetUserAgent() {
    return GetUserAgentInternal();
  }
  
@@ -12140,7 +12083,7 @@ index 5d96c60405..bc9574d4a2 100644
  const blink::UserAgentBrandList GetUserAgentBrandMajorVersionList(
      std::optional<blink::UserAgentBrandVersion> additional_brand_version) {
    return GetUserAgentBrandMajorVersionListInternal(additional_brand_version);
-@@ -591,7 +672,7 @@ bool GetMobileBitForUAMetadata() {
+@@ -591,7 +678,7 @@ bool GetMobileBitForUAMetadata() {
    }
  #endif
  
@@ -12149,7 +12092,7 @@ index 5d96c60405..bc9574d4a2 100644
    return base::CommandLine::ForCurrentProcess()->HasSwitch(kUseMobileUserAgent);
  #else
    return false;
-@@ -825,6 +906,8 @@ std::string BuildOSCpuInfoFromOSVersionAndCpuType(const std::string& os_version,
+@@ -825,6 +912,8 @@ std::string BuildOSCpuInfoFromOSVersionAndCpuType(const std::string& os_version,
                        os_version.c_str()
  #elif BUILDFLAG(IS_ANDROID)
                        "Android %s", os_version.c_str()
@@ -18501,6 +18444,32 @@ index fa7189ace0..24883207e1 100644
  // Returns a default SkTypeface returned by a platform-specific SkFontMgr.
  SK_API sk_sp<SkTypeface> DefaultTypeface();
  
+diff --git a/third_party/blink/renderer/build/scripts/templates/macros.tmpl b/third_party/blink/renderer/build/scripts/templates/macros.tmpl
+index f3740f3b93..5e483b4a9a 100644
+--- a/third_party/blink/renderer/build/scripts/templates/macros.tmpl
++++ b/third_party/blink/renderer/build/scripts/templates/macros.tmpl
+@@ -90,5 +90,21 @@ case {{ length }}:
+ {%- endmacro %}
+ 
+ {%- macro platform_buildflag(platform) -%}
++{#- OHOS is an exclusive platform: IS_ANDROID, IS_LINUX and the rest are all 0
++    for it. A feature whose status is a per-platform dict therefore lands in the
++    "default" arm, and a dict with no "default" key means disabled -- which
++    silently turned off every such feature, Element.ariaNotify and
++    window.EyeDropper among them. Linux rather than Android: EyeDropperAPI and
++    a dozen more are off on Android but stable on Linux, and Android would turn
++    WebBluetooth/WebNFC/ContactsManager on, whose device-service backends do
++    not exist here -- the same shape that crashed the browser via WebHID and
++    Web Serial. Tie OHOS to Linux here rather than
++    annotating each feature, so the mapping keeps following upstream as
++    features come and go. The default arm negates this same macro, so the two
++    arms stay mutually exclusive. -#}
++{%- if platform == 'Linux' -%}
++(BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OHOS))
++{%- else -%}
+ BUILDFLAG(IS_{{platform | upper}})
++{%- endif -%}
+ {%- endmacro -%}
 diff --git a/third_party/blink/renderer/core/execution_context/navigator_base.cc b/third_party/blink/renderer/core/execution_context/navigator_base.cc
 index cccfafe8f9..6234f225e6 100644
 --- a/third_party/blink/renderer/core/execution_context/navigator_base.cc
