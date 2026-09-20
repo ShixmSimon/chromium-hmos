@@ -36,3 +36,8 @@ overlay/chromium-ui/entry/src/main/resources/rawfile/chromium/
 
 # Runner-produced build status; committed by CI on its own branch pushes.
 build-status/hap-path.txt
+
+# Written by the runner on every build and published to the build-results
+# branch. Keeping it out of the working branch stops the runner and whoever is
+# developing from racing on the same files.
+build-status/

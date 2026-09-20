@@ -70,14 +70,22 @@ jobs:
 
       # Text results go back through the repository: the other machine cannot
       # compile, so compiler diagnostics are the whole point of this job.
+      # Results go to a branch of their own. Committing them onto the working
+      # branch means the runner and whoever is developing both write the same
+      # files, and every push then races: a rebase with conflicts in
+      # build-status/ for a human to resolve, over content nobody edits by hand.
+      # A dedicated branch is also easier to read -- its history is purely the
+      # build log.
       - name: Publish build status
         if: always()
         run: |
           git config user.name  'chromium-hmos runner'
           git config user.email 'runner@localhost'
-          git add -f build-status/ || true
-          git diff --cached --quiet || git commit -m "ci: build status for ${GITHUB_SHA::8}"
-          git push origin HEAD:${GITHUB_REF_NAME} || true
+          git checkout --orphan build-results 2>/dev/null || git checkout build-results
+          git reset
+          git add -f build-status/
+          git commit -m "build ${GITHUB_SHA::8} on ${GITHUB_REF_NAME}" || true
+          git push -f origin build-results || true
 
       # The HAP is ~310 MB, far too large for the repository. It goes to a
       # prerelease keyed on the commit, which the other machine downloads with
