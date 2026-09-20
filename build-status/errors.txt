@@ -1,25 +1,4 @@
-# build 2026-09-20T15:28:24+08:00
-# commit fb884ea
-# steps=6 failures=0 elapsed=80s rc=0
+# build 2026-09-20T15:38:18+08:00
+# commit 6297e06
+# steps=0 failures=0 elapsed=15s rc=0
 
-
-## packaging failed
-ninja: Entering directory `out/ohos_arm64'
-[0/1] Regenerating ninja files
-[1/53] CXX obj/services/device/geolocation/geolocation/geoposition_ohos.o
-[2/53] CXX obj/services/device/geolocation/geolocation/location_provider_ohos.o
-[3/53] CXX obj/services/device/geolocation/geolocation/location_provider_manager.o
-[4/53] ACTION //components/resources:about_credits(//build/toolchain/ohos:ohos_clang_arm64)
-[5/6] LINK ./libweb_engine.so
-> hvigor [91mERROR: [31m00306003 Specification Limit Violation
-[31mError Message: Invalid project path. Current path does not match: \\wsl.localhost\Ubuntu-26.04\root\actions-runner\_work\chromium-hmos\chromium-hmos\overlay\chromium-ui
-[31m
-* Try the following:
-  > Please modify the project path to ensure that it only contains letters, digits, hyphens (-), underscores (_), periods (.), english parentheses (()), spaces, or the @ symbol
-[39m
-[31m* Try:
-> Run with --stacktrace option to get the stack trace.
-> Run with --debug option to get more log output.
-[39m
-> hvigor [91mERROR: BUILD FAILED in 18 s 168 ms [39m
-0 task in total: 0 executed, 0 up-to-date.
