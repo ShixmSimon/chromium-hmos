@@ -30,6 +30,7 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/lock.h"
 #include "base/task/single_thread_task_runner.h"
@@ -37,6 +38,11 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
+#include "ui/aura/client/capture_client.h"
+#include "ui/aura/env.h"
+#include "ui/events/event.h"
+#include "ui/events/event_handler.h"
+#include "ui/gfx/geometry/point_conversions.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
@@ -162,6 +168,52 @@ BrowserWindowInterface* GetActiveBrowser() {
   GlobalBrowserCollection* browsers = GlobalBrowserCollection::GetInstance();
   return browsers ? browsers->GetLastActiveBrowser() : nullptr;
 }
+
+std::string DescribeAuraWindow(aura::Window* window) {
+  if (!window) {
+    return "<none>";
+  }
+  const std::string name =
+      window->GetName().empty() ? std::string("<unnamed>") : window->GetName();
+  return base::StringPrintf("%s type=%d visible=%d screen=%s", name.c_str(),
+                            static_cast<int>(window->GetType()),
+                            window->IsVisible() ? 1 : 0,
+                            window->GetBoundsInScreen().ToString().c_str());
+}
+
+// Bring-up diagnostic. A press on the geolocation bubble reaches Chromium and
+// is swallowed: the page below never sees it and no button reacts. This names
+// the Aura window the press is actually targeted at, and who holds capture,
+// which is the one thing the Ozone-side traces cannot show.
+class PressTargetLogger : public ui::EventHandler {
+ public:
+  void OnEvent(ui::Event* event) override {
+    if (!event || (event->type() != ui::EventType::kTouchPressed &&
+                   event->type() != ui::EventType::kMousePressed)) {
+      return;
+    }
+    auto* target = static_cast<aura::Window*>(event->target());
+    aura::Window* capture = nullptr;
+    if (target) {
+      if (aura::Window* root = target->GetRootWindow()) {
+        if (auto* client = aura::client::GetCaptureClient(root)) {
+          capture = client->GetCaptureWindow();
+        }
+      }
+    }
+    gfx::Point local;
+    gfx::Point root_location;
+    if (event->IsLocatedEvent()) {
+      local = gfx::ToRoundedPoint(event->AsLocatedEvent()->location_f());
+      root_location =
+          gfx::ToRoundedPoint(event->AsLocatedEvent()->root_location_f());
+    }
+    LOG(WARNING) << "OHOS aura press local=" << local.ToString()
+                 << " root=" << root_location.ToString()
+                 << " target=" << DescribeAuraWindow(target)
+                 << " capture=" << DescribeAuraWindow(capture);
+  }
+};
 
 gfx::AcceleratedWidget GetBrowserWidget(BrowserWindowInterface* browser) {
   if (!browser) {
@@ -1260,6 +1312,10 @@ void NotifyAuraShellBrowserStarted() {
   }
   ui::SetOhosSelectFileDialogRequestCallback(
       base::BindRepeating(&DispatchFilePickerRequest));
+  if (aura::Env* env = aura::Env::GetInstance()) {
+    static base::NoDestructor<PressTargetLogger> press_logger;
+    env->AddPreTargetHandler(press_logger.get());
+  }
   RuntimeBridgeState& state = GetState();
   std::optional<GURL> pending_url;
   std::optional<std::string> pending_theme_font_id;
