@@ -125,8 +125,31 @@ if [[ -n "${SKIP_PACKAGE:-}" ]]; then
   exit 0
 fi
 
-say 'staging runtime'
-bash "${repo_root}/scripts/stage-runtime-assets.sh" "${src}/${out}" || die 'staging failed'
+# hvigor rejects UNC paths outright ("Invalid project path"), and the runner
+# checks the repository out inside WSL, which Windows can only reach as
+# \\wsl.localhost\... So packaging runs against the working copy on the Windows
+# filesystem, and the runtime has to be staged into *that* checkout. Staging
+# into the workspace checkout while packaging from the other one ships whatever
+# engine was staged there last: the build reports a freshly linked build-id
+# while the HAP carries a stale libweb_engine.so, and nothing says otherwise.
+ui_win='D:\Works\chromium-hmos\overlay\chromium-ui'
+ui_wsl='/mnt/d/Works/chromium-hmos/overlay/chromium-ui'
+
+stage_target="${repo_root}/overlay/chromium-ui"
+[[ -d "$ui_wsl" ]] && stage_target="$ui_wsl"
+
+say "staging runtime into ${stage_target}"
+bash "${repo_root}/scripts/stage-runtime-assets.sh" "${src}/${out}" "$stage_target" \
+  || die 'staging failed'
+
+# The engine about to be packaged must be the one just linked. This is the only
+# place the two can be compared before the HAP is built, and getting it wrong is
+# silent in every other signal the job produces.
+staged_engine="${stage_target}/entry/libs/arm64-v8a/libweb_engine.so"
+staged_id=$("${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf" -n \
+            "$staged_engine" 2>/dev/null | grep -oE '[0-9a-f]{40}')
+[[ "$staged_id" == "$build_id" ]] \
+  || die "staged engine is ${staged_id:-missing}, expected ${build_id}"
 
 # hvigor is a Windows toolchain; the runner lives in WSL, so the packaging step
 # reaches back across the boundary. Kept last so a compile failure never gets
@@ -143,13 +166,6 @@ fi
 # rewrites such a path to \\wsl.localhost\..., which points back into WSL
 # and does not exist. Its arguments must be native Windows paths.
 deveco_win='D:\Applications\DevEco Studio'
-# hvigor rejects UNC paths outright ("Invalid project path"), and the runner
-# checks the repository out inside WSL, which Windows can only reach as
-# \\wsl.localhost\... So packaging runs against the working copy on the
-# Windows filesystem instead. Only the app shell is needed there; the runtime
-# was already staged into it by stage-runtime-assets.sh.
-ui_win='D:\Works\chromium-hmos\overlay\chromium-ui'
-ui_wsl='/mnt/d/Works/chromium-hmos/overlay/chromium-ui'
 if [[ ! -d "$ui_wsl" ]]; then
   say 'no Windows-side checkout for packaging; skipping'
   printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":false}\n' \
