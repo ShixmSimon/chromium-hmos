@@ -139,13 +139,30 @@ if [[ ! -x "${deveco}/tools/node/node.exe" ]]; then
     "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
   exit 0
 fi
-( cd "${repo_root}/overlay/chromium-ui" \
-  && DEVECO_SDK_HOME="D:\\Applications\\DevEco Studio\\sdk" \
-     JAVA_HOME="D:\\Applications\\DevEco Studio\\jbr" \
-     "${deveco}/tools/node/node.exe" "${deveco}/tools/hvigor/bin/hvigorw.js" \
-       --mode module -p product=default -p module=entry@default \
-       assembleHap --no-daemon ) >>"$log" 2>&1 \
-  || die 'hvigor packaging failed'
+# node.exe is a Windows binary: it cannot resolve /mnt/... and silently
+# rewrites such a path to \\wsl.localhost\..., which points back into WSL
+# and does not exist. Its arguments must be native Windows paths.
+deveco_win='D:\Applications\DevEco Studio'
+if ( cd "${repo_root}/overlay/chromium-ui" \
+     && DEVECO_SDK_HOME="${deveco_win}\\sdk" \
+        JAVA_HOME="${deveco_win}\\jbr" \
+        "${deveco}/tools/node/node.exe" "${deveco_win}\\tools\\hvigor\\bin\\hvigorw.js" \
+          --mode module -p product=default -p module=entry@default \
+          assembleHap --no-daemon ) >>"$log" 2>&1
+then
+  :
+else
+  # Packaging failures were invisible to the other machine: only compiler
+  # output reached errors.txt and this step simply died. Carry the log tail
+  # through so a packaging break reads as clearly as a compile break.
+  {
+    printf '\n## packaging failed\n'
+    tail -40 "$log" | grep -viE '^[[:space:]]*$'
+  } >>"${status_dir}/errors.txt"
+  printf '{"status":"package-failed","steps":%s,"elapsed":%s,"build_id":"%s"}\n' \
+    "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
+  die 'hvigor packaging failed (see build-status/errors.txt)'
+fi
 
 hap=$(find "${repo_root}/overlay/chromium-ui/entry/build" -name '*-signed.hap' 2>/dev/null | head -1)
 [[ -z "$hap" ]] && hap=$(find "${repo_root}/overlay/chromium-ui/entry/build" -name '*.hap' 2>/dev/null | head -1)
