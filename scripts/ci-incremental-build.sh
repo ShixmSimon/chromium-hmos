@@ -143,10 +143,32 @@ fi
 # rewrites such a path to \\wsl.localhost\..., which points back into WSL
 # and does not exist. Its arguments must be native Windows paths.
 deveco_win='D:\Applications\DevEco Studio'
-if ( cd "${repo_root}/overlay/chromium-ui" \
-     && DEVECO_SDK_HOME="${deveco_win}\\sdk" \
-        JAVA_HOME="${deveco_win}\\jbr" \
-        "${deveco}/tools/node/node.exe" "${deveco_win}\\tools\\hvigor\\bin\\hvigorw.js" \
+# hvigor rejects UNC paths outright ("Invalid project path"), and the runner
+# checks the repository out inside WSL, which Windows can only reach as
+# \\wsl.localhost\... So packaging runs against the working copy on the
+# Windows filesystem instead. Only the app shell is needed there; the runtime
+# was already staged into it by stage-runtime-assets.sh.
+ui_win='D:\Works\chromium-hmos\overlay\chromium-ui'
+ui_wsl='/mnt/d/Works/chromium-hmos/overlay/chromium-ui'
+if [[ ! -d "$ui_wsl" ]]; then
+  say 'no Windows-side checkout for packaging; skipping'
+  printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":false}\n' \
+    "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
+  exit 0
+fi
+# Environment variables do not cross into a Windows process on their own --
+# node.exe saw DEVECO_SDK_HOME as undefined no matter how it was set on the
+# command line. WSLENV is the mechanism that carries them over; /w means pass
+# the value through unchanged rather than translating it as a path.
+export DEVECO_SDK_HOME="${deveco_win}\\sdk"
+export JAVA_HOME="${deveco_win}\\jbr"
+export WSLENV='DEVECO_SDK_HOME/w:JAVA_HOME/w:PATH/l'
+# PackageHap shells out to `java`, which it finds on PATH rather than
+# through JAVA_HOME -- without this it fails as 00308018 "Unknown Error".
+# /l appends the Windows-side entry to the existing PATH.
+export PATH="${deveco}/jbr/bin:${PATH}"
+if ( cd "$ui_wsl" \
+     && "${deveco}/tools/node/node.exe" "${deveco_win}\\tools\\hvigor\\bin\\hvigorw.js" \
           --mode module -p product=default -p module=entry@default \
           assembleHap --no-daemon ) >>"$log" 2>&1
 then
@@ -164,8 +186,8 @@ else
   die 'hvigor packaging failed (see build-status/errors.txt)'
 fi
 
-hap=$(find "${repo_root}/overlay/chromium-ui/entry/build" -name '*-signed.hap' 2>/dev/null | head -1)
-[[ -z "$hap" ]] && hap=$(find "${repo_root}/overlay/chromium-ui/entry/build" -name '*.hap' 2>/dev/null | head -1)
+hap=$(find "${ui_wsl}/entry/build" -name '*-signed.hap' 2>/dev/null | head -1)
+[[ -z "$hap" ]] && hap=$(find "${ui_wsl}/entry/build" -name '*.hap' 2>/dev/null | head -1)
 [[ -n "$hap" ]] || die 'no HAP produced'
 size=$(stat -c %s "$hap")
 

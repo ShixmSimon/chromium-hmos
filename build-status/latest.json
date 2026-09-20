@@ -1,1 +1,5 @@
+<<<<<<< HEAD
 {"status":"package-failed","steps":6,"elapsed":80,"build_id":"4b63fb2c711e56c4fa559800746d568deb820979"}
+=======
+{"status":"ok","steps":0,"elapsed":15,"build_id":"4b63fb2c711e56c4fa559800746d568deb820979","packaged":true,"hap":"entry-default-unsigned.hap","hap_bytes":324676073}
+>>>>>>> 0976100 (ci: make HAP packaging work from the runner)
