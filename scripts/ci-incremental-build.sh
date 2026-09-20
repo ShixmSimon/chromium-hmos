@@ -178,11 +178,20 @@ fi
 # the value through unchanged rather than translating it as a path.
 export DEVECO_SDK_HOME="${deveco_win}\\sdk"
 export JAVA_HOME="${deveco_win}\\jbr"
-export WSLENV='DEVECO_SDK_HOME/w:JAVA_HOME/w:PATH/l'
-# PackageHap shells out to `java`, which it finds on PATH rather than
-# through JAVA_HOME -- without this it fails as 00308018 "Unknown Error".
-# /l appends the Windows-side entry to the existing PATH.
-export PATH="${deveco}/jbr/bin:${PATH}"
+export ComSpec='C:\Windows\System32\cmd.exe'
+export WSLENV='DEVECO_SDK_HOME/w:JAVA_HOME/w:ComSpec/w:PATH/l'
+# Two things have to be findable on the translated PATH.
+#
+# PackageHap shells out to `java`, which it looks up on PATH rather than
+# through JAVA_HOME -- without it the task fails as 00308018 "Unknown Error".
+#
+# es2abc, the ArkTS bytecode compiler, spawns `cmd.exe` by bare name, so the
+# Windows system directories have to be there too. A self-hosted runner's PATH
+# does not carry them, and /l translates only what it is given. This stayed
+# hidden while CompileArkTS kept hitting its up-to-date check; the first build
+# that actually recompiled ArkTS failed with "10310021 ArkTS: INTERNAL ERROR
+# ... spawn cmd.exe ENOENT".
+export PATH="${deveco}/jbr/bin:/mnt/c/Windows/System32:/mnt/c/Windows:${PATH}"
 if ( cd "$ui_wsl" \
      && "${deveco}/tools/node/node.exe" "${deveco_win}\\tools\\hvigor\\bin\\hvigorw.js" \
           --mode module -p product=default -p module=entry@default \
