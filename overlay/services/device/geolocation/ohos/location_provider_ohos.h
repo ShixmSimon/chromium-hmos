@@ -69,10 +69,6 @@ class LocationProviderOhos : public LocationProvider {
   bool start_requested_ = false;
   bool high_accuracy_ = false;
 
-  // Until this is set, fixes are cached in `last_result_` but not published:
-  // the interface forbids running the update callback before the grant.
-  bool permission_granted_ = false;
-
   SEQUENCE_CHECKER(sequence_checker_);
   base::WeakPtrFactory<LocationProviderOhos> weak_factory_{this};
 };

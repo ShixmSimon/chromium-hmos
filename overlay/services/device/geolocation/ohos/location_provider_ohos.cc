@@ -132,15 +132,12 @@ const mojom::GeopositionResult* LocationProviderOhos::GetPosition() {
 
 void LocationProviderOhos::OnPermissionGranted() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  if (permission_granted_) {
-    return;
-  }
-  permission_granted_ = true;
-  // A fix that arrived before the grant was withheld; release it now so the
-  // page does not wait out its timeout for a position already in hand.
-  if (last_result_ && update_callback_) {
-    update_callback_.Run(this, last_result_.Clone());
-  }
+  // Nothing to do, as on Android. Withholding fixes until this arrives leaves
+  // the page waiting forever: on device LocationKit produced a position and
+  // delivered it into the process, and the page still timed out because this
+  // was never called. The browser has already run its own permission check
+  // before any client reaches a provider, which is what LocationProviderAndroid
+  // relies on too.
 }
 
 void LocationProviderOhos::StartLocating() {
@@ -215,8 +212,7 @@ void LocationProviderOhos::StopLocating() {
 void LocationProviderOhos::ReportResult(mojom::GeopositionResultPtr result) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   last_result_ = std::move(result);
-  // Held back until the page has permission; OnPermissionGranted() releases it.
-  if (permission_granted_ && update_callback_) {
+  if (update_callback_) {
     update_callback_.Run(this, last_result_.Clone());
   }
 }

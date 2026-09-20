@@ -61,8 +61,13 @@ mojom::GeopositionResultPtr GeopositionResultFromBasicInfo(
   position->altitude_accuracy = AltitudeAccuracyOrSentinel(info.altitudeAccuracy);
   position->heading = HeadingOrSentinel(info.direction);
   position->speed = SpeedOrSentinel(info.speed);
+  // LocationKit leaves timeForFix at zero for a fix it derived rather than
+  // timed, and Chromium treats a null timestamp as an invalid position. The
+  // arrival time is the honest answer there -- discarding the fix is not.
   position->timestamp =
-      base::Time::FromMillisecondsSinceUnixEpoch(info.timeForFix);
+      info.timeForFix > 0
+          ? base::Time::FromMillisecondsSinceUnixEpoch(info.timeForFix)
+          : base::Time::Now();
   position->is_precise = IsPreciseSource(info.locationSourceType);
 
   if (!ValidateGeoposition(*position)) {

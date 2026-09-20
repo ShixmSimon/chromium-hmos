@@ -91,16 +91,21 @@ TEST(GeopositionOhosTest, NegativeAccuracyBecomesError) {
             mojom::GeopositionErrorCode::kPositionUnavailable);
 }
 
-TEST(GeopositionOhosTest, UnsetTimestampBecomesError) {
+TEST(GeopositionOhosTest, UnsetTimestampFallsBackToArrivalTime) {
   Location_BasicInfo info = ValidFix();
   info.timeForFix = 0;
+  const base::Time before = base::Time::Now();
 
   const mojom::GeopositionResultPtr result =
       GeopositionResultFromBasicInfo(info);
 
-  ASSERT_TRUE(result->is_error());
-  EXPECT_EQ(result->get_error()->error_code,
-            mojom::GeopositionErrorCode::kPositionUnavailable);
+  // A fix LocationKit did not stamp is still a fix; Chromium only requires the
+  // timestamp to be set, so it is filled in rather than discarding the fix.
+  ASSERT_TRUE(result->is_position());
+  const base::Time timestamp = result->get_position()->timestamp;
+  EXPECT_FALSE(timestamp.is_null());
+  EXPECT_GE(timestamp, before);
+  EXPECT_LE(timestamp, base::Time::Now());
 }
 
 TEST(GeopositionOhosTest, OutOfRangeHeadingUsesSentinel) {
