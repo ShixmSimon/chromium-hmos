@@ -271,12 +271,6 @@ void OhosEventSource::DispatchOwnedEvent(std::unique_ptr<Event> event,
                  << " local=" << incoming_location.ToString()
                  << " root=" << incoming_root_location.ToString()
                  << " target=" << dispatch_target_ << " hint=" << target_hint;
-    if (event->type() == EventType::kTouchPressed ||
-        event->type() == EventType::kMousePressed) {
-      // A press that lands on the wrong window is only legible next to the
-      // bounds the registry was actually comparing against.
-      LOG(WARNING) << "OHOS logical windows: " << DescribeOhosLogicalWindows();
-    }
   }
   if (event->IsLocatedEvent() &&
       dispatch_target_ != gfx::kNullAcceleratedWidget) {
