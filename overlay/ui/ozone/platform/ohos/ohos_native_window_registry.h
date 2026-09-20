@@ -97,6 +97,10 @@ gfx::AcceleratedWidget GetOhosFocusedLogicalWindow();
 bool IsOhosPrimaryLogicalWindow(gfx::AcceleratedWidget widget);
 gfx::AcceleratedWidget GetOhosAcceleratedWidgetAtScreenPoint(
     const gfx::Point& point);
+
+// Bring-up diagnostic: every logical window with its bounds, so a press that
+// resolves to the wrong target can be read against what the registry holds.
+std::string DescribeOhosLogicalWindows();
 void SetOhosNativeSurfaceBoundsCallback(
     gfx::AcceleratedWidget widget,
     OhosNativeSurfaceBoundsCallback callback);
