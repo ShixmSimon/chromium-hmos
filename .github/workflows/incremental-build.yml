@@ -101,3 +101,18 @@ jobs:
           gh release create "$tag" --prerelease --notes-file build-status/latest.json \
             --title "build ${GITHUB_SHA::8}" 2>/dev/null || true
           gh release upload "$tag" "$hap" --clobber
+
+          # Ship the unstripped library too. A device crash reports only
+          # offsets into libweb_engine.so, and turning those into function
+          # names needs the symbols, which otherwise exist only on this
+          # machine -- every crash would have to round-trip through here
+          # before anyone could read it. This file carries DWARF, so it gives
+          # file and line as well as the symbol.
+          #
+          # 476 MB raw, ~138 MB gzipped, so it goes up compressed.
+          sym="${CHROMIUM_SRC:-/root/chromium-154/src}/out/ohos_arm64/exe.unstripped/libweb_engine.so"
+          if [ -f "$sym" ]; then
+            gzip -1 -c "$sym" > /tmp/libweb_engine.unstripped.so.gz
+            gh release upload "$tag" /tmp/libweb_engine.unstripped.so.gz --clobber
+            rm -f /tmp/libweb_engine.unstripped.so.gz
+          fi
