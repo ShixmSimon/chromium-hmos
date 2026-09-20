@@ -65,10 +65,12 @@ class LocationProviderOhos : public LocationProvider {
   raw_ptr<Location_RequestConfig> request_config_ = nullptr;
   scoped_refptr<FixRelay> relay_;
 
-  // What the manager asked for, which outlives an individual session: a
-  // session refused for want of permission is reopened once it is granted.
+  // What the manager asked for, which outlives an individual session.
   bool start_requested_ = false;
   bool high_accuracy_ = false;
+
+  // Until this is set, fixes are cached in `last_result_` but not published:
+  // the interface forbids running the update callback before the grant.
   bool permission_granted_ = false;
 
   SEQUENCE_CHECKER(sequence_checker_);

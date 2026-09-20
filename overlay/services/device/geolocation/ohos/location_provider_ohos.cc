@@ -110,13 +110,12 @@ void LocationProviderOhos::StartProvider(bool high_accuracy) {
   }
   start_requested_ = true;
   high_accuracy_ = high_accuracy;
-  // LocationProvider's contract is that a provider may be started before the
-  // page has permission, purely so it can warm up, and that nothing may be
-  // reported until OnPermissionGranted(). Opening a LocationKit session here
-  // would also raise HarmonyOS's own permission prompt ahead of the page's.
-  if (!permission_granted_) {
-    return;
-  }
+  // Start straight away, as the Android and Linux providers do. Waiting for
+  // OnPermissionGranted() here deadlocks: GeolocationProviderImpl only informs
+  // providers of the grant once one is running, so a provider that refuses to
+  // run until the grant never receives it. What the interface forbids before
+  // the grant is running the update callback, and ReportResult() holds that
+  // back instead.
   StartLocating();
 }
 
@@ -133,18 +132,19 @@ const mojom::GeopositionResult* LocationProviderOhos::GetPosition() {
 
 void LocationProviderOhos::OnPermissionGranted() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  const bool was_granted = permission_granted_;
+  if (permission_granted_) {
+    return;
+  }
   permission_granted_ = true;
-  // This is where a session actually opens in the common case: StartProvider()
-  // deliberately does nothing until the grant arrives.
-  if (!was_granted && start_requested_) {
-    StartLocating();
+  // A fix that arrived before the grant was withheld; release it now so the
+  // page does not wait out its timeout for a position already in hand.
+  if (last_result_ && update_callback_) {
+    update_callback_.Run(this, last_result_.Clone());
   }
 }
 
 void LocationProviderOhos::StartLocating() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  CHECK(permission_granted_);
   StopLocating();
 
   bool locating_enabled = false;
@@ -215,7 +215,8 @@ void LocationProviderOhos::StopLocating() {
 void LocationProviderOhos::ReportResult(mojom::GeopositionResultPtr result) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   last_result_ = std::move(result);
-  if (update_callback_) {
+  // Held back until the page has permission; OnPermissionGranted() releases it.
+  if (permission_granted_ && update_callback_) {
     update_callback_.Run(this, last_result_.Clone());
   }
 }
