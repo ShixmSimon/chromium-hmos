@@ -1,0 +1,95 @@
+name: Incremental build
+
+# Builds the adapter on the self-hosted machine that already has the Chromium
+# tree, so a change can be compiled in minutes instead of the hours a fresh
+# checkout costs.
+
+on:
+  push:
+    branches: [hmos-154-adapter, hmos-154-dev]
+    paths:
+      - 'overlay/**'
+      - 'patches/**'
+      - 'scripts/**'
+      - '.github/workflows/incremental-build.yml'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Also build and upload the HAP'
+        type: boolean
+        default: true
+
+# One build at a time, for real. A Chromium link peaks well past what this
+# machine has spare -- a second concurrent job does not queue politely, it
+# takes the host down. `concurrency` keeps separate workflow runs from
+# overlapping, and max-parallel covers the matrix case if one is ever added.
+concurrency:
+  group: chromium-build-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: [self-hosted, harmonyos-chromium]
+    timeout-minutes: 240
+    strategy:
+      max-parallel: 1
+      matrix:
+        target: [ohos_arm64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        id: build
+        env:
+          # 12 rather than 16: at 16 the host ran out of memory mid-link and
+          # the build was killed. Throughput is about the same, since this is
+          # not purely CPU bound.
+          NINJA_JOBS: '12'
+          SKIP_PACKAGE: ${{ (github.event_name == 'workflow_dispatch' && !inputs.package) && '1' || '' }}
+        run: bash scripts/ci-incremental-build.sh
+
+      - name: Report
+        if: always()
+        run: |
+          echo '### Build result' >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat build-status/latest.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo '{}' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ -s build-status/errors.txt ]; then
+            echo '<details><summary>diagnostics</summary>' >> "$GITHUB_STEP_SUMMARY"
+            echo '' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            head -80 build-status/errors.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo '</details>' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Text results go back through the repository: the other machine cannot
+      # compile, so compiler diagnostics are the whole point of this job.
+      - name: Publish build status
+        if: always()
+        run: |
+          git config user.name  'chromium-hmos runner'
+          git config user.email 'runner@localhost'
+          git add -f build-status/ || true
+          git diff --cached --quiet || git commit -m "ci: build status for ${GITHUB_SHA::8}"
+          git push origin HEAD:${GITHUB_REF_NAME} || true
+
+      # The HAP is ~310 MB, far too large for the repository. It goes to a
+      # prerelease keyed on the commit, which the other machine downloads with
+      # `gh release download`.
+      - name: Upload HAP
+        if: success() && hashFiles('build-status/hap-path.txt') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          hap=$(cat build-status/hap-path.txt)
+          [ -f "$hap" ] || exit 0
+          tag="build-${GITHUB_SHA::8}"
+          gh release create "$tag" --prerelease --notes-file build-status/latest.json \
+            --title "build ${GITHUB_SHA::8}" 2>/dev/null || true
+          gh release upload "$tag" "$hap" --clobber

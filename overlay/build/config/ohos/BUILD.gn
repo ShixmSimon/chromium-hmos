@@ -210,7 +210,10 @@ config("runtime_library") {
       ldflags +=
           [ "-L" + rebase_path("$ohos_toolchain_root/lib/aarch64-linux-ohos",
                                root_build_dir) ]
-      llvm_version = "19"
+      # The SDK exposes compiler-rt under a "current" symlink. Pinning a version
+      # number only works on an SDK that happens to ship that directory; this one
+      # has 22 and current, so a hardcoded 19 breaks the link step.
+      llvm_version = "current"
       ldflags += [ "-L" + rebase_path(
                        "$ohos_toolchain_root/lib/clang/$llvm_version/lib/aarch64-unknown-linux-ohos",
                        root_build_dir) ]

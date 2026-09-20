@@ -33,3 +33,6 @@ overlay/chromium-ui/entry/src/main/resources/rawfile/chromium/
 /overlay/ohos/third_party/ohpm
 /overlay/third_party/ohos_ndk/sysroot
 /overlay/third_party/ohos_ndk/toolchains/llvm
+
+# Runner-produced build status; committed by CI on its own branch pushes.
+build-status/hap-path.txt
