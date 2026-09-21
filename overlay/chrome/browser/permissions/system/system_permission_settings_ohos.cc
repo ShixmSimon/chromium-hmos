@@ -18,6 +18,13 @@ namespace system_permission_settings {
 
 namespace {
 
+// Browser UI thread only, on both sides and without a lock. Writes arrive
+// through ExecuteAuraShellBrowserCommand, which posts every command to the UI
+// task runner; readers are permission contexts and content-settings UI, which
+// Chromium already confines there. Worth stating because nothing in the types
+// enforces it -- a DCHECK would, but this build compiles those out, so a
+// future caller from another thread would produce stale reads rather than a
+// crash.
 std::map<ContentSettingsType, SystemPermission>& PermissionStates() {
   static base::NoDestructor<std::map<ContentSettingsType, SystemPermission>>
       states;
