@@ -36,7 +36,18 @@
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "base/values.h"
+#include <accesstoken/ability_access_control.h>
+
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/profiles/profile_manager_observer.h"
+#include "components/content_settings/core/browser/content_settings_observer.h"
+#include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/content_settings/core/common/content_settings.h"
+#include "components/content_settings/core/common/content_settings_types.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
@@ -548,6 +559,137 @@ void DispatchFilePickerRequest(const ui::OhosSelectFileDialogRequest& request) {
   DispatchRuntimeEvent(std::move(event));
 }
 
+// Declaring a permission in module.json5 only makes it requestable; until
+// something asks the user, the process holds none of them and every
+// hardware-backed web API fails as though the platform had no backend. Asking
+// for all of them at startup is the other extreme -- the user meets four
+// prompts before opening a page. These are the permissions each web permission
+// actually needs, requested when the site is granted the web one.
+std::vector<const char*> OhosPermissionsFor(ContentSettingsType content_type) {
+  switch (content_type) {
+    case ContentSettingsType::GEOLOCATION:
+      return {"ohos.permission.LOCATION",
+              "ohos.permission.APPROXIMATELY_LOCATION"};
+    case ContentSettingsType::MEDIASTREAM_CAMERA:
+      return {"ohos.permission.CAMERA"};
+    case ContentSettingsType::MEDIASTREAM_MIC:
+      return {"ohos.permission.MICROPHONE"};
+    case ContentSettingsType::SENSORS:
+      return {"ohos.permission.ACCELEROMETER", "ohos.permission.GYROSCOPE"};
+    default:
+      return {};
+  }
+}
+
+constexpr ContentSettingsType kOhosBackedPermissions[] = {
+    ContentSettingsType::GEOLOCATION,
+    ContentSettingsType::MEDIASTREAM_CAMERA,
+    ContentSettingsType::MEDIASTREAM_MIC,
+    ContentSettingsType::SENSORS,
+};
+
+std::set<std::string>& PermissionsAlreadyRequested() {
+  static base::NoDestructor<std::set<std::string>> requested;
+  return *requested;
+}
+
+// Ask the shell for the permissions this content setting needs and the process
+// does not already hold. Each is asked for at most once per run: re-prompting
+// for one the user declined is nagging, and HarmonyOS would refuse anyway.
+void RequestOhosPermissionsFor(ContentSettingsType content_type) {
+  base::ListValue wanted;
+  for (const char* permission : OhosPermissionsFor(content_type)) {
+    if (OH_AT_CheckSelfPermission(permission)) {
+      continue;
+    }
+    if (!PermissionsAlreadyRequested().insert(permission).second) {
+      continue;
+    }
+    wanted.Append(permission);
+  }
+  if (wanted.empty()) {
+    return;
+  }
+  static int next_request_id = 0;
+  base::DictValue event;
+  event.Set("event", "permissionsRequested");
+  event.Set("requestId", ++next_request_id);
+  event.Set("permissions", std::move(wanted));
+  DispatchRuntimeEvent(std::move(event));
+}
+
+// Watches every profile's content settings so that granting a site one of the
+// web permissions above pulls in the HarmonyOS permission behind it.
+class OhosWebPermissionWatcher : public content_settings::Observer,
+                                 public ProfileManagerObserver {
+ public:
+  static OhosWebPermissionWatcher& GetInstance() {
+    static base::NoDestructor<OhosWebPermissionWatcher> instance;
+    return *instance;
+  }
+
+  void Start() {
+    if (std::exchange(started_, true)) {
+      return;
+    }
+    ProfileManager* manager =
+        g_browser_process ? g_browser_process->profile_manager() : nullptr;
+    if (!manager) {
+      return;
+    }
+    manager->AddObserver(this);
+    for (Profile* profile : manager->GetLoadedProfiles()) {
+      OnProfileAdded(profile);
+    }
+  }
+
+  // ProfileManagerObserver:
+  void OnProfileAdded(Profile* profile) override {
+    HostContentSettingsMap* map =
+        HostContentSettingsMapFactory::GetForProfile(profile);
+    if (!map || !observed_maps_.insert(map).second) {
+      return;
+    }
+    map->AddObserver(this);
+  }
+
+  // content_settings::Observer:
+  void OnContentSettingChanged(
+      const ContentSettingsPattern& primary_pattern,
+      const ContentSettingsPattern& secondary_pattern,
+      ContentSettingsTypeSet content_type_set) override {
+    for (ContentSettingsType content_type : kOhosBackedPermissions) {
+      if (content_type_set.Contains(content_type) &&
+          AnySiteAllows(content_type)) {
+        RequestOhosPermissionsFor(content_type);
+      }
+    }
+  }
+
+ private:
+  friend class base::NoDestructor<OhosWebPermissionWatcher>;
+
+  OhosWebPermissionWatcher() = default;
+  ~OhosWebPermissionWatcher() override = default;
+
+  // The change notification does not carry the new value, and a change to
+  // BLOCK is not a reason to ask the platform for anything.
+  bool AnySiteAllows(ContentSettingsType content_type) const {
+    for (HostContentSettingsMap* map : observed_maps_) {
+      for (const ContentSettingPatternSource& setting :
+           map->GetSettingsForOneType(content_type)) {
+        if (setting.GetContentSetting() == CONTENT_SETTING_ALLOW) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool started_ = false;
+  std::set<HostContentSettingsMap*> observed_maps_;
+};
+
 bool WritePdfFile(const base::FilePath& path,
                   scoped_refptr<base::RefCountedMemory> data) {
   return data && data->size() > 0 && base::CreateDirectory(path.DirName()) &&
@@ -1010,6 +1152,19 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     return;
   }
 
+  if (*name == "permissionResult") {
+    const base::ListValue* granted_values = command.FindList("granted");
+    const base::ListValue* denied_values = command.FindList("denied");
+    const size_t granted = granted_values ? granted_values->size() : 0u;
+    const size_t denied = denied_values ? denied_values->size() : 0u;
+    // Nothing to retry on a denial: the permission stays on the asked-once
+    // list, and the web API it backs will fail the way an absent one does.
+    LOG_IF(WARNING, denied > 0)
+        << "OHOS shell denied " << denied << " of " << (granted + denied)
+        << " requested permissions";
+    return;
+  }
+
   if (*name == "pwaMenuAction") {
     const std::optional<int> session_id = command.FindInt("menuSessionId");
     const std::optional<int> command_id = command.FindInt("commandId");
@@ -1260,6 +1415,7 @@ void NotifyAuraShellBrowserStarted() {
   }
   ui::SetOhosSelectFileDialogRequestCallback(
       base::BindRepeating(&DispatchFilePickerRequest));
+  OhosWebPermissionWatcher::GetInstance().Start();
   RuntimeBridgeState& state = GetState();
   std::optional<GURL> pending_url;
   std::optional<std::string> pending_theme_font_id;
@@ -1385,6 +1541,7 @@ bool ExecuteAuraShellBrowserCommand(gfx::AcceleratedWidget widget,
       "systemCapabilities",
       "requestState",
       "filePickerResult",
+      "permissionResult",
   };
   if (!name || std::ranges::find(kSupportedCommands, *name) ==
                    std::ranges::end(kSupportedCommands)) {

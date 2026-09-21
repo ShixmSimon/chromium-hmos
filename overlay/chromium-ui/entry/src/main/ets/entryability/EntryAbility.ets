@@ -1,4 +1,4 @@
-import { abilityAccessCtrl, AbilityConstant, Configuration, ConfigurationConstant, PermissionRequestResult, Permissions, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { http } from '@kit.NetworkKit';
@@ -66,42 +66,8 @@ export default class EntryAbility extends UIAbility {
     }
   };
 
-  // Declaring a permission in module.json5 only makes it requestable. Until
-  // something asks the user, the process runs with none of them -- appspawn
-  // logs "permission bits flags 0x0 0x0" -- and every hardware-backed web API
-  // fails in a way that looks like a missing platform backend: geolocation
-  // times out, sensors report NotReadableError, enumerateDevices() returns an
-  // empty list, vibrate() returns false.
-  private requestHardwarePermissions(): void {
-    const wanted: Array<Permissions> = [
-      'ohos.permission.LOCATION',
-      'ohos.permission.APPROXIMATELY_LOCATION',
-      'ohos.permission.CAMERA',
-      'ohos.permission.MICROPHONE',
-      'ohos.permission.ACCELEROMETER',
-      'ohos.permission.GYROSCOPE'
-    ];
-    try {
-      abilityAccessCtrl.createAtManager()
-        .requestPermissionsFromUser(this.context, wanted)
-        .then((r: PermissionRequestResult): void => {
-          const granted = (r.authResults ?? []).filter((a: number): boolean => a === 0).length;
-          hilog.info(DOMAIN, 'AuraShell',
-            'hardware permissions: %{public}d of %{public}d granted',
-            granted, wanted.length);
-        })
-        .catch((e: Error): void => {
-          hilog.warn(DOMAIN, 'AuraShell',
-            'permission request failed: %{public}s', e.message);
-        });
-    } catch (e) {
-      hilog.warn(DOMAIN, 'AuraShell', 'permission request threw');
-    }
-  }
-
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     this.startupWant = want;
-    this.requestHardwarePermissions();
     const initialThemeFontId = this.context.config.fontId ?? '';
     this.lastThemeFontId = initialThemeFontId;
     this.lastColorScheme = this.resolveColorScheme(this.context.config.colorMode);

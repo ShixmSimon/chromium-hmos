@@ -27,6 +27,7 @@ import {
 import { CHROMIUM_HOME_URL } from '../utils/DeviceType';
 import { HuaweiKnockShareSession, HuaweiShareAdapter } from '../utils/HuaweiShareAdapter';
 import { HarmonyFilePickerAdapter, HarmonyFilePickerResult } from '../utils/HarmonyFilePickerAdapter';
+import { PermissionRequestAdapter, PermissionRequestResultPayload } from '../utils/PermissionRequestAdapter';
 import { SystemPrintAdapter } from '../utils/SystemPrintAdapter';
 import { ChromiumSystemAction, SystemIntegrationAdapter } from '../utils/SystemIntegrationAdapter';
 import { PwaWindowLauncher } from '../utils/PwaWindowLauncher';
@@ -316,6 +317,19 @@ struct AuraShell {
             canceled: true
           });
         });
+    } else if (event.event === 'permissionsRequested') {
+      PermissionRequestAdapter.request(context, event)
+        .then((result: PermissionRequestResultPayload): void => {
+          this.completePermissionRequest(result);
+        })
+        .catch((error: Error): void => {
+          console.error('HarmonyOS permission request failed:', error);
+          this.completePermissionRequest({
+            requestId: event.requestId ?? 0,
+            granted: [],
+            denied: event.permissions ?? []
+          });
+        });
     } else if (event.event === 'systemActionRequested' && event.action) {
       SystemIntegrationAdapter.handle(context, event.action as ChromiumSystemAction)
         .catch((error: Error): void => {
@@ -333,6 +347,15 @@ struct AuraShell {
       paths: result.paths,
       fileTypeIndex: result.fileTypeIndex,
       canceled: result.canceled
+    });
+  }
+
+  private completePermissionRequest(result: PermissionRequestResultPayload): void {
+    this.executeBrowserCommand({
+      command: 'permissionResult',
+      requestId: result.requestId,
+      granted: result.granted,
+      denied: result.denied
     });
   }
 

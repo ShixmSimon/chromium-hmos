@@ -11,6 +11,7 @@ import {
 } from '../components/webwindow/NativeContext';
 import { HuaweiKnockShareSession, HuaweiShareAdapter } from '../utils/HuaweiShareAdapter';
 import { HarmonyFilePickerAdapter, HarmonyFilePickerResult } from '../utils/HarmonyFilePickerAdapter';
+import { PermissionRequestAdapter, PermissionRequestResultPayload } from '../utils/PermissionRequestAdapter';
 import { SystemPrintAdapter } from '../utils/SystemPrintAdapter';
 import { ChromiumSystemAction, SystemIntegrationAdapter } from '../utils/SystemIntegrationAdapter';
 
@@ -339,12 +340,33 @@ struct PWASmallAppExperience {
             canceled: true
           });
         });
+    } else if (event.event === 'permissionsRequested') {
+      PermissionRequestAdapter.request(context, event)
+        .then((result: PermissionRequestResultPayload): void =>
+          this.completePermissionRequest(result))
+        .catch((error: Error): void => {
+          console.error('PWA permission request failed:', error);
+          this.completePermissionRequest({
+            requestId: event.requestId ?? 0,
+            granted: [],
+            denied: event.permissions ?? []
+          });
+        });
     } else if (event.event === 'systemActionRequested' && event.action) {
       SystemIntegrationAdapter.handle(context, event.action as ChromiumSystemAction)
         .catch((error: Error): void => {
           console.error('PWA system action failed:', error);
         });
     }
+  }
+
+  private completePermissionRequest(result: PermissionRequestResultPayload): void {
+    this.executeBrowserCommand({
+      command: 'permissionResult',
+      requestId: result.requestId,
+      granted: result.granted,
+      denied: result.denied
+    });
   }
 
   private completeFilePicker(result: HarmonyFilePickerResult): void {

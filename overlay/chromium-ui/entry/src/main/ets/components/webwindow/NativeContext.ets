@@ -108,7 +108,8 @@ export interface BrowserRuntimeEvent {
   version: number;
   event: 'systemPrintReady' | 'systemPrintFailed' | 'shareRequested' |
     'castRequested' | 'filePickerRequested' | 'pwaInstalled' | 'pwaMenuModel' |
-    'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested';
+    'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
+    'permissionsRequested';
   action?: 'huaweiAccount' | 'huaweiWallet' | 'defaultBrowser' | 'checkForUpdates';
   filePath?: string;
   appId?: string;
@@ -117,6 +118,7 @@ export interface BrowserRuntimeEvent {
   pwaStartUrl?: string;
   reason?: string;
   requestId?: number;
+  permissions?: string[];
   pickerType?: 'open' | 'openMultiple' | 'save' | 'folder' | 'none';
   defaultName?: string;
   suffixFilters?: string[];
@@ -141,6 +143,8 @@ export interface BrowserCommandPayload {
   paths?: string[];
   fileTypeIndex?: number;
   canceled?: boolean;
+  granted?: string[];
+  denied?: string[];
   presentation?: 'popup' | 'sheet';
   anchorX?: number;
   anchorY?: number;
