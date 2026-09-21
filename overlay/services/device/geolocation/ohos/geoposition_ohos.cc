@@ -36,7 +36,13 @@ double AltitudeAccuracyOrSentinel(double altitude_accuracy) {
 // A satellite fix is the only source LocationKit describes as precise; the
 // network and indoor sources are derived from nearby infrastructure and are
 // what the coarse-location permission is meant to expose.
-bool IsPreciseSource(Location_SourceType source) {
+//
+// It is also the only source that measures altitude, heading and speed. A
+// Wi-Fi or cell fix carries no such instrument, and LocationKit fills those
+// fields with zero rather than flagging them absent -- which a page reads as
+// due north, stationary, at sea level. The sentinels say "not reported", and
+// Chromium turns them into null.
+bool HasInertialInstruments(Location_SourceType source) {
   return source == LOCATION_SOURCE_TYPE_GNSS ||
          source == LOCATION_SOURCE_TYPE_RTK;
 }
@@ -56,11 +62,18 @@ mojom::GeopositionResultPtr GeopositionResultFromBasicInfo(
   auto position = mojom::Geoposition::New();
   position->latitude = info.latitude;
   position->longitude = info.longitude;
-  position->altitude = info.altitude;
   position->accuracy = info.accuracy;
-  position->altitude_accuracy = AltitudeAccuracyOrSentinel(info.altitudeAccuracy);
-  position->heading = HeadingOrSentinel(info.direction);
-  position->speed = SpeedOrSentinel(info.speed);
+
+  // Only pass the platform's own numbers through where it had something to
+  // measure them with; elsewhere report them as absent rather than as zero.
+  const bool measured = HasInertialInstruments(info.locationSourceType);
+  position->altitude = measured ? info.altitude : mojom::kBadAltitude;
+  position->altitude_accuracy =
+      measured ? AltitudeAccuracyOrSentinel(info.altitudeAccuracy)
+               : mojom::kBadAccuracy;
+  position->heading =
+      measured ? HeadingOrSentinel(info.direction) : mojom::kBadHeading;
+  position->speed = measured ? SpeedOrSentinel(info.speed) : mojom::kBadSpeed;
   // LocationKit leaves timeForFix at zero for a fix it derived rather than
   // timed, and Chromium treats a null timestamp as an invalid position. The
   // arrival time is the honest answer there -- discarding the fix is not.
@@ -68,7 +81,7 @@ mojom::GeopositionResultPtr GeopositionResultFromBasicInfo(
       info.timeForFix > 0
           ? base::Time::FromMillisecondsSinceUnixEpoch(info.timeForFix)
           : base::Time::Now();
-  position->is_precise = IsPreciseSource(info.locationSourceType);
+  position->is_precise = measured;
 
   if (!ValidateGeoposition(*position)) {
     return MakeError(mojom::GeopositionErrorCode::kPositionUnavailable,
