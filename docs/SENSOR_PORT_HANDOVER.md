@@ -99,6 +99,55 @@ Found by reading, not by running. Each is real in
    parameters. The 154 signatures are below -- they happen to match what the
    commented-out version becomes, but check rather than assume.
 
+## There is a Chromium tree on the original dev machine -- at 144
+
+`/Volumes/OnshuoData/chromium/ohos-144-sync/src` is a full checkout at
+**144.0.7559.59**, the ArkWeb sync tree. It is not the 154 this port targets,
+so every signature in it has to be treated as a hint rather than an answer;
+the 154 signatures below were read from the tag itself and are the ones to
+build against. If the machine you are on has no tree, read 154 directly:
+
+```bash
+curl -sS "https://chromium.googlesource.com/chromium/src/+/refs/tags/154.0.8037.51/<path>?format=TEXT" \
+  | base64 -d
+```
+
+What the 144 tree is still worth reading for: **Huawei's wiring is already in
+place there**, which is the patch this port needs, in their own words.
+
+```gn
+# services/device/generic_sensor/BUILD.gn, in the 144 tree
+  if (is_arkweb) {
+    sources += [
+      "//arkweb/chromium_ext/services/device/generic_sensor/platform_sensor_ohos.cc",
+      "//arkweb/chromium_ext/services/device/generic_sensor/platform_sensor_ohos.h",
+      "//arkweb/chromium_ext/services/device/generic_sensor/platform_sensor_provider_ohos.cc",
+      "//arkweb/chromium_ext/services/device/generic_sensor/platform_sensor_provider_ohos.h",
+    ]
+  }
+```
+
+```cpp
+// services/device/generic_sensor/platform_sensor_provider.cc, in the 144 tree
+#elif BUILDFLAG(IS_ARKWEB)
+#if BUILDFLAG(ARKWEB_SENSOR)
+  return std::make_unique<PlatformSensorProviderOHOS>();
+#else
+  return nullptr;
+#endif
+```
+
+Two things to take from it. The gate is `is_arkweb` / `BUILDFLAG(IS_ARKWEB)` /
+`BUILDFLAG(ARKWEB_SENSOR)`, all of which are off in this build -- the port uses
+`is_ohos` / `BUILDFLAG(IS_OHOS)` and its own overlay paths instead. And **their
+block declares no `libs`**, because they reach the sensors through
+`libadapter.so` rather than the NDK. This port calls the NDK directly, so it
+does need `libs = [ "ohsensor" ]`.
+
+The same tree confirms why the adapter route stays closed: its `ohos/adapter/`
+contains exactly one file, a `BUILD.gn`. The sources for `libadapter.so` were
+never published, in 144 either.
+
 ## Chromium 154 API facts (verified against the tag)
 
 Confirmed by reading `refs/tags/154.0.8037.51` on chromium.googlesource.com.
