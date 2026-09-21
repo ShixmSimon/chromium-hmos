@@ -6,22 +6,29 @@
 
 #include <utility>
 
-#include "base/memory/ptr_util.h"
 #include "base/no_destructor.h"
+#include "chrome/browser/permissions/system/system_permission_settings_ohos.h"
+#include "components/content_settings/core/common/content_settings_types.h"
 #include "services/device/public/cpp/geolocation/geolocation_system_permission_manager.h"
 
 namespace chrome::ohos {
 
 namespace {
 
-// The shell can report before the source is constructed, and the source can be
-// constructed before the shell has looked. Neither ordering is under our
-// control, so the last reported value lives here and whichever arrives second
-// picks it up.
-device::LocationSystemPermissionStatus& CachedStatus() {
-  static device::LocationSystemPermissionStatus status =
-      device::LocationSystemPermissionStatus::kNotDetermined;
-  return status;
+// One state, read two ways. system_permission_settings holds it because
+// PlatformHandle is built below this target and cannot reach up; this source
+// translates it into the vocabulary the geolocation manager speaks.
+device::LocationSystemPermissionStatus CurrentStatus() {
+  switch (::system_permission_settings::GetOhosSystemPermission(
+      ContentSettingsType::GEOLOCATION)) {
+    case ::system_permission_settings::SystemPermission::kAllowed:
+      return device::LocationSystemPermissionStatus::kAllowed;
+    case ::system_permission_settings::SystemPermission::kDenied:
+    case ::system_permission_settings::SystemPermission::kRestricted:
+      return device::LocationSystemPermissionStatus::kDenied;
+    case ::system_permission_settings::SystemPermission::kNotDetermined:
+      return device::LocationSystemPermissionStatus::kNotDetermined;
+  }
 }
 
 SystemGeolocationSourceOhos*& LiveSource() {
@@ -49,12 +56,7 @@ SystemGeolocationSourceOhos::CreateGeolocationSystemPermissionManager() {
 }
 
 // static
-void SystemGeolocationSourceOhos::SetSystemPermission(
-    device::LocationSystemPermissionStatus status) {
-  if (CachedStatus() == status) {
-    return;
-  }
-  CachedStatus() = status;
+void SystemGeolocationSourceOhos::NotifyPermissionChanged() {
   if (SystemGeolocationSourceOhos* source = LiveSource()) {
     source->NotifyCurrentStatus();
   }
@@ -70,7 +72,7 @@ void SystemGeolocationSourceOhos::RegisterPermissionUpdateCallback(
 
 void SystemGeolocationSourceOhos::NotifyCurrentStatus() {
   if (callback_) {
-    callback_.Run(CachedStatus());
+    callback_.Run(CurrentStatus());
   }
 }
 

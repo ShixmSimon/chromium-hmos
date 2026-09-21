@@ -40,10 +40,10 @@ class SystemGeolocationSourceOhos : public device::SystemGeolocationSource {
   static std::unique_ptr<device::GeolocationSystemPermissionManager>
   CreateGeolocationSystemPermissionManager();
 
-  // Called on the UI thread when the shell reports the app's location
-  // permission, at startup and after any permission request it runs. Safe to
-  // call before the source exists; the value is kept for the next one.
-  static void SetSystemPermission(device::LocationSystemPermissionStatus status);
+  // Called on the UI thread after the shell's report has been stored in
+  // system_permission_settings. Safe to call before the source exists: the
+  // state lives there, and the next source reads it on registration.
+  static void NotifyPermissionChanged();
 
   // device::SystemGeolocationSource:
   void RegisterPermissionUpdateCallback(

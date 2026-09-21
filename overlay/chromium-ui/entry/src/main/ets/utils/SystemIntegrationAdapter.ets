@@ -5,7 +5,8 @@ import bundleManager from '@ohos.bundle.bundleManager';
 const HUAWEI_WALLET_APP_LINK = 'wallet://com.huawei.wallet/';
 
 export type ChromiumSystemAction =
-  'huaweiAccount' | 'huaweiWallet' | 'defaultBrowser' | 'checkForUpdates';
+  'huaweiAccount' | 'huaweiWallet' | 'defaultBrowser' | 'checkForUpdates' |
+  'appSettings';
 
 export class SystemIntegrationAdapter {
   static async handle(
@@ -25,7 +26,25 @@ export class SystemIntegrationAdapter {
       case 'checkForUpdates':
         await SystemIntegrationAdapter.checkForUpdates(context);
         return;
+      case 'appSettings':
+        await SystemIntegrationAdapter.openAppSettings(context);
+        return;
     }
+  }
+
+  /**
+   * The application's own permission page. Chromium's content-settings bubble
+   * offers this as its primary button once it knows a permission is blocked at
+   * the OS level, and that button previously had nowhere to go.
+   */
+  private static async openAppSettings(context: common.UIAbilityContext): Promise<void> {
+    const bundleName = context.abilityInfo.bundleName;
+    await context.startAbility({
+      bundleName: 'com.huawei.hmos.settings',
+      abilityName: 'com.huawei.hmos.settings.MainAbility',
+      uri: 'application_info_entry',
+      parameters: { pushParams: bundleName }
+    });
   }
 
   private static async openHuaweiAccount(context: common.UIAbilityContext): Promise<void> {

@@ -42,6 +42,8 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_manager_observer.h"
+#include "chrome/browser/permissions/system/system_permission_common.h"
+#include "chrome/browser/permissions/system/system_permission_settings_ohos.h"
 #include "chrome/browser/ui/ohos/system_geolocation_source_ohos.h"
 #include "services/device/public/cpp/geolocation/buildflags.h"
 #include "services/device/public/cpp/geolocation/geolocation_system_permission_manager.h"
@@ -595,6 +597,19 @@ std::set<std::string>& PermissionsAlreadyRequested() {
   return *requested;
 }
 
+// Keyed by the request id the shell echoes back, so a caller that asked for a
+// specific permission is answered when that request finishes rather than when
+// any of them does.
+std::map<int, base::OnceClosure>& PendingPermissionRequests() {
+  static base::NoDestructor<std::map<int, base::OnceClosure>> pending;
+  return *pending;
+}
+
+int& NextPermissionRequestId() {
+  static int id = 0;
+  return id;
+}
+
 // Ask the shell for the permissions this content setting needs. Each is asked
 // for at most once per run; re-prompting for one the user declined is nagging.
 //
@@ -603,7 +618,8 @@ std::set<std::string>& PermissionsAlreadyRequested() {
 // target does not link, and the check buys nothing:
 // requestPermissionsFromUser returns a granted permission immediately without
 // showing anything, and does not re-prompt for a denied one either.
-void RequestOhosPermissionsFor(ContentSettingsType content_type) {
+void RequestOhosPermissionsFor(ContentSettingsType content_type,
+                               base::OnceClosure done = base::OnceClosure()) {
   base::ListValue wanted;
   for (const char* permission : OhosPermissionsFor(content_type)) {
     if (!PermissionsAlreadyRequested().insert(permission).second) {
@@ -612,12 +628,18 @@ void RequestOhosPermissionsFor(ContentSettingsType content_type) {
     wanted.Append(permission);
   }
   if (wanted.empty()) {
+    if (done) {
+      std::move(done).Run();
+    }
     return;
   }
-  static int next_request_id = 0;
+  const int request_id = ++NextPermissionRequestId();
+  if (done) {
+    PendingPermissionRequests()[request_id] = std::move(done);
+  }
   base::DictValue event;
   event.Set("event", "permissionsRequested");
-  event.Set("requestId", ++next_request_id);
+  event.Set("requestId", request_id);
   event.Set("permissions", std::move(wanted));
   DispatchRuntimeEvent(std::move(event));
 }
@@ -1162,14 +1184,16 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     // again whenever a request it ran changes it.
     const std::string* location = command.FindString("location");
     if (location) {
-      device::LocationSystemPermissionStatus status =
-          device::LocationSystemPermissionStatus::kNotDetermined;
+      ::system_permission_settings::SystemPermission state =
+          ::system_permission_settings::SystemPermission::kNotDetermined;
       if (*location == "allowed") {
-        status = device::LocationSystemPermissionStatus::kAllowed;
+        state = ::system_permission_settings::SystemPermission::kAllowed;
       } else if (*location == "denied") {
-        status = device::LocationSystemPermissionStatus::kDenied;
+        state = ::system_permission_settings::SystemPermission::kDenied;
       }
-      SystemGeolocationSourceOhos::SetSystemPermission(status);
+      ::system_permission_settings::SetOhosSystemPermission(
+          ContentSettingsType::GEOLOCATION, state);
+      SystemGeolocationSourceOhos::NotifyPermissionChanged();
     }
     return;
   }
@@ -1180,6 +1204,14 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     const base::ListValue* denied_values = command.FindList("denied");
     const size_t granted = granted_values ? granted_values->size() : 0u;
     const size_t denied = denied_values ? denied_values->size() : 0u;
+    if (const std::optional<int> request_id = command.FindInt("requestId")) {
+      auto pending = PendingPermissionRequests().find(*request_id);
+      if (pending != PendingPermissionRequests().end()) {
+        base::OnceClosure done = std::move(pending->second);
+        PendingPermissionRequests().erase(pending);
+        std::move(done).Run();
+      }
+    }
     // Nothing to retry on a denial: the permission stays on the asked-once
     // list, and the web API it backs will fail the way an absent one does.
     LOG_IF(WARNING, denied > 0)
@@ -1439,6 +1471,22 @@ void NotifyAuraShellBrowserStarted() {
   ui::SetOhosSelectFileDialogRequestCallback(
       base::BindRepeating(&DispatchFilePickerRequest));
   OhosWebPermissionWatcher::GetInstance().Start();
+
+  // PlatformHandle is built below this target, so it cannot call into the
+  // bridge; the bridge hands it these instead. Without them its OpenSystemSettings
+  // and Request would be the default NOTREACHED(), which this build traps on.
+  ::system_permission_settings::SetOhosPermissionRequester(
+      base::BindRepeating([](ContentSettingsType type, base::OnceClosure done) {
+        RequestOhosPermissionsFor(type, std::move(done));
+      }));
+  ::system_permission_settings::SetOhosSettingsOpener(
+      base::BindRepeating([]() {
+        base::DictValue event;
+        event.Set("event", "systemActionRequested");
+        event.Set("action", "appSettings");
+        DispatchRuntimeEvent(std::move(event));
+      }));
+
 #if BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
   // Must exist before anything asks for a position: GeolocationProviderImpl
   // and GeolocationPermissionContextSystem both read the manager once the
