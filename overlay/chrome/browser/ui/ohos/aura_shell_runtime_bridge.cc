@@ -1487,15 +1487,7 @@ void NotifyAuraShellBrowserStarted() {
         DispatchRuntimeEvent(std::move(event));
       }));
 
-#if BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
-  // Must exist before anything asks for a position: GeolocationProviderImpl
-  // and GeolocationPermissionContextSystem both read the manager once the
-  // buildflag is on.
-  if (!device::GeolocationSystemPermissionManager::GetInstance()) {
-    device::GeolocationSystemPermissionManager::SetInstance(
-        SystemGeolocationSourceOhos::CreateGeolocationSystemPermissionManager());
-  }
-#endif
+
   RuntimeBridgeState& state = GetState();
   std::optional<GURL> pending_url;
   std::optional<std::string> pending_theme_font_id;
@@ -1540,6 +1532,20 @@ void NotifyAuraShellBrowserStarted() {
   if (pending_shutdown) {
     ui_task_runner->PostTask(FROM_HERE, base::BindOnce(&ShutdownOnUiThread));
   }
+}
+
+void EnsureAuraShellSystemPermissions() {
+#if BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
+  // Before the first profile, not at PostBrowserStart. Building a profile
+  // builds its PermissionManager, and GeolocationPermissionContextSystem's
+  // constructor dereferences GeolocationSystemPermissionManager::GetInstance()
+  // behind nothing but a DCHECK. Registering afterwards left that a null
+  // dereference on CrBrowserMain, and the browser died during startup.
+  if (!device::GeolocationSystemPermissionManager::GetInstance()) {
+    device::GeolocationSystemPermissionManager::SetInstance(
+        SystemGeolocationSourceOhos::CreateGeolocationSystemPermissionManager());
+  }
+#endif
 }
 
 void NotifyAuraShellBrowserStopped() {

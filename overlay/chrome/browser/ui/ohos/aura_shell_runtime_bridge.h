@@ -31,6 +31,11 @@ using AuraShellBrowserStateCallback =
 using AuraShellDefaultBrowserStateCallback =
     base::RepeatingCallback<void(std::optional<bool> is_default)>;
 
+// Registers the platform pieces Chromium consults while building a profile.
+// Called from PreProfileInit, which is before the first PermissionManager and
+// so before anything can read them.
+void EnsureAuraShellSystemPermissions();
+
 // Called on the Chromium UI thread as the browser main loop starts and stops.
 void NotifyAuraShellBrowserStarted();
 void NotifyAuraShellBrowserStopped();
