@@ -10,7 +10,6 @@
 
 #include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/string_util.h"
 #include "base/synchronization/condition_variable.h"
 #include "base/synchronization/lock.h"
@@ -455,26 +454,6 @@ class NativeWindowRegistry {
            !ParseAuxiliarySurfaceWidget(binding->second).has_value();
   }
 
-  std::string DescribeLogicalWindows() {
-    base::AutoLock lock(lock_);
-    std::string out;
-    if (display_metrics_) {
-      out += base::StringPrintf("display=%s density=%.3f",
-                                display_metrics_->pixel_size.ToString().c_str(),
-                                display_metrics_->density);
-    } else {
-      out += "display=unknown";
-    }
-    for (const auto& [widget, record] : logical_windows_) {
-      out += base::StringPrintf(
-          " [w=%u bounds=%s visible=%d aux=%d order=%llu]",
-          static_cast<unsigned>(widget), record.bounds.ToString().c_str(),
-          record.visible ? 1 : 0, record.auxiliary ? 1 : 0,
-          static_cast<unsigned long long>(record.stacking_order));
-    }
-    return out;
-  }
-
   gfx::AcceleratedWidget GetWidgetAtScreenPoint(const gfx::Point& point) {
     base::AutoLock lock(lock_);
     gfx::AcceleratedWidget target = gfx::kNullAcceleratedWidget;
@@ -820,10 +799,6 @@ bool IsOhosPrimaryLogicalWindow(gfx::AcceleratedWidget widget) {
 gfx::AcceleratedWidget GetOhosAcceleratedWidgetAtScreenPoint(
     const gfx::Point& point) {
   return GetRegistry().GetWidgetAtScreenPoint(point);
-}
-
-std::string DescribeOhosLogicalWindows() {
-  return GetRegistry().DescribeLogicalWindows();
 }
 
 void SetOhosNativeSurfaceBoundsCallback(
