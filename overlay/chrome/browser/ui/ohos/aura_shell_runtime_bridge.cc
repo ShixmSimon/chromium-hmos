@@ -36,8 +36,6 @@
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "base/values.h"
-#include <accesstoken/ability_access_control.h>
-
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
@@ -593,15 +591,17 @@ std::set<std::string>& PermissionsAlreadyRequested() {
   return *requested;
 }
 
-// Ask the shell for the permissions this content setting needs and the process
-// does not already hold. Each is asked for at most once per run: re-prompting
-// for one the user declined is nagging, and HarmonyOS would refuse anyway.
+// Ask the shell for the permissions this content setting needs. Each is asked
+// for at most once per run; re-prompting for one the user declined is nagging.
+//
+// Whether the process already holds one is left to the shell. The NDK can read
+// that (OH_AT_CheckSelfPermission) but lives in libability_runtime, which this
+// target does not link, and the check buys nothing:
+// requestPermissionsFromUser returns a granted permission immediately without
+// showing anything, and does not re-prompt for a denied one either.
 void RequestOhosPermissionsFor(ContentSettingsType content_type) {
   base::ListValue wanted;
   for (const char* permission : OhosPermissionsFor(content_type)) {
-    if (OH_AT_CheckSelfPermission(permission)) {
-      continue;
-    }
     if (!PermissionsAlreadyRequested().insert(permission).second) {
       continue;
     }
