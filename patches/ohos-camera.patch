@@ -1,0 +1,63 @@
+Wire the HarmonyOS CameraKit NDK backend into Chromium video capture.
+
+The implementation is new code under overlay/media/capture/video/ohos/, so
+this patch only changes the two upstream-owned integration points:
+
+  * media/capture/BUILD.gn compiles the OHOS device and factory, then links
+    CameraKit and the native Surface buffer consumer libraries.
+  * create_video_capture_device_factory.cc replaces the temporary zero-device
+    fake factory with VideoCaptureDeviceFactoryOhos.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch. The
+factory replacement therefore expects the temporary IS_OHOS fake-factory arm
+from that patch to be present on the persistent runner.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-camera.patch
+
+diff --git a/media/capture/BUILD.gn b/media/capture/BUILD.gn
+--- a/media/capture/BUILD.gn
++++ b/media/capture/BUILD.gn
+@@ -168,6 +168,16 @@ component("capture_lib") {
+     "//ui/gfx",
+   ]
+ 
++  if (is_ohos) {
++    sources += [
++      "video/ohos/video_capture_device_factory_ohos.cc",
++      "video/ohos/video_capture_device_factory_ohos.h",
++      "video/ohos/video_capture_device_ohos.cc",
++      "video/ohos/video_capture_device_ohos.h",
++    ]
++    libs += [ "native_buffer", "native_image", "native_window", "ohcamera" ]
++  }
++
+   if (is_android) {
+     public_deps += [ "video/android" ]
+     deps += [ "video/android:capture_jni_headers" ]
+diff --git a/media/capture/video/create_video_capture_device_factory.cc b/media/capture/video/create_video_capture_device_factory.cc
+--- a/media/capture/video/create_video_capture_device_factory.cc
++++ b/media/capture/video/create_video_capture_device_factory.cc
+@@ -31,6 +31,8 @@
+ #include "media/capture/video/win/video_capture_device_factory_win.h"
+ #elif BUILDFLAG(IS_APPLE)
+ #include "media/capture/video/apple/video_capture_device_factory_apple.h"
++#elif BUILDFLAG(IS_OHOS)
++#include "media/capture/video/ohos/video_capture_device_factory_ohos.h"
+ #elif BUILDFLAG(IS_ANDROID)
+ #include "media/capture/video/android/video_capture_device_factory_android.h"
+ #elif BUILDFLAG(IS_FUCHSIA)
+@@ -86,12 +88,7 @@ CreatePlatformSpecificVideoCaptureDeviceFactory(
+ #elif BUILDFLAG(IS_IOS)
+   return CreateFakeVideoCaptureDeviceFactory();
+ #elif BUILDFLAG(IS_OHOS)
+-  // Keep device enumeration functional until the CameraKit-backed factory is
+-  // available. An empty factory reports no cameras without exposing a fake
+-  // device or leaving VideoCaptureSystemImpl with a null factory.
+-  auto factory = std::make_unique<FakeVideoCaptureDeviceFactory>();
+-  factory->SetToDefaultDevicesConfig(0);
+-  return factory;
++  return std::make_unique<VideoCaptureDeviceFactoryOhos>();
+ #else
+   NOTIMPLEMENTED();
+   return nullptr;
