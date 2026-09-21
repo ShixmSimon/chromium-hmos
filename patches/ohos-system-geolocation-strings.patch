@@ -1,0 +1,73 @@
+Give OHOS the strings the OS-level geolocation bubble needs.
+
+ohos-system-geolocation-permission.patch turns on
+os_level_geolocation_permission_supported for OHOS. That flag also gates
+ContentSettingGeolocationBubbleModel::InitializeSystemGeolocationPermissionBubble(),
+which does not build on a platform the flag did not previously cover:
+
+  content_setting_bubble_model.cc:1482:33: error: use of undeclared identifier 'IDS_TURNED_OFF'
+  content_setting_bubble_model.cc:1484:50: error: use of undeclared identifier 'IDS_OPEN_SETTINGS_LINK'
+
+IDS_TURNED_OFF, IDS_OPEN_SETTINGS_LINK and IDS_GEOLOCATION_TURNED_OFF_IN_OS
+live inside <if expr="is_macosx or is_chromeos or is_win"> in
+generated_resources.grd -- exactly the three platforms the flag used to name.
+OHOS is added to those conditions. grit has no "ohos" platform and this port
+maps it to the Linux resource set (tools/grit/grit_args.gni), but the build
+already passes an is_ohos define and chromium_strings.grd already tests it, so
+the expression works.
+
+The second half is not a build error and matters more. The function picks its
+title with
+
+  #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
+    set_title(...);
+  #else
+    NOTREACHED();
+  #endif
+
+whose #else assumes the only other platform reaching here is Linux, where the
+flag is off. With the flag on for OHOS that NOTREACHED() becomes live, and this
+build compiles NOTREACHED() to a trap: opening the content-settings bubble for
+a site whose geolocation is blocked at the OS level would kill the browser.
+That is the same shape as the Web Serial and GlobalAcceleratorListener traps
+already fixed on this branch -- an unimplemented-platform marker that the port
+makes reachable. OHOS joins the arm that sets a title.
+
+Found by building the patch on the runner; it does not compile without this.
+
+diff --git a/chrome/app/generated_resources.grd b/chrome/app/generated_resources.grd
+index d718a56fe4..ee40cdd3cf 100644
+--- a/chrome/app/generated_resources.grd
++++ b/chrome/app/generated_resources.grd
+@@ -16182,7 +16182,7 @@ Please help our engineers fix this problem. Tell us what happened right before y
+       <message name="IDS_GEOLOCATION_WILL_ASK_AGAIN" desc="Info message that tells user that the website will prompt for geolocation permission again next time">
+           This site will ask again next time.
+       </message>
+-      <if expr="is_macosx or is_chromeos or is_win">
++      <if expr="is_macosx or is_chromeos or is_win or is_ohos">
+         <message name="IDS_GEOLOCATION_TURNED_OFF_IN_OS" desc="Title for the geolocation bubble that is used when a site requests geolocation, but geolocation is blocked on an OS level.">
+           Location is turned off in system settings
+         </message>
+@@ -16283,7 +16283,7 @@ Please help our engineers fix this problem. Tell us what happened right before y
+           Microphone turned off
+         </message>
+       </if>
+-      <if expr="is_macosx or is_chromeos or is_win">
++      <if expr="is_macosx or is_chromeos or is_win or is_ohos">
+         <message name="IDS_TURNED_OFF" desc="Description text for the state of camera or microphone or geolocation">
+           Turned off
+         </message>
+diff --git a/chrome/browser/ui/content_settings/content_setting_bubble_model.cc b/chrome/browser/ui/content_settings/content_setting_bubble_model.cc
+index 046bc71d81..e01559978d 100644
+--- a/chrome/browser/ui/content_settings/content_setting_bubble_model.cc
++++ b/chrome/browser/ui/content_settings/content_setting_bubble_model.cc
+@@ -1467,7 +1467,8 @@ void ContentSettingGeolocationBubbleModel::CommitChanges() {
+ void ContentSettingGeolocationBubbleModel::
+     InitializeSystemGeolocationPermissionBubble() {
+ #if BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
+-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS) || \
++    BUILDFLAG(IS_OHOS)
+   set_title(l10n_util::GetStringUTF16(IDS_GEOLOCATION_TURNED_OFF_IN_OS));
+ #else
+   // The system-level location permission is not supported on Linux.
