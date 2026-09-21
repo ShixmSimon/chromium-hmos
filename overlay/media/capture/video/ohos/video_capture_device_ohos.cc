@@ -325,8 +325,21 @@ class CaptureDelegateOhos {
 
     VideoPixelFormat pixel_format = PIXEL_FORMAT_NV21;
     if (copied && planes.planeCount >= 3) {
-      const uint32_t u_plane = IsCrCbFormat(config.format) ? 2 : 1;
-      const uint32_t v_plane = IsCrCbFormat(config.format) ? 1 : 2;
+      // Which chroma plane is U and which is V follows from the offsets, not
+      // from the array index. The format name says which component sits
+      // physically first -- Cr for the YCrCb formats, Cb for the YCbCr ones --
+      // and the lower offset is that component. Reading it off the index
+      // instead assumes the planes are ordered to match the format name, and
+      // this device does not do that: an NV21 (YCrCb_420_SP) preview reports
+      // planes[1] at Y_end+1 and planes[2] at Y_end+0, so index 1 is Cb and
+      // index 2 is Cr. Trusting the index swapped U with V and turned the
+      // whole preview cyan.
+      const bool cr_first = IsCrCbFormat(config.format);
+      const uint32_t first_plane =
+          planes.planes[1].offset <= planes.planes[2].offset ? 1u : 2u;
+      const uint32_t second_plane = first_plane == 1u ? 2u : 1u;
+      const uint32_t u_plane = cr_first ? second_plane : first_plane;
+      const uint32_t v_plane = cr_first ? first_plane : second_plane;
       copied =
           CopyPlane(mapped, mapped_size, planes.planes[u_plane], width / 2,
                     height / 2, frame.data() + y_size, &corrected_stride) &&
