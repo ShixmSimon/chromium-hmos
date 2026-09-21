@@ -12,6 +12,7 @@ import {
 import { HuaweiKnockShareSession, HuaweiShareAdapter } from '../utils/HuaweiShareAdapter';
 import { HarmonyFilePickerAdapter, HarmonyFilePickerResult } from '../utils/HarmonyFilePickerAdapter';
 import { PermissionRequestAdapter, PermissionRequestResultPayload } from '../utils/PermissionRequestAdapter';
+import { BrowserCommandChannel } from '../utils/BrowserCommandChannel';
 import { SystemPrintAdapter } from '../utils/SystemPrintAdapter';
 import { ChromiumSystemAction, SystemIntegrationAdapter } from '../utils/SystemIntegrationAdapter';
 
@@ -295,9 +296,16 @@ struct PWASmallAppExperience {
     .padding({ left: 12, right: 12, top: 4, bottom: 4 })
   }
 
+  // Commands are batched rather than written straight to the state pair, so
+  // that two sent from one handler both arrive. See BrowserCommandChannel.
+  private readonly commandChannel: BrowserCommandChannel =
+    new BrowserCommandChannel((text: string): void => {
+      this.browserCommandText = text;
+      this.browserCommandRevision += 1;
+    });
+
   private executeBrowserCommand(command: BrowserCommandPayload): void {
-    this.browserCommandText = JSON.stringify(command);
-    this.browserCommandRevision += 1;
+    this.commandChannel.send(command);
   }
 
   private handleRuntimeEvent(event: BrowserRuntimeEvent): void {

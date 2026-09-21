@@ -28,6 +28,7 @@ import { CHROMIUM_HOME_URL } from '../utils/DeviceType';
 import { HuaweiKnockShareSession, HuaweiShareAdapter } from '../utils/HuaweiShareAdapter';
 import { HarmonyFilePickerAdapter, HarmonyFilePickerResult } from '../utils/HarmonyFilePickerAdapter';
 import { PermissionRequestAdapter, PermissionRequestResultPayload } from '../utils/PermissionRequestAdapter';
+import { BrowserCommandChannel } from '../utils/BrowserCommandChannel';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { SystemPrintAdapter } from '../utils/SystemPrintAdapter';
 import { ChromiumSystemAction, SystemIntegrationAdapter } from '../utils/SystemIntegrationAdapter';
@@ -263,9 +264,16 @@ struct AuraShell {
     .backgroundColor($r('app.color.surface_primary'))
   }
 
+  // Commands are batched rather than written straight to the state pair, so
+  // that two sent from one handler both arrive. See BrowserCommandChannel.
+  private readonly commandChannel: BrowserCommandChannel =
+    new BrowserCommandChannel((text: string): void => {
+      this.browserCommandText = text;
+      this.browserCommandRevision += 1;
+    });
+
   private executeBrowserCommand(command: BrowserCommandPayload): void {
-    this.browserCommandText = JSON.stringify(command);
-    this.browserCommandRevision += 1;
+    this.commandChannel.send(command);
   }
 
   private handleRuntimeEvent(event: BrowserRuntimeEvent): void {

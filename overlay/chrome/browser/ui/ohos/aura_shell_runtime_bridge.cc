@@ -1600,11 +1600,13 @@ bool ExecuteAuraShellBrowserCommand(const std::string& command_json) {
                                         command_json);
 }
 
-bool ExecuteAuraShellBrowserCommand(gfx::AcceleratedWidget widget,
-                                    const std::string& command_json) {
-  std::optional<base::DictValue> command =
-      base::JSONReader::ReadDict(command_json, base::JSON_PARSE_RFC);
-  const std::string* name = command ? command->FindString("command") : nullptr;
+namespace {
+
+// Posts one command, once its name is one this bridge knows. Split out
+// because the shell may send several at once; see the batch below.
+bool PostBrowserCommand(gfx::AcceleratedWidget widget,
+                        base::DictValue command) {
+  const std::string* name = command.FindString("command");
   static constexpr std::string_view kSupportedCommands[] = {
       "back",
       "forward",
@@ -1647,8 +1649,46 @@ bool ExecuteAuraShellBrowserCommand(gfx::AcceleratedWidget widget,
   }
   ui_task_runner->PostTask(
       FROM_HERE, base::BindOnce(&ExecuteBrowserCommandOnUiThread, widget,
-                                std::move(*command)));
+                                std::move(command)));
   return true;
+}
+
+}  // namespace
+
+bool ExecuteAuraShellBrowserCommand(gfx::AcceleratedWidget widget,
+                                    const std::string& command_json) {
+  std::optional<base::Value> parsed =
+      base::JSONReader::Read(command_json, base::JSON_PARSE_RFC);
+  if (!parsed) {
+    LOG(ERROR) << "OHOS Aura shell rejected browser command JSON";
+    return false;
+  }
+
+  // A batch. The shell hands commands to this bridge through a pair of ArkUI
+  // state fields, and ArkUI collapses everything written to them in one
+  // synchronous block into a single notification: of two commands sent back to
+  // back, only the later one was ever seen. Sending them as a list keeps both,
+  // and keeps them in order -- which matters, because a shell that reports the
+  // system permission and then answers the request that changed it is telling
+  // Chromium two things that only make sense that way round.
+  if (parsed->is_list()) {
+    bool posted_all = true;
+    for (base::Value& entry : parsed->GetList()) {
+      if (!entry.is_dict()) {
+        LOG(ERROR) << "OHOS Aura shell rejected browser command JSON";
+        posted_all = false;
+        continue;
+      }
+      posted_all &= PostBrowserCommand(widget, std::move(entry).TakeDict());
+    }
+    return posted_all;
+  }
+
+  if (!parsed->is_dict()) {
+    LOG(ERROR) << "OHOS Aura shell rejected browser command JSON";
+    return false;
+  }
+  return PostBrowserCommand(widget, std::move(*parsed).TakeDict());
 }
 
 void SetAuraShellBrowserStateCallback(AuraShellBrowserStateCallback callback) {
