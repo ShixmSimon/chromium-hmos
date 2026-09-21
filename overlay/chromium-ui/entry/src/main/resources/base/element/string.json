@@ -27,6 +27,22 @@
     {
       "name": "extensional_device_permission_reason",
       "value": "需要扩展设备权限以访问原生功能"
+    },
+    {
+      "name": "location_permission_reason",
+      "value": "用于向您授权的网站提供当前位置"
+    },
+    {
+      "name": "camera_permission_reason",
+      "value": "用于向您授权的网站提供摄像头画面"
+    },
+    {
+      "name": "microphone_permission_reason",
+      "value": "用于向您授权的网站提供麦克风声音"
+    },
+    {
+      "name": "motion_sensor_permission_reason",
+      "value": "用于向您授权的网站提供设备方向与运动数据"
     }
   ]
 }
