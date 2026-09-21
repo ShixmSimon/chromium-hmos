@@ -1,0 +1,90 @@
+Wire the HarmonyOS SensorServiceKit provider into the device service.
+
+The provider itself is new code and lives in the overlay, at
+overlay/services/device/generic_sensor/ohos/, so it needs no patch. What
+follows is only the part that has to change in files upstream already tracks:
+
+  * services/device/generic_sensor/BUILD.gn builds the platform sensor, its
+    provider, the NDK subscription owner and the type/capability mapping, then
+    links SensorServiceKit (libohsensor.so).
+
+  * PlatformSensorProvider::Create() gains an OHOS arm. This is the line that
+    makes the device service instantiate PlatformSensorProviderOHOS instead of
+    returning nullptr.
+
+  * services/device/BUILD.gn compiles the mapping unit test alongside the
+    existing OHOS geolocation conversion test.
+
+Generated against Chromium 154.0.8037.51 after ohos-geolocation.patch. The
+generic sensor BUILD and provider hunks also apply to a pristine tree at that
+tag; the device test hunk deliberately extends the is_ohos block introduced by
+ohos-geolocation.patch, which is already present on the persistent runner.
+chromium-154-harmonyos.patch touches none of these three files.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-generic-sensor.patch
+
+diff --git a/services/device/BUILD.gn b/services/device/BUILD.gn
+--- a/services/device/BUILD.gn
++++ b/services/device/BUILD.gn
+@@ -261,8 +261,11 @@ source_set("tests") {
+ 
+   if (is_ohos) {
+-    # Only the LocationKit-to-geoposition translation is covered: it is the
+-    # part with no device dependency, so it is the part a host run can check.
++    # These translations have no live device dependency, so a host run can
++    # check them while the NDK-backed providers remain device-tested.
+-    sources += [ "geolocation/ohos/geoposition_ohos_unittest.cc" ]
++    sources += [
++      "generic_sensor/ohos/sensor_types_ohos_unittest.cc",
++      "geolocation/ohos/geoposition_ohos_unittest.cc",
++    ]
+   }
+ 
+   if (is_android) {
+diff --git a/services/device/generic_sensor/BUILD.gn b/services/device/generic_sensor/BUILD.gn
+--- a/services/device/generic_sensor/BUILD.gn
++++ b/services/device/generic_sensor/BUILD.gn
+@@ -58,6 +58,21 @@ source_set("generic_sensor") {
+ 
+   public_deps = [ "//services/device/public/cpp/generic_sensor" ]
+ 
++  if (is_ohos) {
++    sources += [
++      "ohos/platform_sensor_ohos.cc",
++      "ohos/platform_sensor_ohos.h",
++      "ohos/platform_sensor_provider_ohos.cc",
++      "ohos/platform_sensor_provider_ohos.h",
++      "ohos/sensor_subscription_ohos.cc",
++      "ohos/sensor_subscription_ohos.h",
++      "ohos/sensor_types_ohos.cc",
++      "ohos/sensor_types_ohos.h",
++    ]
++
++    libs = [ "ohsensor" ]
++  }
++
+   if (is_android) {
+     sources += [
+       "platform_sensor_android.cc",
+diff --git a/services/device/generic_sensor/platform_sensor_provider.cc b/services/device/generic_sensor/platform_sensor_provider.cc
+--- a/services/device/generic_sensor/platform_sensor_provider.cc
++++ b/services/device/generic_sensor/platform_sensor_provider.cc
+@@ -21,6 +21,8 @@
+ #include "services/device/generic_sensor/platform_sensor_provider_winrt.h"
+ #elif BUILDFLAG(IS_CHROMEOS)
+ #include "services/device/generic_sensor/platform_sensor_provider_chromeos.h"
++#elif BUILDFLAG(IS_OHOS)
++#include "services/device/generic_sensor/ohos/platform_sensor_provider_ohos.h"
+ #elif BUILDFLAG(IS_LINUX) && defined(USE_UDEV)
+ #include "services/device/generic_sensor/platform_sensor_provider_linux.h"
+ #endif
+@@ -66,6 +68,8 @@ std::unique_ptr<PlatformSensorProvider> PlatformSensorProvider::Create() {
+   }
+ #elif BUILDFLAG(IS_CHROMEOS)
+   return std::make_unique<PlatformSensorProviderChromeOS>();
++#elif BUILDFLAG(IS_OHOS)
++  return std::make_unique<PlatformSensorProviderOHOS>();
+ #elif BUILDFLAG(IS_LINUX) && defined(USE_UDEV)
+   return std::make_unique<PlatformSensorProviderLinux>();
+ #else

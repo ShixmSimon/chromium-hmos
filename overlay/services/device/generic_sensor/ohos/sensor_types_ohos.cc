@@ -104,6 +104,9 @@ std::optional<Sensor_Type> ToOhosSensorType(mojom::SensorType type) {
       // until the reading has been through the rounding the spec requires.
       return std::nullopt;
   }
+
+  LOG(ERROR) << "Unknown Chromium sensor type " << static_cast<int>(type);
+  return std::nullopt;
 }
 
 std::optional<SensorCapabilities> GetSensorCapabilities(Sensor_Type type) {
