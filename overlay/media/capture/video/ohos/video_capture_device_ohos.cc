@@ -118,6 +118,12 @@ class CaptureDelegateOhos {
     client_.reset();
   }
 
+  void InvalidateBuffers() {
+    if (client_) {
+      client_->InvalidateBuffers();
+    }
+  }
+
   void ProcessFrame() {
     if (frame_signal_) {
       frame_signal_->task_pending.store(false, std::memory_order_release);
@@ -237,10 +243,9 @@ class CaptureDelegateOhos {
     }
     VideoCaptureFormat format(gfx::Size(width, height), frame_rate_,
                               pixel_format);
-    client_->OnIncomingCapturedData(
-        frame.data(), static_cast<int>(frame.size()), format, gfx::ColorSpace(),
-        rotation_, false, now, now - first_reference_time_, std::nullopt,
-        std::nullopt);
+    client_->OnIncomingCapturedData(frame, format, gfx::ColorSpace(), rotation_,
+                                    false, now, now - first_reference_time_,
+                                    std::nullopt, std::nullopt);
   }
 
  private:
@@ -487,6 +492,16 @@ void VideoCaptureDeviceOhos::StopAndDeAllocate() {
                                               capture_delegate_.release());
   }
   capture_thread_.Stop();
+}
+
+void VideoCaptureDeviceOhos::InvalidateBuffers() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (!capture_thread_.IsRunning() || !capture_delegate_) {
+    return;
+  }
+  capture_thread_.task_runner()->PostTask(
+      FROM_HERE, base::BindOnce(&CaptureDelegateOhos::InvalidateBuffers,
+                                base::Unretained(capture_delegate_.get())));
 }
 
 }  // namespace media

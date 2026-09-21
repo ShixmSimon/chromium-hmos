@@ -18,8 +18,10 @@ Apply with:
 diff --git a/media/capture/BUILD.gn b/media/capture/BUILD.gn
 --- a/media/capture/BUILD.gn
 +++ b/media/capture/BUILD.gn
-@@ -168,6 +168,16 @@ component("capture_lib") {
+@@ -168,8 +168,18 @@ component("capture_lib") {
      "//ui/gfx",
+     "//ui/gfx:color_space",
+     "//ui/gfx/geometry",
    ]
  
 +  if (is_ohos) {
@@ -29,7 +31,7 @@ diff --git a/media/capture/BUILD.gn b/media/capture/BUILD.gn
 +      "video/ohos/video_capture_device_ohos.cc",
 +      "video/ohos/video_capture_device_ohos.h",
 +    ]
-+    libs += [ "native_buffer", "native_image", "native_window", "ohcamera" ]
++    libs = [ "native_buffer", "native_image", "native_window", "ohcamera" ]
 +  }
 +
    if (is_android) {

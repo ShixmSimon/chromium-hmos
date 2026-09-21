@@ -26,6 +26,7 @@ class VideoCaptureDeviceOhos final : public VideoCaptureDevice {
   void AllocateAndStart(const VideoCaptureParams& params,
                         std::unique_ptr<Client> client) override;
   void StopAndDeAllocate() override;
+  void InvalidateBuffers() override;
 
  private:
   const VideoCaptureDeviceDescriptor device_descriptor_;
