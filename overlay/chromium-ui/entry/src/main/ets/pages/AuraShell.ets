@@ -97,6 +97,7 @@ struct AuraShell {
   }
 
   aboutToDisappear(): void {
+    PermissionRequestAdapter.stopObservingLocation();
     this.knockShareSession.stop();
     this.currentTabCastSession.stop().catch((error: Error): void => {
       console.error('Failed to stop current-tab cast session:', error);
@@ -368,6 +369,13 @@ struct AuraShell {
   // once the native side is live, and again after any request that could have
   // changed it.
   private reportSystemPermissionState(): void {
+    // Subscribing here rather than at startup keeps the two together: the
+    // report is only useful once the native side can receive it, and the
+    // subscription exists to send the same report again when the user changes
+    // the permission somewhere this shell cannot see.
+    PermissionRequestAdapter.observeLocation((): void => {
+      this.reportSystemPermissionState();
+    });
     const state = PermissionRequestAdapter.locationState();
     hilog.info(0x0000, 'OhosPerm', 'reporting systemPermissionState=%{public}s', state);
     this.executeBrowserCommand({

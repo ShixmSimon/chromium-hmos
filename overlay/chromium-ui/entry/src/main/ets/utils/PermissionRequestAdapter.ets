@@ -5,6 +5,7 @@
  */
 
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
+import { Callback } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BrowserRuntimeEvent } from '../components/webwindow/NativeContext';
 
@@ -59,6 +60,54 @@ export class PermissionRequestAdapter {
   // it reports INVALID for as long as the coarse one is NOT_DETERMINED.
   private static readonly kLocationGate: Permissions =
     'ohos.permission.APPROXIMATELY_LOCATION';
+
+  private static locationWatcher:
+    Callback<abilityAccessCtrl.PermissionStateChangeInfo> | undefined = undefined;
+
+  /**
+   * Follows the permission instead of sampling it. Chromium's copy is only as
+   * good as the last report, and the user can revoke location in Settings
+   * while a page is watching it -- nothing else in the shell would notice, and
+   * the page would go on being told it may locate.
+   *
+   * Idempotent: a repeated subscription with the same arguments throws 12100004.
+   */
+  static observeLocation(onChange: () => void): void {
+    if (PermissionRequestAdapter.locationWatcher) {
+      return;
+    }
+    const watcher: Callback<abilityAccessCtrl.PermissionStateChangeInfo> =
+      (info: abilityAccessCtrl.PermissionStateChangeInfo): void => {
+        hilog.info(0x0000, 'OhosPerm', 'permission %{public}s changed: %{public}d',
+          info.permissionName, info.change);
+        onChange();
+      };
+    try {
+      abilityAccessCtrl.createAtManager().on('selfPermissionStateChange',
+        [PermissionRequestAdapter.kLocationGate], watcher);
+      PermissionRequestAdapter.locationWatcher = watcher;
+    } catch (error) {
+      // Losing the subscription costs freshness, not correctness: the state is
+      // still reported at startup and after each request.
+      hilog.warn(0x0000, 'OhosPerm', 'observeLocation threw: %{public}s',
+        String(error));
+    }
+  }
+
+  static stopObservingLocation(): void {
+    const watcher = PermissionRequestAdapter.locationWatcher;
+    if (!watcher) {
+      return;
+    }
+    PermissionRequestAdapter.locationWatcher = undefined;
+    try {
+      abilityAccessCtrl.createAtManager().off('selfPermissionStateChange',
+        [PermissionRequestAdapter.kLocationGate], watcher);
+    } catch (error) {
+      hilog.warn(0x0000, 'OhosPerm', 'stopObservingLocation threw: %{public}s',
+        String(error));
+    }
+  }
 
   /**
    * The app's own location permission, which Chromium resolves a site request

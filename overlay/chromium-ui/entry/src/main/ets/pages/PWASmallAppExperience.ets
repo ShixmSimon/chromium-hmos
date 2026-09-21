@@ -74,6 +74,7 @@ struct PWASmallAppExperience {
   }
 
   aboutToDisappear(): void {
+    PermissionRequestAdapter.stopObservingLocation();
     this.knockShareSession.stop();
     this.dismissMenuSheet();
     this.castSession.stop().catch((error: Error): void => {
@@ -379,6 +380,13 @@ struct PWASmallAppExperience {
   // once the native side is live, and again after any request that could have
   // changed it.
   private reportSystemPermissionState(): void {
+    // Subscribing here rather than at startup keeps the two together: the
+    // report is only useful once the native side can receive it, and the
+    // subscription exists to send the same report again when the user changes
+    // the permission somewhere this shell cannot see.
+    PermissionRequestAdapter.observeLocation((): void => {
+      this.reportSystemPermissionState();
+    });
     this.executeBrowserCommand({
       command: 'systemPermissionState',
       location: PermissionRequestAdapter.locationState()
