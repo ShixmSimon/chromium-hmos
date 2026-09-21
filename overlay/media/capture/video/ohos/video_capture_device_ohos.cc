@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include <accesstoken/ability_access_control.h>
 #include <native_buffer/native_buffer.h>
 #include <native_image/native_image.h>
 #include <native_window/external_window.h>
@@ -42,18 +43,60 @@ namespace {
 
 constexpr int kFenceWaitTimeoutMs = 1000;
 constexpr float kDefaultFrameRate = 30.0f;
+constexpr char kCameraPermission[] = "ohos.permission.CAMERA";
+constexpr base::TimeDelta kPermissionPollInterval = base::Milliseconds(100);
+constexpr base::TimeDelta kPermissionWaitTimeout = base::Seconds(60);
 
-void CopyPlane(const uint8_t* source,
-               uint32_t row_stride,
-               uint32_t column_stride,
+bool CopyPlane(const uint8_t* mapped,
+               size_t mapped_size,
+               const OH_NativeBuffer_Plane& plane,
                int width,
                int height,
-               uint8_t* destination) {
+               uint8_t* destination,
+               bool* corrected_stride) {
+  if (!mapped || !destination || width <= 0 || height <= 0) {
+    return false;
+  }
+
+  size_t row_stride = plane.rowStride;
+  size_t column_stride = plane.columnStride;
+  if (row_stride == 0 || column_stride == 0) {
+    return false;
+  }
+
+  // Some CameraKit YUV_420_SP buffers report chroma rowStride and
+  // columnStride in the opposite fields. Accept that only when the reported
+  // values cannot describe one row and the swapped values can.
+  const size_t row_bytes = (static_cast<size_t>(width) - 1) * column_stride + 1;
+  if (row_stride < row_bytes) {
+    const size_t swapped_row_bytes =
+        (static_cast<size_t>(width) - 1) * row_stride + 1;
+    if (column_stride < swapped_row_bytes) {
+      return false;
+    }
+    std::swap(row_stride, column_stride);
+    *corrected_stride = true;
+  }
+
+  size_t last_byte = plane.offset;
+  const size_t last_row = static_cast<size_t>(height) - 1;
+  const size_t last_column = static_cast<size_t>(width) - 1;
+  if (last_byte >= mapped_size ||
+      (last_row && row_stride > (mapped_size - 1 - last_byte) / last_row)) {
+    return false;
+  }
+  last_byte += last_row * row_stride;
+  if (last_column &&
+      column_stride > (mapped_size - 1 - last_byte) / last_column) {
+    return false;
+  }
+
+  const uint8_t* source = mapped + plane.offset;
   if (column_stride <= 1) {
     for (int row = 0; row < height; ++row) {
       std::memcpy(destination + row * width, source + row * row_stride, width);
     }
-    return;
+    return true;
   }
 
   for (int row = 0; row < height; ++row) {
@@ -63,6 +106,38 @@ void CopyPlane(const uint8_t* source,
       destination_row[column] = source_row[column * column_stride];
     }
   }
+  return true;
+}
+
+bool CopyInterleavedPlane(const uint8_t* mapped,
+                          size_t mapped_size,
+                          const OH_NativeBuffer_Plane& plane,
+                          int width,
+                          int height,
+                          uint8_t* destination,
+                          bool* corrected_stride) {
+  size_t row_stride = plane.rowStride;
+  if (row_stride < static_cast<size_t>(width) &&
+      plane.columnStride >= static_cast<uint32_t>(width)) {
+    row_stride = plane.columnStride;
+    *corrected_stride = true;
+  }
+  if (!mapped || !destination || width <= 0 || height <= 0 ||
+      row_stride < static_cast<size_t>(width) || plane.offset >= mapped_size ||
+      mapped_size - plane.offset < static_cast<size_t>(width)) {
+    return false;
+  }
+  const size_t last_row = static_cast<size_t>(height) - 1;
+  if (last_row &&
+      row_stride > (mapped_size - plane.offset - width) / last_row) {
+    return false;
+  }
+  const uint8_t* source = mapped + plane.offset;
+  for (int row = 0; row < height; ++row) {
+    std::memcpy(destination + static_cast<size_t>(row) * width,
+                source + static_cast<size_t>(row) * row_stride, width);
+  }
+  return true;
 }
 
 bool IsCrCbFormat(int32_t format) {
@@ -99,6 +174,28 @@ class CaptureDelegateOhos {
 
   void AllocateAndStart(std::unique_ptr<VideoCaptureDevice::Client> client) {
     client_ = std::move(client);
+    permission_wait_deadline_ = base::TimeTicks::Now() + kPermissionWaitTimeout;
+    StartWhenCameraPermissionIsReady();
+  }
+
+  void StartWhenCameraPermissionIsReady() {
+    if (!client_) {
+      return;
+    }
+    if (!OH_AT_CheckSelfPermission(kCameraPermission)) {
+      if (base::TimeTicks::Now() < permission_wait_deadline_) {
+        capture_task_runner_->PostDelayedTask(
+            FROM_HERE,
+            base::BindOnce(
+                &CaptureDelegateOhos::StartWhenCameraPermissionIsReady,
+                weak_factory_.GetWeakPtr()),
+            kPermissionPollInterval);
+        return;
+      }
+      client_->OnError(VideoCaptureError::kWebRtcStartCaptureFailed, FROM_HERE,
+                       "HarmonyOS camera permission was not granted");
+      return;
+    }
     if (!InitializeCamera()) {
       ReleaseResources();
       if (client_) {
@@ -152,8 +249,13 @@ class CaptureDelegateOhos {
     }
 
     auto release_buffer = [this, window_buffer]() {
-      OH_NativeImage_ReleaseNativeWindowBuffer(native_image_, window_buffer,
-                                               -1);
+      if (OH_NativeImage_ReleaseNativeWindowBuffer(native_image_, window_buffer,
+                                                   -1) != 0) {
+        // A failed release does not drop the reference acquired by
+        // AcquireNativeWindowBuffer.
+        OH_NativeWindow_NativeObjectUnreference(window_buffer);
+      }
+      // Drop the explicit reference taken above.
       OH_NativeWindow_NativeObjectUnreference(window_buffer);
     };
 
@@ -172,8 +274,10 @@ class CaptureDelegateOhos {
 
     OH_NativeBuffer_Config config = {};
     OH_NativeBuffer_GetConfig(native_buffer, &config);
+    BufferHandle* buffer_handle =
+        OH_NativeWindow_GetBufferHandleFromNative(window_buffer);
     if (config.width <= 0 || config.height <= 0 || (config.width & 1) ||
-        (config.height & 1)) {
+        (config.height & 1) || !buffer_handle || buffer_handle->size <= 0) {
       release_buffer();
       return;
     }
@@ -199,43 +303,55 @@ class CaptureDelegateOhos {
 
     std::vector<uint8_t> frame(frame_size);
     const uint8_t* mapped = static_cast<const uint8_t*>(mapped_address);
-    CopyPlane(mapped + planes.planes[0].offset, planes.planes[0].rowStride,
-              planes.planes[0].columnStride, width, height, frame.data());
+    const size_t mapped_size = static_cast<size_t>(buffer_handle->size);
+    bool corrected_stride = false;
+    bool copied = CopyPlane(mapped, mapped_size, planes.planes[0], width,
+                            height, frame.data(), &corrected_stride);
 
     VideoPixelFormat pixel_format = PIXEL_FORMAT_NV21;
-    if (planes.planeCount >= 3) {
+    if (copied && planes.planeCount >= 3) {
       const uint32_t u_plane = IsCrCbFormat(config.format) ? 2 : 1;
       const uint32_t v_plane = IsCrCbFormat(config.format) ? 1 : 2;
-      CopyPlane(mapped + planes.planes[u_plane].offset,
-                planes.planes[u_plane].rowStride,
-                planes.planes[u_plane].columnStride, width / 2, height / 2,
-                frame.data() + y_size);
-      CopyPlane(mapped + planes.planes[v_plane].offset,
-                planes.planes[v_plane].rowStride,
-                planes.planes[v_plane].columnStride, width / 2, height / 2,
-                frame.data() + y_size + y_size / 4);
+      copied =
+          CopyPlane(mapped, mapped_size, planes.planes[u_plane], width / 2,
+                    height / 2, frame.data() + y_size, &corrected_stride) &&
+          CopyPlane(mapped, mapped_size, planes.planes[v_plane], width / 2,
+                    height / 2, frame.data() + y_size + y_size / 4,
+                    &corrected_stride);
       pixel_format = PIXEL_FORMAT_I420;
-    } else if (planes.planeCount == 2) {
-      const uint8_t* chroma = mapped + planes.planes[1].offset;
-      for (int row = 0; row < height / 2; ++row) {
-        std::memcpy(frame.data() + y_size + row * width,
-                    chroma + row * planes.planes[1].rowStride, width);
-      }
+    } else if (copied && planes.planeCount == 2) {
+      copied = CopyInterleavedPlane(mapped, mapped_size, planes.planes[1],
+                                    width, height / 2, frame.data() + y_size,
+                                    &corrected_stride);
       pixel_format =
           IsCrCbFormat(config.format) ? PIXEL_FORMAT_NV21 : PIXEL_FORMAT_NV12;
-    } else {
+    } else if (copied) {
       const uint32_t stride = config.stride > 0 ? config.stride : width;
-      const uint8_t* chroma = mapped + static_cast<size_t>(stride) * height;
-      for (int row = 0; row < height / 2; ++row) {
-        std::memcpy(frame.data() + y_size + row * width,
-                    chroma + static_cast<size_t>(row) * stride, width);
+      OH_NativeBuffer_Plane chroma_plane = {
+          .offset = static_cast<uint64_t>(stride) * height,
+          .rowStride = stride,
+          .columnStride = 1,
+      };
+      copied = CopyInterleavedPlane(mapped, mapped_size, chroma_plane, width,
+                                    height / 2, frame.data() + y_size,
+                                    &corrected_stride);
+      if (copied) {
+        pixel_format =
+            IsCrCbFormat(config.format) ? PIXEL_FORMAT_NV21 : PIXEL_FORMAT_NV12;
       }
-      pixel_format =
-          IsCrCbFormat(config.format) ? PIXEL_FORMAT_NV21 : PIXEL_FORMAT_NV12;
     }
 
     OH_NativeBuffer_Unmap(native_buffer);
     release_buffer();
+    if (!copied) {
+      LOG(ERROR) << "OHOS camera: invalid plane layout for " << width << "x"
+                 << height << " buffer of " << mapped_size << " bytes";
+      return;
+    }
+    if (corrected_stride && !logged_stride_correction_) {
+      logged_stride_correction_ = true;
+      LOG(WARNING) << "OHOS camera: corrected swapped CameraKit YUV strides";
+    }
 
     const base::TimeTicks now = base::TimeTicks::Now();
     if (first_reference_time_.is_null()) {
@@ -437,9 +553,11 @@ class CaptureDelegateOhos {
   OH_NativeImage* native_image_ = nullptr;
   std::unique_ptr<FrameSignal> frame_signal_;
   base::TimeTicks first_reference_time_;
+  base::TimeTicks permission_wait_deadline_;
   float frame_rate_ = kDefaultFrameRate;
   int rotation_ = 0;
   bool started_ = false;
+  bool logged_stride_correction_ = false;
   base::WeakPtrFactory<CaptureDelegateOhos> weak_factory_{this};
 };
 
