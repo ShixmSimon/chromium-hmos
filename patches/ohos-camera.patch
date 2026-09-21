@@ -4,8 +4,7 @@ The implementation is new code under overlay/media/capture/video/ohos/, so
 this patch only changes the two upstream-owned integration points:
 
   * media/capture/BUILD.gn compiles the OHOS device and factory, then links
-    CameraKit, the app-permission query API, and the native Surface buffer
-    consumer libraries.
+    CameraKit and the native Surface buffer consumer libraries.
   * create_video_capture_device_factory.cc replaces the temporary zero-device
     fake factory with VideoCaptureDeviceFactoryOhos.
 
@@ -19,7 +18,7 @@ Apply with:
 diff --git a/media/capture/BUILD.gn b/media/capture/BUILD.gn
 --- a/media/capture/BUILD.gn
 +++ b/media/capture/BUILD.gn
-@@ -168,8 +168,24 @@ component("capture_lib") {
+@@ -168,8 +168,18 @@ component("capture_lib") {
      "//ui/gfx",
      "//ui/gfx:color_space",
      "//ui/gfx/geometry",
@@ -32,13 +31,7 @@ diff --git a/media/capture/BUILD.gn b/media/capture/BUILD.gn
 +      "video/ohos/video_capture_device_ohos.cc",
 +      "video/ohos/video_capture_device_ohos.h",
 +    ]
-+    libs = [
-+      "ability_access_control",
-+      "native_buffer",
-+      "native_image",
-+      "native_window",
-+      "ohcamera",
-+    ]
++    libs = [ "native_buffer", "native_image", "native_window", "ohcamera" ]
 +  }
 +
    if (is_android) {

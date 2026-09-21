@@ -4,6 +4,7 @@
 
 #include "media/capture/video/ohos/video_capture_device_ohos.h"
 
+#include <dlfcn.h>
 #include <poll.h>
 #include <unistd.h>
 
@@ -18,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include <accesstoken/ability_access_control.h>
 #include <native_buffer/native_buffer.h>
 #include <native_image/native_image.h>
 #include <native_window/external_window.h>
@@ -46,6 +46,21 @@ constexpr float kDefaultFrameRate = 30.0f;
 constexpr char kCameraPermission[] = "ohos.permission.CAMERA";
 constexpr base::TimeDelta kPermissionPollInterval = base::Milliseconds(100);
 constexpr base::TimeDelta kPermissionWaitTimeout = base::Seconds(60);
+
+bool HasCameraPermission() {
+  using CheckSelfPermission = bool (*)(const char*);
+  static CheckSelfPermission check_permission = []() {
+    void* library =
+        dlopen("libability_access_control.so", RTLD_NOW | RTLD_LOCAL);
+    if (!library) {
+      LOG(ERROR) << "OHOS camera: failed to load ability_access_control";
+      return static_cast<CheckSelfPermission>(nullptr);
+    }
+    return reinterpret_cast<CheckSelfPermission>(
+        dlsym(library, "OH_AT_CheckSelfPermission"));
+  }();
+  return check_permission && check_permission(kCameraPermission);
+}
 
 bool CopyPlane(const uint8_t* mapped,
                size_t mapped_size,
@@ -182,7 +197,7 @@ class CaptureDelegateOhos {
     if (!client_) {
       return;
     }
-    if (!OH_AT_CheckSelfPermission(kCameraPermission)) {
+    if (!HasCameraPermission()) {
       if (base::TimeTicks::Now() < permission_wait_deadline_) {
         capture_task_runner_->PostDelayedTask(
             FROM_HERE,
