@@ -28,6 +28,7 @@ import { CHROMIUM_HOME_URL } from '../utils/DeviceType';
 import { HuaweiKnockShareSession, HuaweiShareAdapter } from '../utils/HuaweiShareAdapter';
 import { HarmonyFilePickerAdapter, HarmonyFilePickerResult } from '../utils/HarmonyFilePickerAdapter';
 import { PermissionRequestAdapter, PermissionRequestResultPayload } from '../utils/PermissionRequestAdapter';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { SystemPrintAdapter } from '../utils/SystemPrintAdapter';
 import { ChromiumSystemAction, SystemIntegrationAdapter } from '../utils/SystemIntegrationAdapter';
 import { PwaWindowLauncher } from '../utils/PwaWindowLauncher';
@@ -359,9 +360,11 @@ struct AuraShell {
   // once the native side is live, and again after any request that could have
   // changed it.
   private reportSystemPermissionState(): void {
+    const state = PermissionRequestAdapter.locationState();
+    hilog.info(0x0000, 'OhosPerm', 'reporting systemPermissionState=%{public}s', state);
     this.executeBrowserCommand({
       command: 'systemPermissionState',
-      location: PermissionRequestAdapter.locationState()
+      location: state
     });
   }
 

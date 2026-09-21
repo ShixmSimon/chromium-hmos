@@ -5,6 +5,7 @@
  */
 
 import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BrowserRuntimeEvent } from '../components/webwindow/NativeContext';
 
 export interface PermissionRequestResultPayload {
@@ -67,10 +68,15 @@ export class PermissionRequestAdapter {
       const tokenId = info.appInfo.accessTokenId;
       const granted = abilityAccessCtrl.createAtManager()
         .checkAccessTokenSync(tokenId, 'ohos.permission.LOCATION');
-      return granted === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED
-        ? 'allowed' : 'denied';
+      const state: SystemPermissionState =
+        granted === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED
+          ? 'allowed' : 'denied';
+      hilog.info(0x0000, 'OhosPerm', 'locationState=%{public}s token=%{public}d',
+        state, tokenId);
+      return state;
     } catch (error) {
-      console.error('HarmonyOS location permission check failed:', error);
+      hilog.warn(0x0000, 'OhosPerm', 'locationState threw: %{public}s',
+        String(error));
       return 'notDetermined';
     }
   }
