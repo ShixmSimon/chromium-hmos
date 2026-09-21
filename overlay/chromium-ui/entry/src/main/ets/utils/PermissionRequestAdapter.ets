@@ -4,7 +4,7 @@
  * found in the LICENSE file.
  */
 
-import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
+import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BrowserRuntimeEvent } from '../components/webwindow/NativeContext';
 
@@ -52,32 +52,57 @@ export class PermissionRequestAdapter {
     return { requestId, granted, denied };
   }
 
+  // Chromium is asking whether this app can locate at all, and that is the
+  // coarse permission: LocationKit still returns network fixes when only
+  // APPROXIMATELY_LOCATION is held, so gating on the precise one would BLOCK
+  // sites that would have worked. The precise one is also ambiguous to read --
+  // it reports INVALID for as long as the coarse one is NOT_DETERMINED.
+  private static readonly kLocationGate: Permissions =
+    'ohos.permission.APPROXIMATELY_LOCATION';
+
   /**
    * The app's own location permission, which Chromium resolves a site request
    * against before prompting: with the app permission denied there is nothing a
    * site grant could achieve, so the site prompt is skipped entirely.
-   *
-   * 'notDetermined' covers the case where the token cannot be read at all --
-   * reporting a denial we have not established would suppress prompts the user
-   * should still see.
    */
   static locationState(): SystemPermissionState {
     try {
-      const info = bundleManager.getBundleInfoForSelfSync(
-        bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION);
-      const tokenId = info.appInfo.accessTokenId;
-      const granted = abilityAccessCtrl.createAtManager()
-        .checkAccessTokenSync(tokenId, 'ohos.permission.LOCATION');
-      const state: SystemPermissionState =
-        granted === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED
-          ? 'allowed' : 'denied';
-      hilog.info(0x0000, 'OhosPerm', 'locationState=%{public}s token=%{public}d',
-        state, tokenId);
+      const status = abilityAccessCtrl.createAtManager()
+        .getSelfPermissionStatus(PermissionRequestAdapter.kLocationGate);
+      const state = PermissionRequestAdapter.toSystemState(status);
+      hilog.info(0x0000, 'OhosPerm', 'locationState=%{public}s status=%{public}d',
+        state, status);
       return state;
     } catch (error) {
       hilog.warn(0x0000, 'OhosPerm', 'locationState threw: %{public}s',
         String(error));
       return 'notDetermined';
+    }
+  }
+
+  /**
+   * checkAccessToken cannot tell "never asked" from "asked and refused" -- both
+   * are PERMISSION_DENIED -- and calling both a denial deadlocks a site that is
+   * already allowed: Chromium BLOCKs it, so no prompt appears, so nothing ever
+   * asks the OS. getSelfPermissionStatus separates the two.
+   */
+  private static toSystemState(
+    status: abilityAccessCtrl.PermissionStatus
+  ): SystemPermissionState {
+    switch (status) {
+      case abilityAccessCtrl.PermissionStatus.GRANTED:
+        return 'allowed';
+      // Refused, or barred from being asked at all. Either way a site grant
+      // could not lead anywhere, so Chromium should not offer one.
+      case abilityAccessCtrl.PermissionStatus.DENIED:
+      case abilityAccessCtrl.PermissionStatus.RESTRICTED:
+        return 'denied';
+      // NOT_DETERMINED (never requested, or set to ask every time) and INVALID
+      // (undeclared, or unanswerable here) both leave the question open.
+      // Reporting a denial we have not established would suppress the site
+      // prompt that is what makes us ask the OS in the first place.
+      default:
+        return 'notDetermined';
     }
   }
 }
