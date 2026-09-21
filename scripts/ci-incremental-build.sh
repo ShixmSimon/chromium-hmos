@@ -55,7 +55,9 @@ changed=0
 while IFS= read -r -d '' f; do
   rel="${f#"${repo_root}/overlay/"}"
   case "$rel" in
-    chromium-ui/*|arkweb/*|ohos_arkweb_playground/*) continue ;;  # app side, not Chromium
+    chromium-ui/*|ohos_arkweb_playground/*) continue ;;  # app side, not Chromium
+    arkweb/ohos_nweb/*) ;;  # Chromium's //ohos_nweb integration
+    arkweb/*) continue ;;
   esac
   dst="${src}/${rel}"
   # The tree has symlinks where the overlay has plain files (ohos_glue,

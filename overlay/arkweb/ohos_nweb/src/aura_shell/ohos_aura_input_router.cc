@@ -70,6 +70,11 @@ std::optional<ui::EventType> ToTouchEventType(int action) {
   }
 }
 
+base::TimeTicks ToTouchTimestamp(int64_t timestamp_ns) {
+  return timestamp_ns > 0 ? base::TimeTicks() + base::Nanoseconds(timestamp_ns)
+                          : base::TimeTicks::Now();
+}
+
 int ToMouseButtonFlag(int button) {
   switch (button) {
     case 0:
@@ -424,6 +429,40 @@ bool OhosAuraInputRouter::IsDuplicateKeyEvent(
     ++suppressed_key_events_;
   }
   return duplicate;
+}
+
+void OhosAuraInputRouter::DispatchNativeTouchEvent(
+    const OhosNativeTouchEvent& event) {
+  const std::optional<ui::EventType> event_type =
+      ToTouchEventType(event.action);
+  if (!event_type ||
+      IsDuplicatePointerEvent("touch", "native", event.action, event.pointer_id,
+                              0, event.x, event.y)) {
+    return;
+  }
+
+  if (event.action == 0) {
+    if (!focused_) {
+      WVLOG_I("Aura input router regained focus from native touch press");
+    }
+    focused_ = true;
+  }
+
+  const gfx::PointF location(event.x, event.y);
+  const gfx::PointF root_location(event.root_x, event.root_y);
+  last_pointer_root_x_ = root_location.x();
+  last_pointer_root_y_ = root_location.y();
+  last_touch_timestamp_ = ToTouchTimestamp(event.timestamp_ns);
+  auto touch_event = std::make_unique<ui::TouchEvent>(
+      *event_type, location, root_location, last_touch_timestamp_,
+      ui::PointerDetails(ui::EventPointerType::kTouch, event.pointer_id));
+  if (!ui::OhosEventSource::PostEvent(std::move(touch_event),
+                                      event.target_widget)) {
+    WVLOG_W(
+        "Aura input router could not post native touch event action=%{public}d "
+        "id=%{public}d",
+        event.action, event.pointer_id);
+  }
 }
 
 void OhosAuraInputRouter::DispatchPointerEvent(const std::string& event_json) {

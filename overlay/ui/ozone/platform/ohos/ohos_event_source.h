@@ -1,6 +1,8 @@
 #ifndef UI_OZONE_PLATFORM_OHOS_OHOS_EVENT_SOURCE_H_
 #define UI_OZONE_PLATFORM_OHOS_OHOS_EVENT_SOURCE_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 
@@ -14,6 +16,13 @@ class Event;
 
 class OhosEventSource : public PlatformEventSource {
  public:
+  struct TouchMoveQueueStats {
+    uint64_t received = 0;
+    uint64_t dispatched = 0;
+    uint64_t coalesced = 0;
+    size_t pending = 0;
+  };
+
   OhosEventSource();
   ~OhosEventSource() override;
 
@@ -24,6 +33,7 @@ class OhosEventSource : public PlatformEventSource {
       gfx::AcceleratedWidget widget = gfx::kNullAcceleratedWidget);
   static bool WasTouchInteractionRecent();
   static gfx::AcceleratedWidget GetCurrentDispatchTarget();
+  static TouchMoveQueueStats GetTouchMoveQueueStatsForTesting();
 
   gfx::AcceleratedWidget ResolveDispatchTargetForTesting(
       Event* event,

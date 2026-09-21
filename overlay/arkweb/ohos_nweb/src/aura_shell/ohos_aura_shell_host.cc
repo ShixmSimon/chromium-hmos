@@ -182,6 +182,12 @@ void OhosAuraShellHost::OnThemeFontChanged(const std::string& font_id) {
   GetOhosChromeMainRunner().OnThemeFontChanged(font_id);
 }
 
+void OhosAuraShellHost::DispatchNativeTouchEvent(
+    const OhosNativeTouchEvent& event) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  input_router_.DispatchNativeTouchEvent(event);
+}
+
 void OhosAuraShellHost::DispatchPointerEvent(const std::string& event_json) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   input_router_.DispatchPointerEvent(event_json);

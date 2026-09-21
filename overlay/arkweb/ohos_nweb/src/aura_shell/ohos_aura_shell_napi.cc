@@ -95,6 +95,15 @@ void AddComponentEventTarget(const std::string& component_id,
   }
 }
 
+gfx::AcceleratedWidget GetComponentEventTarget(
+    const std::string& component_id) {
+  if (!IsAuxiliaryComponentId(component_id) &&
+      !IsPwaComponentId(component_id)) {
+    return gfx::kNullAcceleratedWidget;
+  }
+  return ui::GetOhosAcceleratedWidgetForNativeSurface(component_id);
+}
+
 const char* WindowActionName(ui::OhosWindowAction action) {
   switch (action) {
     case ui::OhosWindowAction::kClose:
@@ -510,30 +519,6 @@ void NativeDispatchTouchEvent(OH_NativeXComponent* component, void* window) {
     return;
   }
 
-  base::DictValue event;
-  event.Set("action", static_cast<int>(touch_event.type));
-  event.Set("pointerType", "touch");
-  event.Set("dispatchSource", "native");
-  event.Set("pointerId", touch_event.id);
-  event.Set("button", 0);
-  event.Set("sourceTool", static_cast<int>(tool_type));
-  event.Set("x", static_cast<double>(touch_event.x));
-  event.Set("y", static_cast<double>(touch_event.y));
-  event.Set("rootX", static_cast<double>(touch_event.screenX));
-  event.Set("rootY", static_cast<double>(touch_event.screenY));
-  // The Native XComponent contract defines screenX/screenY relative to the
-  // physical screen for both touch and mouse events. Treating touch as
-  // window-relative adds the surface offset twice in floating/folded layouts
-  // and makes popup input fall through to the page below.
-  event.Set("rootWindowRelative", false);
-  event.Set("physicalPixels", true);
-  event.Set("timestamp", static_cast<double>(touch_event.timeStamp));
-  AddComponentEventTarget(*component_id, &event);
-
-  std::string event_json;
-  if (!base::JSONWriter::Write(event, &event_json)) {
-    return;
-  }
   HostPtr host = FindHost(*component_id);
   if (!host) {
     return;
@@ -541,7 +526,15 @@ void NativeDispatchTouchEvent(OH_NativeXComponent* component, void* window) {
   if (touch_event.type == OH_NATIVEXCOMPONENT_DOWN) {
     host->OnFocusChanged(true);
   }
-  host->DispatchPointerEvent(event_json);
+  host->DispatchNativeTouchEvent(
+      {.action = static_cast<int>(touch_event.type),
+       .pointer_id = touch_event.id,
+       .x = touch_event.x,
+       .y = touch_event.y,
+       .root_x = touch_event.screenX,
+       .root_y = touch_event.screenY,
+       .timestamp_ns = touch_event.timeStamp,
+       .target_widget = GetComponentEventTarget(*component_id)});
 }
 
 int NormalizeNativeMouseAction(OH_NativeXComponent_MouseEventAction action) {

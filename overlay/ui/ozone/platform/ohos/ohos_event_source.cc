@@ -1,6 +1,8 @@
 #include "ui/ozone/platform/ohos/ohos_event_source.h"
 
 #include <algorithm>
+#include <map>
+#include <memory>
 #include <utility>
 
 #include "base/functional/bind.h"
@@ -19,11 +21,28 @@ namespace {
 
 thread_local OhosEventSource* g_current_ohos_event_source = nullptr;
 
+using TouchMoveKey = std::pair<int, gfx::AcceleratedWidget>;
+
+struct PendingTouchMove {
+  std::unique_ptr<Event> event;
+  gfx::AcceleratedWidget target_hint = gfx::kNullAcceleratedWidget;
+  TouchMoveKey key;
+  base::TimeTicks queued_at;
+};
+
 struct EventSourceBridge {
   base::Lock lock;
   scoped_refptr<base::SingleThreadTaskRunner> task_runner GUARDED_BY(lock);
   base::WeakPtr<OhosEventSource> event_source GUARDED_BY(lock);
   base::TimeTicks last_touch_press GUARDED_BY(lock);
+  std::map<TouchMoveKey, std::shared_ptr<PendingTouchMove>> pending_touch_moves
+      GUARDED_BY(lock);
+  uint64_t touch_moves_received GUARDED_BY(lock) = 0;
+  uint64_t touch_moves_dispatched GUARDED_BY(lock) = 0;
+  uint64_t touch_moves_coalesced GUARDED_BY(lock) = 0;
+  uint64_t next_touch_move_report GUARDED_BY(lock) = 240;
+  size_t queued_touch_move_tasks GUARDED_BY(lock) = 0;
+  base::TimeDelta max_touch_move_age GUARDED_BY(lock);
 };
 
 EventSourceBridge& GetEventSourceBridge() {
@@ -40,12 +59,21 @@ OhosEventSource::OhosEventSource() {
   base::AutoLock lock(bridge.lock);
   bridge.task_runner = base::SingleThreadTaskRunner::GetCurrentDefault();
   bridge.event_source = weak_factory_.GetWeakPtr();
+  bridge.pending_touch_moves.clear();
+  bridge.touch_moves_received = 0;
+  bridge.touch_moves_dispatched = 0;
+  bridge.touch_moves_coalesced = 0;
+  bridge.next_touch_move_report = 240;
+  bridge.queued_touch_move_tasks = 0;
+  bridge.max_touch_move_age = base::TimeDelta();
 }
 
 OhosEventSource::~OhosEventSource() {
   weak_factory_.InvalidateWeakPtrs();
   EventSourceBridge& bridge = GetEventSourceBridge();
   base::AutoLock lock(bridge.lock);
+  bridge.pending_touch_moves.clear();
+  bridge.queued_touch_move_tasks = 0;
   bridge.event_source = nullptr;
   bridge.task_runner = nullptr;
   g_current_ohos_event_source = nullptr;
@@ -60,6 +88,7 @@ bool OhosEventSource::PostEvent(std::unique_ptr<Event> event,
 
   scoped_refptr<base::SingleThreadTaskRunner> task_runner;
   base::WeakPtr<OhosEventSource> event_source;
+  std::shared_ptr<PendingTouchMove> pending_touch_move;
   {
     EventSourceBridge& bridge = GetEventSourceBridge();
     base::AutoLock lock(bridge.lock);
@@ -68,9 +97,119 @@ bool OhosEventSource::PostEvent(std::unique_ptr<Event> event,
     }
     task_runner = bridge.task_runner;
     event_source = bridge.event_source;
+    if (task_runner && event->IsTouchEvent()) {
+      const int pointer_id = event->AsTouchEvent()->pointer_details().id;
+      if (event->type() == EventType::kTouchMoved) {
+        ++bridge.touch_moves_received;
+        const TouchMoveKey key(pointer_id, target_hint);
+        auto existing = bridge.pending_touch_moves.find(key);
+        if (existing != bridge.pending_touch_moves.end()) {
+          existing->second->event = std::move(event);
+          ++bridge.touch_moves_coalesced;
+          return true;
+        }
+        pending_touch_move = std::make_shared<PendingTouchMove>();
+        pending_touch_move->event = std::move(event);
+        pending_touch_move->target_hint = target_hint;
+        pending_touch_move->key = key;
+        pending_touch_move->queued_at = base::TimeTicks::Now();
+        bridge.pending_touch_moves.emplace(key, pending_touch_move);
+        ++bridge.queued_touch_move_tasks;
+      } else {
+        // Close the current coalescing window. A MOVE arriving after this
+        // discrete event must be queued after it, even if the earlier MOVE's
+        // task has not run yet.
+        std::erase_if(bridge.pending_touch_moves,
+                      [pointer_id](const auto& entry) {
+                        return entry.first.first == pointer_id;
+                      });
+      }
+    }
   }
   if (!task_runner) {
     return false;
+  }
+
+  if (pending_touch_move) {
+    const bool posted = task_runner->PostTask(
+        FROM_HERE,
+        base::BindOnce(
+            [](base::WeakPtr<OhosEventSource> source,
+               std::shared_ptr<PendingTouchMove> pending) {
+              std::unique_ptr<Event> event;
+              uint64_t received = 0;
+              uint64_t dispatched = 0;
+              uint64_t coalesced = 0;
+              size_t pending_count = 0;
+              base::TimeDelta event_age;
+              base::TimeDelta queue_delay;
+              base::TimeDelta max_event_age;
+              bool report_stats = false;
+              {
+                EventSourceBridge& bridge = GetEventSourceBridge();
+                base::AutoLock lock(bridge.lock);
+                event = std::move(pending->event);
+                auto active = bridge.pending_touch_moves.find(pending->key);
+                if (active != bridge.pending_touch_moves.end() &&
+                    active->second == pending) {
+                  bridge.pending_touch_moves.erase(active);
+                }
+                if (bridge.queued_touch_move_tasks > 0) {
+                  --bridge.queued_touch_move_tasks;
+                }
+                ++bridge.touch_moves_dispatched;
+                const base::TimeTicks now = base::TimeTicks::Now();
+                queue_delay = now - pending->queued_at;
+                if (event && !event->time_stamp().is_null() &&
+                    now >= event->time_stamp()) {
+                  event_age = now - event->time_stamp();
+                  bridge.max_touch_move_age =
+                      std::max(bridge.max_touch_move_age, event_age);
+                }
+                if (bridge.touch_moves_received >=
+                    bridge.next_touch_move_report) {
+                  report_stats = true;
+                  while (bridge.touch_moves_received >=
+                         bridge.next_touch_move_report) {
+                    bridge.next_touch_move_report += 240;
+                  }
+                }
+                received = bridge.touch_moves_received;
+                dispatched = bridge.touch_moves_dispatched;
+                coalesced = bridge.touch_moves_coalesced;
+                pending_count = bridge.queued_touch_move_tasks;
+                max_event_age = bridge.max_touch_move_age;
+              }
+              if (report_stats) {
+                LOG(INFO) << "OHOS touch MOVE queue received=" << received
+                          << " dispatched=" << dispatched
+                          << " coalesced=" << coalesced
+                          << " pending=" << pending_count
+                          << " event_age_ms=" << event_age.InMillisecondsF()
+                          << " max_event_age_ms="
+                          << max_event_age.InMillisecondsF()
+                          << " queue_delay_ms="
+                          << queue_delay.InMillisecondsF();
+              }
+              if (source && event) {
+                source->DispatchOwnedEvent(std::move(event),
+                                           pending->target_hint);
+              }
+            },
+            std::move(event_source), pending_touch_move));
+    if (!posted) {
+      EventSourceBridge& bridge = GetEventSourceBridge();
+      base::AutoLock lock(bridge.lock);
+      auto active = bridge.pending_touch_moves.find(pending_touch_move->key);
+      if (active != bridge.pending_touch_moves.end() &&
+          active->second == pending_touch_move) {
+        bridge.pending_touch_moves.erase(active);
+      }
+      if (bridge.queued_touch_move_tasks > 0) {
+        --bridge.queued_touch_move_tasks;
+      }
+    }
+    return posted;
   }
 
   return task_runner->PostTask(
@@ -128,6 +267,17 @@ gfx::AcceleratedWidget OhosEventSource::GetCurrentDispatchTarget() {
   return g_current_ohos_event_source
              ? g_current_ohos_event_source->dispatch_target_
              : gfx::kNullAcceleratedWidget;
+}
+
+// static
+OhosEventSource::TouchMoveQueueStats
+OhosEventSource::GetTouchMoveQueueStatsForTesting() {
+  EventSourceBridge& bridge = GetEventSourceBridge();
+  base::AutoLock lock(bridge.lock);
+  return {.received = bridge.touch_moves_received,
+          .dispatched = bridge.touch_moves_dispatched,
+          .coalesced = bridge.touch_moves_coalesced,
+          .pending = bridge.queued_touch_move_tasks};
 }
 
 gfx::AcceleratedWidget OhosEventSource::ResolveDispatchTargetForTesting(

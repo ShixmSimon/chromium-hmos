@@ -4,6 +4,7 @@
 #ifndef OHOS_NWEB_SRC_AURA_SHELL_OHOS_AURA_INPUT_ROUTER_H_
 #define OHOS_NWEB_SRC_AURA_SHELL_OHOS_AURA_INPUT_ROUTER_H_
 
+#include <cstdint>
 #include <deque>
 #include <string>
 
@@ -11,6 +12,17 @@
 #include "ui/gfx/native_ui_types.h"
 
 namespace ohos_nweb {
+
+struct OhosNativeTouchEvent {
+  int action = -1;
+  int pointer_id = -1;
+  float x = 0.0f;
+  float y = 0.0f;
+  float root_x = 0.0f;
+  float root_y = 0.0f;
+  int64_t timestamp_ns = 0;
+  gfx::AcceleratedWidget target_widget = gfx::kNullAcceleratedWidget;
+};
 
 class OhosAuraInputRouter {
  public:
@@ -21,6 +33,7 @@ class OhosAuraInputRouter {
 
   void SetFocused(bool focused);
   void ResetPointerState();
+  void DispatchNativeTouchEvent(const OhosNativeTouchEvent& event);
   void DispatchPointerEvent(const std::string& event_json);
   bool DispatchKeyEvent(const std::string& event_json);
 
@@ -46,6 +59,9 @@ class OhosAuraInputRouter {
   }
   int last_mouse_changed_button_flags_for_testing() const {
     return last_mouse_changed_button_flags_;
+  }
+  base::TimeTicks last_touch_timestamp_for_testing() const {
+    return last_touch_timestamp_;
   }
 
  private:
@@ -101,6 +117,7 @@ class OhosAuraInputRouter {
   int suppressed_key_events_ = 0;
   int last_mouse_event_flags_ = 0;
   int last_mouse_changed_button_flags_ = 0;
+  base::TimeTicks last_touch_timestamp_;
 };
 
 }  // namespace ohos_nweb

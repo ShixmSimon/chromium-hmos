@@ -42,6 +42,7 @@ class OhosAuraShellHost {
   void OnVisibilityChanged(bool visible);
   void OnFocusChanged(bool focused);
   void OnThemeFontChanged(const std::string& font_id);
+  void DispatchNativeTouchEvent(const OhosNativeTouchEvent& event);
   void DispatchPointerEvent(const std::string& event_json);
   bool DispatchKeyEvent(const std::string& event_json);
   void Navigate(const std::string& url);

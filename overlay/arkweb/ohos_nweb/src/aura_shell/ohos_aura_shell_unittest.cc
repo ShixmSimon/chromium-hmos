@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -122,6 +123,62 @@ TEST(NWebAuraShellTest, AbsoluteNativeTouchRootIsNotOffsetByWindowOrigin) {
   EXPECT_DOUBLE_EQ(840.0, router.last_pointer_root_x_for_testing());
   EXPECT_DOUBLE_EQ(420.0, router.last_pointer_root_y_for_testing());
   ui::UnregisterOhosNativeSurface(kComponentId, native_window);
+}
+
+TEST(NWebAuraShellTest, NativeTouchPreservesPlatformTimestamp) {
+  base::test::SingleThreadTaskEnvironment task_environment;
+  ui::OhosEventSource event_source;
+  OhosAuraInputRouter router;
+  constexpr int64_t kTimestampNs = 123456789;
+
+  router.DispatchNativeTouchEvent({.action = 0,
+                                   .pointer_id = 7,
+                                   .x = 20.0f,
+                                   .y = 30.0f,
+                                   .root_x = 120.0f,
+                                   .root_y = 230.0f,
+                                   .timestamp_ns = kTimestampNs});
+
+  EXPECT_EQ(base::TimeTicks() + base::Nanoseconds(kTimestampNs),
+            router.last_touch_timestamp_for_testing());
+  EXPECT_DOUBLE_EQ(20.0, router.last_pointer_x_for_testing());
+  EXPECT_DOUBLE_EQ(30.0, router.last_pointer_y_for_testing());
+  EXPECT_DOUBLE_EQ(120.0, router.last_pointer_root_x_for_testing());
+  EXPECT_DOUBLE_EQ(230.0, router.last_pointer_root_y_for_testing());
+}
+
+TEST(NWebAuraShellTest, TouchMovesCoalesceWithoutCrossingDiscreteEvents) {
+  base::test::SingleThreadTaskEnvironment task_environment;
+  ui::OhosEventSource event_source;
+  const auto make_touch = [](ui::EventType type, float y) {
+    return std::make_unique<ui::TouchEvent>(
+        type, gfx::PointF(10.0f, y), gfx::PointF(10.0f, y),
+        base::TimeTicks::Now(),
+        ui::PointerDetails(ui::EventPointerType::kTouch, 9));
+  };
+
+  EXPECT_TRUE(ui::OhosEventSource::PostEvent(
+      make_touch(ui::EventType::kTouchMoved, 10.0f)));
+  EXPECT_TRUE(ui::OhosEventSource::PostEvent(
+      make_touch(ui::EventType::kTouchMoved, 20.0f)));
+  auto stats = ui::OhosEventSource::GetTouchMoveQueueStatsForTesting();
+  EXPECT_EQ(2u, stats.received);
+  EXPECT_EQ(1u, stats.coalesced);
+  EXPECT_EQ(1u, stats.pending);
+
+  EXPECT_TRUE(ui::OhosEventSource::PostEvent(
+      make_touch(ui::EventType::kTouchReleased, 20.0f)));
+  EXPECT_TRUE(ui::OhosEventSource::PostEvent(
+      make_touch(ui::EventType::kTouchMoved, 30.0f)));
+  stats = ui::OhosEventSource::GetTouchMoveQueueStatsForTesting();
+  EXPECT_EQ(3u, stats.received);
+  EXPECT_EQ(1u, stats.coalesced);
+  EXPECT_EQ(2u, stats.pending);
+
+  task_environment.RunUntilIdle();
+  stats = ui::OhosEventSource::GetTouchMoveQueueStatsForTesting();
+  EXPECT_EQ(2u, stats.dispatched);
+  EXPECT_EQ(0u, stats.pending);
 }
 
 TEST(NWebAuraShellTest, LegacyWindowRelativeRootIncludesWindowOrigin) {
@@ -387,8 +444,8 @@ TEST(NWebAuraShellTest, AdditionalSwitchesAreAppended) {
   const std::vector<std::string> arguments =
       runner.BuildArgumentsForTesting(config);
 
-  EXPECT_TRUE(ContainsArgument(arguments,
-                               "--sync-url=http://192.168.1.20:8295/v2"));
+  EXPECT_TRUE(
+      ContainsArgument(arguments, "--sync-url=http://192.168.1.20:8295/v2"));
   EXPECT_TRUE(ContainsArgument(arguments, "--enable-logging"));
   EXPECT_FALSE(ContainsArgument(arguments, "----no-sandbox"));
   EXPECT_FALSE(ContainsArgument(arguments, "--Bad Key=x"));
