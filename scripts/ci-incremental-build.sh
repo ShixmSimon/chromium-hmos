@@ -138,6 +138,29 @@ ui_wsl='/mnt/d/Works/chromium-hmos/overlay/chromium-ui'
 stage_target="${repo_root}/overlay/chromium-ui"
 [[ -d "$ui_wsl" ]] && stage_target="$ui_wsl"
 
+# The app shell's own sources have to travel there too. Only the runtime was
+# being staged, so hvigor compiled whatever ArkTS that checkout happened to
+# hold -- for a while, a HAP whose engine was current and whose shell was
+# weeks old, with nothing in the job disagreeing.
+#
+# Excluded: build output and oh_modules, which are the other checkout's to
+# produce; the two directories stage-runtime-assets.sh is about to fill; and
+# build-profile.json5 and its lock, which carry that machine's signing config
+# and must not be overwritten by the repository's empty one.
+if [[ "$stage_target" == "$ui_wsl" ]]; then
+  say "syncing app shell sources into ${ui_wsl}"
+  rsync -a --delete \
+    --exclude 'build-profile.json5' \
+    --exclude 'oh-package-lock.json5' \
+    --exclude 'oh_modules/' \
+    --exclude '.hvigor/' \
+    --exclude 'entry/build/' \
+    --exclude 'entry/libs/' \
+    --exclude 'entry/src/main/resources/rawfile/' \
+    "${repo_root}/overlay/chromium-ui/" "${ui_wsl}/" \
+    || die 'app shell sync failed'
+fi
+
 say "staging runtime into ${stage_target}"
 bash "${repo_root}/scripts/stage-runtime-assets.sh" "${src}/${out}" "$stage_target" \
   || die 'staging failed'
