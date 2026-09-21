@@ -4,7 +4,7 @@
  * found in the LICENSE file.
  */
 
-import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
+import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
 import { BrowserRuntimeEvent } from '../components/webwindow/NativeContext';
 
 export interface PermissionRequestResultPayload {
@@ -12,6 +12,8 @@ export interface PermissionRequestResultPayload {
   granted: string[];
   denied: string[];
 }
+
+export type SystemPermissionState = 'allowed' | 'denied' | 'notDetermined';
 
 /**
  * Chromium asks for a HarmonyOS permission at the moment a site is granted the
@@ -47,5 +49,29 @@ export class PermissionRequestAdapter {
       }
     });
     return { requestId, granted, denied };
+  }
+
+  /**
+   * The app's own location permission, which Chromium resolves a site request
+   * against before prompting: with the app permission denied there is nothing a
+   * site grant could achieve, so the site prompt is skipped entirely.
+   *
+   * 'notDetermined' covers the case where the token cannot be read at all --
+   * reporting a denial we have not established would suppress prompts the user
+   * should still see.
+   */
+  static locationState(): SystemPermissionState {
+    try {
+      const info = bundleManager.getBundleInfoForSelfSync(
+        bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION);
+      const tokenId = info.appInfo.accessTokenId;
+      const granted = abilityAccessCtrl.createAtManager()
+        .checkAccessTokenSync(tokenId, 'ohos.permission.LOCATION');
+      return granted === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED
+        ? 'allowed' : 'denied';
+    } catch (error) {
+      console.error('HarmonyOS location permission check failed:', error);
+      return 'notDetermined';
+    }
   }
 }

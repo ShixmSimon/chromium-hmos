@@ -133,6 +133,10 @@ struct AuraShell {
         auxiliaryDismissRevision: this.auxiliaryDismissRevision,
         onBrowserState: (state: BrowserStateSnapshot): void => {
           this.browserState = state;
+          if (!this.systemPermissionReported) {
+            this.systemPermissionReported = true;
+            this.reportSystemPermissionState();
+          }
           this.currentTabCastSession.update(state);
           this.knockShareSession.update(state);
         },
@@ -350,7 +354,21 @@ struct AuraShell {
     });
   }
 
+  // Chromium resolves a site's geolocation request against the app's own
+  // permission before prompting, so it needs to know that permission. Reported
+  // once the native side is live, and again after any request that could have
+  // changed it.
+  private reportSystemPermissionState(): void {
+    this.executeBrowserCommand({
+      command: 'systemPermissionState',
+      location: PermissionRequestAdapter.locationState()
+    });
+  }
+
+  private systemPermissionReported: boolean = false;
+
   private completePermissionRequest(result: PermissionRequestResultPayload): void {
+    this.reportSystemPermissionState();
     this.executeBrowserCommand({
       command: 'permissionResult',
       requestId: result.requestId,

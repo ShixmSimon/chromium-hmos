@@ -42,6 +42,10 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_manager_observer.h"
+#include "chrome/browser/ui/ohos/system_geolocation_source_ohos.h"
+#include "services/device/public/cpp/geolocation/buildflags.h"
+#include "services/device/public/cpp/geolocation/geolocation_system_permission_manager.h"
+#include "services/device/public/cpp/geolocation/location_system_permission_status.h"
 #include "components/content_settings/core/browser/content_settings_observer.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
@@ -1152,6 +1156,25 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     return;
   }
 
+#if BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
+  if (*name == "systemPermissionState") {
+    // The shell reports the app's own location permission: at startup, and
+    // again whenever a request it ran changes it.
+    const std::string* location = command.FindString("location");
+    if (location) {
+      device::LocationSystemPermissionStatus status =
+          device::LocationSystemPermissionStatus::kNotDetermined;
+      if (*location == "allowed") {
+        status = device::LocationSystemPermissionStatus::kAllowed;
+      } else if (*location == "denied") {
+        status = device::LocationSystemPermissionStatus::kDenied;
+      }
+      SystemGeolocationSourceOhos::SetSystemPermission(status);
+    }
+    return;
+  }
+#endif
+
   if (*name == "permissionResult") {
     const base::ListValue* granted_values = command.FindList("granted");
     const base::ListValue* denied_values = command.FindList("denied");
@@ -1416,6 +1439,15 @@ void NotifyAuraShellBrowserStarted() {
   ui::SetOhosSelectFileDialogRequestCallback(
       base::BindRepeating(&DispatchFilePickerRequest));
   OhosWebPermissionWatcher::GetInstance().Start();
+#if BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
+  // Must exist before anything asks for a position: GeolocationProviderImpl
+  // and GeolocationPermissionContextSystem both read the manager once the
+  // buildflag is on.
+  if (!device::GeolocationSystemPermissionManager::GetInstance()) {
+    device::GeolocationSystemPermissionManager::SetInstance(
+        SystemGeolocationSourceOhos::CreateGeolocationSystemPermissionManager());
+  }
+#endif
   RuntimeBridgeState& state = GetState();
   std::optional<GURL> pending_url;
   std::optional<std::string> pending_theme_font_id;
@@ -1542,6 +1574,7 @@ bool ExecuteAuraShellBrowserCommand(gfx::AcceleratedWidget widget,
       "requestState",
       "filePickerResult",
       "permissionResult",
+      "systemPermissionState",
   };
   if (!name || std::ranges::find(kSupportedCommands, *name) ==
                    std::ranges::end(kSupportedCommands)) {

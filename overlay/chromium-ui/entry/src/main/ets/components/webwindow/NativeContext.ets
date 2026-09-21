@@ -145,6 +145,7 @@ export interface BrowserCommandPayload {
   canceled?: boolean;
   granted?: string[];
   denied?: string[];
+  location?: 'allowed' | 'denied' | 'notDetermined';
   presentation?: 'popup' | 'sheet';
   anchorX?: number;
   anchorY?: number;
