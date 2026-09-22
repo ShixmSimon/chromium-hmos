@@ -20364,6 +20364,19 @@ index 490b8a3a..5c0f44c4 100644
  #else
      false;
  #endif
+diff --git a/device/bluetooth/bluetooth_device.h b/device/bluetooth/bluetooth_device.h
+--- a/device/bluetooth/bluetooth_device.h
++++ b/device/bluetooth/bluetooth_device.h
+@@ -269,7 +269,8 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothDevice {
+   // and metrics logging,
+   virtual uint32_t GetBluetoothClass() const = 0;
+ 
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
++    BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+   // Returns the transport type of the device. Some devices only support one
+   // of BR/EDR or LE, and some support both.
+   virtual BluetoothTransport GetType() const = 0;
 diff --git a/third_party/blink/renderer/platform/runtime_enabled_features.json5 b/third_party/blink/renderer/platform/runtime_enabled_features.json5
 index f56a8841..c5073f98 100644
 --- a/third_party/blink/renderer/platform/runtime_enabled_features.json5

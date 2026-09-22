@@ -65,7 +65,8 @@ public:
   }
 
   void DispatchMessage(const std::string &message_json) {
-    std::optional<base::Value> value = base::JSONReader::Read(message_json);
+    std::optional<base::Value> value =
+        base::JSONReader::Read(message_json, base::JSON_PARSE_RFC);
     if (!value || !value->is_dict()) {
       return;
     }
