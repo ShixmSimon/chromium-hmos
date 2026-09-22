@@ -15,7 +15,7 @@ Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-device-chooser-width.patch
 
 diff --git a/chrome/browser/ui/views/device_chooser_content_view.cc b/chrome/browser/ui/views/device_chooser_content_view.cc
-index 30f20e9..4555068 100644
+index 30f20e9..9f87bb2 100644
 --- a/chrome/browser/ui/views/device_chooser_content_view.cc
 +++ b/chrome/browser/ui/views/device_chooser_content_view.cc
 @@ -4,10 +4,12 @@
@@ -31,15 +31,16 @@ index 30f20e9..4555068 100644
  #include "base/numerics/safe_conversions.h"
  #include "base/strings/strcat.h"
  #include "chrome/browser/ui/views/chrome_layout_provider.h"
-@@ -20,6 +22,7 @@
+@@ -20,6 +22,8 @@
  #include "ui/base/mojom/dialog_button.mojom.h"
  #include "ui/base/resource/resource_bundle.h"
  #include "ui/base/ui_base_features.h"
++#include "ui/display/display.h"
 +#include "ui/display/screen.h"
  #include "ui/gfx/color_palette.h"
  #include "ui/gfx/geometry/point.h"
  #include "ui/gfx/geometry/rect.h"
-@@ -51,7 +54,23 @@ DeviceChooserContentView::DeviceChooserContentView(
+@@ -51,7 +55,25 @@ DeviceChooserContentView::DeviceChooserContentView(
      : chooser_controller_(std::move(chooser_controller)) {
    chooser_controller_->set_view(this);
  
@@ -47,16 +48,18 @@ index 30f20e9..4555068 100644
 +  // 402dp is wider than the phone this port runs on (377dp of work area), and
 +  // a bubble is not shrunk to fit what is left: the chooser rendered with its
 +  // right edge past the display, which put the Connect button where no touch
-+  // can reach it. Give the frame room on both sides instead -- 60dp of it on
-+  // the device measured, rounded up -- so the bubble ends up inside the
-+  // screen. Desktop keeps the fixed width.
++  // could reach it. Leave the bubble frame room on both sides instead -- 60dp
++  // of it on the device measured, rounded up -- so the whole bubble lands
++  // inside the screen. Desktop keeps the fixed width, and so does a startup
++  // with no screen to ask.
++  constexpr int kPreferredWidth = 402;
 +  constexpr int kBubbleFrameAllowance = 64;
-+  const int available = display::Screen::GetScreen()
-+                            ->GetPrimaryDisplay()
-+                            .work_area()
-+                            .width();
-+  SetPreferredSize(
-+      gfx::Size(std::min(402, available - kBubbleFrameAllowance), 320));
++  int width = kPreferredWidth;
++  if (display::Screen* screen = display::Screen::Get()) {
++    width = std::min(width, screen->GetPrimaryDisplay().work_area().width() -
++                                kBubbleFrameAllowance);
++  }
++  SetPreferredSize(gfx::Size(width, 320));
 +#else
    SetPreferredSize(gfx::Size(402, 320));
 +#endif

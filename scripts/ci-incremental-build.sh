@@ -48,15 +48,33 @@ say() { printf '== %s\n' "$*"; }
 apply_incremental_patch() {
   local patch="$1"
   local name="${patch##*/}"
-  if git -C "$src" apply --check "$patch"; then
+  local rel="${patch#"${repo_root}/"}"
+  if git -C "$src" apply --check "$patch" 2>/dev/null; then
     git -C "$src" apply "$patch" || die "failed to apply ${name}"
     say "applied incremental patch ${name}"
     return
   fi
-  if git -C "$src" apply --reverse --check "$patch"; then
+  if git -C "$src" apply --reverse --check "$patch" 2>/dev/null; then
     say "incremental patch ${name} already applied"
     return
   fi
+  # The patch was edited since this tree last built. The tree is persistent and
+  # never reset, so an older revision of this same patch is still applied to
+  # it, and neither check above can succeed. Back that revision out and apply
+  # the new one. Without this, editing any patch in the list wedges every
+  # build after it with "neither applies nor is already present".
+  local rev
+  for rev in $(git -C "$repo_root" log --format=%H -n 20 -- "$rel"); do
+    if git -C "$repo_root" show "${rev}:${rel}" 2>/dev/null |
+        git -C "$src" apply --reverse --check - 2>/dev/null; then
+      git -C "$repo_root" show "${rev}:${rel}" | git -C "$src" apply --reverse ||
+        die "failed to back out ${name} at ${rev}"
+      say "backed out incremental patch ${name} at ${rev:0:8}"
+      git -C "$src" apply "$patch" || die "failed to apply ${name}"
+      say "applied incremental patch ${name}"
+      return
+    fi
+  done
   die "incremental patch ${name} neither applies nor is already present"
 }
 
