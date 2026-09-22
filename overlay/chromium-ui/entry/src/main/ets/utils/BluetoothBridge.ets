@@ -185,7 +185,7 @@ export class BluetoothBridge {
   private async execute(command: BluetoothCommand): Promise<void> {
     switch (command.method) {
       case 'getAdapterState':
-        this.getAdapterState(command.id);
+        await this.getAdapterState(command.id);
         return;
       case 'startScan':
         await this.startScan(command.id);
@@ -222,7 +222,28 @@ export class BluetoothBridge {
     }
   }
 
-  private getAdapterState(id: number): void {
+  /**
+   * The first message Chromium sends for Web Bluetooth, from
+   * BluetoothAdapterOhos::Initialize, and it waits for this reply before it
+   * decides the adapter is usable -- so this is the last moment before the
+   * device chooser exists.
+   *
+   * The permission is taken here for exactly that reason. Asking inside
+   * startScan meant the OS dialog arrived on top of a chooser that was already
+   * showing, and a bubble that loses activation closes: requestDevice() then
+   * rejected with "NotFoundError: User cancelled", on the first call of the
+   * app's life and never again, because the second call found the permission
+   * already granted and never raised a dialog.
+   *
+   * Reporting the adapter as off when the user refuses is the honest answer.
+   * Scanning cannot succeed without the permission, and a chooser that can
+   * never list anything is a worse way to say no than not opening one.
+   */
+  private async getAdapterState(id: number): Promise<void> {
+    if (!await this.ensurePermission()) {
+      this.sendReply({ id: id, ok: true, powered: false });
+      return;
+    }
     const state = access.getState();
     this.sendReply({
       id: id,
