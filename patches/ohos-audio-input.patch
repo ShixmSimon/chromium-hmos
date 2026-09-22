@@ -1,0 +1,23 @@
+Wire the HarmonyOS OHAudio microphone stream into Chromium audio capture.
+
+The implementation is new code under overlay/media/audio/ohos/, so this patch
+only adds those files to the existing OHOS source list in media/audio/BUILD.gn.
+libohaudio is already linked by chromium-154-harmonyos.patch for audio output.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch. Apply
+this patch once to a persistent runner whose main adapter patch is already
+present:
+
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-audio-input.patch
+
+diff --git a/media/audio/BUILD.gn b/media/audio/BUILD.gn
+--- a/media/audio/BUILD.gn
++++ b/media/audio/BUILD.gn
+@@ -299,5 +299,7 @@ source_set("audio") {
+       "ohos/audio_manager_ohos.cc",
+       "ohos/audio_manager_ohos.h",
++      "ohos/ohos_audio_input.cc",
++      "ohos/ohos_audio_input.h",
+       "ohos/ohos_audio_output.cc",
+       "ohos/ohos_audio_output.h",
+     ]

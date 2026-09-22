@@ -45,6 +45,7 @@ class MEDIA_EXPORT AudioManagerOhos final : public AudioManagerBase {
       const LogCallback& log_callback) override;
 
  protected:
+  bool GetAudioInputDeviceNames(AudioDeviceNames* device_names) override;
   AudioParameters GetPreferredOutputStreamParameters(
       const std::string& output_device_id,
       const AudioParameters& input_params) override;

@@ -8,7 +8,10 @@
 #include <utility>
 
 #include "base/command_line.h"
+#include "media/audio/audio_device_description.h"
+#include "media/audio/audio_device_name.h"
 #include "media/audio/fake_audio_manager.h"
+#include "media/audio/ohos/ohos_audio_input.h"
 #include "media/audio/ohos/ohos_audio_output.h"
 #include "media/base/channel_layout.h"
 #include "media/base/media_switches.h"
@@ -33,7 +36,7 @@ bool AudioManagerOhos::HasAudioOutputDevices() {
 }
 
 bool AudioManagerOhos::HasAudioInputDevices() {
-  return false;
+  return true;
 }
 
 AudioParameters AudioManagerOhos::GetInputStreamParameters(
@@ -64,14 +67,34 @@ AudioInputStream* AudioManagerOhos::MakeLinearInputStream(
     const AudioParameters& params,
     const std::string& device_id,
     const LogCallback& log_callback) {
-  return nullptr;
+  if (!AudioDeviceDescription::IsDefaultDevice(device_id)) {
+    return nullptr;
+  }
+  return new OhosAudioInputStream(this, params);
 }
 
 AudioInputStream* AudioManagerOhos::MakeLowLatencyInputStream(
     const AudioParameters& params,
     const std::string& device_id,
     const LogCallback& log_callback) {
-  return nullptr;
+  if (!AudioDeviceDescription::IsDefaultDevice(device_id)) {
+    return nullptr;
+  }
+  return new OhosAudioInputStream(this, params);
+}
+
+bool AudioManagerOhos::GetAudioInputDeviceNames(
+    AudioDeviceNames* device_names) {
+  DCHECK(GetTaskRunner()->BelongsToCurrentThread());
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kDisableAudioInput)) {
+    return true;
+  }
+  if (!device_names) {
+    return false;
+  }
+  *device_names = {AudioDeviceName::CreateDefault()};
+  return true;
 }
 
 AudioParameters AudioManagerOhos::GetPreferredOutputStreamParameters(

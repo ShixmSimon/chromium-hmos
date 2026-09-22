@@ -16536,7 +16536,7 @@ diff --git a/media/audio/BUILD.gn b/media/audio/BUILD.gn
 index 42f2bcc4ed..063a13b34a 100644
 --- a/media/audio/BUILD.gn
 +++ b/media/audio/BUILD.gn
-@@ -294,6 +294,16 @@ source_set("audio") {
+@@ -294,6 +294,18 @@ source_set("audio") {
      sources += [ "linux/audio_manager_linux.cc" ]
    }
  
@@ -16544,6 +16544,8 @@ index 42f2bcc4ed..063a13b34a 100644
 +    sources += [
 +      "ohos/audio_manager_ohos.cc",
 +      "ohos/audio_manager_ohos.h",
++      "ohos/ohos_audio_input.cc",
++      "ohos/ohos_audio_input.h",
 +      "ohos/ohos_audio_output.cc",
 +      "ohos/ohos_audio_output.h",
 +    ]
