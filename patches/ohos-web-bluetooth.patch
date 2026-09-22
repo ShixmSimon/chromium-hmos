@@ -1,0 +1,98 @@
+diff --git a/device/bluetooth/BUILD.gn b/device/bluetooth/BUILD.gn
+index 448f1df3..5b15fb6b 100644
+--- a/device/bluetooth/BUILD.gn
++++ b/device/bluetooth/BUILD.gn
+@@ -214,6 +214,19 @@ component("bluetooth") {
+     deps += [ ":jni_headers" ]
+   }
+ 
++  if (is_ohos) {
++    sources += [
++      "ohos/bluetooth_adapter_ohos.cc",
++      "ohos/bluetooth_adapter_ohos.h",
++      "ohos/bluetooth_bridge_ohos.cc",
++      "ohos/bluetooth_bridge_ohos.h",
++      "ohos/bluetooth_device_ohos.cc",
++      "ohos/bluetooth_device_ohos.h",
++      "ohos/bluetooth_gatt_ohos.cc",
++      "ohos/bluetooth_gatt_ohos.h",
++    ]
++  }
++
+   if (is_chromeos) {
+     deps += [
+       "//ash/constants",
+diff --git a/device/bluetooth/bluetooth_adapter.cc b/device/bluetooth/bluetooth_adapter.cc
+index f1317d5b..55b63ed3 100644
+--- a/device/bluetooth/bluetooth_adapter.cc
++++ b/device/bluetooth/bluetooth_adapter.cc
+@@ -34,7 +34,8 @@ BluetoothAdapter::ServiceOptions::ServiceOptions() = default;
+ BluetoothAdapter::ServiceOptions::~ServiceOptions() = default;
+ 
+ #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS) && \
+-    !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_LINUX)
++    !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_LINUX) && \
++    !BUILDFLAG(IS_OHOS)
+ // static
+ scoped_refptr<BluetoothAdapter> BluetoothAdapter::CreateAdapter() {
+   NOTREACHED();
+diff --git a/device/bluetooth/bluetooth_adapter_factory.cc b/device/bluetooth/bluetooth_adapter_factory.cc
+index 490b8a3a..5c0f44c4 100644
+--- a/device/bluetooth/bluetooth_adapter_factory.cc
++++ b/device/bluetooth/bluetooth_adapter_factory.cc
+@@ -42,7 +42,7 @@ BluetoothAdapterFactory* BluetoothAdapterFactory::Get() {
+ static constexpr bool kBluetoothSupportedByPlatform =
+ #if !defined(NO_PLATFORM_BLUETOOTH)
+     BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) ||
+-    BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_APPLE);
++    BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_OHOS);
+ #else
+     false;
+ #endif
+diff --git a/third_party/blink/renderer/build/scripts/templates/macros.tmpl b/third_party/blink/renderer/build/scripts/templates/macros.tmpl
+index 5e483b4a9a..f3740f3b93 100644
+--- a/third_party/blink/renderer/build/scripts/templates/macros.tmpl
++++ b/third_party/blink/renderer/build/scripts/templates/macros.tmpl
+@@ -90,21 +90,5 @@ case {{ length }}:
+ {%- endmacro %}
+ 
+ {%- macro platform_buildflag(platform) -%}
+-{#- OHOS is an exclusive platform: IS_ANDROID, IS_LINUX and the rest are all 0
+-    for it. A feature whose status is a per-platform dict therefore lands in the
+-    "default" arm, and a dict with no "default" key means disabled -- which
+-    silently turned off every such feature, Element.ariaNotify and
+-    window.EyeDropper among them. Linux rather than Android: EyeDropperAPI and
+-    a dozen more are off on Android but stable on Linux, and Android would turn
+-    WebBluetooth/WebNFC/ContactsManager on, whose device-service backends do
+-    not exist here -- the same shape that crashed the browser via WebHID and
+-    Web Serial. Tie OHOS to Linux here rather than
+-    annotating each feature, so the mapping keeps following upstream as
+-    features come and go. The default arm negates this same macro, so the two
+-    arms stay mutually exclusive. -#}
+-{%- if platform == 'Linux' -%}
+-(BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OHOS))
+-{%- else -%}
+ BUILDFLAG(IS_{{platform | upper}})
+-{%- endif -%}
+ {%- endmacro -%}
+diff --git a/third_party/blink/renderer/platform/runtime_enabled_features.json5 b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+index f56a8841..c5073f98 100644
+--- a/third_party/blink/renderer/platform/runtime_enabled_features.json5
++++ b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+@@ -37,7 +37,7 @@
+     // shipped stable can have its runtime flag removed soon after.
+     status: {
+       valid_values: ["stable", "experimental", "test"],
+-      valid_keys: ["Android", "Win", "ChromeOS", "Mac", "Linux", "iOS", "Fuchsia"]
++      valid_keys: ["Android", "Win", "ChromeOS", "Mac", "Linux", "iOS", "Fuchsia", "OHOS"]
+     },
+ 
+     // "implied_by" or "depends_on" specifies relationship to other features:
+@@ -6878,6 +6878,7 @@
+         "iOS": "stable",
+         "Mac": "stable",
+         "Win": "stable",
++        "OHOS": "stable",
+         "default": "experimental",
+       },
+       base_feature: "none",

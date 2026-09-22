@@ -234,8 +234,10 @@ export struct WebWindow {
       this.setSurfaceReady(false);
       this.showDiagnostic('1/2 onLoad 已触发 (libweb_engine.so 已加载)');
       this.nativeContext = new NativeContext(this.xComponentId);
+      const abilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
       this.nativeContext.init(
         context as INativeContext,
+        abilityContext,
         startupConfig,
         (action: string): void => this.handleWindowAction(action),
         (stateJson: string): void => this.handleBrowserState(stateJson),

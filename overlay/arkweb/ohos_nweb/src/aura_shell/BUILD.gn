@@ -61,6 +61,7 @@ source_set("aura_shell_api") {
   deps = [
     ":aura_shell_core",
     "//base",
+    "//device/bluetooth",
   ]
 
   if (target_cpu == "arm64") {

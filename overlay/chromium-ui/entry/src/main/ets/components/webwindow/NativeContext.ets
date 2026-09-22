@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 
+import { common } from '@kit.AbilityKit';
+import { BluetoothBridge, BluetoothNativePort } from '../../utils/BluetoothBridge';
 import { AuraStartupConfig } from '../../utils/DeviceType';
 
 export interface WindowRect {
@@ -177,7 +179,7 @@ export interface AuxiliaryWindowState {
   pwaStartUrl?: string;
 }
 
-export interface INativeContext {
+export interface INativeContext extends BluetoothNativePort {
   Initialize(xComponentId: string, configJson: string, onWindowAction: (action: string) => void): void;
   OnSurfaceCreated(xComponentId: string): void;
   OnSurfaceChanged(
@@ -197,6 +199,8 @@ export interface INativeContext {
   DispatchKeyEvent(xComponentId: string, eventJson: string): boolean;
   Navigate(xComponentId: string, url: string): void;
   SetBrowserEventCallback(xComponentId: string, callback: (stateJson: string) => void): void;
+  SetBluetoothEventCallback(xComponentId: string, callback: (commandJson: string) => void): void;
+  CompleteBluetoothMessage(xComponentId: string, messageJson: string): void;
   ExecuteBrowserCommand(xComponentId: string, commandJson: string): boolean;
   SetAuxiliaryWindowEventCallback(xComponentId: string, callback: (stateJson: string) => void): void;
   DismissAuxiliaryWindow(xComponentId: string, widget: number): boolean;
@@ -206,6 +210,7 @@ export interface INativeContext {
 export class NativeContext {
   private readonly xComponentId: string;
   private nativeContext: INativeContext | null = null;
+  private bluetoothBridge: BluetoothBridge | null = null;
   private onWindowAction: (action: string) => void = (_action: string): void => {};
   private onBrowserState: (stateJson: string) => void = (_stateJson: string): void => {};
   private onAuxiliaryWindowState: (stateJson: string) => void = (_stateJson: string): void => {};
@@ -225,6 +230,7 @@ export class NativeContext {
 
   init(
     context: INativeContext,
+    abilityContext: common.UIAbilityContext,
     config: AuraStartupConfig,
     onWindowAction: (action: string) => void,
     onBrowserState: (stateJson: string) => void,
@@ -234,6 +240,7 @@ export class NativeContext {
     this.onWindowAction = onWindowAction;
     this.onBrowserState = onBrowserState;
     this.onAuxiliaryWindowState = onAuxiliaryWindowState;
+    this.bluetoothBridge = new BluetoothBridge(abilityContext, this.xComponentId, context);
     this.callVoid('Initialize', () => {
       this.nativeContext!.Initialize(this.xComponentId, JSON.stringify(config), this.onWindowAction);
       this.nativeContext!.SetBrowserEventCallback(this.xComponentId, this.onBrowserState);
@@ -360,6 +367,8 @@ export class NativeContext {
       return;
     }
 
+    this.bluetoothBridge?.destroy();
+    this.bluetoothBridge = null;
     this.callVoid('Shutdown', () => {
       this.nativeContext!.Shutdown(this.xComponentId);
     });

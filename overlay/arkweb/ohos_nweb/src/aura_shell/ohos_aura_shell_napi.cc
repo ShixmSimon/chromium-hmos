@@ -19,6 +19,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/values.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+#include "device/bluetooth/ohos/bluetooth_bridge_ohos.h"
 #include "ohos_nweb/src/aura_shell/ohos_aura_shell_host.h"
 #include "ohos_nweb/src/aura_shell/ohos_chrome_main_runner.h"
 #include "ohos_nweb/src/nweb_hilog.h"
@@ -33,6 +34,7 @@ using WindowActionFunctionMap = std::map<std::string, napi_threadsafe_function>;
 using BrowserEventFunctionMap = std::map<std::string, napi_threadsafe_function>;
 using AuxiliaryWindowEventFunctionMap =
     std::map<std::string, napi_threadsafe_function>;
+using BluetoothFunctionMap = std::map<std::string, napi_threadsafe_function>;
 
 constexpr char kAuxiliarySurfacePrefix[] = "aura_aux_";
 constexpr char kPwaSurfacePrefix[] = "aura_pwa_";
@@ -69,6 +71,16 @@ std::mutex& AuxiliaryWindowEventFunctionsMutex() {
 
 AuxiliaryWindowEventFunctionMap& AuxiliaryWindowEventFunctions() {
   static base::NoDestructor<AuxiliaryWindowEventFunctionMap> functions;
+  return *functions;
+}
+
+std::mutex& BluetoothFunctionsMutex() {
+  static base::NoDestructor<std::mutex> mutex;
+  return *mutex;
+}
+
+BluetoothFunctionMap& BluetoothFunctions() {
+  static base::NoDestructor<BluetoothFunctionMap> functions;
   return *functions;
 }
 
@@ -297,6 +309,78 @@ void ReleaseBrowserEventFunction(const std::string& component_id) {
   }
   if (!callbacks_remain) {
     GetOhosChromeMainRunner().SetBrowserStateCallback({});
+  }
+}
+
+void DispatchBluetoothCommand(const std::string& command_json) {
+  std::lock_guard<std::mutex> lock(BluetoothFunctionsMutex());
+  napi_threadsafe_function function = nullptr;
+  auto main = BluetoothFunctions().find("aura_shell");
+  if (main != BluetoothFunctions().end()) {
+    function = main->second;
+  } else if (!BluetoothFunctions().empty()) {
+    function = BluetoothFunctions().begin()->second;
+  }
+  if (!function) {
+    return;
+  }
+  auto command_copy = std::make_unique<std::string>(command_json);
+  if (napi_call_threadsafe_function(function, command_copy.get(),
+                                    napi_tsfn_nonblocking) == napi_ok) {
+    command_copy.release();
+  } else {
+    WVLOG_W("AuraShell dropped a Bluetooth command");
+  }
+}
+
+void RegisterBluetoothFunction(napi_env env,
+                               const std::string& component_id,
+                               napi_value callback) {
+  napi_valuetype callback_type = napi_undefined;
+  if (napi_typeof(env, callback, &callback_type) != napi_ok ||
+      callback_type != napi_function) {
+    WVLOG_E("AuraShell Bluetooth handler is not a function");
+    return;
+  }
+
+  napi_value resource_name = nullptr;
+  napi_create_string_utf8(env, "ChromiumAuraBluetooth", NAPI_AUTO_LENGTH,
+                          &resource_name);
+  napi_threadsafe_function function = nullptr;
+  if (napi_create_threadsafe_function(
+          env, callback, nullptr, resource_name, 0, 1, nullptr, nullptr,
+          nullptr, CallJsBrowserEvent, &function) != napi_ok) {
+    WVLOG_E("AuraShell failed to create Bluetooth bridge");
+    return;
+  }
+  napi_unref_threadsafe_function(env, function);
+  {
+    std::lock_guard<std::mutex> lock(BluetoothFunctionsMutex());
+    auto [it, inserted] =
+        BluetoothFunctions().emplace(component_id, function);
+    if (!inserted) {
+      napi_release_threadsafe_function(function, napi_tsfn_abort);
+      return;
+    }
+  }
+  device::SetBluetoothCommandCallbackOhos(
+      base::BindRepeating(&DispatchBluetoothCommand));
+}
+
+void ReleaseBluetoothFunction(const std::string& component_id) {
+  bool callbacks_remain = false;
+  {
+    std::lock_guard<std::mutex> lock(BluetoothFunctionsMutex());
+    auto it = BluetoothFunctions().find(component_id);
+    if (it != BluetoothFunctions().end()) {
+      napi_release_threadsafe_function(it->second, napi_tsfn_abort);
+      BluetoothFunctions().erase(it);
+    }
+    callbacks_remain = !BluetoothFunctions().empty();
+  }
+  if (!callbacks_remain) {
+    device::SetBluetoothCommandCallbackOhos(
+        device::BluetoothCommandCallbackOhos());
   }
 }
 
@@ -1129,6 +1213,28 @@ napi_value SetBrowserEventCallback(napi_env env, napi_callback_info info) {
   return MakeUndefined(env);
 }
 
+napi_value SetBluetoothEventCallback(napi_env env, napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  if (argc < 2) {
+    return MakeUndefined(env);
+  }
+  RegisterBluetoothFunction(env, ReadString(env, args[0]), args[1]);
+  return MakeUndefined(env);
+}
+
+napi_value CompleteBluetoothMessage(napi_env env, napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  if (argc < 2) {
+    return MakeUndefined(env);
+  }
+  device::DispatchBluetoothMessageOhos(ReadString(env, args[1]));
+  return MakeUndefined(env);
+}
+
 napi_value ExecuteBrowserCommand(napi_env env, napi_callback_info info) {
   size_t argc = 2;
   napi_value args[2] = {nullptr};
@@ -1192,6 +1298,7 @@ napi_value Shutdown(napi_env env, napi_callback_info info) {
   ReleaseWindowActionFunction(component_id);
   ReleaseBrowserEventFunction(component_id);
   ReleaseAuxiliaryWindowEventFunction(component_id);
+  ReleaseBluetoothFunction(component_id);
   return MakeUndefined(env);
 }
 
@@ -1223,6 +1330,10 @@ napi_value InitAuraShellNapi(napi_env env, napi_value exports) {
       {"Navigate", nullptr, Navigate, nullptr, nullptr, nullptr, napi_default,
        nullptr},
       {"SetBrowserEventCallback", nullptr, SetBrowserEventCallback, nullptr,
+       nullptr, nullptr, napi_default, nullptr},
+      {"SetBluetoothEventCallback", nullptr, SetBluetoothEventCallback, nullptr,
+       nullptr, nullptr, napi_default, nullptr},
+      {"CompleteBluetoothMessage", nullptr, CompleteBluetoothMessage, nullptr,
        nullptr, nullptr, napi_default, nullptr},
       {"ExecuteBrowserCommand", nullptr, ExecuteBrowserCommand, nullptr,
        nullptr, nullptr, napi_default, nullptr},

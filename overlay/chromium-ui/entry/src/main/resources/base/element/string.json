@@ -41,6 +41,10 @@
       "value": "用于向您授权的网站提供麦克风声音"
     },
     {
+      "name": "bluetooth_permission_reason",
+      "value": "用于连接您授权给网站的附近蓝牙设备"
+    },
+    {
       "name": "motion_sensor_permission_reason",
       "value": "用于向您授权的网站提供设备方向与运动数据"
     }

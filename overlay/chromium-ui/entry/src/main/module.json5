@@ -153,6 +153,11 @@
         "usedScene": { "abilities": ["EntryAbility"], "when": "inuse" }
       },
       {
+        "name": "ohos.permission.ACCESS_BLUETOOTH",
+        "reason": "$string:bluetooth_permission_reason",
+        "usedScene": { "abilities": ["EntryAbility"], "when": "inuse" }
+      },
+      {
         "name": "ohos.permission.ACCELEROMETER",
         "reason": "$string:motion_sensor_permission_reason",
         "usedScene": { "abilities": ["EntryAbility"], "when": "inuse" }
