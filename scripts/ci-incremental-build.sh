@@ -176,6 +176,8 @@ fails=$(tr '\r' '\n' <"$log" | grep -c '^FAILED:' || true)
     tr '\r' '\n' <"$log" \
       | grep -E '^\.\./\.\.[^ ]*: *(error|fatal error): |undefined symbol:' \
       | sed -E 's#^\.\./\.\./##' | sort -u | head -60
+    printf '\n## log tail\n'
+    tr '\r' '\n' <"$log" | tail -120
   fi
 } >"${status_dir}/errors.txt"
 
