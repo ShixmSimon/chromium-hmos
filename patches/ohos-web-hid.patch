@@ -37,3 +37,10 @@ diff --git a/services/device/hid/hid_service.cc b/services/device/hid/hid_servic
 +#endif
  #if ((BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)) ||     BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) ||           BUILDFLAG(IS_ANDROID)
    return true;
+diff --git a/services/device/usb/BUILD.gn b/services/device/usb/BUILD.gn
+--- a/services/device/usb/BUILD.gn
++++ b/services/device/usb/BUILD.gn
+@@ -20,2 +20,3 @@ static_library("usb") {
+     "//services/device/serial:*",
++    "//services/device/hid:*",
+     "//services/device/usb/mojo:*",
