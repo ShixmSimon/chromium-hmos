@@ -66,6 +66,8 @@ apply_incremental_patch "${repo_root}/patches/ohos-battery.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-wake-lock.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-api.patch"
+# Temporary: remove with the patch once the chooser takes touch.
+apply_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
 
 # ---- sync overlay into the tree -------------------------------------------
 # The overlay holds whole files the adapter adds or replaces. Copying by

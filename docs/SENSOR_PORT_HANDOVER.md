@@ -18,10 +18,14 @@ green and ships nothing.
    `patches/`.** An overlay copy of an upstream file freezes it: one such
    override pinned a stale `llvm_version` and cost a 2h25m rebuild before
    anyone noticed.
-2. **CI never applies `patches/`.** The runner's Chromium tree is persistent,
-   so a patch is applied by hand once (`git -C <tree> apply <patch>`) and stays
-   applied. A patch that has not been applied on the runner simply does not
-   exist as far as CI is concerned, and CI still passes.
+2. **A patch only runs if it is named in the build script.**
+   `scripts/ci-incremental-build.sh` applies a fixed list through
+   `apply_incremental_patch`, which applies it, or skips it when it is already
+   present, or fails the build when it is neither. A patch that exists in
+   `patches/` but is not in that list is applied to the runner's persistent
+   tree by hand, once -- and until someone does, it simply does not exist as
+   far as the build is concerned, and CI still passes. Add new patches to the
+   list unless there is a reason not to.
 3. **CI skips most of the overlay when syncing into the tree** --
    `chromium-ui/*`, `ohos_arkweb_playground/*` and `arkweb/*` are dropped, with
    one carve-out: `arkweb/ohos_nweb/*` is synced, because it is Chromium's
