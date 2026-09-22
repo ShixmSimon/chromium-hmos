@@ -23,6 +23,7 @@
 #include "ohos_nweb/src/aura_shell/ohos_aura_shell_host.h"
 #include "ohos_nweb/src/aura_shell/ohos_chrome_main_runner.h"
 #include "ohos_nweb/src/nweb_hilog.h"
+#include "services/device/usb/ohos/usb_bridge_ohos.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 
 namespace ohos_nweb {
@@ -35,6 +36,7 @@ using BrowserEventFunctionMap = std::map<std::string, napi_threadsafe_function>;
 using AuxiliaryWindowEventFunctionMap =
     std::map<std::string, napi_threadsafe_function>;
 using BluetoothFunctionMap = std::map<std::string, napi_threadsafe_function>;
+using UsbFunctionMap = std::map<std::string, napi_threadsafe_function>;
 
 constexpr char kAuxiliarySurfacePrefix[] = "aura_aux_";
 constexpr char kPwaSurfacePrefix[] = "aura_pwa_";
@@ -81,6 +83,16 @@ std::mutex& BluetoothFunctionsMutex() {
 
 BluetoothFunctionMap& BluetoothFunctions() {
   static base::NoDestructor<BluetoothFunctionMap> functions;
+  return *functions;
+}
+
+std::mutex& UsbFunctionsMutex() {
+  static base::NoDestructor<std::mutex> mutex;
+  return *mutex;
+}
+
+UsbFunctionMap& UsbFunctions() {
+  static base::NoDestructor<UsbFunctionMap> functions;
   return *functions;
 }
 
@@ -381,6 +393,75 @@ void ReleaseBluetoothFunction(const std::string& component_id) {
   if (!callbacks_remain) {
     device::SetBluetoothCommandCallbackOhos(
         device::BluetoothCommandCallbackOhos());
+  }
+}
+
+void DispatchUsbCommand(const std::string& command_json) {
+  std::lock_guard<std::mutex> lock(UsbFunctionsMutex());
+  napi_threadsafe_function function = nullptr;
+  auto main = UsbFunctions().find("aura_shell");
+  if (main != UsbFunctions().end()) {
+    function = main->second;
+  } else if (!UsbFunctions().empty()) {
+    function = UsbFunctions().begin()->second;
+  }
+  if (!function) {
+    return;
+  }
+  auto command_copy = std::make_unique<std::string>(command_json);
+  if (napi_call_threadsafe_function(function, command_copy.get(),
+                                    napi_tsfn_nonblocking) == napi_ok) {
+    command_copy.release();
+  } else {
+    WVLOG_W("AuraShell dropped a USB command");
+  }
+}
+
+void RegisterUsbFunction(napi_env env,
+                         const std::string& component_id,
+                         napi_value callback) {
+  napi_valuetype callback_type = napi_undefined;
+  if (napi_typeof(env, callback, &callback_type) != napi_ok ||
+      callback_type != napi_function) {
+    WVLOG_E("AuraShell USB handler is not a function");
+    return;
+  }
+
+  napi_value resource_name = nullptr;
+  napi_create_string_utf8(env, "ChromiumAuraUsb", NAPI_AUTO_LENGTH,
+                          &resource_name);
+  napi_threadsafe_function function = nullptr;
+  if (napi_create_threadsafe_function(
+          env, callback, nullptr, resource_name, 0, 1, nullptr, nullptr,
+          nullptr, CallJsBrowserEvent, &function) != napi_ok) {
+    WVLOG_E("AuraShell failed to create USB bridge");
+    return;
+  }
+  napi_unref_threadsafe_function(env, function);
+  {
+    std::lock_guard<std::mutex> lock(UsbFunctionsMutex());
+    auto [it, inserted] = UsbFunctions().emplace(component_id, function);
+    if (!inserted) {
+      napi_release_threadsafe_function(function, napi_tsfn_abort);
+      return;
+    }
+  }
+  device::SetUsbCommandCallbackOhos(base::BindRepeating(&DispatchUsbCommand));
+}
+
+void ReleaseUsbFunction(const std::string& component_id) {
+  bool callbacks_remain = false;
+  {
+    std::lock_guard<std::mutex> lock(UsbFunctionsMutex());
+    auto it = UsbFunctions().find(component_id);
+    if (it != UsbFunctions().end()) {
+      napi_release_threadsafe_function(it->second, napi_tsfn_abort);
+      UsbFunctions().erase(it);
+    }
+    callbacks_remain = !UsbFunctions().empty();
+  }
+  if (!callbacks_remain) {
+    device::SetUsbCommandCallbackOhos(device::UsbCommandCallbackOhos());
   }
 }
 
@@ -1235,6 +1316,28 @@ napi_value CompleteBluetoothMessage(napi_env env, napi_callback_info info) {
   return MakeUndefined(env);
 }
 
+napi_value SetUsbEventCallback(napi_env env, napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  if (argc < 2) {
+    return MakeUndefined(env);
+  }
+  RegisterUsbFunction(env, ReadString(env, args[0]), args[1]);
+  return MakeUndefined(env);
+}
+
+napi_value CompleteUsbMessage(napi_env env, napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  if (argc < 2) {
+    return MakeUndefined(env);
+  }
+  device::DispatchUsbMessageOhos(ReadString(env, args[1]));
+  return MakeUndefined(env);
+}
+
 napi_value ExecuteBrowserCommand(napi_env env, napi_callback_info info) {
   size_t argc = 2;
   napi_value args[2] = {nullptr};
@@ -1299,6 +1402,7 @@ napi_value Shutdown(napi_env env, napi_callback_info info) {
   ReleaseBrowserEventFunction(component_id);
   ReleaseAuxiliaryWindowEventFunction(component_id);
   ReleaseBluetoothFunction(component_id);
+  ReleaseUsbFunction(component_id);
   return MakeUndefined(env);
 }
 
@@ -1335,6 +1439,10 @@ napi_value InitAuraShellNapi(napi_env env, napi_value exports) {
        nullptr, nullptr, napi_default, nullptr},
       {"CompleteBluetoothMessage", nullptr, CompleteBluetoothMessage, nullptr,
        nullptr, nullptr, napi_default, nullptr},
+      {"SetUsbEventCallback", nullptr, SetUsbEventCallback, nullptr, nullptr,
+       nullptr, napi_default, nullptr},
+      {"CompleteUsbMessage", nullptr, CompleteUsbMessage, nullptr, nullptr,
+       nullptr, napi_default, nullptr},
       {"ExecuteBrowserCommand", nullptr, ExecuteBrowserCommand, nullptr,
        nullptr, nullptr, napi_default, nullptr},
       {"SetAuxiliaryWindowEventCallback", nullptr,

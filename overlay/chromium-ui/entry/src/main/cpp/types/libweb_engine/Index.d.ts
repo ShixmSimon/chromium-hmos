@@ -34,4 +34,14 @@ export const OnThemeFontChanged: (xComponentId: string, fontId: string) => void;
 export const DispatchPointerEvent: (xComponentId: string, eventJson: string) => void;
 export const DispatchKeyEvent: (xComponentId: string, eventJson: string) => boolean;
 export const Navigate: (xComponentId: string, url: string) => void;
+export const SetBluetoothEventCallback: (
+  xComponentId: string,
+  callback: (commandJson: string) => void
+) => void;
+export const CompleteBluetoothMessage: (xComponentId: string, messageJson: string) => void;
+export const SetUsbEventCallback: (
+  xComponentId: string,
+  callback: (commandJson: string) => void
+) => void;
+export const CompleteUsbMessage: (xComponentId: string, messageJson: string) => void;
 export const Shutdown: (xComponentId: string) => void;

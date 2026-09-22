@@ -1,0 +1,64 @@
+diff --git a/services/device/usb/BUILD.gn b/services/device/usb/BUILD.gn
+--- a/services/device/usb/BUILD.gn
++++ b/services/device/usb/BUILD.gn
+@@ -78,6 +78,19 @@ static_library("usb") {
+     deps += [ ":jni_headers" ]
+   }
+ 
++  if (is_ohos) {
++    sources += [
++      "ohos/usb_bridge_ohos.cc",
++      "ohos/usb_bridge_ohos.h",
++      "ohos/usb_device_handle_ohos.cc",
++      "ohos/usb_device_handle_ohos.h",
++      "ohos/usb_device_ohos.cc",
++      "ohos/usb_device_ohos.h",
++      "ohos/usb_service_ohos.cc",
++      "ohos/usb_service_ohos.h",
++    ]
++  }
++
+   if (is_win) {
+     sources += [
+       "scoped_winusb_handle.cc",
+@@ -141,7 +153,7 @@ static_library("usb") {
+     deps += [ "//device/udev_linux" ]
+   }
+ 
+-  if (is_android || is_chromeos || is_linux) {
++  if (is_android || is_chromeos || is_linux || is_ohos) {
+     sources += [
+       "usb_device_handle_usbfs.cc",
+       "usb_device_handle_usbfs.h",
+diff --git a/services/device/usb/usb_device.h b/services/device/usb/usb_device.h
+--- a/services/device/usb/usb_device.h
++++ b/services/device/usb/usb_device.h
+@@ -157,6 +157,7 @@ class UsbDevice : public base::RefCountedThreadSafe<UsbDevice> {
+   friend class UsbServiceAndroid;
+   friend class UsbServiceImpl;
+   friend class UsbServiceLinux;
++  friend class UsbServiceOhos;
+   friend class UsbServiceMac;
+   friend class UsbServiceWin;
+ 
+diff --git a/services/device/usb/usb_service.cc b/services/device/usb/usb_service.cc
+--- a/services/device/usb/usb_service.cc
++++ b/services/device/usb/usb_service.cc
+@@ -18,6 +18,8 @@
+ 
+ #if BUILDFLAG(IS_ANDROID)
+ #include "services/device/usb/usb_service_android.h"
++#elif BUILDFLAG(IS_OHOS)
++#include "services/device/usb/ohos/usb_service_ohos.h"
+ #elif defined(USE_UDEV)
+ #include "services/device/usb/usb_service_linux.h"
+ #elif BUILDFLAG(IS_MAC)
+@@ -48,6 +50,8 @@ constexpr base::TaskTraits UsbService::kBlockingTaskTraits;
+ std::unique_ptr<UsbService> UsbService::Create() {
+ #if BUILDFLAG(IS_ANDROID)
+   return base::WrapUnique(new UsbServiceAndroid());
++#elif BUILDFLAG(IS_OHOS)
++  return base::WrapUnique(new UsbServiceOhos());
+ #elif defined(USE_UDEV)
+   return base::WrapUnique(new UsbServiceLinux());
+ #elif BUILDFLAG(IS_WIN)

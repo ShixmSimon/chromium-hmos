@@ -106,6 +106,7 @@ apply_incremental_patch "${repo_root}/patches/ohos-battery.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-wake-lock.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-api.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-web-usb.patch"
 # The press no longer steals focus from an open bubble, so the chooser does
 # not need its own opt-out from close-on-deactivate.
 retire_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-chooser-input.patch"
