@@ -140,6 +140,7 @@ struct RuntimeBridgeState {
   uint64_t browser_generation GUARDED_BY(lock) = 0;
   bool app_visible GUARDED_BY(lock) = true;
   bool app_focused GUARDED_BY(lock) = true;
+  bool app_focus_applied GUARDED_BY(lock) = false;
   std::map<gfx::AcceleratedWidget, bool> window_visibility GUARDED_BY(lock);
   std::map<gfx::AcceleratedWidget, bool> window_focus GUARDED_BY(lock);
   bool pending_shutdown GUARDED_BY(lock) = false;
@@ -1561,6 +1562,7 @@ void NotifyAuraShellBrowserStopped() {
   state.activation_epoch.clear();
   state.window_visibility.clear();
   state.window_focus.clear();
+  state.app_focus_applied = false;
   state.default_browser_state_callback.Reset();
   state.is_default_browser.reset();
   state.huawei_wallet_available = false;
@@ -1970,10 +1972,31 @@ void SetAuraShellBrowserFocused(gfx::AcceleratedWidget widget, bool focused) {
   {
     RuntimeBridgeState& state = GetState();
     base::AutoLock lock(state.lock);
+    // Re-asserting focus the window already has is not free: applying it runs
+    // ShowInactive() then Activate() then focuses the web contents, and that
+    // deactivates whatever Views bubble is open. The shell reports focus on
+    // every touch press -- ohos_aura_shell_napi.cc calls OnFocusChanged(true)
+    // on each DOWN -- so in the steady state this arrived once per tap, as a
+    // task racing the tap's own dispatch. A bubble that closes on deactivation
+    // died in that gap, including when the tap was inside the bubble.
+    //
+    // Only a change is worth applying. The first report for a window is a
+    // change by definition, which is why the map's absent key and the app-wide
+    // flag are treated as "not yet applied" rather than as a value.
     if (widget == gfx::kNullAcceleratedWidget) {
+      if (state.app_focus_applied && state.app_focused == focused) {
+        return;
+      }
       state.app_focused = focused;
+      state.app_focus_applied = true;
     } else {
-      state.window_focus[widget] = focused;
+      const auto [it, inserted] = state.window_focus.insert({widget, focused});
+      if (!inserted) {
+        if (it->second == focused) {
+          return;
+        }
+        it->second = focused;
+      }
     }
     ui_task_runner = state.ui_task_runner;
   }
