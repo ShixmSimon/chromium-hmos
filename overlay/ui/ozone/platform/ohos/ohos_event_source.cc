@@ -420,7 +420,9 @@ void OhosEventSource::DispatchOwnedEvent(std::unique_ptr<Event> event,
                  << static_cast<int>(event->type())
                  << " local=" << incoming_location.ToString()
                  << " root=" << incoming_root_location.ToString()
-                 << " target=" << dispatch_target_ << " hint=" << target_hint;
+                 << " target=" << dispatch_target_ << " hint=" << target_hint
+                 << " focused=" << GetOhosFocusedLogicalWindow()
+                 << " windows=" << DescribeOhosLogicalWindows();
   }
   if (event->IsLocatedEvent() &&
       dispatch_target_ != gfx::kNullAcceleratedWidget) {
