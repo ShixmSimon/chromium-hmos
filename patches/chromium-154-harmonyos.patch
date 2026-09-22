@@ -17649,7 +17649,7 @@ index aab001a89e..742178de33 100644
      return Sandbox::kPrintBackend;
    }
 diff --git a/services/device/device_service.cc b/services/device/device_service.cc
-index 913b569371..d28523c9bf 100644
+index 913b569371..56bc5f94 100644
 --- a/services/device/device_service.cc
 +++ b/services/device/device_service.cc
 @@ -7,6 +7,7 @@
@@ -17668,7 +17668,27 @@ index 913b569371..d28523c9bf 100644
  #include "services/device/power_monitor/power_monitor_message_broadcaster.h"
  #include "services/device/public/mojom/battery_monitor.mojom.h"
  #include "services/device/serial/serial_port_manager_impl.h"
-@@ -208,6 +210,13 @@ void DeviceService::BindVibrationManager(
+@@ -47,6 +49,10 @@
+ #include "services/device/hid/input_service_linux.h"
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "services/device/vibration/vibration_manager_ohos.h"
++#endif
++
+ namespace device {
+ 
+ DeviceServiceParams::DeviceServiceParams() = default;
+@@ -200,6 +206,8 @@ void DeviceService::BindVibrationManager(
+     mojo::PendingRemote<mojom::VibrationManagerListener> listener) {
+ #if BUILDFLAG(IS_ANDROID)
+   VibrationManagerAndroid::Create(std::move(receiver), std::move(listener));
++#elif BUILDFLAG(IS_OHOS)
++  VibrationManagerOhos::Create(std::move(receiver), std::move(listener));
+ #else
+   VibrationManagerImpl::Create(std::move(receiver), std::move(listener));
+ #endif
+@@ -208,6 +216,13 @@ void DeviceService::BindVibrationManager(
  void DeviceService::BindHidManager(
      mojo::PendingReceiver<mojom::HidManager> receiver) {
    if (!hid_manager_) {
@@ -17682,7 +17702,7 @@ index 913b569371..d28523c9bf 100644
      hid_manager_ = std::make_unique<HidManagerImpl>();
    }
    hid_manager_->AddReceiver(std::move(receiver));
-@@ -308,7 +317,12 @@ void DeviceService::BindSerialPortManager(
+@@ -308,7 +323,12 @@ void DeviceService::BindSerialPortManager(
    serial_port_manager_.AsyncCall(&SerialPortManagerImpl::Bind, FROM_HERE)
        .WithArgs(std::move(receiver));
  #else   // defined(IS_SERIAL_ENABLED_PLATFORM)
@@ -17733,6 +17753,36 @@ index c7083b9985..3ab27bb732 100644
    HidService(const HidService&) = delete;
    HidService& operator=(const HidService&) = delete;
    virtual ~HidService();
+diff --git a/services/device/vibration/BUILD.gn b/services/device/vibration/BUILD.gn
+index 04df28f0b8..ec5670eeaa 100644
+--- a/services/device/vibration/BUILD.gn
++++ b/services/device/vibration/BUILD.gn
+@@ -36,4 +36,13 @@ source_set("vibration") {
+ 
+     deps += [ "//services/device/vibration/android:vibration_jni_headers" ]
+   }
++
++  if (is_ohos) {
++    sources += [
++      "vibration_manager_ohos.cc",
++      "vibration_manager_ohos.h",
++    ]
++
++    libs = [ "ohvibrator.z" ]
++  }
+ }
+diff --git a/services/device/vibration/vibration_manager_impl.cc b/services/device/vibration/vibration_manager_impl.cc
+index 1e321bbd2e..d12e137c40 100644
+--- a/services/device/vibration/vibration_manager_impl.cc
++++ b/services/device/vibration/vibration_manager_impl.cc
+@@ -34,6 +34,7 @@ void VibrationManagerImpl::Vibrate(int64_t milliseconds,
+ }
+ 
+ void VibrationManagerImpl::Cancel(CancelCallback callback) {
++  PlatformCancel();
+   VibrationManagerImpl::cancelled_for_testing_ = true;
+   std::move(callback).Run();
+ }
 diff --git a/services/device/time_zone_monitor/BUILD.gn b/services/device/time_zone_monitor/BUILD.gn
 index 2009e857a5..e270520b0c 100644
 --- a/services/device/time_zone_monitor/BUILD.gn
