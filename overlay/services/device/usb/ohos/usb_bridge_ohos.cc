@@ -36,6 +36,15 @@ class UsbBridgeState {
     event_callback_ = std::move(callback);
   }
 
+  void SetHidEventCallback(UsbEventCallbackOhos callback) {
+    CHECK(base::SingleThreadTaskRunner::HasCurrentDefault());
+    {
+      base::AutoLock lock(lock_);
+      ui_task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
+    }
+    hid_event_callback_ = std::move(callback);
+  }
+
   void SendCommand(base::DictValue command, UsbResponseCallbackOhos callback) {
     const int request_id = ++next_request_id_;
     command.Set("id", request_id);
@@ -101,8 +110,18 @@ class UsbBridgeState {
       std::move(callback).Run(std::move(message));
       return;
     }
+    const std::string* event_type = message.FindString("event");
+    if (event_type && event_type->starts_with("hid")) {
+      if (hid_event_callback_) {
+        hid_event_callback_.Run(message);
+      }
+      return;
+    }
     if (event_callback_) {
       event_callback_.Run(message);
+    }
+    if (hid_event_callback_) {
+      hid_event_callback_.Run(message);
     }
   }
 
@@ -110,6 +129,7 @@ class UsbBridgeState {
   UsbCommandCallbackOhos command_callback_ GUARDED_BY(lock_);
   scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner_ GUARDED_BY(lock_);
   UsbEventCallbackOhos event_callback_;
+  UsbEventCallbackOhos hid_event_callback_;
   int next_request_id_ = 0;
   std::map<int, UsbResponseCallbackOhos> pending_responses_;
 };
@@ -131,6 +151,10 @@ void DispatchUsbMessageOhos(const std::string& message_json) {
 
 void SetUsbEventCallbackOhos(UsbEventCallbackOhos callback) {
   GetBridge().SetEventCallback(std::move(callback));
+}
+
+void SetHidEventCallbackOhos(UsbEventCallbackOhos callback) {
+  GetBridge().SetHidEventCallback(std::move(callback));
 }
 
 void SendUsbCommandOhos(base::DictValue command,

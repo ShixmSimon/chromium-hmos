@@ -1,0 +1,65 @@
+diff --git a/services/device/hid/BUILD.gn b/services/device/hid/BUILD.gn
+--- a/services/device/hid/BUILD.gn
++++ b/services/device/hid/BUILD.gn
+@@ -36,6 +36,17 @@ source_set("hid") {
+     "//services/device/public/mojom",
+   ]
+ 
++  if (is_ohos) {
++    sources += [
++      "hid_connection_ohos.cc",
++      "hid_connection_ohos.h",
++      "hid_service_ohos.cc",
++      "hid_service_ohos.h",
++    ]
++
++    deps += [ "//services/device/usb" ]
++  }
++
+   if ((is_linux || is_chromeos) && use_udev) {
+     sources += [
+       "hid_connection_linux.cc",
+diff --git a/services/device/hid/hid_service.cc b/services/device/hid/hid_service.cc
+--- a/services/device/hid/hid_service.cc
++++ b/services/device/hid/hid_service.cc
+@@ -20,6 +20,8 @@
+ #include "components/device_event_log/device_event_log.h"
+ 
+-#if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)
++#if BUILDFLAG(IS_OHOS)
++#include "services/device/hid/hid_service_ohos.h"
++#elif (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)
+ #include "services/device/hid/hid_service_linux.h"
+ #elif BUILDFLAG(IS_MAC)
+ #include "services/device/hid/hid_service_mac.h"
+@@ -72,7 +74,9 @@ constexpr base::TaskTraits HidService::kBlockingTaskTraits;
+ 
+ // static
+ std::unique_ptr<HidService> HidService::Create() {
+-#if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)
++#if BUILDFLAG(IS_OHOS)
++  return std::make_unique<HidServiceOhos>();
++#elif (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)
+   return std::make_unique<HidServiceLinux>();
+ #elif BUILDFLAG(IS_MAC)
+   return std::make_unique<HidServiceMac>();
+@@ -89,7 +93,7 @@ std::unique_ptr<HidService> HidService::Create() {
+ 
+ // static
+ bool HidService::IsSupported() {
+-#if ((BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)) ||     BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) ||           BUILDFLAG(IS_ANDROID)
++#if ((BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)) ||     BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) ||           BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+   return true;
+ #else
+   return false;
+diff --git a/services/device/usb/BUILD.gn b/services/device/usb/BUILD.gn
+--- a/services/device/usb/BUILD.gn
++++ b/services/device/usb/BUILD.gn
+@@ -16,6 +16,7 @@ static_library("usb") {
+   visibility = [
+     ":*",
+     "//services/device:*",
++    "//services/device/hid:*",
+     "//services/device/usb/mojo:*",
+   ]
+ 

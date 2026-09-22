@@ -16,6 +16,11 @@ interface UsbCommand {
   method: string;
   deviceName?: string;
   pipeId?: number;
+  connectionId?: number;
+  platformId?: string;
+  reportId?: number;
+  size?: number;
+  data?: number[];
 }
 
 interface UsbEndpointInfo {
@@ -69,10 +74,35 @@ interface UsbReply {
   fileDescriptor?: number;
   pipeId?: number;
   devices?: UsbDeviceInfo[];
+  hidDevices?: HidDeviceInfo[];
+  connectionId?: number;
+  data?: number[];
 }
 
 interface UsbEvent {
   event: string;
+  connectionId?: number;
+  data?: number[];
+}
+
+interface HidDeviceInfo {
+  platformId: string;
+  physicalDeviceId: string;
+  vendorId: number;
+  productId: number;
+  productName: string;
+  serialNumber: string;
+  reportDescriptor: number[];
+}
+
+interface HidConnectionState {
+  connectionId: number;
+  pipe: usb.USBDevicePipe;
+  iface: usb.USBInterface;
+  inputEndpoint: usb.USBEndpoint | undefined;
+  outputEndpoint: usb.USBEndpoint | undefined;
+  inputReportSize: number;
+  active: boolean;
 }
 
 /** Owns HarmonyOS USBDevicePipe objects used by Chromium's usbfs backend. */
@@ -80,8 +110,10 @@ export class UsbBridge {
   private readonly componentId: string;
   private readonly nativePort: UsbNativePort;
   private readonly pipes: Map<number, usb.USBDevicePipe> = new Map();
+  private readonly hidConnections: Map<number, HidConnectionState> = new Map();
   private subscriber: commonEventManager.CommonEventSubscriber | undefined = undefined;
   private nextPipeId: number = 1;
+  private nextHidConnectionId: number = 1;
 
   constructor(componentId: string, nativePort: UsbNativePort) {
     this.componentId = componentId;
@@ -96,6 +128,18 @@ export class UsbBridge {
   }
 
   destroy(): void {
+    this.hidConnections.forEach((connection: HidConnectionState): void => {
+      connection.active = false;
+      try {
+        usb.releaseInterface(connection.pipe, connection.iface);
+      } catch (_error) {
+      }
+      try {
+        usb.closePipe(connection.pipe);
+      } catch (_error) {
+      }
+    });
+    this.hidConnections.clear();
     this.pipes.forEach((pipe: usb.USBDevicePipe): void => {
       try {
         usb.closePipe(pipe);
@@ -138,6 +182,27 @@ export class UsbBridge {
         return;
       case 'close':
         this.close(command.id, command.pipeId ?? 0);
+        return;
+      case 'hidEnumerate':
+        await this.hidEnumerate(command.id);
+        return;
+      case 'hidOpen':
+        this.hidOpen(command.id, command.platformId ?? '', command.size ?? 0);
+        return;
+      case 'hidClose':
+        this.hidClose(command.id, command.connectionId ?? 0);
+        return;
+      case 'hidWrite':
+        await this.hidWrite(command.id, command.connectionId ?? 0,
+          command.data ?? [], command.reportId ?? 0);
+        return;
+      case 'hidGetFeature':
+        await this.hidGetFeature(command.id, command.connectionId ?? 0,
+          command.reportId ?? 0, command.size ?? 0);
+        return;
+      case 'hidSendFeature':
+        await this.hidSendFeature(command.id, command.connectionId ?? 0,
+          command.data ?? [], command.reportId ?? 0);
         return;
       default:
         throw new Error(`Unknown USB method: ${command.method}`);
@@ -187,6 +252,247 @@ export class UsbBridge {
       this.pipes.delete(pipeId);
     }
     this.sendReply({ id: id, ok: true });
+  }
+
+  private async hidEnumerate(id: number): Promise<void> {
+    const hidDevices: HidDeviceInfo[] = [];
+    for (const device of usb.getDevices()) {
+      const hidInterfaces = this.getHidInterfaces(device);
+      if (hidInterfaces.length === 0) {
+        continue;
+      }
+      const granted = usb.hasRight(device.name) || await usb.requestRight(device.name);
+      if (!granted) {
+        continue;
+      }
+
+      const pipe = usb.connectDevice(device);
+      try {
+        for (const iface of hidInterfaces) {
+          const descriptor = await this.readHidReportDescriptor(pipe, iface.id);
+          if (descriptor.length === 0) {
+            continue;
+          }
+          hidDevices.push({
+            platformId: `${device.name}#${iface.id}`,
+            physicalDeviceId: device.name,
+            vendorId: device.vendorId,
+            productId: device.productId,
+            productName: device.productName,
+            serialNumber: device.serial,
+            reportDescriptor: descriptor
+          });
+        }
+      } finally {
+        usb.closePipe(pipe);
+      }
+    }
+    this.sendReply({ id: id, ok: true, hidDevices: hidDevices });
+  }
+
+  private hidOpen(id: number, platformId: string, inputReportSize: number): void {
+    const separator = platformId.lastIndexOf('#');
+    if (separator <= 0) {
+      throw new Error('Invalid HID platform device ID');
+    }
+    const deviceName = platformId.substring(0, separator);
+    const interfaceNumber = Number(platformId.substring(separator + 1));
+    const device = this.findDevice(deviceName);
+    if (!usb.hasRight(deviceName)) {
+      throw new Error('USB device permission has not been granted');
+    }
+    const iface = this.getHidInterfaces(device).find(
+      (candidate: usb.USBInterface): boolean => candidate.id === interfaceNumber
+    );
+    if (!iface) {
+      throw new Error('HID interface is no longer available');
+    }
+
+    const pipe = usb.connectDevice(device);
+    const result = usb.claimInterface(pipe, iface, true);
+    if (result !== 0) {
+      usb.closePipe(pipe);
+      throw new Error(`Could not claim HID interface: ${result}`);
+    }
+    const connectionId = this.nextHidConnectionId++;
+    const connection: HidConnectionState = {
+      connectionId: connectionId,
+      pipe: pipe,
+      iface: iface,
+      inputEndpoint: iface.endpoints.find(
+        (endpoint: usb.USBEndpoint): boolean => endpoint.direction ===
+          usb.USBRequestDirection.USB_REQUEST_DIR_FROM_DEVICE
+      ),
+      outputEndpoint: iface.endpoints.find(
+        (endpoint: usb.USBEndpoint): boolean => endpoint.direction ===
+          usb.USBRequestDirection.USB_REQUEST_DIR_TO_DEVICE
+      ),
+      inputReportSize: inputReportSize,
+      active: true
+    };
+    this.hidConnections.set(connectionId, connection);
+    this.sendReply({ id: id, ok: true, connectionId: connectionId });
+    this.readHidInput(connection).catch((error: Error): void => {
+      if (connection.active) {
+        console.error(`HID input loop failed: ${String(error)}`);
+      }
+    });
+  }
+
+  private hidClose(id: number, connectionId: number): void {
+    const connection = this.hidConnections.get(connectionId);
+    if (connection) {
+      connection.active = false;
+      this.hidConnections.delete(connectionId);
+      try {
+        usb.releaseInterface(connection.pipe, connection.iface);
+      } catch (_error) {
+      }
+      usb.closePipe(connection.pipe);
+    }
+    this.sendReply({ id: id, ok: true });
+  }
+
+  private async hidWrite(id: number, connectionId: number, data: number[],
+    reportId: number): Promise<void> {
+    const connection = this.requireHidConnection(connectionId);
+    const buffer = new Uint8Array(data);
+    let transferred: number;
+    if (connection.outputEndpoint) {
+      transferred = await usb.bulkTransfer(
+        connection.pipe, connection.outputEndpoint, buffer, 5000);
+    } else {
+      transferred = await this.hidSetReport(
+        connection, 2, reportId, buffer);
+    }
+    this.sendReply({ id: id, ok: transferred >= 0 });
+  }
+
+  private async hidGetFeature(id: number, connectionId: number,
+    reportId: number, size: number): Promise<void> {
+    const connection = this.requireHidConnection(connectionId);
+    const buffer = new Uint8Array(Math.max(size, 1));
+    if (reportId !== 0) {
+      buffer[0] = reportId;
+    }
+    const params: usb.USBDeviceRequestParams = {
+      bmRequestType: 0xA1,
+      bRequest: 0x01,
+      wValue: (3 << 8) | reportId,
+      wIndex: connection.iface.id,
+      wLength: buffer.length,
+      data: buffer
+    };
+    const transferred = await usb.usbControlTransfer(connection.pipe, params, 5000);
+    if (transferred < 0) {
+      throw new Error('Could not read HID feature report');
+    }
+    this.sendReply({
+      id: id,
+      ok: true,
+      data: this.toNumberArray(buffer, transferred)
+    });
+  }
+
+  private async hidSendFeature(id: number, connectionId: number, data: number[],
+    reportId: number): Promise<void> {
+    const connection = this.requireHidConnection(connectionId);
+    const transferred = await this.hidSetReport(
+      connection, 3, reportId, new Uint8Array(data));
+    this.sendReply({ id: id, ok: transferred >= 0 });
+  }
+
+  private async hidSetReport(connection: HidConnectionState, reportType: number,
+    reportId: number, buffer: Uint8Array): Promise<number> {
+    const params: usb.USBDeviceRequestParams = {
+      bmRequestType: 0x21,
+      bRequest: 0x09,
+      wValue: (reportType << 8) | reportId,
+      wIndex: connection.iface.id,
+      wLength: buffer.length,
+      data: buffer
+    };
+    return await usb.usbControlTransfer(connection.pipe, params, 5000);
+  }
+
+  private async readHidInput(connection: HidConnectionState): Promise<void> {
+    const endpoint = connection.inputEndpoint;
+    if (!endpoint) {
+      return;
+    }
+    const bufferSize = Math.max(endpoint.maxPacketSize,
+      connection.inputReportSize, 1);
+    while (connection.active) {
+      const buffer = new Uint8Array(bufferSize);
+      let transferred: number;
+      try {
+        transferred = await usb.bulkTransfer(
+          connection.pipe, endpoint, buffer, 1000);
+      } catch (error) {
+        if (!connection.active) {
+          return;
+        }
+        const businessError = error as BusinessError;
+        throw new Error(businessError.message ?? String(error));
+      }
+      if (connection.active && transferred > 0) {
+        this.sendEvent({
+          event: 'hidInput',
+          connectionId: connection.connectionId,
+          data: this.toNumberArray(buffer, transferred)
+        });
+      }
+    }
+  }
+
+  private async readHidReportDescriptor(pipe: usb.USBDevicePipe,
+    interfaceNumber: number): Promise<number[]> {
+    const buffer = new Uint8Array(4096);
+    const params: usb.USBDeviceRequestParams = {
+      bmRequestType: 0x81,
+      bRequest: 0x06,
+      wValue: 0x2200,
+      wIndex: interfaceNumber,
+      wLength: buffer.length,
+      data: buffer
+    };
+    try {
+      const transferred = await usb.usbControlTransfer(pipe, params, 5000);
+      return transferred > 0 ? this.toNumberArray(buffer, transferred) : [];
+    } catch (error) {
+      console.error(`Could not read HID report descriptor: ${String(error)}`);
+      return [];
+    }
+  }
+
+  private getHidInterfaces(device: usb.USBDevice): usb.USBInterface[] {
+    const result: usb.USBInterface[] = [];
+    if (device.configs.length === 0) {
+      return result;
+    }
+    for (const iface of device.configs[0].interfaces) {
+      if (iface.clazz === 3 && iface.alternateSetting === 0) {
+        result.push(iface);
+      }
+    }
+    return result;
+  }
+
+  private requireHidConnection(connectionId: number): HidConnectionState {
+    const connection = this.hidConnections.get(connectionId);
+    if (!connection || !connection.active) {
+      throw new Error('HID connection is closed');
+    }
+    return connection;
+  }
+
+  private toNumberArray(buffer: Uint8Array, length: number): number[] {
+    const result: number[] = [];
+    const count = Math.min(Math.max(length, 0), buffer.length);
+    for (let index = 0; index < count; ++index) {
+      result.push(buffer[index]);
+    }
+    return result;
   }
 
   private findDevice(deviceName: string): usb.USBDevice {
