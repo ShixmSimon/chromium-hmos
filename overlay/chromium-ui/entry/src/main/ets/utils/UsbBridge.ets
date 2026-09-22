@@ -4,7 +4,12 @@
  * found in the LICENSE file.
  */
 
-import { BusinessError, commonEventManager, usbManager as usb } from '@kit.BasicServicesKit';
+import {
+  BusinessError,
+  commonEventManager,
+  serialManager as serial,
+  usbManager as usb
+} from '@kit.BasicServicesKit';
 
 export interface UsbNativePort {
   SetUsbEventCallback(componentId: string, callback: (commandJson: string) => void): void;
@@ -21,6 +26,11 @@ interface UsbCommand {
   reportId?: number;
   size?: number;
   data?: number[];
+  portId?: number;
+  baudRate?: number;
+  dataBits?: number;
+  parity?: number;
+  stopBits?: number;
 }
 
 interface UsbEndpointInfo {
@@ -77,6 +87,8 @@ interface UsbReply {
   hidDevices?: HidDeviceInfo[];
   connectionId?: number;
   data?: number[];
+  ports?: SerialPortInfo[];
+  bytesTransferred?: number;
 }
 
 interface UsbEvent {
@@ -105,12 +117,18 @@ interface HidConnectionState {
   active: boolean;
 }
 
+interface SerialPortInfo {
+  portId: number;
+  deviceName: string;
+}
+
 /** Owns HarmonyOS USBDevicePipe objects used by Chromium's usbfs backend. */
 export class UsbBridge {
   private readonly componentId: string;
   private readonly nativePort: UsbNativePort;
   private readonly pipes: Map<number, usb.USBDevicePipe> = new Map();
   private readonly hidConnections: Map<number, HidConnectionState> = new Map();
+  private readonly openSerialPorts: Set<number> = new Set();
   private subscriber: commonEventManager.CommonEventSubscriber | undefined = undefined;
   private nextPipeId: number = 1;
   private nextHidConnectionId: number = 1;
@@ -128,6 +146,13 @@ export class UsbBridge {
   }
 
   destroy(): void {
+    this.openSerialPorts.forEach((portId: number): void => {
+      try {
+        serial.close(portId);
+      } catch (_error) {
+      }
+    });
+    this.openSerialPorts.clear();
     this.hidConnections.forEach((connection: HidConnectionState): void => {
       connection.active = false;
       try {
@@ -203,6 +228,24 @@ export class UsbBridge {
       case 'hidSendFeature':
         await this.hidSendFeature(command.id, command.connectionId ?? 0,
           command.data ?? [], command.reportId ?? 0);
+        return;
+      case 'serialEnumerate':
+        this.serialEnumerate(command.id);
+        return;
+      case 'serialOpen':
+        await this.serialOpen(command);
+        return;
+      case 'serialConfigure':
+        this.serialConfigure(command);
+        return;
+      case 'serialRead':
+        await this.serialRead(command.id, command.portId ?? -1, command.size ?? 0);
+        return;
+      case 'serialWrite':
+        await this.serialWrite(command.id, command.portId ?? -1, command.data ?? []);
+        return;
+      case 'serialClose':
+        this.serialClose(command.id, command.portId ?? -1);
         return;
       default:
         throw new Error(`Unknown USB method: ${command.method}`);
@@ -443,6 +486,102 @@ export class UsbBridge {
         });
       }
     }
+  }
+
+  private serialEnumerate(id: number): void {
+    const ports = serial.getPortList().map((port: serial.SerialPort): SerialPortInfo => {
+      return { portId: port.portId, deviceName: port.deviceName };
+    });
+    this.sendReply({ id: id, ok: true, ports: ports });
+  }
+
+  private async serialOpen(command: UsbCommand): Promise<void> {
+    const portId = this.requireSerialPort(command.portId ?? -1);
+    const granted = serial.hasSerialRight(portId) ||
+      await serial.requestSerialRight(portId);
+    if (!granted) {
+      this.sendReply({ id: command.id, ok: false, error: 'Serial port permission denied' });
+      return;
+    }
+    serial.open(portId);
+    try {
+      serial.setAttribute(portId, this.toSerialAttribute(command));
+      this.openSerialPorts.add(portId);
+      this.sendReply({ id: command.id, ok: true });
+    } catch (error) {
+      serial.close(portId);
+      const businessError = error as BusinessError;
+      throw new Error(businessError.message ?? String(error));
+    }
+  }
+
+  private serialConfigure(command: UsbCommand): void {
+    const portId = this.requireOpenSerialPort(command.portId ?? -1);
+    serial.setAttribute(portId, this.toSerialAttribute(command));
+    this.sendReply({ id: command.id, ok: true });
+  }
+
+  private async serialRead(id: number, portIdValue: number, size: number): Promise<void> {
+    const portId = this.requireOpenSerialPort(portIdValue);
+    const buffer = new Uint8Array(Math.min(Math.max(size, 1), 8192));
+    try {
+      const transferred = await serial.read(portId, buffer, 1000);
+      this.sendReply({
+        id: id,
+        ok: true,
+        data: this.toNumberArray(buffer, transferred),
+        bytesTransferred: transferred
+      });
+    } catch (error) {
+      const businessError = error as BusinessError;
+      if (businessError.code === 31400006) {
+        this.sendReply({ id: id, ok: true, data: [], bytesTransferred: 0 });
+        return;
+      }
+      throw new Error(businessError.message ?? String(error));
+    }
+  }
+
+  private async serialWrite(id: number, portIdValue: number,
+    data: number[]): Promise<void> {
+    const portId = this.requireOpenSerialPort(portIdValue);
+    const buffer = new Uint8Array(data.slice(0, 4096));
+    const transferred = await serial.write(portId, buffer, 5000);
+    this.sendReply({ id: id, ok: true, bytesTransferred: transferred });
+  }
+
+  private serialClose(id: number, portIdValue: number): void {
+    if (this.openSerialPorts.has(portIdValue)) {
+      serial.close(portIdValue);
+      this.openSerialPorts.delete(portIdValue);
+    }
+    this.sendReply({ id: id, ok: true });
+  }
+
+  private toSerialAttribute(command: UsbCommand): serial.SerialAttribute {
+    return {
+      baudRate: command.baudRate as serial.BaudRates,
+      dataBits: command.dataBits as serial.DataBits,
+      parity: command.parity as serial.Parity,
+      stopBits: command.stopBits as serial.StopBits
+    };
+  }
+
+  private requireSerialPort(portId: number): number {
+    const exists = serial.getPortList().some(
+      (port: serial.SerialPort): boolean => port.portId === portId
+    );
+    if (!exists) {
+      throw new Error(`Unknown serial port: ${portId}`);
+    }
+    return portId;
+  }
+
+  private requireOpenSerialPort(portId: number): number {
+    if (!this.openSerialPorts.has(portId)) {
+      throw new Error(`Serial port is not open: ${portId}`);
+    }
+    return portId;
   }
 
   private async readHidReportDescriptor(pipe: usb.USBDevicePipe,
