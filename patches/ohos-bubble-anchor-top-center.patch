@@ -1,0 +1,78 @@
+Put the anchorless bubbles across the top centre, not in the corner.
+
+With no Views toolbar to anchor to, every branch of
+GetPageInfoAnchorConfiguration falls through to an empty configuration whose
+arrow is TOP_LEFT, and GetPageInfoAnchorRect returns a zero-size rect
+kNoToolbarLeftOffset (40dp) in from the window's left edge. So the Bluetooth
+chooser and the permission prompt both hung off the top-left corner of a phone
+screen -- measured on device as anchor_rect=40,0 0x0.
+
+The offset exists so that a bubble shown in fullscreen does not obscure the
+fullscreen bubble, which is a trade this port does not have to make: its
+browser UI is drawn in ArkTS, so nothing of Chrome's is up there to collide
+with. The anchor becomes a zero-height rect across the top of the window and
+the arrow becomes TOP_CENTER, which hangs the bubble from the top edge,
+centred -- where a phone-shaped Chrome puts it.
+
+This is the shared anchor for the page info bubble, the permission prompt and
+the device chooser, so all three move together, which is the point.
+
+Generated against Chromium 154.0.8037.51.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-bubble-anchor-top-center.patch
+
+diff --git a/chrome/browser/ui/views/bubble_anchor_util_views.cc b/chrome/browser/ui/views/bubble_anchor_util_views.cc
+index 21c7c53..d317dc3 100644
+--- a/chrome/browser/ui/views/bubble_anchor_util_views.cc
++++ b/chrome/browser/ui/views/bubble_anchor_util_views.cc
+@@ -35,6 +35,16 @@ namespace bubble_anchor_util {
+ AnchorConfiguration GetPageInfoAnchorConfiguration(
+     BrowserWindowInterface* browser,
+     Anchor anchor) {
++#if BUILDFLAG(IS_OHOS)
++  // This port draws its browser UI in ArkTS, so there is no location bar, no
++  // custom tab bar and no app menu button to anchor to -- every branch below
++  // falls through to an empty configuration whose arrow is TOP_LEFT. Say so
++  // up front, and ask to be centred on the anchor rect instead: paired with
++  // the rect below, that puts the bubble across the top centre of the window,
++  // which is where a phone-shaped Chrome puts it.
++  return {views::BubbleAnchor(), std::nullopt,
++          views::BubbleBorder::TOP_CENTER};
++#else
+   BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
+   auto* location_bar_view =
+       browser_view ? browser_view->GetLocationBarView() : nullptr;
+@@ -119,6 +129,7 @@ AnchorConfiguration GetPageInfoAnchorConfiguration(
+ 
+   return {app_menu_anchor, kToolbarAppMenuButtonElementId,
+           views::BubbleBorder::TOP_RIGHT};
++#endif  // BUILDFLAG(IS_OHOS)
+ }
+ 
+ AnchorConfiguration GetPermissionPromptBubbleAnchorConfiguration(
+@@ -181,6 +192,16 @@ gfx::Rect GetPageInfoAnchorRect(BrowserWindowInterface* browser) {
+   DCHECK(GetPageInfoAnchorConfiguration(browser).anchor.IsNull());
+ 
+   BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
++#if BUILDFLAG(IS_OHOS)
++  // A zero-height rect across the top of the window. With the TOP_CENTER arrow
++  // above, the bubble is centred horizontally and hangs from the top edge.
++  // kNoToolbarLeftOffset exists so a fullscreen bubble is not obscured by one
++  // in the corner, which is not a trade this port has to make: its browser UI
++  // is not Views, so nothing else is up there to collide with.
++  const gfx::Rect browser_bounds = browser_view->GetBoundsInScreen();
++  return gfx::Rect(browser_bounds.x(), browser_bounds.y(),
++                   browser_bounds.width(), 0);
++#else
+   // Get position in view (taking RTL UI into account).
+   int x_within_browser_view = browser_view->GetMirroredXInView(
+       bubble_anchor_util::kNoToolbarLeftOffset);
+@@ -190,6 +211,7 @@ gfx::Rect GetPageInfoAnchorRect(BrowserWindowInterface* browser) {
+   gfx::Point browser_view_origin = browser_view->GetBoundsInScreen().origin();
+   browser_view_origin += gfx::Vector2d(x_within_browser_view, 0);
+   return gfx::Rect(browser_view_origin, gfx::Size());
++#endif  // BUILDFLAG(IS_OHOS)
+ }
+ 
+ // Returns true if the given anchor can be used as a highlight.
