@@ -86,6 +86,7 @@ apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-api.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-chooser-input.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-device-chooser-width.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-dialog-width-fits-screen.patch"
 # Temporary: remove with the patch once the chooser takes touch.
 apply_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
 

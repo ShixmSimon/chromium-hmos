@@ -1,0 +1,75 @@
+Stop a dialog being snapped wider than the screen it is shown on.
+
+BubbleFrameView snaps any bubble that has buttons to one of Chrome's dialog
+widths. The smallest of those is wider than this port's phone screen, so the
+Bluetooth device chooser was laid out 462dp wide on a 376dp work area, its
+right edge past the display and its Connect button somewhere no touch could
+reach. Measured on device, with the chooser's own contents already clamped to
+312dp: contents_preferred=312x320, work_area=0,0 376x809, bubble bounds
+34,-4 462x483. The width was not coming from the contents.
+
+Snapping is a nicety. Fitting on the screen is not, on a device where there is
+nowhere else for the dialog to go. The snapped width is now capped at the work
+area less a small margin, and min_width still wins over the cap -- a frame
+narrower than its own contents is not a size, it is a broken layout, and the
+contents-side clamp in ohos-device-chooser-width.patch is what keeps the two
+from meeting there.
+
+This is deliberately not limited to the chooser. Every dialog with buttons is
+snapped by this function, and none of them fit either.
+
+Generated against Chromium 154.0.8037.51.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-dialog-width-fits-screen.patch
+
+diff --git a/chrome/browser/ui/views/chrome_layout_provider.cc b/chrome/browser/ui/views/chrome_layout_provider.cc
+index 7814bc0..3dcdbc5 100644
+--- a/chrome/browser/ui/views/chrome_layout_provider.cc
++++ b/chrome/browser/ui/views/chrome_layout_provider.cc
+@@ -10,7 +10,10 @@
+ #include "chrome/browser/ui/ui_features.h"
+ #include "chrome/browser/ui/views/chrome_typography.h"
+ #include "components/omnibox/common/omnibox_features.h"
++#include "build/build_config.h"
+ #include "ui/base/pointer/touch_ui_controller.h"
++#include "ui/display/display.h"
++#include "ui/display/screen.h"
+ #include "ui/gfx/shadow_value.h"
+ 
+ namespace {
+@@ -298,14 +301,32 @@ int ChromeLayoutProvider::GetDistanceMetric(int metric) const {
+ }
+ 
+ int ChromeLayoutProvider::GetSnappedDialogWidth(int min_width) const {
++  int width = ((min_width + 15) / 16) * 16;
+   for (int snap_point :
+        {kSmallDialogWidth, kMediumDialogWidth, kLargeDialogWidth}) {
+     if (min_width <= snap_point) {
+-      return snap_point;
++      width = snap_point;
++      break;
+     }
+   }
+ 
+-  return ((min_width + 15) / 16) * 16;
++#if BUILDFLAG(IS_OHOS)
++  // The snap points are desktop widths and the smallest of them is wider than
++  // this port's phone screen, so a dialog with buttons was laid out past the
++  // right edge of the display -- far enough that the Bluetooth chooser's
++  // Connect button could not be touched at all. Snapping is a nicety; fitting
++  // on the screen is not. min_width still wins, because a frame narrower than
++  // its own contents is not a size, it is a broken layout.
++  if (const display::Screen* screen = display::Screen::Get()) {
++    constexpr int kScreenEdgeMargin = 16;
++    width = std::max(
++        min_width,
++        std::min(width, screen->GetPrimaryDisplay().work_area().width() -
++                            kScreenEdgeMargin));
++  }
++#endif
++
++  return width;
+ }
+ 
+ const views::TypographyProvider& ChromeLayoutProvider::GetTypographyProvider()
