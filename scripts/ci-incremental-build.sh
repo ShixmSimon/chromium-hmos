@@ -75,6 +75,7 @@ apply_incremental_patch() {
       return
     fi
   done
+  git -C "$src" apply --check --verbose "$patch" || true
   die "incremental patch ${name} neither applies nor is already present"
 }
 
