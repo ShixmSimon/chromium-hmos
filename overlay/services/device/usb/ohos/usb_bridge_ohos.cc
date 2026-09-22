@@ -16,7 +16,6 @@
 #include "base/no_destructor.h"
 #include "base/synchronization/lock.h"
 #include "base/task/sequenced_task_runner.h"
-#include "base/task/single_thread_task_runner.h"
 
 namespace device {
 namespace {
@@ -28,36 +27,30 @@ class UsbBridgeState {
     UsbResponseCallbackOhos callback;
   };
 
+  // A callback and the sequence it has to be run on.
+  struct EventTarget {
+    scoped_refptr<base::SequencedTaskRunner> runner;
+    UsbEventCallbackOhos callback;
+  };
+
   void SetCommandCallback(UsbCommandCallbackOhos callback) {
     base::AutoLock lock(lock_);
     command_callback_ = std::move(callback);
   }
 
   void SetEventCallback(UsbEventCallbackOhos callback) {
-    CHECK(base::SingleThreadTaskRunner::HasCurrentDefault());
-    {
-      base::AutoLock lock(lock_);
-      ui_task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
-    }
-    event_callback_ = std::move(callback);
+    base::AutoLock lock(lock_);
+    usb_target_ = BindToCurrentSequence(std::move(callback));
   }
 
   void SetHidEventCallback(UsbEventCallbackOhos callback) {
-    CHECK(base::SingleThreadTaskRunner::HasCurrentDefault());
-    {
-      base::AutoLock lock(lock_);
-      ui_task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
-    }
-    hid_event_callback_ = std::move(callback);
+    base::AutoLock lock(lock_);
+    hid_target_ = BindToCurrentSequence(std::move(callback));
   }
 
   void SetSerialEventCallback(UsbEventCallbackOhos callback) {
-    CHECK(base::SingleThreadTaskRunner::HasCurrentDefault());
-    {
-      base::AutoLock lock(lock_);
-      ui_task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
-    }
-    serial_event_callback_ = std::move(callback);
+    base::AutoLock lock(lock_);
+    serial_target_ = BindToCurrentSequence(std::move(callback));
   }
 
   void SendCommand(base::DictValue command, UsbResponseCallbackOhos callback) {
@@ -100,18 +93,27 @@ class UsbBridgeState {
       return;
     }
 
-    scoped_refptr<base::SingleThreadTaskRunner> runner;
+    base::DictValue event = std::move(value->GetDict());
+    const std::string* event_type = event.FindString("event");
+    const bool hid_only = event_type && event_type->starts_with("hid");
+
+    EventTarget usb_target;
+    EventTarget hid_target;
+    EventTarget serial_target;
     {
       base::AutoLock lock(lock_);
-      runner = ui_task_runner_;
+      usb_target = usb_target_;
+      hid_target = hid_target_;
+      serial_target = serial_target_;
     }
-    if (!runner) {
+
+    if (hid_only) {
+      Deliver(hid_target, std::move(event));
       return;
     }
-    runner->PostTask(
-        FROM_HERE,
-        base::BindOnce(&UsbBridgeState::DispatchMessageOnUi,
-                       base::Unretained(this), std::move(value->GetDict())));
+    Deliver(usb_target, event.Clone());
+    Deliver(hid_target, event.Clone());
+    Deliver(serial_target, std::move(event));
   }
 
  private:
@@ -140,33 +142,36 @@ class UsbBridgeState {
         base::BindOnce(std::move(pending.callback), std::move(response)));
   }
 
-  void DispatchMessageOnUi(base::DictValue message) {
-    const std::string* event_type = message.FindString("event");
-    if (event_type && event_type->starts_with("hid")) {
-      if (hid_event_callback_) {
-        hid_event_callback_.Run(message);
-      }
+  // The owner of a callback decides where it runs. SerialDeviceEnumeratorOhos
+  // is built on the ThreadPool sequence DeviceService gives
+  // SerialPortManagerImpl, which has no SingleThreadTaskRunner at all -- asking
+  // for one there was a CHECK failure that took the browser down on the first
+  // navigator.serial.getPorts() any page made. A sequence is what the callback
+  // actually needs, and SendCommand() already routes its responses that way.
+  static EventTarget BindToCurrentSequence(UsbEventCallbackOhos callback) {
+    EventTarget target;
+    if (callback && base::SequencedTaskRunner::HasCurrentDefault()) {
+      target.runner = base::SequencedTaskRunner::GetCurrentDefault();
+    }
+    target.callback = std::move(callback);
+    return target;
+  }
+
+  static void Deliver(const EventTarget& target, base::DictValue event) {
+    if (!target.runner || !target.callback) {
       return;
     }
-    if (event_callback_) {
-      event_callback_.Run(message);
-    }
-    if (hid_event_callback_) {
-      hid_event_callback_.Run(message);
-    }
-    if (serial_event_callback_) {
-      serial_event_callback_.Run(message);
-    }
+    target.runner->PostTask(FROM_HERE,
+                            base::BindOnce(target.callback, std::move(event)));
   }
 
   base::Lock lock_;
   UsbCommandCallbackOhos command_callback_ GUARDED_BY(lock_);
-  scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner_ GUARDED_BY(lock_);
-  UsbEventCallbackOhos event_callback_;
-  UsbEventCallbackOhos hid_event_callback_;
+  EventTarget usb_target_ GUARDED_BY(lock_);
+  EventTarget hid_target_ GUARDED_BY(lock_);
+  EventTarget serial_target_ GUARDED_BY(lock_);
   int next_request_id_ GUARDED_BY(lock_) = 0;
   std::map<int, PendingResponse> pending_responses_ GUARDED_BY(lock_);
-  UsbEventCallbackOhos serial_event_callback_;
 };
 
 UsbBridgeState& GetBridge() {
