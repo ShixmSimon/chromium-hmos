@@ -29,13 +29,13 @@ diff --git a/services/device/hid/hid_service.cc b/services/device/hid/hid_servic
 +  return std::make_unique<HidServiceOhos>();
 +#elif (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)
    return std::make_unique<HidServiceLinux>();
-@@ -87,4 +91,7 @@ std::unique_ptr<HidService> HidService::Create() {
+@@ -87,4 +91,6 @@ std::unique_ptr<HidService> HidService::Create() {
  // static
  bool HidService::IsSupported() {
+-#if ((BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)) ||     BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) ||           BUILDFLAG(IS_ANDROID)
 +#if BUILDFLAG(IS_OHOS)
 +  return true;
-+#endif
- #if ((BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)) ||     BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) ||           BUILDFLAG(IS_ANDROID)
++#elif ((BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)) ||   BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) ||         BUILDFLAG(IS_ANDROID)
    return true;
 diff --git a/services/device/usb/BUILD.gn b/services/device/usb/BUILD.gn
 --- a/services/device/usb/BUILD.gn
