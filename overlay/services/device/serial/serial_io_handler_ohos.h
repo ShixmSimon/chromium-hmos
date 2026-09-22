@@ -30,7 +30,7 @@ class SerialIoHandlerOhos final : public SerialIoHandler {
 
  protected:
   ~SerialIoHandlerOhos() override;
-  void OpenImpl(OpenCompleteCallback callback) override;
+  void OpenImpl() override;
   bool IsOpen() const override;
   void CloseImpl(base::OnceClosure callback) override;
   void ReadImpl() override;
@@ -46,7 +46,7 @@ class SerialIoHandlerOhos final : public SerialIoHandler {
       const base::FilePath& port,
       scoped_refptr<base::SingleThreadTaskRunner> ui_thread_task_runner);
 
-  void OnOpenComplete(OpenCompleteCallback callback, base::DictValue response);
+  void OnOpenComplete(base::DictValue response);
   void OnCloseComplete(base::OnceClosure callback, base::DictValue response);
   void OnReadComplete(uint64_t generation, base::DictValue response);
   void OnWriteComplete(uint64_t generation, base::DictValue response);

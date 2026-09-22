@@ -10,7 +10,7 @@ diff --git a/services/device/BUILD.gn b/services/device/BUILD.gn
  
  source_set("lib") {
    # This should be visible only to embedders of the Device Service, and the
-@@ -322,7 +322,7 @@ source_set("tests") {
+@@ -332,7 +332,7 @@ source_set("tests") {
        sources += [ "serial/serial_device_enumerator_linux_unittest.cc" ]
      }
  
@@ -22,16 +22,16 @@ diff --git a/services/device/BUILD.gn b/services/device/BUILD.gn
 diff --git a/services/device/serial/BUILD.gn b/services/device/serial/BUILD.gn
 --- a/services/device/serial/BUILD.gn
 +++ b/services/device/serial/BUILD.gn
-@@ -4,7 +4,7 @@
- 
- import("//build/config/features.gni")
+@@ -7,7 +7,7 @@ if (is_android) {
+   import("//third_party/jni_zero/jni_zero.gni")
+ }
  
 -if (is_win || ((is_linux || is_chromeos) && use_udev) || is_mac || is_android) {
 +if (is_win || ((is_linux || is_chromeos) && use_udev) || is_mac || is_android || is_ohos) {
    config("platform_support") {
      visibility = [ ":serial" ]
      if (is_win) {
-@@ -82,7 +82,17 @@ if (is_win || ((is_linux || is_chromeos) && use_udev) || is_mac || is_android) {
+@@ -101,7 +101,17 @@ if (is_win || ((is_linux || is_chromeos) && use_udev) || is_mac || is_android) {
        ]
      }
  
@@ -53,7 +53,7 @@ diff --git a/services/device/serial/BUILD.gn b/services/device/serial/BUILD.gn
 diff --git a/services/device/serial/serial_device_enumerator.cc b/services/device/serial/serial_device_enumerator.cc
 --- a/services/device/serial/serial_device_enumerator.cc
 +++ b/services/device/serial/serial_device_enumerator.cc
-@@ -20,6 +20,8 @@
+@@ -19,6 +19,8 @@
  #include "services/device/serial/serial_device_enumerator_win.h"
  #elif BUILDFLAG(IS_ANDROID)
  #include "services/device/serial/serial_device_enumerator_android.h"
@@ -62,10 +62,10 @@ diff --git a/services/device/serial/serial_device_enumerator.cc b/services/devic
  #endif
  
  namespace device {
-@@ -35,6 +37,8 @@ std::unique_ptr<SerialDeviceEnumerator> SerialDeviceEnumerator::Create(
-   return std::make_unique<SerialDeviceEnumeratorWin>(std::move(ui_task_runner));
- #elif BUILDFLAG(IS_ANDROID)
-   return std::make_unique<SerialDeviceEnumeratorAndroid>();
+@@ -37,6 +39,8 @@ std::unique_ptr<SerialDeviceEnumerator> SerialDeviceEnumerator::Create(
+   auto instance = std::make_unique<SerialDeviceEnumeratorAndroid>();
+   instance->Initialize();
+   return instance;
 +#elif BUILDFLAG(IS_OHOS)
 +  return std::make_unique<SerialDeviceEnumeratorOhos>();
  #else
@@ -74,25 +74,20 @@ diff --git a/services/device/serial/serial_device_enumerator.cc b/services/devic
 diff --git a/services/device/serial/serial_io_handler.cc b/services/device/serial/serial_io_handler.cc
 --- a/services/device/serial/serial_io_handler.cc
 +++ b/services/device/serial/serial_io_handler.cc
-@@ -44,11 +44,15 @@ SerialIoHandler::~SerialIoHandler() {
- void SerialIoHandler::Open(const mojom::SerialConnectionOptions& options,
-                            OpenCompleteCallback callback) {
-   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
--  DCHECK(!open_complete_);
-   DCHECK(!port_.empty());
--  open_complete_ = std::move(callback);
-   DCHECK(ui_thread_task_runner_.get());
-   MergeConnectionOptions(options);
-+  OpenImpl(std::move(callback));
+@@ -84,6 +84,12 @@ void SerialIoHandler::OpenImpl() {
+ #endif  // BUILDFLAG(IS_CHROMEOS)
+ }
+ 
++void SerialIoHandler::CompleteOpen(bool success) {
++  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
++  DCHECK(open_complete_);
++  std::move(open_complete_).Run(success);
 +}
 +
-+void SerialIoHandler::OpenImpl(OpenCompleteCallback callback) {
-+  DCHECK(!open_complete_);
-+  open_complete_ = std::move(callback);
+ #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
  
- #if BUILDFLAG(IS_CHROMEOS)
-   // Note: dbus clients are destroyed in PostDestroyThreads so passing |client|
-@@ -165,19 +169,27 @@ bool SerialIoHandler::PostOpen() {
+ void SerialIoHandler::OnPathOpened(
+@@ -174,19 +180,27 @@ bool SerialIoHandler::PostOpen() {
  
  void SerialIoHandler::PreClose() {}
  
@@ -125,7 +120,7 @@ diff --git a/services/device/serial/serial_io_handler.cc b/services/device/seria
  }
  
  // static
-@@ -195,7 +207,7 @@ void SerialIoHandler::Read(base::span<uint8_t> buffer,
+@@ -205,7 +219,7 @@ void SerialIoHandler::Read(base::span<uint8_t> buffer,
    read_canceled_ = false;
    AddRef();
  
@@ -134,7 +129,7 @@ diff --git a/services/device/serial/serial_io_handler.cc b/services/device/seria
      ReadCompleted(0, mojom::SerialReceiveError::DISCONNECTED);
      return;
    }
-@@ -213,7 +225,7 @@ void SerialIoHandler::Write(base::span<const uint8_t> buffer,
+@@ -223,7 +237,7 @@ void SerialIoHandler::Write(base::span<const uint8_t> buffer,
    write_canceled_ = false;
    AddRef();
  
@@ -146,16 +141,17 @@ diff --git a/services/device/serial/serial_io_handler.cc b/services/device/seria
 diff --git a/services/device/serial/serial_io_handler.h b/services/device/serial/serial_io_handler.h
 --- a/services/device/serial/serial_io_handler.h
 +++ b/services/device/serial/serial_io_handler.h
-@@ -120,6 +120,12 @@ class SerialIoHandler : public base::RefCountedThreadSafe<SerialIoHandler> {
-       scoped_refptr<base::SingleThreadTaskRunner> ui_thread_task_runner);
-   virtual ~SerialIoHandler();
+@@ -134,7 +134,13 @@ class SerialIoHandler : public base::RefCountedThreadSafe<SerialIoHandler> {
  
+   // Open the device.
+   virtual void OpenImpl();
++  void CompleteOpen(bool success);
++
 +  // Platform hooks for implementations such as HarmonyOS whose serial API
 +  // does not expose a file descriptor.
-+  virtual void OpenImpl(OpenCompleteCallback callback);
 +  virtual bool IsOpen() const;
 +  virtual void CloseImpl(base::OnceClosure callback);
-+
+ 
    // Performs a platform-specific read operation. This must guarantee that
    // ReadCompleted is called when the underlying async operation is completed
    // or the SerialIoHandler instance will leak.

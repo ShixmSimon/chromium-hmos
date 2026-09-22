@@ -54,19 +54,18 @@ SerialIoHandlerOhos::SerialIoHandlerOhos(
 
 SerialIoHandlerOhos::~SerialIoHandlerOhos() = default;
 
-void SerialIoHandlerOhos::OpenImpl(OpenCompleteCallback callback) {
+void SerialIoHandlerOhos::OpenImpl() {
   if (port_id_ < 0 || open_ || options().cts_flow_control) {
-    std::move(callback).Run(false);
+    CompleteOpen(false);
     return;
   }
   base::DictValue command;
   command.Set("method", "serialOpen");
   command.Set("portId", port_id_);
   AddConfiguration(command);
-  SendUsbCommandOhos(
-      std::move(command),
-      base::BindOnce(&SerialIoHandlerOhos::OnOpenComplete,
-                     weak_factory_.GetWeakPtr(), std::move(callback)));
+  SendUsbCommandOhos(std::move(command),
+                     base::BindOnce(&SerialIoHandlerOhos::OnOpenComplete,
+                                    weak_factory_.GetWeakPtr()));
 }
 
 bool SerialIoHandlerOhos::IsOpen() const {
@@ -166,10 +165,9 @@ mojom::SerialConnectionInfoPtr SerialIoHandlerOhos::GetPortInfo() const {
   return info;
 }
 
-void SerialIoHandlerOhos::OnOpenComplete(OpenCompleteCallback callback,
-                                         base::DictValue response) {
+void SerialIoHandlerOhos::OnOpenComplete(base::DictValue response) {
   open_ = response.FindBool("ok").value_or(false);
-  std::move(callback).Run(open_);
+  CompleteOpen(open_);
 }
 
 void SerialIoHandlerOhos::OnCloseComplete(base::OnceClosure callback,
