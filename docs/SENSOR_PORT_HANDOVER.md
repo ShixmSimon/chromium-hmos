@@ -22,12 +22,15 @@ green and ships nothing.
    so a patch is applied by hand once (`git -C <tree> apply <patch>`) and stays
    applied. A patch that has not been applied on the runner simply does not
    exist as far as CI is concerned, and CI still passes.
-3. **CI skips three overlay subtrees when syncing into the tree** --
-   `chromium-ui/*`, `arkweb/*`, `ohos_arkweb_playground/*`
-   (`scripts/ci-incremental-build.sh`, the `case "$rel"` at the top of the sync
-   loop). Of the overlay's ~5000 files only a few hundred reach the tree.
-   **Anything under `overlay/arkweb/` compiles nothing.** It is reference
-   material, not code that runs.
+3. **CI skips most of the overlay when syncing into the tree** --
+   `chromium-ui/*`, `ohos_arkweb_playground/*` and `arkweb/*` are dropped, with
+   one carve-out: `arkweb/ohos_nweb/*` is synced, because it is Chromium's
+   `//ohos_nweb` integration (`scripts/ci-incremental-build.sh`, the
+   `case "$rel"` at the top of the sync loop; the carve-out was added by
+   f8fe3a0). Of the overlay's ~5000 files only a few hundred reach the tree.
+   **Anything under `overlay/arkweb/` other than `ohos_nweb/` compiles
+   nothing** -- `chromium_ext/` and `ohos_adapter_ndk/` in particular are
+   reference material, not code that runs.
 4. **The ArkWeb adapter route is a dead end.** `enable_arkweb = false`, and
    `overlay/ohos/adapter/` contains only a `BUILD.gn` -- the sources for
    `libadapter.so` were never published. Do not try to revive it. Port the
