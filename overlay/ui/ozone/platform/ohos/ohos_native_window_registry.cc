@@ -1,7 +1,5 @@
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 
-#include "base/strings/stringprintf.h"
-
 #include <algorithm>
 #include <limits>
 #include <map>
@@ -456,19 +454,6 @@ class NativeWindowRegistry {
            !ParseAuxiliarySurfaceWidget(binding->second).has_value();
   }
 
-  std::string DescribeLogicalWindows() {
-    base::AutoLock lock(lock_);
-    std::string out;
-    for (const auto& [widget, record] : logical_windows_) {
-      out += base::StringPrintf("[w=%u vis=%d order=%llu bounds=%s]", widget,
-                                record.visible ? 1 : 0,
-                                static_cast<unsigned long long>(
-                                    record.stacking_order),
-                                record.bounds.ToString().c_str());
-    }
-    return out;
-  }
-
   gfx::AcceleratedWidget GetWidgetAtScreenPoint(const gfx::Point& point) {
     base::AutoLock lock(lock_);
     gfx::AcceleratedWidget target = gfx::kNullAcceleratedWidget;
@@ -801,10 +786,6 @@ void DeactivateOhosLogicalWindow(gfx::AcceleratedWidget widget) {
 std::optional<gfx::Rect> GetOhosLogicalWindowBounds(
     gfx::AcceleratedWidget widget) {
   return GetRegistry().GetLogicalWindowBounds(widget);
-}
-
-std::string DescribeOhosLogicalWindows() {
-  return GetRegistry().DescribeLogicalWindows();
 }
 
 gfx::AcceleratedWidget GetOhosFocusedLogicalWindow() {

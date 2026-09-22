@@ -93,10 +93,6 @@ void ActivateOhosLogicalWindow(gfx::AcceleratedWidget widget);
 void DeactivateOhosLogicalWindow(gfx::AcceleratedWidget widget);
 std::optional<gfx::Rect> GetOhosLogicalWindowBounds(
     gfx::AcceleratedWidget widget);
-// Every registered logical window, for diagnosing a press that resolved to
-// the wrong one.
-std::string DescribeOhosLogicalWindows();
-
 gfx::AcceleratedWidget GetOhosFocusedLogicalWindow();
 bool IsOhosPrimaryLogicalWindow(gfx::AcceleratedWidget widget);
 gfx::AcceleratedWidget GetOhosAcceleratedWidgetAtScreenPoint(
