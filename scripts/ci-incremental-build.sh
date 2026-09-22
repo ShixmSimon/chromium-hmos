@@ -62,6 +62,7 @@ apply_incremental_patch() {
 
 apply_incremental_patch "${repo_root}/patches/ohos-audio-input.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-vibration.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-battery.patch"
 
 # ---- sync overlay into the tree -------------------------------------------
 # The overlay holds whole files the adapter adds or replaces. Copying by

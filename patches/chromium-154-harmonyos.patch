@@ -17648,6 +17648,23 @@ index aab001a89e..742178de33 100644
    if (sandbox_string == kPrintBackendSandbox) {
      return Sandbox::kPrintBackend;
    }
+diff --git a/services/device/battery/BUILD.gn b/services/device/battery/BUILD.gn
+index 62d9b51b00..e22b7da458 100644
+--- a/services/device/battery/BUILD.gn
++++ b/services/device/battery/BUILD.gn
+@@ -66,6 +66,12 @@ if (!is_android) {
+         "CoreFoundation.framework",
+         "IOKit.framework",
+       ]
++    } else if (is_ohos) {
++      sources += [ "battery_status_manager_ohos.cc" ]
++      libs = [
++        "ohbattery_info",
++        "ohcommonevent",
++      ]
+     } else {
+       sources += [ "battery_status_manager_default.cc" ]
+     }
 diff --git a/services/device/device_service.cc b/services/device/device_service.cc
 index 913b569371..56bc5f94 100644
 --- a/services/device/device_service.cc

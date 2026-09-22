@@ -1,0 +1,27 @@
+Wire the Web Battery Status API to HarmonyOS BatteryInfo and CommonEvent.
+
+The platform implementation is new code under overlay/services/device/battery/.
+This patch selects it for OHOS and links the two NDK libraries it uses.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch. Apply
+this patch once to a persistent runner whose main adapter patch is already
+present:
+
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-battery.patch
+
+diff --git a/services/device/battery/BUILD.gn b/services/device/battery/BUILD.gn
+--- a/services/device/battery/BUILD.gn
++++ b/services/device/battery/BUILD.gn
+@@ -66,6 +66,12 @@ if (!is_android) {
+         "CoreFoundation.framework",
+         "IOKit.framework",
+       ]
++    } else if (is_ohos) {
++      sources += [ "battery_status_manager_ohos.cc" ]
++      libs = [
++        "ohbattery_info",
++        "ohcommonevent",
++      ]
+     } else {
+       sources += [ "battery_status_manager_default.cc" ]
+     }
