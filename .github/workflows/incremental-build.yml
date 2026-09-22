@@ -41,6 +41,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # apply_incremental_patch backs out the previously applied
+          # revision of an edited patch, which it finds in this
+          # repository's history. The default shallow clone has none.
+          fetch-depth: 0
 
       - name: Build
         id: build
