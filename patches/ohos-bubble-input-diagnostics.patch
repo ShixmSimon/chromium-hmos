@@ -85,10 +85,19 @@ index f5e6b0a..056f30d 100644
  
  ui::EventTarget* WindowTargeter::FindNextBestTarget(
 diff --git a/ui/views/bubble/bubble_dialog_delegate_view.cc b/ui/views/bubble/bubble_dialog_delegate_view.cc
-index 16d2770..9aaf703 100644
+index 16d2770..7c630da 100644
 --- a/ui/views/bubble/bubble_dialog_delegate_view.cc
 +++ b/ui/views/bubble/bubble_dialog_delegate_view.cc
-@@ -205,7 +205,23 @@ Widget* CreateBubbleWidget(BubbleDialogDelegate* bubble,
+@@ -22,6 +22,8 @@
+ #include "base/metrics/histogram_functions.h"
+ #include "base/strings/strcat.h"
+ #include "build/build_config.h"
++#include "ui/display/display.h"
++#include "ui/display/screen.h"
+ #include "ui/accessibility/ax_enums.mojom.h"
+ #include "ui/accessibility/ax_node_data.h"
+ #include "ui/accessibility/ax_role_properties.h"
+@@ -205,7 +207,36 @@ Widget* CreateBubbleWidget(BubbleDialogDelegate* bubble,
                                    : Widget::InitParams::Activatable::kNo;
    bubble->OnBeforeBubbleWidgetInit(&bubble_params, bubble_widget.get());
    DCHECK(bubble_params.parent || !bubble->has_parent());
@@ -107,12 +116,25 @@ index 16d2770..9aaf703 100644
 +               << " has_anchor_view=" << ohos_has_anchor_view
 +               << " accept_events=" << ohos_accept_events
 +               << " activatable=" << ohos_activatable
-+               << " anchor_rect=" << bubble->GetAnchorRect().ToString();
++               << " anchor_rect=" << bubble->GetAnchorRect().ToString()
++               << " contents_preferred="
++               << (bubble->GetContentsView()
++                       ? bubble->GetContentsView()
++                             ->GetPreferredSize(views::SizeBounds())
++                             .ToString()
++                       : std::string("-"))
++               << " work_area="
++               << (display::Screen::Get()
++                       ? display::Screen::Get()
++                             ->GetPrimaryDisplay()
++                             .work_area()
++                             .ToString()
++                       : std::string("-"));
 +#endif
    return bubble_widget.release();
  }
  
-@@ -696,6 +712,16 @@ void BubbleDialogDelegate::OnAnchorWidgetDestroying() {
+@@ -696,6 +727,16 @@ void BubbleDialogDelegate::OnAnchorWidgetDestroying() {
  }
  
  void BubbleDialogDelegate::OnBubbleWidgetActivationChanged(bool active) {
