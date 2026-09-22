@@ -14,10 +14,10 @@
 # What it can and cannot do:
 #   overlay/  files are copied into the tree. Changing one recompiles the
 #             translation units that include it.
-#   patches/  are NOT re-applied. Doing that safely means resetting the tree to
-#             pristine and rebuilding everything, so it is a separate, explicit
-#             operation (FULL=1) rather than something a push triggers by
-#             accident.
+#   The main patches are NOT re-applied. Doing that safely means resetting the
+#   tree to pristine and rebuilding everything. Small additive patches listed
+#   below are applied idempotently so a new source file can join an existing
+#   target without requiring a manual runner edit.
 #
 # Usage:
 #   scripts/ci-incremental-build.sh            # sync overlay, build, package
@@ -44,6 +44,23 @@ say() { printf '== %s\n' "$*"; }
 
 [[ -d "$src" ]] || die "no Chromium tree at $src"
 [[ -f "${src}/${out}/args.gn" ]] || die "no GN output at ${src}/${out}"
+
+apply_incremental_patch() {
+  local patch="$1"
+  local name="${patch##*/}"
+  if git -C "$src" apply --check "$patch"; then
+    git -C "$src" apply "$patch" || die "failed to apply ${name}"
+    say "applied incremental patch ${name}"
+    return
+  fi
+  if git -C "$src" apply --reverse --check "$patch"; then
+    say "incremental patch ${name} already applied"
+    return
+  fi
+  die "incremental patch ${name} neither applies nor is already present"
+}
+
+apply_incremental_patch "${repo_root}/patches/ohos-audio-input.patch"
 
 # ---- sync overlay into the tree -------------------------------------------
 # The overlay holds whole files the adapter adds or replaces. Copying by
