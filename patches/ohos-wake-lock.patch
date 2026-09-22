@@ -1,0 +1,28 @@
+Wire Chromium's PowerSaveBlocker to the HarmonyOS window manager so the Web
+Screen Wake Lock API keeps the display awake.
+
+The platform implementation is new code under
+overlay/services/device/wake_lock/power_save_blocker/. This patch selects it
+for OHOS and links the native window manager library.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch. Apply
+this patch once to a persistent runner whose main adapter patch is already
+present:
+
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-wake-lock.patch
+
+diff --git a/services/device/wake_lock/power_save_blocker/BUILD.gn b/services/device/wake_lock/power_save_blocker/BUILD.gn
+--- a/services/device/wake_lock/power_save_blocker/BUILD.gn
++++ b/services/device/wake_lock/power_save_blocker/BUILD.gn
+@@ -66,6 +66,11 @@ source_set("power_save_blocker") {
+     ]
+   } else if (is_win) {
+     sources += [ "power_save_blocker_win.cc" ]
++  } else if (is_ohos) {
++    sources += [ "power_save_blocker_ohos.cc" ]
++    deps += [ "//ui/ozone/platform/ohos:native_window_registry" ]
++
++    libs = [ "native_window_manager" ]
+   } else {
+     # Fuchsia and non-DBus Linux.
+     sources += [ "power_save_blocker_stub.cc" ]

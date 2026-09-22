@@ -63,6 +63,7 @@ apply_incremental_patch() {
 apply_incremental_patch "${repo_root}/patches/ohos-audio-input.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-vibration.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-battery.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-wake-lock.patch"
 
 # ---- sync overlay into the tree -------------------------------------------
 # The overlay holds whole files the adapter adds or replaces. Copying by
@@ -135,7 +136,14 @@ fi
 
 so="${src}/${out}/libweb_engine.so"
 [[ -f "$so" ]] || die 'build reported success but libweb_engine.so is missing'
-build_id=$("${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf" -n "$so" 2>/dev/null \
+readonly readelf="${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf"
+"$readelf" --wide --dyn-syms "$so" 2>/dev/null \
+  | grep 'OH_WindowManager_SetWindowKeepScreenOn' >/dev/null \
+  || die 'OHOS screen wake lock symbol is missing from libweb_engine.so'
+"$readelf" --wide --dynamic "$so" 2>/dev/null \
+  | grep 'libnative_window_manager.so' >/dev/null \
+  || die 'libweb_engine.so is not linked to libnative_window_manager.so'
+build_id=$("$readelf" -n "$so" 2>/dev/null \
            | grep -i 'build id' | grep -oE '[0-9a-f]{40}')
 say "built ${steps} step(s) in ${elapsed}s, build-id ${build_id}"
 

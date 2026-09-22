@@ -20,7 +20,10 @@ source_set("event_source") {
 }
 
 source_set("native_window_registry") {
-  visibility += [ "//ohos_nweb/src/aura_shell:*" ]
+  visibility += [
+    "//ohos_nweb/src/aura_shell:*",
+    "//services/device/wake_lock/power_save_blocker:*",
+  ]
 
   sources = [
     "ohos_native_window_registry.cc",

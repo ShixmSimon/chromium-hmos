@@ -17770,6 +17770,21 @@ index c7083b9985..3ab27bb732 100644
    HidService(const HidService&) = delete;
    HidService& operator=(const HidService&) = delete;
    virtual ~HidService();
+diff --git a/services/device/wake_lock/power_save_blocker/BUILD.gn b/services/device/wake_lock/power_save_blocker/BUILD.gn
+--- a/services/device/wake_lock/power_save_blocker/BUILD.gn
++++ b/services/device/wake_lock/power_save_blocker/BUILD.gn
+@@ -66,6 +66,11 @@ source_set("power_save_blocker") {
+     ]
+   } else if (is_win) {
+     sources += [ "power_save_blocker_win.cc" ]
++  } else if (is_ohos) {
++    sources += [ "power_save_blocker_ohos.cc" ]
++    deps += [ "//ui/ozone/platform/ohos:native_window_registry" ]
++
++    libs = [ "native_window_manager" ]
+   } else {
+     # Fuchsia and non-DBus Linux.
+     sources += [ "power_save_blocker_stub.cc" ]
 diff --git a/services/device/vibration/BUILD.gn b/services/device/vibration/BUILD.gn
 index 04df28f0b8..ec5670eeaa 100644
 --- a/services/device/vibration/BUILD.gn
