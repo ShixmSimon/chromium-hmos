@@ -78,6 +78,28 @@ apply_incremental_patch() {
   die "incremental patch ${name} neither applies nor is already present"
 }
 
+# The counterpart to the above: a patch that is no longer wanted. The tree is
+# persistent, so dropping the apply line is not enough -- the hunks stay in it
+# forever. This backs out whichever revision of the patch is actually applied,
+# and says nothing if none is. Safe to leave in place for a build or two after
+# the patch file is deleted, since it reads the file out of history.
+retire_incremental_patch() {
+  local patch="$1"
+  local name="${patch##*/}"
+  local rel="${patch#"${repo_root}/"}"
+  local rev
+  for rev in $(git -C "$repo_root" log --format=%H -n 20 -- "$rel"); do
+    if git -C "$repo_root" show "${rev}:${rel}" 2>/dev/null |
+        git -C "$src" apply --reverse --check - 2>/dev/null; then
+      git -C "$repo_root" show "${rev}:${rel}" | git -C "$src" apply --reverse ||
+        die "failed to retire ${name}"
+      say "retired incremental patch ${name} at ${rev:0:8}"
+      return
+    fi
+  done
+  say "incremental patch ${name} is not applied"
+}
+
 apply_incremental_patch "${repo_root}/patches/ohos-audio-input.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-vibration.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-battery.patch"
@@ -88,8 +110,8 @@ apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-chooser-input.p
 apply_incremental_patch "${repo_root}/patches/ohos-device-chooser-width.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-dialog-width-fits-screen.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-bubble-anchor-top-center.patch"
-# Temporary: remove with the patch once the chooser takes touch.
-apply_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
+# The chooser takes touch now, so the probes that found out why come out.
+retire_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
 
 # ---- sync overlay into the tree -------------------------------------------
 # The overlay holds whole files the adapter adds or replaces. Copying by
