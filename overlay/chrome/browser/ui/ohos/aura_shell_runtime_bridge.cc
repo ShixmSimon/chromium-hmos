@@ -55,6 +55,7 @@
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_types.h"
+#include "chrome/common/chrome_isolated_world_ids.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
@@ -73,7 +74,12 @@
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/browser/web_applications/web_app_tab_helper.h"
+#include "base/scoped_multi_source_observation.h"
 #include "components/embedder_support/user_agent_utils.h"
+#include "components/find_in_page/find_notification_details.h"
+#include "components/find_in_page/find_result_observer.h"
+#include "components/find_in_page/find_tab_helper.h"
+#include "components/find_in_page/find_types.h"
 #include "components/printing/browser/print_to_pdf/pdf_print_result.h"
 #include "components/printing/browser/print_to_pdf/pdf_print_utils.h"
 #include "content/public/browser/navigation_controller.h"
@@ -269,6 +275,38 @@ void DispatchRuntimeEvent(gfx::AcceleratedWidget widget,
     callback.Run(widget, event_json);
   }
 }
+
+// Reports find-in-page results to the shell's find bar: the match count and
+// which one is active, for whichever tab the shell last searched in.
+class FindResultRelay : public find_in_page::FindResultObserver {
+ public:
+  static FindResultRelay& Get() {
+    static base::NoDestructor<FindResultRelay> relay;
+    return *relay;
+  }
+
+  void Watch(find_in_page::FindTabHelper* helper) {
+    if (helper && !observation_.IsObservingSource(helper)) {
+      observation_.AddObservation(helper);
+    }
+  }
+
+  void OnFindResultAvailable(content::WebContents* web_contents) override;
+
+  void OnFindTabHelperDestroyed(find_in_page::FindTabHelper* helper) override {
+    if (observation_.IsObservingSource(helper)) {
+      observation_.RemoveObservation(helper);
+    }
+  }
+
+ private:
+  friend class base::NoDestructor<FindResultRelay>;
+  FindResultRelay() = default;
+
+  base::ScopedMultiSourceObservation<find_in_page::FindTabHelper,
+                                     find_in_page::FindResultObserver>
+      observation_{this};
+};
 
 void DispatchRuntimeEvent(base::DictValue event) {
   DispatchRuntimeEvent(gfx::kNullAcceleratedWidget, std::move(event));
@@ -987,6 +1025,21 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   return json;
 }
 
+void FindResultRelay::OnFindResultAvailable(content::WebContents* web_contents) {
+  auto* helper = find_in_page::FindTabHelper::FromWebContents(web_contents);
+  BrowserWindowInterface* browser = FindBrowserForWebContents(web_contents);
+  if (!helper || !browser) {
+    return;
+  }
+  const find_in_page::FindNotificationDetails& result = helper->find_result();
+  base::DictValue event;
+  event.Set("event", "findResult");
+  event.Set("matches", result.number_of_matches());
+  event.Set("activeMatch", result.active_match_ordinal());
+  event.Set("finalUpdate", result.final_update());
+  DispatchRuntimeEvent(GetBrowserWidget(browser), std::move(event));
+}
+
 // A shell may float its own bar over the bottom of the page and still let
 // the page draw behind it. The inset shrinks the visible viewport by that much,
 // the way an on-screen keyboard does, so the end of the page can scroll up
@@ -1421,6 +1474,43 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
   }
 
   content::WebContents* active = tabs->GetActiveWebContents();
+  if (*name == "findInPage" && active) {
+    const std::string* text = command.FindString("text");
+    auto* helper = find_in_page::FindTabHelper::FromWebContents(active);
+    if (text && helper) {
+      FindResultRelay::Get().Watch(helper);
+      helper->StartFinding(base::UTF8ToUTF16(*text),
+                           command.FindBool("forward").value_or(true),
+                           /*case_sensitive=*/false, /*find_match=*/true);
+    }
+    return;
+  }
+  if (*name == "stopFind" && active) {
+    if (auto* helper = find_in_page::FindTabHelper::FromWebContents(active)) {
+      helper->StopFinding(find_in_page::SelectionAction::kClear);
+    }
+    return;
+  }
+  if (*name == "getPageText" && active) {
+    // The shell's summarizer reads the page's text. An isolated world keeps
+    // the page's own scripts from seeing, or tampering with, the read.
+    const int request_id = command.FindInt("requestId").value_or(0);
+    active->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
+        u"(document.body && document.body.innerText || '').slice(0, 20000)",
+        base::BindOnce(
+            [](gfx::AcceleratedWidget widget, int request_id,
+               base::Value result) {
+              base::DictValue event;
+              event.Set("event", "pageText");
+              event.Set("requestId", request_id);
+              event.Set("text", result.is_string() ? result.GetString()
+                                                   : std::string());
+              DispatchRuntimeEvent(widget, std::move(event));
+            },
+            widget, request_id),
+        ISOLATED_WORLD_ID_CHROME_INTERNAL);
+    return;
+  }
   if (*name == "setBrowserControls") {
     const int top = std::max(0, command.FindInt("top").value_or(0));
     {
@@ -1832,6 +1922,9 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "systemPermissionState",
       "setViewportInsets",
       "setBrowserControls",
+      "findInPage",
+      "stopFind",
+      "getPageText",
   };
   if (!name || std::ranges::find(kSupportedCommands, *name) ==
                    std::ranges::end(kSupportedCommands)) {

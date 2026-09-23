@@ -114,9 +114,16 @@ export interface BrowserRuntimeEvent {
   event: 'systemPrintReady' | 'systemPrintFailed' | 'shareRequested' |
     'castRequested' | 'filePickerRequested' | 'pwaInstalled' | 'pwaMenuModel' |
     'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
-    'permissionsRequested' | 'browserControlsRatio';
+    'permissionsRequested' | 'browserControlsRatio' | 'findResult' | 'pageText';
   // browserControlsRatio: how much of the shell's top bar the page shows, 0-1.
   ratio?: number;
+  // findResult: the match count, the active match (1-based; 0 for none) and
+  // whether this is the last update for the search.
+  matches?: number;
+  activeMatch?: number;
+  finalUpdate?: boolean;
+  // pageText: the page's visible text, at most 20000 characters.
+  text?: string;
   action?: 'huaweiAccount' | 'huaweiWallet' | 'defaultBrowser' | 'checkForUpdates';
   filePath?: string;
   appId?: string;
@@ -149,6 +156,9 @@ export interface BrowserCommandPayload {
   bottom?: number;
   // setBrowserControls: the shell's top bar height, in vp; 0 for none.
   top?: number;
+  // findInPage: the text to find, and the direction to step in.
+  text?: string;
+  forward?: boolean;
   index?: number;
   requestId?: number;
   paths?: string[];
