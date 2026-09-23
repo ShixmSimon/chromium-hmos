@@ -17,7 +17,8 @@ OhosPlatformWindow::OhosPlatformWindow(PlatformWindowDelegate* delegate,
                                        bool expects_native_surface,
                                        bool anchored)
     : StubWindow(delegate, false, bounds),
-      adapter_(bounds, expects_native_surface, anchored) {
+      adapter_(bounds, expects_native_surface, anchored),
+      anchored_(anchored) {
   SetWmMoveLoopHandler(this, this);
   delegate->OnAcceleratedWidgetAvailable(adapter_.GetAcceleratedWidget());
   SetOhosNativeSurfaceBoundsCallback(
@@ -194,6 +195,19 @@ void OhosPlatformWindow::OnNativeSurfaceBoundsChanged(gfx::Rect bounds,
                                                       float density) {
   if (bounds.IsEmpty()) {
     return;
+  }
+  // An anchored popup's surface reports no screen origin. Its XComponent has
+  // no onAreaChange, so OhosAuraShellHost never learns where the shell put it
+  // and ToPixelBoundsWithOrigin falls back to the surface-local origin, which
+  // is always 0,0. Writing that back as the window's position destroyed the
+  // anchor Chromium had just computed: the shell was told the popup now lived
+  // at the top-left corner, moved it there, and the wrong position became the
+  // truth. It stayed wrong until something set the bounds again -- which is
+  // why a second tap on the same field put the popup in the right place.
+  //
+  // The size is real and has to be taken; the origin is a placeholder.
+  if (anchored_) {
+    bounds.set_origin(adapter_.GetBounds().origin());
   }
   const bool origin_changed = adapter_.GetBounds().origin() != bounds.origin();
   adapter_.SetBounds(bounds);

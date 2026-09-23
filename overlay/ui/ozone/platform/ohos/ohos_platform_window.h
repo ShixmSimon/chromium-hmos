@@ -47,6 +47,9 @@ class OhosPlatformWindow : public StubWindow,
   void SetWindowState(PlatformWindowState state);
 
   OhosNativeWindowAdapter adapter_;
+  // A popup, menu or tooltip: Chromium anchors it to page content, and the
+  // shell hosts it in an XComponent of its own.
+  const bool anchored_;
   PlatformWindowState window_state_ = PlatformWindowState::kNormal;
   base::WeakPtrFactory<OhosPlatformWindow> weak_factory_{this};
 };
