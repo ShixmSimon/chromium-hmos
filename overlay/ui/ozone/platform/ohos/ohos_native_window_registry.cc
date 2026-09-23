@@ -456,14 +456,25 @@ class NativeWindowRegistry {
 
   gfx::AcceleratedWidget GetWidgetAtScreenPoint(const gfx::Point& point) {
     base::AutoLock lock(lock_);
+    // Ranked by tier first, then by stacking order. An auxiliary window's
+    // XComponent lives in an ArkUI overlay drawn above the browser's own, so
+    // it is on top wherever the two overlap -- whatever the activation history
+    // says. Stacking order alone got that wrong: it is bumped every time a
+    // window is activated, the browser window is activated far more often
+    // than a status bar that never takes focus, and a press on the screen
+    // share bar's Stop button was handed to the browser underneath instead.
     gfx::AcceleratedWidget target = gfx::kNullAcceleratedWidget;
-    uint64_t target_order = 0;
+    std::pair<bool, uint64_t> target_rank{false, 0};
     for (const auto& [widget, record] : logical_windows_) {
-      if (record.visible && !record.bounds.IsEmpty() &&
-          record.bounds.Contains(point) &&
-          record.stacking_order >= target_order) {
+      if (!record.visible || record.bounds.IsEmpty() ||
+          !record.bounds.Contains(point)) {
+        continue;
+      }
+      const std::pair<bool, uint64_t> rank{record.auxiliary,
+                                           record.stacking_order};
+      if (rank >= target_rank) {
         target = widget;
-        target_order = record.stacking_order;
+        target_rank = rank;
       }
     }
     if (target != gfx::kNullAcceleratedWidget) {
