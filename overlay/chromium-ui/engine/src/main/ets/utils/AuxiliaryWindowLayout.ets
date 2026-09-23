@@ -82,14 +82,20 @@ export function layoutAuxiliaryWindow(
     Math.abs(previous.heightVp - height) <= SIZE_TOLERANCE_VP;
   const widthVp = keep ? previous!.widthVp : width;
   const heightVp = keep ? previous!.heightVp : height;
-  // Centred across the top, where Chrome hangs bubbles.
+  // A modal dialog -- the passkey sheet, the screen-share picker -- sits in
+  // the middle of the screen, where a phone puts its own dialogs and a thumb
+  // can reach its buttons. A non-modal bar stays along the top edge, out of
+  // the way of the page it shares the screen with.
+  const topVp = modal ?
+    Math.max((screen.height - heightVp) / 2, AUXILIARY_WINDOW_MARGIN_VP) :
+    AUXILIARY_WINDOW_MARGIN_VP;
   return {
     state: state,
     modal: modal,
     widthVp: widthVp,
     heightVp: heightVp,
     leftVp: Math.max((screen.width - widthVp) / 2, 0),
-    topVp: AUXILIARY_WINDOW_MARGIN_VP
+    topVp: topVp
   };
 }
 
