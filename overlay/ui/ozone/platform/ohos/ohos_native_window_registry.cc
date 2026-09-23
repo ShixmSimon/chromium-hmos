@@ -255,6 +255,12 @@ class NativeWindowRegistry {
     return expected_native_surfaces_.contains(widget);
   }
 
+  bool IsAnchored(gfx::AcceleratedWidget widget) {
+    base::AutoLock lock(lock_);
+    auto it = logical_windows_.find(widget);
+    return it != logical_windows_.end() && it->second.anchored;
+  }
+
   std::optional<OhosNativeSurface> WaitForSurface(
       gfx::AcceleratedWidget widget,
       base::TimeDelta timeout) {
@@ -750,6 +756,10 @@ void ExpectOhosNativeSurface(gfx::AcceleratedWidget widget) {
 
 bool IsOhosNativeSurfaceExpected(gfx::AcceleratedWidget widget) {
   return GetRegistry().IsSurfaceExpected(widget);
+}
+
+bool IsOhosAnchoredWindow(gfx::AcceleratedWidget widget) {
+  return GetRegistry().IsAnchored(widget);
 }
 
 std::optional<OhosNativeSurface> WaitForOhosNativeSurface(

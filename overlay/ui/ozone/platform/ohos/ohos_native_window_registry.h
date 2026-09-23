@@ -75,6 +75,8 @@ std::optional<OhosNativeSurface> GetOhosNativeSurface(
     gfx::AcceleratedWidget widget);
 void ExpectOhosNativeSurface(gfx::AcceleratedWidget widget);
 bool IsOhosNativeSurfaceExpected(gfx::AcceleratedWidget widget);
+// Whether `widget` is a popup, menu or tooltip (see OhosLogicalWindowState).
+bool IsOhosAnchoredWindow(gfx::AcceleratedWidget widget);
 std::optional<OhosNativeSurface> WaitForOhosNativeSurface(
     gfx::AcceleratedWidget widget,
     base::TimeDelta timeout);

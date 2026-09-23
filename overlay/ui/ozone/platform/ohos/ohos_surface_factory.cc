@@ -122,6 +122,16 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
           WaitForOhosNativeSurface(widget, kNativeSurfaceWaitTimeout);
     }
     if (!surface || !surface->window) {
+      if (IsOhosAnchoredWindow(widget)) {
+        // No XComponent for this popup. Failing here costs far more than the
+        // popup: viz takes a failed view surface as GPU compositing being
+        // broken and falls back to software for every window, and software
+        // output on this platform reaches no screen -- the whole browser
+        // froze on its last frame. Let the popup draw nowhere instead.
+        LOG(ERROR) << "No native surface for popup widget " << widget
+                   << "; drawing it offscreen";
+        return CreateOffscreenGLSurface(display, gfx::Size(1, 1));
+      }
       return nullptr;
     }
 
