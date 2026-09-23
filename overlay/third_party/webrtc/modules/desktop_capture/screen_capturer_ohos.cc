@@ -4,7 +4,6 @@
 
 #include "modules/desktop_capture/desktop_capturer.h"
 
-#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -94,9 +93,8 @@ class ScreenCapturerOhos final : public DesktopCapturer {
     }
     OH_AVScreenCapture_SetMicrophoneEnabled(capture_, false);
     OH_AVScreenCapture_SetCanvasRotation(capture_, true);
-    const auto result = OH_AVScreenCapture_StartScreenCapture(capture_);
-    RTC_LOG(LS_ERROR) << "OH_AVScreenCapture start result: " << result;
-    if (result != AV_SCREEN_CAPTURE_ERR_OK) {
+    if (OH_AVScreenCapture_StartScreenCapture(capture_) !=
+        AV_SCREEN_CAPTURE_ERR_OK) {
       std::lock_guard<std::mutex> lock(frame_lock_);
       capture_failed_ = true;
       return;
@@ -176,7 +174,6 @@ class ScreenCapturerOhos final : public DesktopCapturer {
     if (!self) {
       return;
     }
-    RTC_LOG(LS_ERROR) << "OH_AVScreenCapture state: " << state_code;
     switch (state_code) {
       case OH_SCREEN_CAPTURE_STATE_CANCELED:
       case OH_SCREEN_CAPTURE_STATE_STOPPED_BY_USER:
@@ -213,17 +210,8 @@ class ScreenCapturerOhos final : public DesktopCapturer {
     const int32_t capacity = OH_AVBuffer_GetCapacity(buffer);
     const auto* address =
         static_cast<const uint8_t*>(OH_AVBuffer_GetAddr(buffer));
-    if (!self->logged_first_buffer_.exchange(true)) {
-      RTC_LOG(LS_ERROR) << "OH_AVScreenCapture first buffer: width="
-                        << config.width << " height=" << config.height
-                        << " stride=" << config.stride
-                        << " format=" << config.format
-                        << " capacity=" << capacity
-                        << " address=" << static_cast<const void*>(address);
-    }
     if (config.width <= 0 || config.height <= 0 ||
         config.stride < config.width * DesktopFrame::kBytesPerPixel) {
-      RTC_LOG(LS_ERROR) << "OH_AVScreenCapture rejected buffer config";
       return;
     }
 
@@ -231,8 +219,6 @@ class ScreenCapturerOhos final : public DesktopCapturer {
         static_cast<size_t>(config.height) * config.stride;
     if (!address || capacity < 0 ||
         static_cast<size_t>(capacity) < required_size) {
-      RTC_LOG(LS_ERROR) << "OH_AVScreenCapture rejected buffer storage: required="
-                        << required_size;
       return;
     }
 
@@ -251,7 +237,6 @@ class ScreenCapturerOhos final : public DesktopCapturer {
   std::mutex frame_lock_;
   FrameBuffer frame_;
   bool capture_failed_ = false;
-  std::atomic_bool logged_first_buffer_ = false;
 };
 
 std::unique_ptr<DesktopCapturer> CreateOhosScreenCapturer() {
