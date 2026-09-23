@@ -185,6 +185,9 @@ export interface AuxiliaryWindowState {
   // tell -- an older engine, or a report sent before the widget had a
   // delegate -- in which case the last known answer stands.
   modal?: boolean;
+  // A popup, menu or tooltip Chromium placed next to page content: draw it
+  // at x/y, not where the shell would put a window of its own.
+  anchored?: boolean;
   windowRole: 'auxiliary' | 'pwa';
   pwaAppId?: string;
   title?: string;

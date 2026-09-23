@@ -36,7 +36,6 @@ import { PwaWindowLauncher } from '../utils/PwaWindowLauncher';
 import {
   AUXILIARY_WINDOW_MARGIN_VP,
   AuxiliaryWindowView,
-  auxiliaryWindowLeftVp,
   layoutAuxiliaryWindow,
   ScreenSizeVp
 } from 'engine';
@@ -242,9 +241,11 @@ struct AuraShell {
       .height(this.auxiliaryHeightVp(view.state.widget))
       .position({
         x: this.auxiliaryLeftVp(view.state.widget),
-        y: AUXILIARY_WINDOW_MARGIN_VP
+        y: this.auxiliaryTopVp(view.state.widget)
       })
-      .shadow({ radius: 16, color: $r('app.color.shadow'), offsetY: 4 })
+      // Popups Chromium anchors to the page draw their own shadow and border.
+      .shadow(view.state.anchored === true ? { radius: 0 } :
+        { radius: 16, color: $r('app.color.shadow'), offsetY: 4 })
       // Default, not Block: Block keeps the touch test away from this Stack's
       // own children, and the Stack is not a touch target itself, so every
       // press inside the window came back "Touch test result is empty" and
@@ -268,8 +269,11 @@ struct AuraShell {
   }
 
   private auxiliaryLeftVp(widget: number): number {
-    const view = this.findAuxiliaryWindow(widget);
-    return view === undefined ? 0 : auxiliaryWindowLeftVp(view, this.screenSizeVp);
+    return this.findAuxiliaryWindow(widget)?.leftVp ?? 0;
+  }
+
+  private auxiliaryTopVp(widget: number): number {
+    return this.findAuxiliaryWindow(widget)?.topVp ?? AUXILIARY_WINDOW_MARGIN_VP;
   }
 
   private onScreenSizeChanged(width: number, height: number): void {

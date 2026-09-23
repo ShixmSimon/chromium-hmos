@@ -14,7 +14,8 @@ std::atomic_uint32_t g_next_widget{1u};
 
 OhosNativeWindowAdapter::OhosNativeWindowAdapter(
     const gfx::Rect& bounds,
-    bool expects_native_surface)
+    bool expects_native_surface,
+    bool anchored)
     : accelerated_widget_(g_next_widget.fetch_add(1u)), bounds_(bounds) {
   if (std::optional<OhosNativeSurface> surface =
           BindOhosNativeSurface(accelerated_widget_)) {
@@ -22,7 +23,7 @@ OhosNativeWindowAdapter::OhosNativeWindowAdapter(
   } else if (expects_native_surface) {
     ExpectOhosNativeSurface(accelerated_widget_);
   }
-  RegisterOhosLogicalWindow(accelerated_widget_, bounds_);
+  RegisterOhosLogicalWindow(accelerated_widget_, bounds_, anchored);
 }
 
 OhosNativeWindowAdapter::~OhosNativeWindowAdapter() {

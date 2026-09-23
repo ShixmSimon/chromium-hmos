@@ -489,6 +489,7 @@ void DispatchAuxiliaryWindowEvent(const ui::OhosLogicalWindowState& state) {
   event.Set("width", state.bounds.width());
   event.Set("height", state.bounds.height());
   event.Set("visible", state.visible);
+  event.Set("anchored", state.anchored);
   event.Set("destroyed", state.destroyed);
   event.Set("stackingOrder", static_cast<double>(state.stacking_order));
   if (std::optional<bool> modal =

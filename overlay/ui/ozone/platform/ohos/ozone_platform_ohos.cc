@@ -51,11 +51,19 @@ class OzonePlatformOhos : public OzonePlatform {
   std::unique_ptr<PlatformWindow> CreatePlatformWindow(
       PlatformWindowDelegate* delegate,
       PlatformWindowInitProperties properties) override {
+    // Popups, menus and tooltips are top-level windows too: the shell hosts
+    // each in its own XComponent, placed where Chromium put it. They used not
+    // to wait for that surface, so the GPU thread found none, gave up, and
+    // the XComponent the shell added a moment later stayed black -- an
+    // autofill list showed as a black box.
+    const bool anchored = properties.type == PlatformWindowType::kPopup ||
+                          properties.type == PlatformWindowType::kMenu ||
+                          properties.type == PlatformWindowType::kTooltip;
     const bool expects_native_surface =
-        properties.type == PlatformWindowType::kWindow &&
-        properties.parent_widget == gfx::kNullAcceleratedWidget;
+        anchored || (properties.type == PlatformWindowType::kWindow &&
+                     properties.parent_widget == gfx::kNullAcceleratedWidget);
     return std::make_unique<OhosPlatformWindow>(
-        delegate, properties.bounds, expects_native_surface);
+        delegate, properties.bounds, expects_native_surface, anchored);
   }
   bool IsWindowCompositingSupported() const override { return true; }
   PlatformClipboard* GetPlatformClipboard() override {

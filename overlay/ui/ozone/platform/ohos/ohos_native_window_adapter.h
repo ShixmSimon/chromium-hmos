@@ -9,7 +9,8 @@ namespace ui {
 class OhosNativeWindowAdapter {
  public:
   OhosNativeWindowAdapter(const gfx::Rect& bounds,
-                          bool expects_native_surface);
+                          bool expects_native_surface,
+                          bool anchored);
   ~OhosNativeWindowAdapter();
 
   gfx::AcceleratedWidget GetAcceleratedWidget() const;

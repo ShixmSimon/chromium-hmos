@@ -14,9 +14,10 @@ namespace ui {
 
 OhosPlatformWindow::OhosPlatformWindow(PlatformWindowDelegate* delegate,
                                        const gfx::Rect& bounds,
-                                       bool expects_native_surface)
+                                       bool expects_native_surface,
+                                       bool anchored)
     : StubWindow(delegate, false, bounds),
-      adapter_(bounds, expects_native_surface) {
+      adapter_(bounds, expects_native_surface, anchored) {
   SetWmMoveLoopHandler(this, this);
   delegate->OnAcceleratedWidgetAvailable(adapter_.GetAcceleratedWidget());
   SetOhosNativeSurfaceBoundsCallback(

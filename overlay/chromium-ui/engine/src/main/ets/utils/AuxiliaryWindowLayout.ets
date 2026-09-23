@@ -15,6 +15,9 @@ export interface AuxiliaryWindowView {
   modal: boolean;
   widthVp: number;
   heightVp: number;
+  // Where the window's top-left corner goes, in the shell's coordinates.
+  leftVp: number;
+  topVp: number;
 }
 
 export interface ScreenSizeVp {
@@ -60,6 +63,9 @@ export function layoutAuxiliaryWindow(
   pxToVp: PxToVp,
   previous?: AuxiliaryWindowView
 ): AuxiliaryWindowView {
+  if (state.anchored === true) {
+    return layoutAnchoredWindow(state, screen, pxToVp, previous);
+  }
   const maxWidth = Math.max(screen.width - 2 * AUXILIARY_WINDOW_MARGIN_VP, 1);
   const maxHeight = Math.max(
     screen.height * (modal ? MODAL_MAX_HEIGHT_FRACTION : NON_MODAL_MAX_HEIGHT_FRACTION), 1);
@@ -71,15 +77,50 @@ export function layoutAuxiliaryWindow(
   const width = Math.floor(Math.min(wantedWidth, maxWidth));
   const height = Math.floor(Math.min(wantedHeight, maxHeight));
 
+  const keep = previous !== undefined &&
+    Math.abs(previous.widthVp - width) <= SIZE_TOLERANCE_VP &&
+    Math.abs(previous.heightVp - height) <= SIZE_TOLERANCE_VP;
+  const widthVp = keep ? previous!.widthVp : width;
+  const heightVp = keep ? previous!.heightVp : height;
+  // Centred across the top, where Chrome hangs bubbles.
+  return {
+    state: state,
+    modal: modal,
+    widthVp: widthVp,
+    heightVp: heightVp,
+    leftVp: Math.max((screen.width - widthVp) / 2, 0),
+    topVp: AUXILIARY_WINDOW_MARGIN_VP
+  };
+}
+
+/**
+ * A popup Chromium anchored to page content -- an autofill list under a
+ * field, a <select> dropdown, a tooltip -- goes exactly where Chromium put
+ * it, only pulled back inside the screen. Moving it would detach it from the
+ * field it belongs to. It never blocks the page.
+ */
+function layoutAnchoredWindow(
+  state: AuxiliaryWindowState,
+  screen: ScreenSizeVp,
+  pxToVp: PxToVp,
+  previous?: AuxiliaryWindowView
+): AuxiliaryWindowView {
+  const maxWidth = Math.max(screen.width, 1);
+  const maxHeight = Math.max(screen.height, 1);
+  let width = Math.floor(Math.min(state.width > 0 ? pxToVp(state.width) : 1, maxWidth));
+  let height = Math.floor(Math.min(state.height > 0 ? pxToVp(state.height) : 1, maxHeight));
   if (previous !== undefined &&
     Math.abs(previous.widthVp - width) <= SIZE_TOLERANCE_VP &&
     Math.abs(previous.heightVp - height) <= SIZE_TOLERANCE_VP) {
-    return { state: state, modal: modal, widthVp: previous.widthVp, heightVp: previous.heightVp };
+    width = previous.widthVp;
+    height = previous.heightVp;
   }
-  return { state: state, modal: modal, widthVp: width, heightVp: height };
+  const left = Math.min(Math.max(pxToVp(state.x), 0), Math.max(screen.width - width, 0));
+  const top = Math.min(Math.max(pxToVp(state.y), 0), Math.max(screen.height - height, 0));
+  return { state: state, modal: false, widthVp: width, heightVp: height, leftVp: left, topVp: top };
 }
 
-/** Where a window sits: centred across the top, where Chrome hangs bubbles. */
+/** Where a window sits horizontally; kept for shells built against 1.0. */
 export function auxiliaryWindowLeftVp(view: AuxiliaryWindowView, screen: ScreenSizeVp): number {
-  return Math.max((screen.width - view.widthVp) / 2, 0);
+  return view.leftVp;
 }

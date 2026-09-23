@@ -56,6 +56,7 @@ struct LogicalWindowRecord {
   gfx::Rect bounds;
   bool visible = false;
   bool auxiliary = false;
+  bool anchored = false;
   uint64_t stacking_order = 0;
 };
 
@@ -67,6 +68,7 @@ OhosLogicalWindowState MakeLogicalWindowState(gfx::AcceleratedWidget widget,
       .bounds = record.bounds,
       .visible = record.visible,
       .auxiliary = record.auxiliary,
+      .anchored = record.anchored,
       .destroyed = destroyed,
       .stacking_order = record.stacking_order,
   };
@@ -321,7 +323,8 @@ class NativeWindowRegistry {
   }
 
   void RegisterLogicalWindow(gfx::AcceleratedWidget widget,
-                             const gfx::Rect& bounds) {
+                             const gfx::Rect& bounds,
+                             bool anchored) {
     if (widget == gfx::kNullAcceleratedWidget) {
       return;
     }
@@ -330,6 +333,7 @@ class NativeWindowRegistry {
         .bounds = bounds,
         .visible = false,
         .auxiliary = !widget_bindings_.contains(widget),
+        .anchored = anchored,
         .stacking_order = ++next_stacking_order_,
     };
   }
@@ -769,8 +773,9 @@ std::optional<OhosNativeSurface> GetPrimaryOhosNativeSurface() {
 }
 
 void RegisterOhosLogicalWindow(gfx::AcceleratedWidget widget,
-                               const gfx::Rect& bounds) {
-  GetRegistry().RegisterLogicalWindow(widget, bounds);
+                               const gfx::Rect& bounds,
+                               bool anchored) {
+  GetRegistry().RegisterLogicalWindow(widget, bounds, anchored);
 }
 
 void UnregisterOhosLogicalWindow(gfx::AcceleratedWidget widget) {

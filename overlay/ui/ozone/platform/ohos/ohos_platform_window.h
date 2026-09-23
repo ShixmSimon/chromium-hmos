@@ -15,7 +15,8 @@ class OhosPlatformWindow : public StubWindow,
  public:
   OhosPlatformWindow(PlatformWindowDelegate* delegate,
                      const gfx::Rect& bounds,
-                     bool expects_native_surface);
+                     bool expects_native_surface,
+                     bool anchored);
   ~OhosPlatformWindow() override;
 
   void Show(bool inactive) override;

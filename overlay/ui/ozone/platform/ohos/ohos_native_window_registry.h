@@ -30,6 +30,10 @@ struct OhosLogicalWindowState {
   gfx::Rect bounds;
   bool visible = false;
   bool auxiliary = false;
+  // A popup, menu or tooltip that Chromium places next to page content (an
+  // autofill list below a field, a <select> dropdown). The shell draws it at
+  // `bounds`; other auxiliary windows it lays out itself.
+  bool anchored = false;
   bool destroyed = false;
   uint64_t stacking_order = 0;
 };
@@ -84,7 +88,8 @@ std::optional<OhosNativeSurface> GetPrimaryOhosNativeSurface();
 // compositor. They still need independent bounds and stacking state for input
 // routing even though they do not own an OHNativeWindow.
 void RegisterOhosLogicalWindow(gfx::AcceleratedWidget widget,
-                               const gfx::Rect& bounds);
+                               const gfx::Rect& bounds,
+                               bool anchored = false);
 void UnregisterOhosLogicalWindow(gfx::AcceleratedWidget widget);
 void UpdateOhosLogicalWindowBounds(gfx::AcceleratedWidget widget,
                                    const gfx::Rect& bounds);
