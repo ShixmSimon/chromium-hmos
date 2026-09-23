@@ -81,11 +81,15 @@ void ShutdownAuraShellBrowser();
 
 // Browser controls: the shell's own top bar, which Chromium makes room for at
 // the top of the page and slides away as the page scrolls, the way Chrome on
-// Android does. The height is in DIP and 0 means the shell has none.
-// BrowserWebContentsDelegate reports it to the renderer and forwards the
-// renderer's shown ratio back here, which passes it on to the shell so the
-// bar can follow the page.
+// Android does. The shell tracks the height and minimum height in DIP; these
+// getters return device pixels, which is what BrowserWebContentsDelegate
+// reports to the renderer. 0 means the shell has none. The minimum height is
+// how much of the bar stays on screen when it is fully collapsed -- 0 means
+// it can hide completely. BrowserWebContentsDelegate reports both to the
+// renderer and forwards the renderer's shown ratio back here, which passes it
+// on to the shell so the bar can follow the page.
 int GetAuraShellTopControlsHeight();
+int GetAuraShellTopControlsMinHeight();
 void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
                                       float ratio);
 

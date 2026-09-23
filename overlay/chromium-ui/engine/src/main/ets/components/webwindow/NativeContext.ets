@@ -156,6 +156,13 @@ export interface BrowserCommandPayload {
   bottom?: number;
   // setBrowserControls: the shell's top bar height, in vp; 0 for none.
   top?: number;
+  // setBrowserControls: how much of the top bar stays on screen once it is
+  // fully collapsed, in vp; omitted or 0 lets it hide completely.
+  minTop?: number;
+  // setBrowserControlsState: which state to drive the controls to.
+  state?: 'shown' | 'hidden' | 'both';
+  // setBrowserControlsState: whether the transition animates.
+  animate?: boolean;
   // findInPage: the text to find, and the direction to step in.
   text?: string;
   forward?: boolean;

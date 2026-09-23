@@ -6,6 +6,7 @@
 #include "chrome/browser/ui/ohos/screen_orientation_delegate_ohos.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <map>
@@ -102,6 +103,7 @@
 #include "ui/base/pointer/touch_ui_controller.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/window_open_disposition.h"
+#include "ui/display/screen.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/native_theme/native_theme.h"
 #include "ui/ozone/platform/ohos/ohos_event_source.h"
@@ -160,8 +162,10 @@ struct RuntimeBridgeState {
   // How much of the bottom of each window's page the shell covers with its
   // own floating bar, in DIP. See ApplyViewportInsets().
   std::map<gfx::AcceleratedWidget, int> viewport_bottom_inset GUARDED_BY(lock);
-  // The shell's top bar height in DIP; see GetAuraShellTopControlsHeight().
+  // The shell's top bar height and minimum (collapsed) height, in DIP; see
+  // GetAuraShellTopControlsHeight() and GetAuraShellTopControlsMinHeight().
   int top_controls_height GUARDED_BY(lock) = 0;
+  int top_controls_min_height GUARDED_BY(lock) = 0;
   // The view each window last had its controls shown on. Compared, never
   // dereferenced: it tells the poll that a different view is now current -- a
   // tab switch, or a navigation that swapped in a new renderer, which starts
@@ -1047,6 +1051,15 @@ void FindResultRelay::OnFindResultAvailable(content::WebContents* web_contents) 
 // is a no-op in the view, which is what lets the poll below re-apply them to
 // whatever view is current -- a tab switch, a new tab and a cross-site
 // navigation each bring a different one.
+// Chromium's browser controls height is in physical pixels (see the comment
+// on RenderViewHostDelegateView), but the shell hands it over in vp, so this
+// converts using the primary display's scale factor.
+int DipToPixels(int dip) {
+  const float scale =
+      display::Screen::Get()->GetPrimaryDisplay().device_scale_factor();
+  return static_cast<int>(std::lround(dip * scale));
+}
+
 void ApplyViewportInsets(content::WebContents* contents, int bottom_dip) {
   if (!contents) {
     return;
@@ -1513,16 +1526,32 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
   }
   if (*name == "setBrowserControls") {
     const int top = std::max(0, command.FindInt("top").value_or(0));
+    const int min_top =
+        std::clamp(command.FindInt("minTop").value_or(0), 0, top);
     {
       RuntimeBridgeState& state = GetState();
       base::AutoLock lock(state.lock);
       state.top_controls_height = top;
+      state.top_controls_min_height = min_top;
       state.controls_shown_for[widget] = reinterpret_cast<uintptr_t>(
           active ? active->GetRenderWidgetHostView() : nullptr);
       state.last_shown_ratio = -1.0f;
     }
-    LOG(WARNING) << "OHOS browser controls: top=" << top;
+    LOG(WARNING) << "OHOS browser controls: top=" << top << " min=" << min_top;
     ShowBrowserControls(active);
+    return;
+  }
+  if (*name == "setBrowserControlsState" && active) {
+    const std::string* value = command.FindString("state");
+    cc::BrowserControlsState current = cc::BrowserControlsState::kBoth;
+    if (value && *value == "shown") {
+      current = cc::BrowserControlsState::kShown;
+    } else if (value && *value == "hidden") {
+      current = cc::BrowserControlsState::kHidden;
+    }
+    active->UpdateBrowserControlsState(
+        cc::BrowserControlsState::kBoth, current,
+        command.FindBool("animate").value_or(true), std::nullopt);
     return;
   }
   if (*name == "setViewportInsets") {
@@ -1714,7 +1743,13 @@ void ReloadThemeFontsOnUiThread(std::string font_id) {
 int GetAuraShellTopControlsHeight() {
   RuntimeBridgeState& state = GetState();
   base::AutoLock lock(state.lock);
-  return state.top_controls_height;
+  return DipToPixels(state.top_controls_height);
+}
+
+int GetAuraShellTopControlsMinHeight() {
+  RuntimeBridgeState& state = GetState();
+  base::AutoLock lock(state.lock);
+  return DipToPixels(state.top_controls_min_height);
 }
 
 void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
@@ -1922,6 +1957,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "systemPermissionState",
       "setViewportInsets",
       "setBrowserControls",
+      "setBrowserControlsState",
       "findInPage",
       "stopFind",
       "getPageText",

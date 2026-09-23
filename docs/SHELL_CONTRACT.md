@@ -191,7 +191,7 @@ struct Browser {
 | `systemPrintFailed`、`inputRecovered` | 否 | 记日志即可。 |
 | `findResult` | 否 | `matches` 匹配总数，`activeMatch` 当前是第几个（从 1 开始，0 表示没有），`finalUpdate` 为 true 时计数已定 |
 | `pageText` | 否 | 回复 `getPageText`：`requestId`、`text` |
-| `browserControlsRatio` | 否 | 用了 `setBrowserControls` 才会有。`ratio` 为顶栏当前露出的比例（1 全部显示，0 完全滑走），外壳把顶栏往上移 `(1 - ratio) × 顶栏高度`。 |
+| `browserControlsRatio` | 否 | 用了 `setBrowserControls` 才会有。`ratio` 为顶栏当前露出的比例（1 全部显示，0 完全滑走），外壳把顶栏往上移 `(1 - ratio) × 顶栏高度`。传了 `minTop` 时，比例的下限是 `minTop / top`（顶栏收起到 `minTop` 就不会再往上滑了）。 |
 
 ### 定位权限状态(必须做)
 
@@ -229,7 +229,8 @@ function report() {
 | `permissionResult` | `requestId`, `granted`, `denied` | 回复 `permissionsRequested` |
 | `systemPermissionState` | `location`: `'allowed' \| 'denied' \| 'notDetermined'` | 上报应用的定位权限状态 |
 | `recoverInput` | | 触摸或焦点异常时让引擎恢复输入 |
-| `setBrowserControls` | `top`（vp） | 外壳顶栏的高度，交给 Chromium 当作 browser controls：网页顶部给它留出位置，网页下滑时顶栏被滑走，上滑时再出现。显示比例通过 `browserControlsRatio` 事件告诉外壳，外壳据此移动顶栏；传 0 取消 |
+| `setBrowserControls` | `top`（vp）, `minTop?`（vp） | 外壳顶栏的高度，交给 Chromium 当作 browser controls：网页顶部给它留出位置，网页下滑时顶栏被滑走，上滑时再出现。引擎按当前设备的缩放比例把 vp 换算成物理像素后再交给 Chromium。`minTop` 是顶栏收起后仍保留的高度（vp），不传或传 0 表示可以完全滑走；`minTop` 会被夹到 `[0, top]` 之间。显示比例通过 `browserControlsRatio` 事件告诉外壳，外壳据此移动顶栏；`top` 传 0 取消 |
+| `setBrowserControlsState` | `state`: `'shown' \| 'hidden' \| 'both'`, `animate?` | 主动把顶栏收起或展开，而不是等网页滚动触发。`'shown'` 强制展开、`'hidden'` 强制收起（收到 `minTop`）、`'both'`（默认）交还给滚动控制。`animate` 默认 true |
 | `findInPage` | `text`, `forward?` | 在当前标签页查找，同一段文字再发一次即跳到下一个（`forward: false` 为上一个）。结果通过 `findResult` 事件返回 |
 | `stopFind` | | 结束查找，清除高亮 |
 | `getPageText` | `requestId` | 读取当前网页的可见文字（最多 20000 字），在独立的脚本环境里执行，网页自己的脚本看不到。结果通过 `pageText` 事件返回 |

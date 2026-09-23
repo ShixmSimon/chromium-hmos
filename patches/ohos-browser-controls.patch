@@ -12,7 +12,9 @@ height through WebContentsViewAura, and RenderWidgetHostViewAura forwards the
 shown ratio to the delegate -- except that the desktop BrowserView reports no
 controls. On OHOS the delegate now asks the shell bridge for the height, makes
 the viewport shrink while the controls show, and passes the ratio back to the
-bridge, which hands it to the shell.
+bridge, which hands it to the shell. It also asks the bridge for a minimum
+height, so the shell can keep a collapsed strip of its bar on screen instead
+of letting it hide completely.
 
 Generated against Chromium 154.0.8037.51.
 
@@ -20,7 +22,7 @@ Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-browser-controls.patch
 
 diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
-index 9e27bdc..82490ff 100644
+index 9e27bdc..41d731d 100644
 --- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 +++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 @@ -115,6 +115,12 @@
@@ -36,7 +38,7 @@ index 9e27bdc..82490ff 100644
  // Kill switch for merge safety for a fix for https://crbug.com/489205993
  // TODO(crbug.com/489205993): Remove in M150 or later.
  BASE_FEATURE(kBackgroundActorTaskPopupsOpenInBackground,
-@@ -368,15 +374,33 @@ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
+@@ -368,15 +374,41 @@ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
  void BrowserWebContentsDelegate::SetTopControlsShownRatio(
      content::WebContents* web_contents,
      float ratio) {
@@ -58,6 +60,14 @@ index 9e27bdc..82490ff 100644
    return window_->GetTopControlsHeight();
  }
  
++int BrowserWebContentsDelegate::GetTopControlsMinHeight() {
++#if BUILDFLAG(IS_OHOS)
++  return chrome::ohos::GetAuraShellTopControlsMinHeight();
++#else
++  return content::WebContentsDelegate::GetTopControlsMinHeight();
++#endif
++}
++
  bool BrowserWebContentsDelegate::DoBrowserControlsShrinkRendererSize(
      content::WebContents* contents) {
 +#if BUILDFLAG(IS_OHOS)
@@ -70,3 +80,15 @@ index 9e27bdc..82490ff 100644
    return window_->DoBrowserControlsShrinkRendererSize(contents);
  }
  
+diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h
+index 05a9d7f..8b2b212 100644
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h
+@@ -73,6 +73,7 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
+   void SetTopControlsShownRatio(content::WebContents* web_contents,
+                                 float ratio) override;
+   int GetTopControlsHeight() override;
++  int GetTopControlsMinHeight() override;
+   bool DoBrowserControlsShrinkRendererSize(
+       content::WebContents* contents) override;
+   int GetVirtualKeyboardHeight(content::WebContents* contents) override;
