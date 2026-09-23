@@ -112,7 +112,9 @@ export interface BrowserRuntimeEvent {
   event: 'systemPrintReady' | 'systemPrintFailed' | 'shareRequested' |
     'castRequested' | 'filePickerRequested' | 'pwaInstalled' | 'pwaMenuModel' |
     'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
-    'permissionsRequested';
+    'permissionsRequested' | 'browserControlsRatio';
+  // browserControlsRatio: how much of the shell's top bar the page shows, 0-1.
+  ratio?: number;
   action?: 'huaweiAccount' | 'huaweiWallet' | 'defaultBrowser' | 'checkForUpdates';
   filePath?: string;
   appId?: string;
@@ -143,6 +145,8 @@ export interface BrowserCommandPayload {
   url?: string;
   // setViewportInsets: how much of the page bottom the shell covers, in vp.
   bottom?: number;
+  // setBrowserControls: the shell's top bar height, in vp; 0 for none.
+  top?: number;
   index?: number;
   requestId?: number;
   paths?: string[];

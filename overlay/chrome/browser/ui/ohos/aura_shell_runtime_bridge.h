@@ -79,6 +79,16 @@ void SetAuraShellBrowserFocused(gfx::AcceleratedWidget widget, bool focused);
 void NotifyAuraShellThemeFontChanged(const std::string& font_id);
 void ShutdownAuraShellBrowser();
 
+// Browser controls: the shell's own top bar, which Chromium makes room for at
+// the top of the page and slides away as the page scrolls, the way Chrome on
+// Android does. The height is in DIP and 0 means the shell has none.
+// BrowserWebContentsDelegate reports it to the renderer and forwards the
+// renderer's shown ratio back here, which passes it on to the shell so the
+// bar can follow the page.
+int GetAuraShellTopControlsHeight();
+void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
+                                      float ratio);
+
 }  // namespace chrome::ohos
 
 #endif  // CHROME_BROWSER_UI_OHOS_AURA_SHELL_RUNTIME_BRIDGE_H_

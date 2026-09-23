@@ -185,6 +185,7 @@ struct Browser {
 | `castRequested` | 否 | 投屏选择器。参考实现在 `entry/.../CurrentTabCastSession.ets`,还没有移进 HAR。 |
 | `pwaInstalled`、`pwaMenuModel`、`pwaMenuClosed` | 否 | PWA 相关,需要时参考 `entry/` 的实现。 |
 | `systemPrintFailed`、`inputRecovered` | 否 | 记日志即可。 |
+| `browserControlsRatio` | 否 | 用了 `setBrowserControls` 才会有。`ratio` 为顶栏当前露出的比例（1 全部显示，0 完全滑走），外壳把顶栏往上移 `(1 - ratio) × 顶栏高度`。 |
 
 ### 定位权限状态(必须做)
 
@@ -222,6 +223,7 @@ function report() {
 | `permissionResult` | `requestId`, `granted`, `denied` | 回复 `permissionsRequested` |
 | `systemPermissionState` | `location`: `'allowed' \| 'denied' \| 'notDetermined'` | 上报应用的定位权限状态 |
 | `recoverInput` | | 触摸或焦点异常时让引擎恢复输入 |
+| `setBrowserControls` | `top`（vp） | 外壳顶栏的高度，交给 Chromium 当作 browser controls：网页顶部给它留出位置，网页下滑时顶栏被滑走，上滑时再出现。显示比例通过 `browserControlsRatio` 事件告诉外壳，外壳据此移动顶栏；传 0 取消 |
 | `setViewportInsets` | `bottom`（vp） | 外壳在网页底部盖了多高的悬浮栏。网页照常画到底，但可视区域缩小这么多，网页末尾能滚到悬浮栏上方。切换标签、新建标签后引擎会自动沿用，不用重发；传 0 取消 |
 | `pwaHome`、`pwaMenu`、`pwaMenuAction`、`pwaMenuDismiss` | 见 `BrowserCommandPayload` | PWA 窗口菜单 |
 | `defaultBrowserState`、`systemCapabilities` | 见参考实现 | 系统集成相关状态 |

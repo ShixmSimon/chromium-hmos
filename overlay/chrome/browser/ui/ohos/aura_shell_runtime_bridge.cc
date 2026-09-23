@@ -36,6 +36,8 @@
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "base/values.h"
+#include "cc/input/browser_controls_offset_tag_modifications.h"
+#include "cc/input/browser_controls_state.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
@@ -77,6 +79,7 @@
 #include "content/public/browser/page_navigator.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
+#include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_switches.h"
@@ -150,6 +153,13 @@ struct RuntimeBridgeState {
   // How much of the bottom of each window's page the shell covers with its
   // own floating bar, in DIP. See ApplyViewportInsets().
   std::map<gfx::AcceleratedWidget, int> viewport_bottom_inset GUARDED_BY(lock);
+  // The shell's top bar height in DIP; see GetAuraShellTopControlsHeight().
+  int top_controls_height GUARDED_BY(lock) = 0;
+  // The active tab each window last had its controls shown on. Compared, never
+  // dereferenced: it only tells the poll that a different tab is now active.
+  std::map<gfx::AcceleratedWidget, uintptr_t> controls_shown_for
+      GUARDED_BY(lock);
+  float last_shown_ratio GUARDED_BY(lock) = -1.0f;
   bool pending_shutdown GUARDED_BY(lock) = false;
 };
 
@@ -991,9 +1001,27 @@ void ApplyViewportInsets(content::WebContents* contents, int bottom_dip) {
   }
 }
 
+// Makes the renderer pick up a new top controls height and starts the tab with
+// its controls showing, free to hide them as the page scrolls. Without the
+// explicit kShown the renderer would start from a shown ratio of 0 -- controls
+// hidden -- and the top of the page would sit under the shell's bar.
+void ShowBrowserControls(content::WebContents* contents) {
+  if (!contents) {
+    return;
+  }
+  if (content::RenderWidgetHostView* view =
+          contents->GetRenderWidgetHostView()) {
+    view->GetRenderWidgetHost()->SynchronizeVisualProperties();
+  }
+  contents->UpdateBrowserControlsState(cc::BrowserControlsState::kBoth,
+                                       cc::BrowserControlsState::kShown,
+                                       /*animate=*/false, std::nullopt);
+}
+
 void PollBrowserStateOnUiThread(uint64_t generation) {
   std::string ui_family;
   std::map<gfx::AcceleratedWidget, int> bottom_insets;
+  int top_controls_height = 0;
   {
     RuntimeBridgeState& state = GetState();
     base::AutoLock lock(state.lock);
@@ -1002,6 +1030,7 @@ void PollBrowserStateOnUiThread(uint64_t generation) {
     }
     ui_family = state.ui_family;
     bottom_insets = state.viewport_bottom_inset;
+    top_controls_height = state.top_controls_height;
   }
 
   const bool mobile = IsMobileUiFamily(ui_family);
@@ -1011,7 +1040,7 @@ void PollBrowserStateOnUiThread(uint64_t generation) {
   if (GlobalBrowserCollection* browsers =
           GlobalBrowserCollection::GetInstance()) {
     browsers->ForEach(
-        [&snapshots, &ui_family, &bottom_insets](
+        [&snapshots, &ui_family, &bottom_insets, top_controls_height](
             BrowserWindowInterface* browser) {
           const gfx::AcceleratedWidget widget = GetBrowserWidget(browser);
           if (widget != gfx::kNullAcceleratedWidget) {
@@ -1019,6 +1048,20 @@ void PollBrowserStateOnUiThread(uint64_t generation) {
             TabStripModel* tabs = browser->GetTabStripModel();
             if (inset != bottom_insets.end() && tabs) {
               ApplyViewportInsets(tabs->GetActiveWebContents(), inset->second);
+            }
+            if (top_controls_height > 0 && tabs) {
+              content::WebContents* active = tabs->GetActiveWebContents();
+              bool switched = false;
+              {
+                RuntimeBridgeState& state = GetState();
+                base::AutoLock lock(state.lock);
+                uintptr_t& shown = state.controls_shown_for[widget];
+                switched = shown != reinterpret_cast<uintptr_t>(active);
+                shown = reinterpret_cast<uintptr_t>(active);
+              }
+              if (switched) {
+                ShowBrowserControls(active);
+              }
             }
             snapshots.emplace_back(
                 widget, BuildBrowserStateJson(ui_family, widget, browser));
@@ -1370,6 +1413,19 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
   }
 
   content::WebContents* active = tabs->GetActiveWebContents();
+  if (*name == "setBrowserControls") {
+    const int top = std::max(0, command.FindInt("top").value_or(0));
+    {
+      RuntimeBridgeState& state = GetState();
+      base::AutoLock lock(state.lock);
+      state.top_controls_height = top;
+      state.controls_shown_for[widget] = reinterpret_cast<uintptr_t>(active);
+      state.last_shown_ratio = -1.0f;
+    }
+    LOG(INFO) << "OHOS Aura shell browser controls top=" << top;
+    ShowBrowserControls(active);
+    return;
+  }
   if (*name == "setViewportInsets") {
     const int bottom = std::max(0, command.FindInt("bottom").value_or(0));
     {
@@ -1555,6 +1611,33 @@ void ReloadThemeFontsOnUiThread(std::string font_id) {
 }
 
 }  // namespace
+
+int GetAuraShellTopControlsHeight() {
+  RuntimeBridgeState& state = GetState();
+  base::AutoLock lock(state.lock);
+  return state.top_controls_height;
+}
+
+void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
+                                      float ratio) {
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    if (state.top_controls_height <= 0 || ratio == state.last_shown_ratio) {
+      return;
+    }
+    state.last_shown_ratio = ratio;
+  }
+  BrowserWindowInterface* browser = FindBrowserForWebContents(contents);
+  if (!browser || browser->GetTabStripModel()->GetActiveWebContents() !=
+                      contents) {
+    return;
+  }
+  base::DictValue event;
+  event.Set("event", "browserControlsRatio");
+  event.Set("ratio", static_cast<double>(ratio));
+  DispatchRuntimeEvent(GetBrowserWidget(browser), std::move(event));
+}
 
 void NotifyAuraShellBrowserStarted() {
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(

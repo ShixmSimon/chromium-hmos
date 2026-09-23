@@ -1,0 +1,72 @@
+Let the ArkTS shell's top bar be browser controls, as Chrome's is on Android.
+
+This port draws its browser UI in ArkTS. A top bar that is simply laid out
+above the page costs the page its height for good; one that floats over the
+page hides the top of it. Chrome on Android solves the same problem with
+browser controls: the renderer makes room for the bar at the top of the page
+and slides it away as the page scrolls, reporting how much of it is shown so
+the bar can follow.
+
+All of that is already wired on Aura -- the RenderWidgetHostImpl reads the
+height through WebContentsViewAura, and RenderWidgetHostViewAura forwards the
+shown ratio to the delegate -- except that the desktop BrowserView reports no
+controls. On OHOS the delegate now asks the shell bridge for the height, makes
+the viewport shrink while the controls show, and passes the ratio back to the
+bridge, which hands it to the shell.
+
+Generated against Chromium 154.0.8037.51.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-browser-controls.patch
+
+diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+index 9e27bdc..82490ff 100644
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+@@ -115,6 +115,12 @@
+ #include "ui/display/types/display_constants.h"
+ #endif  // BUILDFLAG(IS_MAC)
+ 
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
++
+ // Kill switch for merge safety for a fix for https://crbug.com/489205993
+ // TODO(crbug.com/489205993): Remove in M150 or later.
+ BASE_FEATURE(kBackgroundActorTaskPopupsOpenInBackground,
+@@ -368,15 +374,33 @@ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
+ void BrowserWebContentsDelegate::SetTopControlsShownRatio(
+     content::WebContents* web_contents,
+     float ratio) {
++#if BUILDFLAG(IS_OHOS)
++  // The top bar is the shell's, drawn in ArkTS: pass the ratio on so it can
++  // follow the page as the renderer slides the controls away.
++  chrome::ohos::OnAuraShellTopControlsShownRatio(web_contents, ratio);
++#endif
+   window_->SetTopControlsShownRatio(web_contents, ratio);
+ }
+ 
+ int BrowserWebContentsDelegate::GetTopControlsHeight() {
++#if BUILDFLAG(IS_OHOS)
++  if (const int height = chrome::ohos::GetAuraShellTopControlsHeight();
++      height > 0) {
++    return height;
++  }
++#endif
+   return window_->GetTopControlsHeight();
+ }
+ 
+ bool BrowserWebContentsDelegate::DoBrowserControlsShrinkRendererSize(
+     content::WebContents* contents) {
++#if BUILDFLAG(IS_OHOS)
++  // Room is made for the shell's bar rather than the page drawing under it
++  // at the top: shrink the viewport while the controls are shown.
++  if (chrome::ohos::GetAuraShellTopControlsHeight() > 0) {
++    return true;
++  }
++#endif
+   return window_->DoBrowserControlsShrinkRendererSize(contents);
+ }
+ 

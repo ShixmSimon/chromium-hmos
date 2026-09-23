@@ -118,6 +118,7 @@ retire_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-chooser-input.
 apply_incremental_patch "${repo_root}/patches/ohos-device-chooser-width.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-dialog-width-fits-screen.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-bubble-anchor-top-center.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-browser-controls.patch"
 # The chooser takes touch now, so the probes that found out why come out.
 retire_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
 
