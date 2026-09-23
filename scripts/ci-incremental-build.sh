@@ -243,8 +243,18 @@ if [[ "$stage_target" == "$ui_wsl" ]]; then
     --exclude 'entry/build/' \
     --exclude 'entry/libs/' \
     --exclude 'entry/src/main/resources/rawfile/' \
+    --exclude 'engine/build/' \
+    --exclude 'engine/libs/' \
+    --exclude 'engine/src/main/resources/rawfile/' \
     "${repo_root}/overlay/chromium-ui/" "${ui_wsl}/" \
     || die 'app shell sync failed'
+
+  # The engine moved into the engine HAR. Its old home in the entry module is
+  # excluded from the sync above, so nothing would ever clear it: left there,
+  # the HAP would carry a second, stale libweb_engine.so beside the new one,
+  # and the build-id check below -- which reads the staging directory -- would
+  # pass while the package shipped the old engine. Idempotent.
+  rm -rf "${ui_wsl}/entry/libs" "${ui_wsl}/entry/src/main/resources/rawfile/chromium"
 fi
 
 say "staging runtime into ${stage_target}"
@@ -254,7 +264,7 @@ bash "${repo_root}/scripts/stage-runtime-assets.sh" "${src}/${out}" "$stage_targ
 # The engine about to be packaged must be the one just linked. This is the only
 # place the two can be compared before the HAP is built, and getting it wrong is
 # silent in every other signal the job produces.
-staged_engine="${stage_target}/entry/libs/arm64-v8a/libweb_engine.so"
+staged_engine="${stage_target}/engine/libs/arm64-v8a/libweb_engine.so"
 staged_id=$("${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf" -n \
             "$staged_engine" 2>/dev/null | grep -oE '[0-9a-f]{40}')
 [[ "$staged_id" == "$build_id" ]] \
@@ -301,6 +311,32 @@ export WSLENV='DEVECO_SDK_HOME/w:JAVA_HOME/w:ComSpec/w:PATH/l'
 # that actually recompiled ArkTS failed with "10310021 ArkTS: INTERNAL ERROR
 # ... spawn cmd.exe ENOENT".
 export PATH="${deveco}/jbr/bin:/mnt/c/Windows/System32:/mnt/c/Windows:${PATH}"
+
+# That checkout's build-profile.json5 is its own -- it carries the signing
+# config and is excluded from the sync -- so a module added to the repository's
+# copy does not reach it. hvigor would then fail on the dependency with an
+# error that does not say this. Say it instead.
+if ! grep -Eq '"srcPath"[[:space:]]*:[[:space:]]*"\./engine"' "${ui_wsl}/build-profile.json5"; then
+  {
+    printf '\n## packaging failed\n'
+    printf '%s/build-profile.json5 does not register the engine module.\n' "$ui_win"
+    printf 'Add this to its "modules" array, after the entry module:\n'
+    printf '    {\n      "name": "engine",\n      "srcPath": "./engine"\n    }\n'
+  } >>"${status_dir}/errors.txt"
+  printf '{"status":"package-failed","steps":%s,"elapsed":%s,"build_id":"%s"}\n' \
+    "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
+  die "engine module not registered in ${ui_win}\\build-profile.json5"
+fi
+
+# entry depends on the engine HAR as a local file dependency; ohpm links it into
+# oh_modules. oh_modules and the lock file are excluded from the sync, so this
+# runs on that checkout every time.
+ohpm_cli="${deveco}/tools/ohpm/bin/pm-cli.js"
+[[ -f "$ohpm_cli" ]] || die "ohpm not found at ${ohpm_cli}"
+( cd "$ui_wsl" \
+  && "${deveco}/tools/node/node.exe" "${deveco_win}\\tools\\ohpm\\bin\\pm-cli.js" install ) \
+  >>"$log" 2>&1 || die 'ohpm install failed'
+
 if ( cd "$ui_wsl" \
      && "${deveco}/tools/node/node.exe" "${deveco_win}\\tools\\hvigor\\bin\\hvigorw.js" \
           --mode module -p product=default -p module=entry@default \
@@ -324,6 +360,21 @@ hap=$(find "${ui_wsl}/entry/build" -name '*-signed.hap' 2>/dev/null | head -1)
 [[ -z "$hap" ]] && hap=$(find "${ui_wsl}/entry/build" -name '*.hap' 2>/dev/null | head -1)
 [[ -n "$hap" ]] || die 'no HAP produced'
 size=$(stat -c %s "$hap")
+
+# The check that matters is on the package, not on the staging directory: that
+# the libweb_engine.so inside the HAP is the one just linked.
+packaged_engine="$(mktemp)"
+if command -v unzip >/dev/null; then
+  unzip -p "$hap" libs/arm64-v8a/libweb_engine.so >"$packaged_engine" 2>/dev/null
+else
+  python3 -c 'import sys,zipfile; sys.stdout.buffer.write(zipfile.ZipFile(sys.argv[1]).read("libs/arm64-v8a/libweb_engine.so"))' \
+    "$hap" >"$packaged_engine" 2>/dev/null
+fi || die "HAP has no libs/arm64-v8a/libweb_engine.so"
+packaged_id=$("${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf" -n \
+              "$packaged_engine" 2>/dev/null | grep -oE '[0-9a-f]{40}')
+rm -f "$packaged_engine"
+[[ "$packaged_id" == "$build_id" ]] \
+  || die "HAP carries engine ${packaged_id:-with no build-id}, expected ${build_id}"
 
 printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":true,"hap":"%s","hap_bytes":%s}\n' \
   "$steps" "$elapsed" "$build_id" "$(basename "$hap")" "$size" >"${status_dir}/latest.json"

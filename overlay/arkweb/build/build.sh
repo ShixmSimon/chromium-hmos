@@ -266,8 +266,8 @@ clear_directory() {
 
 stage_native_runtime() {
   local out_dir="$1"
-  local libs_dir="${HAP_PROJECT}/entry/libs/arm64-v8a"
-  local raw_dir="${HAP_PROJECT}/entry/src/main/resources/rawfile/chromium"
+  local libs_dir="${HAP_PROJECT}/engine/libs/arm64-v8a"
+  local raw_dir="${HAP_PROJECT}/engine/src/main/resources/rawfile/chromium"
   local runtime_version
 
   validate_native_runtime "$out_dir"

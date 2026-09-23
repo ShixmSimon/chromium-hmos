@@ -32,6 +32,18 @@ if [[ -n "${HARMONYOS_SIGNING_CONFIG_PATH:-}" ]]; then
   cp "${HARMONYOS_SIGNING_CONFIG_PATH}" \
     "${chromium_src}/chromium-ui/build-profile.json5"
 fi
+# That file replaces the repository's build-profile.json5 outright, so it has
+# to register every module the repository's does -- the engine HAR included,
+# which the entry module depends on. Fail here, where the cause is obvious,
+# rather than deep in the packaging step.
+if ! grep -Eq '"srcPath"[[:space:]]*:[[:space:]]*"\./engine"' \
+    "${chromium_src}/chromium-ui/build-profile.json5"; then
+  printf '%s\n' \
+    "chromium-ui/build-profile.json5 does not register the engine module." \
+    "Add to the modules array of ${HARMONYOS_SIGNING_CONFIG_PATH:-that file}:" \
+    '    { "name": "engine", "srcPath": "./engine" }' >&2
+  exit 1
+fi
 
 mkdir -p "${chromium_src}/out/plan_kirin_pc"
 cp "${project_root}/config/args.plan_kirin_pc.gn" \

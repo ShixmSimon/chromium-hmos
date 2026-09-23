@@ -4,6 +4,10 @@
 #
 # Stage a Chromium build's runtime into the chromium-ui HarmonyOS project.
 #
+# The runtime lives in the engine HAR (chromium-ui/engine), not in the entry
+# module: a shell depends on that package and gets the engine, its runtime and
+# the bridges Chromium calls back into, without owning any of them.
+#
 # This mirrors stage_native_runtime() in overlay/arkweb/build/build.sh, which is
 # the authority on what the shell expects at runtime. It exists because copying
 # the obvious files by hand is not enough: the shell reads
@@ -23,8 +27,8 @@ set -euo pipefail
 
 readonly out_dir="${1:?usage: $0 OUT_DIR [PROJECT_DIR]}"
 readonly project="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../overlay/chromium-ui" && pwd)}"
-readonly libs_dir="${project}/entry/libs/arm64-v8a"
-readonly raw_dir="${project}/entry/src/main/resources/rawfile/chromium"
+readonly libs_dir="${project}/engine/libs/arm64-v8a"
+readonly raw_dir="${project}/engine/src/main/resources/rawfile/chromium"
 
 readonly REQUIRED_PAKS=(
   chrome_100_percent.pak
