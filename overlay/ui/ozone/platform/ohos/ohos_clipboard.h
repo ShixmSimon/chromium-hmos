@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
 #include "ui/ozone/public/platform_clipboard.h"
