@@ -1822,6 +1822,8 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "filePickerResult",
       "permissionResult",
       "systemPermissionState",
+      "setViewportInsets",
+      "setBrowserControls",
   };
   if (!name || std::ranges::find(kSupportedCommands, *name) ==
                    std::ranges::end(kSupportedCommands)) {
