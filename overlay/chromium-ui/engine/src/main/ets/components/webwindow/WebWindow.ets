@@ -94,7 +94,7 @@ export struct WebWindow {
   @Param onError?: (error: Error) => void = undefined;
 
   @Local currentUrl: string = CHROMIUM_HOME_URL;
-  @Local useTextureXComponent: boolean = false;
+  private lockSurfaceRotation: boolean = false;
 
   private readonly xComponentController: XComponentController = new XComponentController();
   private nativeContext: NativeContext | null = null;
@@ -183,7 +183,11 @@ export struct WebWindow {
     Column() {
       XComponent({
         id: this.xComponentId,
-        type: this.useTextureXComponent ? XComponentType.TEXTURE : XComponentType.SURFACE,
+        // SURFACE gives Chromium its own layer in the system compositor, which
+        // can hand it to the display hardware. TEXTURE routed every frame
+        // through this app's UI thread and had the compositor redraw it on
+        // the GPU: ~5.7 ms of extra latency and a full-screen draw per frame.
+        type: XComponentType.SURFACE,
         libraryname: 'web_engine',
         controller: this.xComponentController
       })
@@ -784,23 +788,19 @@ export struct WebWindow {
   }
 
   private configureSurfaceRotation(): void {
-    if (this.useTextureXComponent) {
-      return;
-    }
     try {
-      // Keep the surface geometry stable while the container compensates for
-      // the unfolded fold-display layer orientation.
-      this.xComponentController.setXComponentSurfaceRotation({ lock: true });
+      // 2in1: keep the surface geometry stable while the container
+      // compensates for the unfolded fold-display layer orientation.
+      // Elsewhere the surface follows the window, and Chromium re-lays out
+      // at the new size on rotation.
+      this.xComponentController.setXComponentSurfaceRotation({ lock: this.lockSurfaceRotation });
     } catch (error) {
       console.warn('Failed to configure XComponent surface rotation:', error);
     }
   }
 
   private updateXComponentMode(config: AuraStartupConfig): void {
-    // Touch-first displays can change their buffer orientation independently
-    // of the app window. TEXTURE lets the system compositor keep Chromium
-    // upright across phone, tablet, fold, TV, and car rotations.
-    this.useTextureXComponent = config.deviceClass !== '2in1';
+    this.lockSurfaceRotation = config.deviceClass === '2in1';
   }
 
   private markSurfaceReady(): void {
