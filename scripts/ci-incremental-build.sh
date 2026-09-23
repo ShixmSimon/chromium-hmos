@@ -230,13 +230,20 @@ stage_target="${repo_root}/overlay/chromium-ui"
 # weeks old, with nothing in the job disagreeing.
 #
 # Excluded: build output and oh_modules, which are the other checkout's to
-# produce; the two directories stage-runtime-assets.sh is about to fill; and
-# build-profile.json5 and its lock, which carry that machine's signing config
-# and must not be overwritten by the repository's empty one.
+# produce; the two directories stage-runtime-assets.sh is about to fill; the
+# root build-profile.json5, which carries that machine's signing config and
+# must not be overwritten by the repository's empty one; and the ohpm lock
+# files, which ohpm install regenerates there.
+#
+# The build-profile.json5 exclude is anchored with a leading slash on purpose.
+# Unanchored, rsync matched the file at every depth: every module's own
+# build-profile.json5 was held back too, so entry's never reached that checkout
+# and the engine HAR arrived without one -- hvigor then failed with "Can not
+# find build config file build-profile.json5 at 'engine'".
 if [[ "$stage_target" == "$ui_wsl" ]]; then
   say "syncing app shell sources into ${ui_wsl}"
   rsync -a --delete \
-    --exclude 'build-profile.json5' \
+    --exclude '/build-profile.json5' \
     --exclude 'oh-package-lock.json5' \
     --exclude 'oh_modules/' \
     --exclude '.hvigor/' \
