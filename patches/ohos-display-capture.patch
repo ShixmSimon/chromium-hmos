@@ -1,0 +1,40 @@
+diff --git a/third_party/webrtc/modules/desktop_capture/BUILD.gn b/third_party/webrtc/modules/desktop_capture/BUILD.gn
+index 5e6e377..da3b47c 100644
+--- a/third_party/webrtc/modules/desktop_capture/BUILD.gn
++++ b/third_party/webrtc/modules/desktop_capture/BUILD.gn
+@@ -450,7 +450,20 @@ rtc_library("desktop_capture") {
+     ]
+   }
+ 
+-  if (!is_win && !is_mac && !rtc_use_x11_extensions && !rtc_use_pipewire &&
++  if (is_ohos) {
++    sources += [
++      "//third_party/webrtc/modules/desktop_capture/screen_capturer_ohos.cc",
++      "mouse_cursor_monitor_null.cc",
++    ]
++    libs = [
++      "native_avscreen_capture",
++      "native_buffer",
++      "native_display_manager",
++      "native_media_core",
++    ]
++  }
++
++  if (!is_ohos && !is_win && !is_mac && !rtc_use_x11_extensions &&
++      !rtc_use_pipewire && !is_fuchsia) {
+     sources += [
+       "mouse_cursor_monitor_null.cc",
+diff --git a/third_party/webrtc/webrtc.gni b/third_party/webrtc/webrtc.gni
+index 27fb55a..5222ffc 100644
+--- a/third_party/webrtc/webrtc.gni
++++ b/third_party/webrtc/webrtc.gni
+@@ -340,7 +340,8 @@ rtc_opus_dir = "//third_party/opus"
+ # Desktop capturer is supported only on Windows, OSX and Linux.
+ rtc_desktop_capture_supported =
+     (is_win && current_os != "winuwp") || is_mac ||
+-    ((is_linux || is_chromeos) && (rtc_use_x11_extensions || rtc_use_pipewire))
++    ((is_linux || is_chromeos) && (rtc_use_x11_extensions || rtc_use_pipewire)) ||
++    is_ohos
+ 
+ ###############################################################################
+ # Templates

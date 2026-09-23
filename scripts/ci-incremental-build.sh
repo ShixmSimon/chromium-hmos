@@ -110,6 +110,7 @@ apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-api.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-web-usb.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-web-hid.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-web-serial.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-display-capture.patch"
 # The press no longer steals focus from an open bubble, so the chooser does
 # not need its own opt-out from close-on-deactivate.
 retire_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-chooser-input.patch"
