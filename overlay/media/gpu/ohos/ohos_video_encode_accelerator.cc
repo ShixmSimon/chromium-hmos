@@ -476,7 +476,8 @@ bool OhosVideoEncodeAccelerator::FeedInputBuffer(const CodecBuffer& input,
     return false;
   }
   const size_t submit_size =
-      std::clamp(full_size.ValueOrDie(), queued_size.ValueOrDie(),
+      std::clamp(static_cast<size_t>(full_size.ValueOrDie()),
+                 static_cast<size_t>(queued_size.ValueOrDie()),
                  static_cast<size_t>(capacity));
 
   const std::vector<ColorPlaneLayout> planes = {
