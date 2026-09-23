@@ -173,6 +173,10 @@ export interface AuxiliaryWindowState {
   visible: boolean;
   destroyed: boolean;
   stackingOrder: number;
+  // Whether Chromium made this window modal. Absent when the engine could not
+  // tell -- an older engine, or a report sent before the widget had a
+  // delegate -- in which case the last known answer stands.
+  modal?: boolean;
   windowRole: 'auxiliary' | 'pwa';
   pwaAppId?: string;
   title?: string;

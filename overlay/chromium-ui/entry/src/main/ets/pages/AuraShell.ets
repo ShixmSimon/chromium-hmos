@@ -33,6 +33,13 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { SystemPrintAdapter } from '../utils/SystemPrintAdapter';
 import { ChromiumSystemAction, SystemIntegrationAdapter } from '../utils/SystemIntegrationAdapter';
 import { PwaWindowLauncher } from '../utils/PwaWindowLauncher';
+import {
+  AUXILIARY_WINDOW_MARGIN_VP,
+  AuxiliaryWindowView,
+  auxiliaryWindowLeftVp,
+  layoutAuxiliaryWindow,
+  ScreenSizeVp
+} from '../utils/AuxiliaryWindowLayout';
 import { BrowserProfileState } from '../utils/profile/BrowserProfileService';
 
 const EMPTY_BROWSER_STATE: BrowserStateSnapshot = {
@@ -75,7 +82,8 @@ struct AuraShell {
   @State private browserState: BrowserStateSnapshot = EMPTY_BROWSER_STATE;
   @StorageLink('auraBrowserCommandText') browserCommandText: string = '';
   @StorageLink('auraBrowserCommandRevision') browserCommandRevision: number = 0;
-  @State private auxiliaryWindows: AuxiliaryWindowState[] = [];
+  @State private auxiliaryWindows: AuxiliaryWindowView[] = [];
+  @State private screenSizeVp: ScreenSizeVp = { width: 0, height: 0 };
   @State private activeAuxiliaryWidget: number = 0;
   @State private auxiliaryDismissWidget: number = 0;
   @State private auxiliaryDismissRevision: number = 0;
@@ -160,13 +168,31 @@ struct AuraShell {
           })
         }
         if (this.auxiliaryWindows.length > 0) {
-          this.AuxiliaryWindowOverlay()
+          this.AuxiliaryWindowLayer()
         }
       }
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.browser_canvas'))
+    .onAreaChange((_oldValue: Area, newValue: Area): void => {
+      this.onScreenSizeChanged(Number(newValue.width), Number(newValue.height));
+    })
+  }
+
+  // Close the topmost modal window on back, the way a phone dismisses a
+  // dialog. Chromium's windows carry their own Cancel and Stop buttons, so
+  // the shell no longer adds a close button of its own; this is the one
+  // system gesture that still means "dismiss".
+  onBackPress(): boolean {
+    for (let index = this.auxiliaryWindows.length - 1; index >= 0; index--) {
+      const view = this.auxiliaryWindows[index];
+      if (view.modal) {
+        this.requestAuxiliaryWindowDismiss(view.state.widget);
+        return true;
+      }
+    }
+    return false;
   }
 
   private startKnockShare(): void {
@@ -179,85 +205,94 @@ struct AuraShell {
     });
   }
 
+  // Each auxiliary window is drawn at its own size, clamped to the screen, and
+  // hangs from the top centre. Nothing wraps the XComponent: its box is exactly
+  // the size the window reported, because the surface size is fed back to the
+  // widget as its bounds and anything added here would shrink it every round.
+  //
+  // Only a modal window -- the media source picker -- gets a scrim that blocks
+  // the page. A non-modal one, such as the "sharing your screen / stop" bar,
+  // covers only its own box and the page around it stays usable.
   @Builder
-  private AuxiliaryWindowOverlay() {
-    Column() {
-      Row() {
-        Text('Chromium')
-          .fontSize(18)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-        Blank()
-        Button({ type: ButtonType.Circle }) {
-          Image($r('app.media.chromium_close'))
-            .width(20)
-            .height(20)
-            .fillColor($r('app.color.icon_primary'))
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor(Color.Transparent)
-        .onClick(() => {
-          this.requestAuxiliaryWindowDismiss(this.activeAuxiliaryWidget);
-        })
-      }
-      .width('100%')
-      .height(48)
-
-      if (this.auxiliaryWindows.length > 1) {
-        Scroll() {
-          Row({ space: 8 }) {
-            ForEach(this.auxiliaryWindows, (state: AuxiliaryWindowState, index: number) => {
-              Button(`窗口 ${index + 1}`)
-                .height(36)
-                .fontSize(14)
-                .fontColor(state.widget === this.activeAuxiliaryWidget ?
-                  $r('app.color.on_accent') : $r('app.color.text_secondary'))
-                .backgroundColor(state.widget === this.activeAuxiliaryWidget ?
-                  $r('app.color.accent_primary') : $r('app.color.surface_secondary'))
-                .borderRadius(8)
-                .onClick(() => {
-                  this.activeAuxiliaryWidget = state.widget;
-                })
-            }, (state: AuxiliaryWindowState): string => state.widget.toString())
-          }
-        }
-        .scrollable(ScrollDirection.Horizontal)
-        .scrollBar(BarState.Off)
+  private AuxiliaryWindowLayer() {
+    if (this.auxiliaryWindows.some((view: AuxiliaryWindowView): boolean => view.modal)) {
+      Column()
         .width('100%')
-        .height(44)
-      }
-
-      Stack() {
-        ForEach(this.auxiliaryWindows, (state: AuxiliaryWindowState) => {
-          XComponent({
-            id: state.componentId,
-            type: XComponentType.SURFACE,
-            libraryname: 'web_engine'
-          })
-            .id(state.componentId)
-            .width('100%')
-            .height('100%')
-            .focusable(state.widget === this.activeAuxiliaryWidget)
-            .defaultFocus(state.widget === this.activeAuxiliaryWidget)
-            .visibility(state.widget === this.activeAuxiliaryWidget ?
-              Visibility.Visible : Visibility.Hidden)
-            .zIndex(state.widget === this.activeAuxiliaryWidget ? 1 : 0)
-        }, (state: AuxiliaryWindowState): string => state.componentId)
-      }
-      .width('100%')
-      .layoutWeight(1)
-      .backgroundColor($r('app.color.surface_primary'))
+        .height('100%')
+        .backgroundColor($r('app.color.modal_scrim'))
+        .hitTestBehavior(HitTestMode.Block)
     }
-    .width('94%')
-    .height(this.isMobilePhoneUi() ? '48%' : '58%')
-    .margin({ top: 12 })
-    .padding({ left: 12, right: 12, bottom: 12 })
-    .borderRadius(8)
-    .backgroundColor($r('app.color.surface_primary'))
-    .shadow({ radius: 16, color: $r('app.color.shadow'), offsetY: 4 })
-    .hitTestBehavior(HitTestMode.Block)
-    .align(Alignment.Top)
+    ForEach(this.auxiliaryWindows, (view: AuxiliaryWindowView) => {
+      Stack() {
+        XComponent({
+          id: view.state.componentId,
+          type: XComponentType.SURFACE,
+          libraryname: 'web_engine'
+        })
+          .id(view.state.componentId)
+          .width('100%')
+          .height('100%')
+          .focusable(true)
+          .defaultFocus(view.state.widget === this.activeAuxiliaryWidget)
+      }
+      // Read through this.auxiliaryWindows rather than `view`: the item is keyed
+      // by component id so that a resize does not recreate the surface, which
+      // means the builder keeps the `view` it was first given.
+      .width(this.auxiliaryWidthVp(view.state.widget))
+      .height(this.auxiliaryHeightVp(view.state.widget))
+      .position({
+        x: this.auxiliaryLeftVp(view.state.widget),
+        y: AUXILIARY_WINDOW_MARGIN_VP
+      })
+      .shadow({ radius: 16, color: $r('app.color.shadow'), offsetY: 4 })
+      .hitTestBehavior(HitTestMode.Block)
+    }, (view: AuxiliaryWindowView): string => view.state.componentId)
+  }
+
+  private findAuxiliaryWindow(widget: number): AuxiliaryWindowView | undefined {
+    return this.auxiliaryWindows.find(
+      (view: AuxiliaryWindowView): boolean => view.state.widget === widget);
+  }
+
+  private auxiliaryWidthVp(widget: number): number {
+    return this.findAuxiliaryWindow(widget)?.widthVp ?? 0;
+  }
+
+  private auxiliaryHeightVp(widget: number): number {
+    return this.findAuxiliaryWindow(widget)?.heightVp ?? 0;
+  }
+
+  private auxiliaryLeftVp(widget: number): number {
+    const view = this.findAuxiliaryWindow(widget);
+    return view === undefined ? 0 : auxiliaryWindowLeftVp(view, this.screenSizeVp);
+  }
+
+  private onScreenSizeChanged(width: number, height: number): void {
+    if (width <= 0 || height <= 0 ||
+      (width === this.screenSizeVp.width && height === this.screenSizeVp.height)) {
+      return;
+    }
+    this.screenSizeVp = { width: width, height: height };
+    // A rotation or a window resize changes the clamp, so every window is laid
+    // out again against the new screen.
+    this.auxiliaryWindows = this.auxiliaryWindows.map(
+      (view: AuxiliaryWindowView): AuxiliaryWindowView => this.layoutAuxiliary(view.state, view.modal, view));
+  }
+
+  private layoutAuxiliary(
+    state: AuxiliaryWindowState,
+    modal: boolean,
+    previous?: AuxiliaryWindowView
+  ): AuxiliaryWindowView {
+    const ui = this.getUIContext();
+    // Before the first layout pass there is no screen size yet; the window's
+    // own size stands in, and onScreenSizeChanged clamps it once one arrives.
+    const screen: ScreenSizeVp = this.screenSizeVp.width > 0 ? this.screenSizeVp : {
+      width: ui.px2vp(state.width) + 2 * AUXILIARY_WINDOW_MARGIN_VP,
+      height: ui.px2vp(state.height) * 2
+    };
+    return layoutAuxiliaryWindow(state, modal, screen,
+      (px: number): number => ui.px2vp(px), previous);
   }
 
   // Commands are batched rather than written straight to the state pair, so
@@ -400,19 +435,20 @@ struct AuraShell {
       return;
     }
 
+    const previous = this.findAuxiliaryWindow(state.widget);
     const remaining = this.auxiliaryWindows.filter(
-      (item: AuxiliaryWindowState): boolean => item.widget !== state.widget
+      (view: AuxiliaryWindowView): boolean => view.state.widget !== state.widget
     );
     if (state.visible && !state.destroyed) {
-      remaining.push(state);
-      remaining.sort((left: AuxiliaryWindowState, right: AuxiliaryWindowState): number =>
-        left.stackingOrder - right.stackingOrder);
-      this.activeAuxiliaryWidget = state.widget;
-    } else if (this.activeAuxiliaryWidget === state.widget) {
-      this.activeAuxiliaryWidget = remaining.length > 0 ? remaining[remaining.length - 1].widget : 0;
+      const modal = state.modal ?? previous?.modal ?? false;
+      remaining.push(this.layoutAuxiliary(state, modal, previous));
+      remaining.sort((left: AuxiliaryWindowView, right: AuxiliaryWindowView): number =>
+        left.state.stackingOrder - right.state.stackingOrder);
     }
 
     this.auxiliaryWindows = remaining;
+    this.activeAuxiliaryWidget =
+      remaining.length > 0 ? remaining[remaining.length - 1].state.widget : 0;
   }
 
   private handlePwaWindowState(state: AuxiliaryWindowState): void {

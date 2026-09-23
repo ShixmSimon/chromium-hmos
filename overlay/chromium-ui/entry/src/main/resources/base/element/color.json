@@ -53,6 +53,10 @@
       "value": "#24000000"
     },
     {
+      "name": "modal_scrim",
+      "value": "#52000000"
+    },
+    {
       "name": "transparent",
       "value": "#00000000"
     }
