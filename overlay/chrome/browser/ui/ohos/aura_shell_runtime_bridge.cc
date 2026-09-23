@@ -99,6 +99,7 @@
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
 #include "url/gurl.h"
+#include "url/url_constants.h"
 
 namespace chrome::ohos {
 
@@ -856,6 +857,23 @@ BrowserTargetState BuildBrowserTargetState(gfx::AcceleratedWidget widget,
   return target;
 }
 
+// The URL as the shell sees it. The state is rebuilt, serialised and compared
+// on the UI thread every 200 ms, so its cost is paid in touch latency: one
+// 137 KB data: URL made each poll take 25 ms (48 ms worst) instead of 0.7 ms,
+// holding touch input back for up to six frames. The shell only displays it,
+// so a data: URL is reported by its header and anything else is capped.
+std::string ShellVisibleUrl(const GURL& url) {
+  constexpr size_t kMaxShellUrlLength = 2048;
+  const std::string& spec = url.possibly_invalid_spec();
+  if (url.SchemeIs(url::kDataScheme)) {
+    const size_t comma = spec.find(',');
+    return spec.substr(0, std::min({comma, spec.size(), kMaxShellUrlLength}));
+  }
+  return spec.size() <= kMaxShellUrlLength
+             ? spec
+             : spec.substr(0, kMaxShellUrlLength);
+}
+
 std::string BuildBrowserStateJson(std::string_view ui_family,
                                   gfx::AcceleratedWidget widget,
                                   BrowserWindowInterface* browser) {
@@ -913,7 +931,7 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
     tab.Set("loading", false);
     if (contents) {
       const GURL url = contents->GetVisibleURL();
-      tab.Set("url", url.spec());
+      tab.Set("url", ShellVisibleUrl(url));
       tab.Set("title", base::UTF16ToUTF8(contents->GetTitle()));
       tab.Set("loading", contents->IsLoading());
     }
@@ -924,8 +942,9 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   content::WebContents* active = tabs->GetActiveWebContents();
   if (active) {
     const GURL url = active->GetVisibleURL();
-    state.Set("url", url.spec());
-    state.Set("domain", url.host().empty() ? url.spec() : url.host());
+    const std::string visible_url = ShellVisibleUrl(url);
+    state.Set("url", visible_url);
+    state.Set("domain", url.host().empty() ? visible_url : url.host());
     state.Set("title", base::UTF16ToUTF8(active->GetTitle()));
     state.Set("loading", active->IsLoading());
     state.Set("canGoBack", active->GetController().CanGoBack());
