@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+#include "chrome/browser/ui/ohos/screen_orientation_delegate_ohos.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -1661,6 +1662,12 @@ void NotifyAuraShellBrowserStarted() {
   ui::SetOhosSelectFileDialogRequestCallback(
       base::BindRepeating(&DispatchFilePickerRequest));
   OhosWebPermissionWatcher::GetInstance().Start();
+  // Only Android installs one upstream; without it screen.orientation.lock()
+  // rejects with NotSupportedError.
+  static base::NoDestructor<ScreenOrientationDelegateOhos>
+      orientation_delegate;
+  content::WebContents::SetScreenOrientationDelegate(
+      orientation_delegate.get());
 
   // PlatformHandle is built below this target, so it cannot call into the
   // bridge; the bridge hands it these instead. Without them its OpenSystemSettings
@@ -1739,6 +1746,7 @@ void EnsureAuraShellSystemPermissions() {
 }
 
 void NotifyAuraShellBrowserStopped() {
+  content::WebContents::SetScreenOrientationDelegate(nullptr);
   ui::SetOhosSelectFileDialogRequestCallback({});
   ui::CancelAllOhosSelectFileDialogs();
   GetPwaMenuSessions().clear();

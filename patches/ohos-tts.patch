@@ -1,0 +1,21 @@
+Speak with HarmonyOS CoreSpeechKit.
+
+speech/tts_ohos.cc (overlay) now talks to the engine HAR's TtsService over
+//components/ohos_system_service instead of reporting TTS as unsupported.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/content/browser/BUILD.gn b/content/browser/BUILD.gn
+--- a/content/browser/BUILD.gn
++++ b/content/browser/BUILD.gn
+@@ -2559,8 +2559,9 @@ source_set("browser") {
+     ]
+   }
+ 
+   if (is_ohos) {
+     sources += [ "speech/tts_ohos.cc" ]
++    deps += [ "//components/ohos_system_service" ]
+   }
+ 
+   # ChromeOS also defines linux but their memory-monitors conflict.
+   if (is_chromeos) {

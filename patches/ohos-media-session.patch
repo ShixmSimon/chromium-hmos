@@ -1,0 +1,83 @@
+Publish the page's media session to HarmonyOS AVSession.
+
+The control center and lock screen show what a page is playing and send play,
+pause, next, previous, stop and seek back to it. The implementation is
+components/system_media_controls/ohos/ (overlay), on the OH_AVSession C API.
+
+kHardwareMediaKeyHandling is what makes the browser create system media
+controls at all, so it is enabled on OHOS. OHOS has no ui::MediaKeysListener
+(the stub returns null), so if AVSession cannot be created the manager stays
+without either instead of dereferencing a null listener.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/components/system_media_controls/BUILD.gn b/components/system_media_controls/BUILD.gn
+index 8089e11..b6198a7 100644
+--- a/components/system_media_controls/BUILD.gn
++++ b/components/system_media_controls/BUILD.gn
+@@ -78,6 +78,15 @@ component("system_media_controls") {
+       "Foundation.framework",
+       "MediaPlayer.framework",
+     ]
++  } else if (is_ohos) {
++    sources = [
++      "ohos/system_media_controls_ohos.cc",
++      "ohos/system_media_controls_ohos.h",
++    ]
++    libs = [
++      "bundle_ndk.z",
++      "ohavsession",
++    ]
+   } else {
+     sources = [ "system_media_controls_stub.cc" ]
+   }
+diff --git a/content/browser/media/media_keys_listener_manager_impl.cc b/content/browser/media/media_keys_listener_manager_impl.cc
+index edb568e..febf4ac 100644
+--- a/content/browser/media/media_keys_listener_manager_impl.cc
++++ b/content/browser/media/media_keys_listener_manager_impl.cc
+@@ -326,7 +326,7 @@ void MediaKeysListenerManagerImpl::StartListeningForMediaKeysIfNecessary() {
+     return;
+   }
+ 
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_OHOS)
+   // Create SystemMediaControls with the SingletonHwnd.
+   browser_system_media_controls_ =
+       system_media_controls::SystemMediaControls::Create(
+@@ -351,6 +351,11 @@ void MediaKeysListenerManagerImpl::StartListeningForMediaKeysIfNecessary() {
+             browser_system_media_controls_.get(),
+             base::UnguessableToken::Null());
+   } else {
++#if BUILDFLAG(IS_OHOS)
++    // AVSession could not be created and there are no media keys to listen
++    // to instead; try again the next time a session asks.
++    return;
++#endif
+     media_keys_listener_ = ui::MediaKeysListener::Create(
+         this, ui::MediaKeysListener::Scope::kGlobal);
+     DCHECK(media_keys_listener_);
+@@ -453,7 +458,9 @@ void MediaKeysListenerManagerImpl::UpdateSystemMediaControlsEnabledControls() {
+ }
+ 
+ void MediaKeysListenerManagerImpl::UpdateMediaKeysListener() {
+-  DCHECK(media_keys_listener_);
++  if (!media_keys_listener_) {
++    return;
++  }
+ 
+   for (const auto& key_code_listening_data : delegate_map_) {
+     const ui::KeyboardCode& key_code = key_code_listening_data.first;
+diff --git a/media/base/media_switches.cc b/media/base/media_switches.cc
+index 6576dae..46f8bca 100644
+--- a/media/base/media_switches.cc
++++ b/media/base/media_switches.cc
+@@ -638,7 +638,8 @@ BASE_FEATURE(kH264IDRKeyframeRequiresParameterSets,
+ 
+ // Enables handling of hardware media keys for controlling media.
+ BASE_FEATURE(kHardwareMediaKeyHandling,
+-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || \
++    BUILDFLAG(IS_OHOS)
+              base::FEATURE_ENABLED_BY_DEFAULT
+ #elif BUILDFLAG(IS_LINUX)
+ #if BUILDFLAG(USE_MPRIS)

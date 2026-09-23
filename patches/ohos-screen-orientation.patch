@@ -1,0 +1,53 @@
+Support screen.orientation.lock() and report the real rotation.
+
+ScreenOrientationDelegateOhos (overlay, chrome/browser/ui/ohos) sets the app
+window's preferred orientation through the engine HAR; it is installed by the
+runtime bridge at browser start.
+
+OhosScreen (overlay) now reports the display manager's rotation as the panel
+rotation. It had reported 0 always, so screen.orientation.angle never moved
+and a lock to a *-secondary orientation never resolved. With a rotation that
+means what Android's does, ScreenInfo takes the mobile orientation type and
+skips the Aura 90/270 swap, which exists for desktop panels.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+index 9f81181..f130a75 100644
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -885,9 +885,12 @@ source_set("core") {
+     sources += [
+       "ui/ohos/aura_shell_runtime_bridge.cc",
+       "ui/ohos/aura_shell_runtime_bridge.h",
++      "ui/ohos/screen_orientation_delegate_ohos.cc",
++      "ui/ohos/screen_orientation_delegate_ohos.h",
+       "ui/ohos/system_geolocation_source_ohos.cc",
+       "ui/ohos/system_geolocation_source_ohos.h",
+     ]
++    deps += [ "//components/ohos_system_service" ]
+   }
+ 
+   configs += [
+diff --git a/ui/display/display_util.cc b/ui/display/display_util.cc
+index c546495..aa78fa8 100644
+--- a/ui/display/display_util.cc
++++ b/ui/display/display_util.cc
+@@ -27,7 +27,7 @@ void DisplayUtil::DisplayToScreenInfo(ScreenInfo* screen_info,
+   // TODO(crbug.com/41478398): Expose panel orientation via a proper web
+   // API instead of window.screen.orientation.angle.
+   screen_info->orientation_angle = display.PanelRotationAsDegree();
+-#if defined(USE_AURA)
++#if defined(USE_AURA) && !BUILDFLAG(IS_OHOS)
+   // The Display rotation and the ScreenInfo orientation are not the same
+   // angle. The former is the physical display rotation while the later is the
+   // rotation required by the content to be shown properly on the screen, in
+@@ -41,7 +41,7 @@ void DisplayUtil::DisplayToScreenInfo(ScreenInfo* screen_info,
+     screen_info->orientation_angle = 90;
+ #endif
+ 
+-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || BUILDFLAG(IS_OHOS)
+   screen_info->orientation_type = GetOrientationTypeForMobile(display);
+ #else
+   screen_info->orientation_type = GetOrientationTypeForDesktop(display);

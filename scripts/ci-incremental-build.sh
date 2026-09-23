@@ -119,6 +119,10 @@ apply_incremental_patch "${repo_root}/patches/ohos-device-chooser-width.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-dialog-width-fits-screen.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-bubble-anchor-top-center.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-browser-controls.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-tts.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-notifications.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-media-session.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-screen-orientation.patch"
 # The chooser takes touch now, so the probes that found out why come out.
 retire_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
 
