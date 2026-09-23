@@ -245,7 +245,12 @@ struct AuraShell {
         y: AUXILIARY_WINDOW_MARGIN_VP
       })
       .shadow({ radius: 16, color: $r('app.color.shadow'), offsetY: 4 })
-      .hitTestBehavior(HitTestMode.Block)
+      // Default, not Block: Block keeps the touch test away from this Stack's
+      // own children, and the Stack is not a touch target itself, so every
+      // press inside the window came back "Touch test result is empty" and
+      // never reached the XComponent -- the Stop button did nothing. Default
+      // lets the XComponent take the press and still keeps it from the page
+      // beneath this box.
     }, (view: AuxiliaryWindowView): string => view.state.componentId)
   }
 
