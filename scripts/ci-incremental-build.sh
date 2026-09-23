@@ -22,6 +22,7 @@
 # Usage:
 #   scripts/ci-incremental-build.sh            # sync overlay, build, package
 #   SKIP_PACKAGE=1 scripts/ci-incremental-build.sh   # build only
+#   SKIP_HAR=1     scripts/ci-incremental-build.sh   # HAP but no engine HAR
 #
 # Environment:
 #   CHROMIUM_SRC   default /root/chromium-154/src
@@ -383,7 +384,49 @@ rm -f "$packaged_engine"
 [[ "$packaged_id" == "$build_id" ]] \
   || die "HAP carries engine ${packaged_id:-with no build-id}, expected ${build_id}"
 
-printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":true,"hap":"%s","hap_bytes":%s}\n' \
-  "$steps" "$elapsed" "$build_id" "$(basename "$hap")" "$size" >"${status_dir}/latest.json"
+# The engine HAR is the other deliverable of the split: a shell that draws
+# only UI imports this and gets the engine, its runtime and its ArkTS bridges.
+# assembleHap already builds the engine module as entry's dependency, so this
+# only packages it -- and it runs after the HAP so a HAR problem cannot cost a
+# package that was already good.
+har=''
+har_size=0
+if [[ -z "${SKIP_HAR:-}" ]]; then
+  say 'packaging engine HAR'
+  if ( cd "$ui_wsl" \
+       && "${deveco}/tools/node/node.exe" "${deveco_win}\\tools\\hvigor\\bin\\hvigorw.js" \
+            --mode module -p product=default -p module=engine@default \
+            assembleHar --no-daemon ) >>"$log" 2>&1
+  then
+    har=$(find "${ui_wsl}/engine/build" -name '*.har' 2>/dev/null | head -1)
+  fi
+  if [[ -z "$har" ]]; then
+    {
+      printf '\n## engine HAR not produced\n'
+      tail -40 "$log" | grep -viE '^[[:space:]]*$'
+    } >>"${status_dir}/errors.txt"
+    die 'assembleHar produced no .har (see build-status/errors.txt)'
+  fi
+
+  # A HAR is a gzipped tar rooted at package/, not a zip -- unzip calls it
+  # "not a zip file". Same check the HAP gets: the engine inside the artifact
+  # has to be the one this run linked.
+  har_engine="$(mktemp)"
+  tar -xzOf "$har" package/libs/arm64-v8a/libweb_engine.so >"$har_engine" 2>/dev/null \
+    || die 'HAR has no package/libs/arm64-v8a/libweb_engine.so'
+  har_id=$("${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf" -n \
+           "$har_engine" 2>/dev/null | grep -oE '[0-9a-f]{40}')
+  rm -f "$har_engine"
+  [[ "$har_id" == "$build_id" ]] \
+    || die "HAR carries engine ${har_id:-with no build-id}, expected ${build_id}"
+
+  har_size=$(stat -c %s "$har")
+  say "HAR $(basename "$har") ($((har_size / 1048576)) MB)"
+  printf '%s\n' "$har" >"${status_dir}/har-path.txt"
+fi
+
+printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":true,"hap":"%s","hap_bytes":%s,"har":"%s","har_bytes":%s}\n' \
+  "$steps" "$elapsed" "$build_id" "$(basename "$hap")" "$size" \
+  "${har:+$(basename "$har")}" "$har_size" >"${status_dir}/latest.json"
 say "HAP $(basename "$hap") ($((size / 1048576)) MB)"
 printf '%s\n' "$hap" >"${status_dir}/hap-path.txt"

@@ -107,6 +107,15 @@ jobs:
             --title "build ${GITHUB_SHA::8}" 2>/dev/null || true
           gh release upload "$tag" "$hap" --clobber
 
+          # The engine HAR is what a shell integrates: the engine, its runtime
+          # and its ArkTS bridges, without the UI. It goes up beside the HAP so
+          # a consumer does not have to build one.
+          har_path=build-status/har-path.txt
+          if [ -s "$har_path" ]; then
+            har=$(cat "$har_path")
+            [ -f "$har" ] && gh release upload "$tag" "$har" --clobber
+          fi
+
           # Ship the unstripped library too. A device crash reports only
           # offsets into libweb_engine.so, and turning those into function
           # names needs the symbols, which otherwise exist only on this
