@@ -155,8 +155,10 @@ struct RuntimeBridgeState {
   std::map<gfx::AcceleratedWidget, int> viewport_bottom_inset GUARDED_BY(lock);
   // The shell's top bar height in DIP; see GetAuraShellTopControlsHeight().
   int top_controls_height GUARDED_BY(lock) = 0;
-  // The active tab each window last had its controls shown on. Compared, never
-  // dereferenced: it only tells the poll that a different tab is now active.
+  // The view each window last had its controls shown on. Compared, never
+  // dereferenced: it tells the poll that a different view is now current -- a
+  // tab switch, or a navigation that swapped in a new renderer, which starts
+  // over with the renderer's default constraints.
   std::map<gfx::AcceleratedWidget, uintptr_t> controls_shown_for
       GUARDED_BY(lock);
   float last_shown_ratio GUARDED_BY(lock) = -1.0f;
@@ -1051,15 +1053,20 @@ void PollBrowserStateOnUiThread(uint64_t generation) {
             }
             if (top_controls_height > 0 && tabs) {
               content::WebContents* active = tabs->GetActiveWebContents();
+              content::RenderWidgetHostView* view =
+                  active ? active->GetRenderWidgetHostView() : nullptr;
               bool switched = false;
               {
                 RuntimeBridgeState& state = GetState();
                 base::AutoLock lock(state.lock);
                 uintptr_t& shown = state.controls_shown_for[widget];
-                switched = shown != reinterpret_cast<uintptr_t>(active);
-                shown = reinterpret_cast<uintptr_t>(active);
+                switched = view && shown != reinterpret_cast<uintptr_t>(view);
+                if (view) {
+                  shown = reinterpret_cast<uintptr_t>(view);
+                }
               }
               if (switched) {
+                LOG(WARNING) << "OHOS browser controls: showing on new view";
                 ShowBrowserControls(active);
               }
             }
@@ -1419,10 +1426,11 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
       RuntimeBridgeState& state = GetState();
       base::AutoLock lock(state.lock);
       state.top_controls_height = top;
-      state.controls_shown_for[widget] = reinterpret_cast<uintptr_t>(active);
+      state.controls_shown_for[widget] = reinterpret_cast<uintptr_t>(
+          active ? active->GetRenderWidgetHostView() : nullptr);
       state.last_shown_ratio = -1.0f;
     }
-    LOG(INFO) << "OHOS Aura shell browser controls top=" << top;
+    LOG(WARNING) << "OHOS browser controls: top=" << top;
     ShowBrowserControls(active);
     return;
   }
@@ -1625,6 +1633,9 @@ void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
     base::AutoLock lock(state.lock);
     if (state.top_controls_height <= 0 || ratio == state.last_shown_ratio) {
       return;
+    }
+    if (state.last_shown_ratio < 0.0f) {
+      LOG(WARNING) << "OHOS browser controls: first shown ratio " << ratio;
     }
     state.last_shown_ratio = ratio;
   }
