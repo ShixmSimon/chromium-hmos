@@ -141,6 +141,8 @@ export interface BrowserRuntimeEvent {
 export interface BrowserCommandPayload {
   command: string;
   url?: string;
+  // setViewportInsets: how much of the page bottom the shell covers, in vp.
+  bottom?: number;
   index?: number;
   requestId?: number;
   paths?: string[];

@@ -77,6 +77,7 @@
 #include "content/public/browser/page_navigator.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
+#include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/referrer.h"
@@ -91,6 +92,7 @@
 #include "ui/base/pointer/touch_ui_controller.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/window_open_disposition.h"
+#include "ui/gfx/geometry/insets.h"
 #include "ui/native_theme/native_theme.h"
 #include "ui/ozone/platform/ohos/ohos_event_source.h"
 #include "ui/shell_dialogs/select_file_dialog_ohos.h"
@@ -145,6 +147,9 @@ struct RuntimeBridgeState {
   bool app_focus_applied GUARDED_BY(lock) = false;
   std::map<gfx::AcceleratedWidget, bool> window_visibility GUARDED_BY(lock);
   std::map<gfx::AcceleratedWidget, bool> window_focus GUARDED_BY(lock);
+  // How much of the bottom of each window's page the shell covers with its
+  // own floating bar, in DIP. See ApplyViewportInsets().
+  std::map<gfx::AcceleratedWidget, int> viewport_bottom_inset GUARDED_BY(lock);
   bool pending_shutdown GUARDED_BY(lock) = false;
 };
 
@@ -969,8 +974,26 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   return json;
 }
 
+// A shell may float its own bar over the bottom of the page and still let
+// the page draw behind it. The inset shrinks the visible viewport by that much,
+// the way an on-screen keyboard does, so the end of the page can scroll up
+// above the bar instead of staying underneath it. Setting the same insets again
+// is a no-op in the view, which is what lets the poll below re-apply them to
+// whatever view is current -- a tab switch, a new tab and a cross-site
+// navigation each bring a different one.
+void ApplyViewportInsets(content::WebContents* contents, int bottom_dip) {
+  if (!contents) {
+    return;
+  }
+  if (content::RenderWidgetHostView* view =
+          contents->GetRenderWidgetHostView()) {
+    view->SetInsets(gfx::Insets::TLBR(0, 0, std::max(0, bottom_dip), 0));
+  }
+}
+
 void PollBrowserStateOnUiThread(uint64_t generation) {
   std::string ui_family;
+  std::map<gfx::AcceleratedWidget, int> bottom_insets;
   {
     RuntimeBridgeState& state = GetState();
     base::AutoLock lock(state.lock);
@@ -978,6 +1001,7 @@ void PollBrowserStateOnUiThread(uint64_t generation) {
       return;
     }
     ui_family = state.ui_family;
+    bottom_insets = state.viewport_bottom_inset;
   }
 
   const bool mobile = IsMobileUiFamily(ui_family);
@@ -987,9 +1011,15 @@ void PollBrowserStateOnUiThread(uint64_t generation) {
   if (GlobalBrowserCollection* browsers =
           GlobalBrowserCollection::GetInstance()) {
     browsers->ForEach(
-        [&snapshots, &ui_family](BrowserWindowInterface* browser) {
+        [&snapshots, &ui_family, &bottom_insets](
+            BrowserWindowInterface* browser) {
           const gfx::AcceleratedWidget widget = GetBrowserWidget(browser);
           if (widget != gfx::kNullAcceleratedWidget) {
+            const auto inset = bottom_insets.find(widget);
+            TabStripModel* tabs = browser->GetTabStripModel();
+            if (inset != bottom_insets.end() && tabs) {
+              ApplyViewportInsets(tabs->GetActiveWebContents(), inset->second);
+            }
             snapshots.emplace_back(
                 widget, BuildBrowserStateJson(ui_family, widget, browser));
           }
@@ -1340,6 +1370,16 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
   }
 
   content::WebContents* active = tabs->GetActiveWebContents();
+  if (*name == "setViewportInsets") {
+    const int bottom = std::max(0, command.FindInt("bottom").value_or(0));
+    {
+      RuntimeBridgeState& state = GetState();
+      base::AutoLock lock(state.lock);
+      state.viewport_bottom_inset[widget] = bottom;
+    }
+    ApplyViewportInsets(active, bottom);
+    return;
+  }
   if (*name == "recoverInput") {
     ui::OhosEventSource::ResetPointerCaptures(widget);
     if (browser->GetWindow()) {

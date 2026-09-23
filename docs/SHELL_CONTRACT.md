@@ -154,6 +154,8 @@ struct Browser {
 | `onWindowStatus` | 回调 | 窗口状态(全屏、最大化等)变化。 |
 | `onError` | 回调 | 引擎初始化失败等错误。 |
 
+`WebWindow` 按自己实际占的区域通知 Chromium，不必铺满窗口：地址栏这类不透明的栏放在它上方或下方，网页不会被挡。要让网页从悬浮栏下面透出来，就让 `WebWindow` 铺到那条栏下面，再用 `setViewportInsets` 命令告诉引擎被盖住的高度（见第 6 节）。
+
 ### `BrowserStateSnapshot`
 
 引擎每 200ms 检查一次状态,有变化才回调。常用字段:
@@ -220,6 +222,7 @@ function report() {
 | `permissionResult` | `requestId`, `granted`, `denied` | 回复 `permissionsRequested` |
 | `systemPermissionState` | `location`: `'allowed' \| 'denied' \| 'notDetermined'` | 上报应用的定位权限状态 |
 | `recoverInput` | | 触摸或焦点异常时让引擎恢复输入 |
+| `setViewportInsets` | `bottom`（vp） | 外壳在网页底部盖了多高的悬浮栏。网页照常画到底，但可视区域缩小这么多，网页末尾能滚到悬浮栏上方。切换标签、新建标签后引擎会自动沿用，不用重发；传 0 取消 |
 | `pwaHome`、`pwaMenu`、`pwaMenuAction`、`pwaMenuDismiss` | 见 `BrowserCommandPayload` | PWA 窗口菜单 |
 | `defaultBrowserState`、`systemCapabilities` | 见参考实现 | 系统集成相关状态 |
 

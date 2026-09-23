@@ -107,6 +107,14 @@ export struct WebWindow {
   private hasWindowOrigin: boolean = false;
   private windowOriginX: number = 0;
   private windowOriginY: number = 0;
+  // Where the XComponent sits inside the window, in px. A shell that draws
+  // its own bars above or below the page gives this component less than the
+  // whole window; Chromium must lay the page out in this box, not the window.
+  private hasComponentArea: boolean = false;
+  private componentOffsetXPx: number = 0;
+  private componentOffsetYPx: number = 0;
+  private componentWidthPx: number = 0;
+  private componentHeightPx: number = 0;
   private focusRecoveryTimers: number[] = [];
   private rotationSyncTimer: number = -1;
   private lastExecutedBrowserCommandRevision: number = 0;
@@ -196,6 +204,9 @@ export struct WebWindow {
         .height('100%')
         .focusable(true)
         .defaultFocus(true)
+        .onAreaChange((_oldArea: Area, newArea: Area) => {
+          this.handleComponentAreaChange(newArea);
+        })
         .onLoad(() => {
           this.configureSurfaceRotation();
           this.initNativeContext();
@@ -678,12 +689,11 @@ export struct WebWindow {
     if (this.activeWindow) {
       try {
         const properties = this.activeWindow.getWindowProperties();
-        this.updateSurfaceRect({
-          x: Number(properties.windowRect.left),
-          y: Number(properties.windowRect.top),
-          width: Number(size.width),
-          height: Number(size.height)
-        });
+        this.updateSurfaceRect(this.surfaceRectInWindow(
+          Number(properties.windowRect.left),
+          Number(properties.windowRect.top),
+          Number(size.width),
+          Number(size.height)));
         return;
       } catch (error) {
       }
@@ -705,12 +715,11 @@ export struct WebWindow {
     this.restoreXComponentFocus(80);
     this.notifyWindowStatus();
 
-    this.updateSurfaceRect({
-      x: Number(options.rect.left),
-      y: Number(options.rect.top),
-      width: Number(options.rect.width),
-      height: Number(options.rect.height)
-    });
+    this.updateSurfaceRect(this.surfaceRectInWindow(
+      Number(options.rect.left),
+      Number(options.rect.top),
+      Number(options.rect.width),
+      Number(options.rect.height)));
   }
 
   private handleWindowEvent(event: window.WindowEventType): void {
@@ -737,15 +746,54 @@ export struct WebWindow {
 
     try {
       const properties = this.activeWindow.getWindowProperties();
-      this.updateSurfaceRect({
-        x: Number(properties.windowRect.left),
-        y: Number(properties.windowRect.top),
-        width: Number(properties.windowRect.width),
-        height: Number(properties.windowRect.height)
-      });
+      this.updateSurfaceRect(this.surfaceRectInWindow(
+        Number(properties.windowRect.left),
+        Number(properties.windowRect.top),
+        Number(properties.windowRect.width),
+        Number(properties.windowRect.height)));
     } catch (error) {
       this.reportError(this.normalizeError(error));
     }
+  }
+
+  // The component's box in screen px: the window origin plus the component's
+  // offset in it. The native side reads touch positions relative to the
+  // component and root positions in screen coordinates, so both stay right
+  // as long as this origin is where the component really is. Until the first
+  // layout pass reports an area, the whole window stands in, as before.
+  private surfaceRectInWindow(windowLeft: number, windowTop: number,
+    windowWidth: number, windowHeight: number): WindowRect {
+    if (!this.hasComponentArea) {
+      return { x: windowLeft, y: windowTop, width: windowWidth, height: windowHeight };
+    }
+    return {
+      x: windowLeft + this.componentOffsetXPx,
+      y: windowTop + this.componentOffsetYPx,
+      width: this.componentWidthPx,
+      height: this.componentHeightPx
+    };
+  }
+
+  private handleComponentAreaChange(area: Area): void {
+    const ui = this.getUIContext();
+    const offsetX = Math.round(ui.vp2px(Number(area.globalPosition.x ?? 0)));
+    const offsetY = Math.round(ui.vp2px(Number(area.globalPosition.y ?? 0)));
+    const width = Math.round(ui.vp2px(Number(area.width)));
+    const height = Math.round(ui.vp2px(Number(area.height)));
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+    if (this.hasComponentArea && offsetX === this.componentOffsetXPx &&
+      offsetY === this.componentOffsetYPx && width === this.componentWidthPx &&
+      height === this.componentHeightPx) {
+      return;
+    }
+    this.hasComponentArea = true;
+    this.componentOffsetXPx = offsetX;
+    this.componentOffsetYPx = offsetY;
+    this.componentWidthPx = width;
+    this.componentHeightPx = height;
+    this.notifyCurrentBounds();
   }
 
   private notifyWindowStatus(): void {
