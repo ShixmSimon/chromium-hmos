@@ -7,14 +7,22 @@ browser controls: the renderer makes room for the bar at the top of the page
 and slides it away as the page scrolls, reporting how much of it is shown so
 the bar can follow.
 
-All of that is already wired on Aura -- the RenderWidgetHostImpl reads the
-height through WebContentsViewAura, and RenderWidgetHostViewAura forwards the
-shown ratio to the delegate -- except that the desktop BrowserView reports no
-controls. On OHOS the delegate now asks the shell bridge for the height, makes
-the viewport shrink while the controls show, and passes the ratio back to the
-bridge, which hands it to the shell. It also asks the bridge for a minimum
-height, so the shell can keep a collapsed strip of its bar on screen instead
-of letting it hide completely.
+Most of that is already wired on Aura -- the RenderWidgetHostImpl reads the
+height through WebContentsViewAura, which forwards it from the delegate, and
+RenderWidgetHostViewAura forwards the shown ratio back to the delegate --
+except that WebContentsViewAura only forwards the height, not the minimum
+height, and the desktop BrowserView reports no controls at all. This patch
+adds that forward on WebContentsViewAura, and on OHOS the delegate now asks
+the shell bridge for both the height and the minimum height, makes the
+viewport shrink while the controls show, and passes the ratio back to the
+bridge, which hands it to the shell. The minimum height lets the shell keep a
+collapsed strip of its bar on screen instead of letting it hide completely.
+
+WebContentsViewAura::GetTopControlsMinHeight() forwards to the delegate
+unconditionally, the same way GetTopControlsHeight() already does -- it is
+not guarded by BUILDFLAG(IS_OHOS). WebContentsDelegate::GetTopControlsMinHeight()
+defaults to 0, so this is a no-op on every other platform built from this
+file.
 
 Generated against Chromium 154.0.8037.51.
 
@@ -92,3 +100,34 @@ index 05a9d7f..8b2b212 100644
    bool DoBrowserControlsShrinkRendererSize(
        content::WebContents* contents) override;
    int GetVirtualKeyboardHeight(content::WebContents* contents) override;
+
+diff --git a/content/browser/web_contents/web_contents_view_aura.cc b/content/browser/web_contents/web_contents_view_aura.cc
+index 8440d74..9f59818 100644
+--- a/content/browser/web_contents/web_contents_view_aura.cc
++++ b/content/browser/web_contents/web_contents_view_aura.cc
+@@ -2009,6 +2009,13 @@ int WebContentsViewAura::GetTopControlsHeight() const {
+   return delegate->GetTopControlsHeight();
+ }
+ 
++int WebContentsViewAura::GetTopControlsMinHeight() const {
++  WebContentsDelegate* delegate = web_contents_->GetDelegate();
++  if (!delegate)
++    return 0;
++  return delegate->GetTopControlsMinHeight();
++}
++
+ int WebContentsViewAura::GetBottomControlsHeight() const {
+   WebContentsDelegate* delegate = web_contents_->GetDelegate();
+   if (!delegate)
+diff --git a/content/browser/web_contents/web_contents_view_aura.h b/content/browser/web_contents/web_contents_view_aura.h
+index 98df67a..b5ba95b 100644
+--- a/content/browser/web_contents/web_contents_view_aura.h
++++ b/content/browser/web_contents/web_contents_view_aura.h
+@@ -281,6 +281,7 @@ class CONTENT_EXPORT WebContentsViewAura
+   void LostFocus(RenderWidgetHostImpl* render_widget_host) override;
+   void TakeFocus(bool reverse) override;
+   int GetTopControlsHeight() const override;
++  int GetTopControlsMinHeight() const override;
+   int GetBottomControlsHeight() const override;
+   bool DoBrowserControlsShrinkRendererSize() const override;
+ #if BUILDFLAG(USE_EXTERNAL_POPUP_MENU)
