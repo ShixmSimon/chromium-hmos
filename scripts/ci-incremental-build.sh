@@ -55,27 +55,48 @@ apply_incremental_patch() {
     say "applied incremental patch ${name}"
     return
   fi
+  # The patch was edited since this tree last built. The tree is persistent and
+  # never reset, so an older revision of this same patch may still be applied
+  # to it. Back that revision out and apply the new one. Without this, editing
+  # any patch in the list wedges every build after it with "neither applies
+  # nor is already present".
+  #
+  # "Reverse-applies" alone cannot tell which revision is in the tree: an edit
+  # that only removes a line leaves the new revision's context intact, so it
+  # reverse-applies over the old one too (ohos-screen-orientation.patch
+  # dropped a `deps +=` line and was reported as already applied while the
+  # old line kept breaking gn). Of the revisions that reverse-apply, the one
+  # adding the most lines is the one actually present.
+  local rev best_rev="" best_lines=-1 lines
   if git -C "$src" apply --reverse --check "$patch" 2>/dev/null; then
+    best_rev=current
+    best_lines=$(grep -c '^+[^+]' "$patch" || true)
+  fi
+  for rev in $(git -C "$repo_root" log --format=%H -n 20 -- "$rel"); do
+    if git -C "$repo_root" show "${rev}:${rel}" 2>/dev/null | cmp -s - "$patch"; then
+      continue
+    fi
+    if git -C "$repo_root" show "${rev}:${rel}" 2>/dev/null |
+        git -C "$src" apply --reverse --check - 2>/dev/null; then
+      lines=$(git -C "$repo_root" show "${rev}:${rel}" | grep -c '^+[^+]' || true)
+      if (( lines > best_lines )); then
+        best_rev=$rev
+        best_lines=$lines
+      fi
+    fi
+  done
+  if [[ "$best_rev" == current ]]; then
     say "incremental patch ${name} already applied"
     return
   fi
-  # The patch was edited since this tree last built. The tree is persistent and
-  # never reset, so an older revision of this same patch is still applied to
-  # it, and neither check above can succeed. Back that revision out and apply
-  # the new one. Without this, editing any patch in the list wedges every
-  # build after it with "neither applies nor is already present".
-  local rev
-  for rev in $(git -C "$repo_root" log --format=%H -n 20 -- "$rel"); do
-    if git -C "$repo_root" show "${rev}:${rel}" 2>/dev/null |
-        git -C "$src" apply --reverse --check - 2>/dev/null; then
-      git -C "$repo_root" show "${rev}:${rel}" | git -C "$src" apply --reverse ||
-        die "failed to back out ${name} at ${rev}"
-      say "backed out incremental patch ${name} at ${rev:0:8}"
-      git -C "$src" apply "$patch" || die "failed to apply ${name}"
-      say "applied incremental patch ${name}"
-      return
-    fi
-  done
+  if [[ -n "$best_rev" ]]; then
+    git -C "$repo_root" show "${best_rev}:${rel}" | git -C "$src" apply --reverse ||
+      die "failed to back out ${name} at ${best_rev}"
+    say "backed out incremental patch ${name} at ${best_rev:0:8}"
+    git -C "$src" apply "$patch" || die "failed to apply ${name}"
+    say "applied incremental patch ${name}"
+    return
+  fi
   git -C "$src" apply --check --verbose "$patch" || true
   die "incremental patch ${name} neither applies nor is already present"
 }

@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>硬件能力验证</title>
+<style>
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #f4f5f7; color: #111; }
+  header { padding: 14px 16px; background: #1e3a8a; color: #fff; }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; font-size: 13px; opacity: .85; }
+  section { background: #fff; margin: 12px; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  h2 { margin: 0 0 6px; font-size: 16px; }
+  .hint { color: #555; font-size: 13px; margin: 0 0 8px; }
+  button { font: inherit; margin: 4px 6px 4px 0; padding: 7px 12px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; }
+  button.secondary { background: #e5e7eb; color: #111; }
+  pre { background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow: auto; margin: 6px 0 0; }
+  video, canvas, img { max-width: 100%; border-radius: 8px; background: #000; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  #orientation-box { font: 600 14px ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <h1>硬件能力验证</h1>
+  <p>每一节独立。结果出现在该节下方的黑框里；把黑框内容截图或复制回来即可。</p>
+</header>
+
+<section id="env">
+  <h2>0. 环境</h2>
+  <pre id="env-log"></pre>
+</section>
+
+<section>
+  <h2>1. 视频硬件编解码</h2>
+  <p class="hint">先用硬件编码器把 60 帧画面编成 H.264，再用硬件解码器解回来。不需要网络。</p>
+  <button id="codec-caps">查询能力</button>
+  <button id="codec-roundtrip">编码 → 解码</button>
+  <canvas id="codec-canvas" width="1280" height="720" style="width:100%;max-width:480px"></canvas>
+  <pre id="codec-log"></pre>
+</section>
+
+<section>
+  <h2>2. 网页通知</h2>
+  <p class="hint">点"发送"后到通知栏查看；点通知本身，下面会记录 click，应用也应回到前台。</p>
+  <button id="notify-permission">申请权限</button>
+  <button id="notify-send">发送通知</button>
+  <button id="notify-close" class="secondary">关闭通知</button>
+  <pre id="notify-log"></pre>
+</section>
+
+<section>
+  <h2>3. 媒体会话（控制中心）</h2>
+  <p class="hint">点"播放"后下拉控制中心：应显示标题"硬件验证测试音"，播放/暂停/上一首/下一首按钮可用，按下后下面会记录。</p>
+  <button id="media-play">播放</button>
+  <button id="media-pause" class="secondary">暂停</button>
+  <audio id="media-audio" loop></audio>
+  <pre id="media-log"></pre>
+</section>
+
+<section>
+  <h2>4. 语音合成</h2>
+  <button id="tts-voices">列出音色</button>
+  <button id="tts-zh">朗读中文</button>
+  <button id="tts-en">朗读英文</button>
+  <button id="tts-stop" class="secondary">停止</button>
+  <pre id="tts-log"></pre>
+</section>
+
+<section>
+  <h2>5. 形状检测</h2>
+  <p class="hint">先测下面这张二维码（离线），再开摄像头对准二维码、人脸或文字。</p>
+  <div class="row">
+    <img id="qr" src="qr-sample.png" width="160" height="160" alt="二维码">
+    <div>
+      <button id="shape-qr">识别左侧二维码</button><br>
+      <button id="shape-camera">打开摄像头</button><br>
+      <button id="shape-frame">识别当前画面</button>
+    </div>
+  </div>
+  <video id="shape-video" playsinline muted style="display:none;margin-top:6px"></video>
+  <pre id="shape-log"></pre>
+</section>
+
+<section>
+  <h2>6. 指纹 / 人脸登录（WebAuthn）</h2>
+  <p class="hint">"注册"会弹出系统的指纹/人脸/锁屏密码验证；"登录"应再次弹出并成功。</p>
+  <button id="webauthn-uvpaa">是否可用</button>
+  <button id="webauthn-create">注册通行密钥</button>
+  <button id="webauthn-get">用通行密钥登录</button>
+  <pre id="webauthn-log"></pre>
+</section>
+
+<section>
+  <h2>7. 屏幕方向锁定</h2>
+  <p class="hint">方向锁定需要全屏：点按钮会先进入全屏再锁定。锁定后转动手机，画面应保持不动。</p>
+  <div id="orientation-box"></div>
+  <div class="row">
+    <button data-lock="landscape">横屏</button>
+    <button data-lock="landscape-primary">横屏(主)</button>
+    <button data-lock="landscape-secondary">横屏(反)</button>
+    <button data-lock="portrait-primary">竖屏</button>
+    <button id="orientation-unlock" class="secondary">解锁并退出全屏</button>
+  </div>
+  <pre id="orientation-log"></pre>
+</section>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+function logger(id) {
+  const el = $(id);
+  return (...parts) => {
+    const text = parts.map((p) => typeof p === 'string' ? p : JSON.stringify(p)).join(' ');
+    el.textContent += `[${new Date().toLocaleTimeString()}] ${text}\n`;
+    el.scrollTop = el.scrollHeight;
+  };
+}
+async function guard(log, fn) {
+  try { await fn(); } catch (e) { log('错误', `${e.name}: ${e.message}`); }
+}
+
+// ---- 0. environment --------------------------------------------------------
+{
+  const log = logger('env-log');
+  log('UA', navigator.userAgent);
+  log('安全上下文', window.isSecureContext, '来源', location.origin);
+  log('接口是否存在', {
+    VideoEncoder: 'VideoEncoder' in window, VideoDecoder: 'VideoDecoder' in window,
+    Notification: 'Notification' in window, mediaSession: 'mediaSession' in navigator,
+    speechSynthesis: 'speechSynthesis' in window, BarcodeDetector: 'BarcodeDetector' in window,
+    FaceDetector: 'FaceDetector' in window, TextDetector: 'TextDetector' in window,
+    PublicKeyCredential: 'PublicKeyCredential' in window,
+    orientationLock: !!(screen.orientation && screen.orientation.lock),
+  });
+}
+
+// ---- 1. codecs -------------------------------------------------------------
+{
+  const log = logger('codec-log');
+  const WIDTH = 1280, HEIGHT = 720;
+  const CODEC = 'avc1.42001f';  // H.264 Baseline 3.1
+
+  $('codec-caps').onclick = () => guard(log, async () => {
+    for (const acceleration of ['prefer-hardware', 'prefer-software']) {
+      const enc = await VideoEncoder.isConfigSupported({ codec: CODEC, width: WIDTH, height: HEIGHT,
+        bitrate: 4e6, framerate: 30, hardwareAcceleration: acceleration });
+      const dec = await VideoDecoder.isConfigSupported({ codec: CODEC, codedWidth: WIDTH,
+        codedHeight: HEIGHT, hardwareAcceleration: acceleration });
+      log(acceleration, '编码', enc.supported, '解码', dec.supported);
+    }
+    const info = await navigator.mediaCapabilities.decodingInfo({ type: 'media-source',
+      video: { contentType: 'video/mp4; codecs="avc1.640028"', width: 1920, height: 1080,
+        bitrate: 8e6, framerate: 30 } });
+    log('MediaCapabilities 1080p H.264', `supported=${info.supported} smooth=${info.smooth}`,
+      `powerEfficient=${info.powerEfficient}`, '(硬解时 powerEfficient 应为 true)');
+  });
+
+  $('codec-roundtrip').onclick = () => guard(log, async () => {
+    const canvas = $('codec-canvas');
+    const ctx = canvas.getContext('2d');
+    const chunks = [];
+    let config = null;
+    const encoder = new VideoEncoder({
+      output: (chunk, meta) => { chunks.push(chunk); if (meta && meta.decoderConfig) config = meta.decoderConfig; },
+      error: (e) => log('编码错误', e.message),
+    });
+    encoder.configure({ codec: CODEC, width: WIDTH, height: HEIGHT, bitrate: 4e6, framerate: 30,
+      hardwareAcceleration: 'prefer-hardware', avc: { format: 'annexb' } });
+    const t0 = performance.now();
+    for (let i = 0; i < 60; i++) {
+      ctx.fillStyle = `hsl(${i * 6}, 70%, 50%)`;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 120px sans-serif';
+      ctx.fillText(`帧 ${i}`, 80, 380);
+      const frame = new VideoFrame(canvas, { timestamp: i * 33333 });
+      encoder.encode(frame, { keyFrame: i === 0 });
+      frame.close();
+    }
+    await encoder.flush();
+    const bytes = chunks.reduce((n, c) => n + c.byteLength, 0);
+    log(`编码完成：${chunks.length} 块，${(bytes / 1024).toFixed(0)} KB，用时 ${(performance.now() - t0).toFixed(0)} ms`);
+    encoder.close();
+
+    let decoded = 0;
+    const decoder = new VideoDecoder({
+      output: (frame) => { decoded++; if (decoded === 30) ctx.drawImage(frame, 0, 0); frame.close(); },
+      error: (e) => log('解码错误', e.message),
+    });
+    decoder.configure(Object.assign({}, config || { codec: CODEC, codedWidth: WIDTH, codedHeight: HEIGHT },
+      { hardwareAcceleration: 'prefer-hardware' }));
+    const t1 = performance.now();
+    for (const chunk of chunks) decoder.decode(chunk);
+    await decoder.flush();
+    log(`解码完成：${decoded} 帧，用时 ${(performance.now() - t1).toFixed(0)} ms（画布上应显示"帧 29"）`);
+    decoder.close();
+  });
+}
+
+// ---- 2. notifications ------------------------------------------------------
+{
+  const log = logger('notify-log');
+  let last = null;
+  $('notify-permission').onclick = () => guard(log, async () => {
+    log('权限结果', await Notification.requestPermission());
+  });
+  $('notify-send').onclick = () => guard(log, async () => {
+    if (Notification.permission !== 'granted') log('当前权限', Notification.permission, '（先点申请权限）');
+    const n = new Notification('硬件验证', { body: `这是一条测试通知 ${new Date().toLocaleTimeString()}`, tag: 'hw-test' });
+    n.onshow = () => log('show');
+    n.onclick = () => { log('click ✓'); window.focus(); };
+    n.onclose = () => log('close');
+    n.onerror = () => log('error');
+    last = n;
+  });
+  $('notify-close').onclick = () => { if (last) { last.close(); log('已请求关闭'); } };
+}
+
+// ---- 3. media session ------------------------------------------------------
+{
+  const log = logger('media-log');
+  const audio = $('media-audio');
+  function toneWav(seconds) {
+    const rate = 22050, n = rate * seconds, data = new DataView(new ArrayBuffer(44 + n * 2));
+    const text = (o, s) => { for (let i = 0; i < s.length; i++) data.setUint8(o + i, s.charCodeAt(i)); };
+    text(0, 'RIFF'); data.setUint32(4, 36 + n * 2, true); text(8, 'WAVEfmt ');
+    data.setUint32(16, 16, true); data.setUint16(20, 1, true); data.setUint16(22, 1, true);
+    data.setUint32(24, rate, true); data.setUint32(28, rate * 2, true); data.setUint16(32, 2, true);
+    data.setUint16(34, 16, true); text(36, 'data'); data.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) {
+      const env = Math.min(1, (i % rate) / 800);
+      data.setInt16(44 + i * 2, Math.sin(i * 2 * Math.PI * (330 + 110 * Math.floor(i / rate % 3)) / rate) * 6000 * env, true);
+    }
+    return URL.createObjectURL(new Blob([data], { type: 'audio/wav' }));
+  }
+  audio.src = toneWav(30);
+  const handlers = ['play', 'pause', 'stop', 'previoustrack', 'nexttrack', 'seekto'];
+  for (const action of handlers) {
+    try {
+      navigator.mediaSession.setActionHandler(action, (details) => {
+        log(`控制中心 → ${action}`, details.seekTime !== undefined ? `seekTime=${details.seekTime}` : '');
+        if (action === 'play') audio.play();
+        if (action === 'pause' || action === 'stop') audio.pause();
+        if (action === 'seekto') audio.currentTime = details.seekTime;
+      });
+    } catch (e) { log('不支持的动作', action); }
+  }
+  $('media-play').onclick = () => guard(log, async () => {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: '硬件验证测试音', artist: 'Chromium HarmonyOS', album: '媒体会话' });
+    await audio.play();
+    navigator.mediaSession.playbackState = 'playing';
+    navigator.mediaSession.setPositionState({ duration: audio.duration || 30, position: audio.currentTime, playbackRate: 1 });
+    log('播放中，去控制中心看');
+  });
+  $('media-pause').onclick = () => { audio.pause(); navigator.mediaSession.playbackState = 'paused'; log('已暂停'); };
+}
+
+// ---- 4. speech synthesis ---------------------------------------------------
+{
+  const log = logger('tts-log');
+  const speak = (text, lang) => guard(log, async () => {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang;
+    u.onstart = () => log('start', lang);
+    u.onend = () => log('end ✓', lang);
+    u.onerror = (e) => log('error', e.error);
+    speechSynthesis.speak(u);
+  });
+  $('tts-voices').onclick = () => {
+    const voices = speechSynthesis.getVoices();
+    log(`${voices.length} 个音色`, voices.map((v) => `${v.name} (${v.lang})`));
+    if (!voices.length) log('若为 0，稍等一秒再点一次（音色异步加载）');
+  };
+  speechSynthesis.onvoiceschanged = () => log('voiceschanged', speechSynthesis.getVoices().length);
+  $('tts-zh').onclick = () => speak('你好，这是鸿蒙浏览器的语音合成测试。', 'zh-CN');
+  $('tts-en').onclick = () => speak('Hello, this is the HarmonyOS speech synthesis test.', 'en-US');
+  $('tts-stop').onclick = () => { speechSynthesis.cancel(); log('cancel'); };
+}
+
+// ---- 5. shape detection ----------------------------------------------------
+{
+  const log = logger('shape-log');
+  const summarize = (list, pick) => list.map(pick);
+  $('shape-qr').onclick = () => guard(log, async () => {
+    log('支持的格式', await BarcodeDetector.getSupportedFormats());
+    const codes = await new BarcodeDetector().detect($('qr'));
+    log(`识别到 ${codes.length} 个码`, summarize(codes, (c) => ({ value: c.rawValue, format: c.format,
+      box: [c.boundingBox.x, c.boundingBox.y, c.boundingBox.width, c.boundingBox.height].map(Math.round) })));
+    log(codes.length && codes[0].rawValue === 'https://example.com/harmonyos-barcode-ok' ? '内容正确 ✓' : '内容不符 ✗');
+  });
+  $('shape-camera').onclick = () => guard(log, async () => {
+    const video = $('shape-video');
+    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.style.display = 'block';
+    await video.play();
+    log('摄像头已打开');
+  });
+  $('shape-frame').onclick = () => guard(log, async () => {
+    const video = $('shape-video');
+    if (!video.srcObject) { log('先打开摄像头'); return; }
+    const codes = await new BarcodeDetector().detect(video);
+    log('码', summarize(codes, (c) => `${c.format}: ${c.rawValue}`));
+    const faces = await new FaceDetector({ maxDetectedFaces: 5 }).detect(video);
+    log(`人脸 ${faces.length} 张`, summarize(faces, (f) => ({
+      box: [f.boundingBox.x, f.boundingBox.y, f.boundingBox.width, f.boundingBox.height].map(Math.round),
+      landmarks: (f.landmarks || []).map((l) => l.type) })));
+    const texts = await new TextDetector().detect(video);
+    log(`文字 ${texts.length} 行`, summarize(texts, (t) => t.rawValue));
+  });
+}
+
+// ---- 6. WebAuthn -----------------------------------------------------------
+{
+  const log = logger('webauthn-log');
+  const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  let credentialId = null;
+  $('webauthn-uvpaa').onclick = () => guard(log, async () => {
+    log('isUserVerifyingPlatformAuthenticatorAvailable', await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
+  });
+  $('webauthn-create').onclick = () => guard(log, async () => {
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: '硬件验证', id: location.hostname },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'tester', displayName: '测试用户' },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+      authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'required', userVerification: 'required' },
+      attestation: 'none', timeout: 60000 } });
+    credentialId = cred.rawId;
+    log('注册成功 ✓', { id: b64(cred.rawId), attachment: cred.authenticatorAttachment, type: cred.type });
+  });
+  $('webauthn-get').onclick = () => guard(log, async () => {
+    const assertion = await navigator.credentials.get({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rpId: location.hostname,
+      allowCredentials: credentialId ? [{ type: 'public-key', id: credentialId }] : [],
+      userVerification: 'required', timeout: 60000 } });
+    const flags = new Uint8Array(assertion.response.authenticatorData)[32];
+    log('登录成功 ✓', { id: b64(assertion.rawId), userPresent: !!(flags & 1), userVerified: !!(flags & 4),
+      signatureBytes: assertion.response.signature.byteLength });
+  });
+}
+
+// ---- 7. orientation --------------------------------------------------------
+{
+  const log = logger('orientation-log');
+  const show = () => {
+    $('orientation-box').textContent =
+      `当前：${screen.orientation.type}，角度 ${screen.orientation.angle}°，视口 ${innerWidth}×${innerHeight}`;
+  };
+  screen.orientation.addEventListener('change', () => { show(); log('change →', screen.orientation.type, screen.orientation.angle); });
+  show();
+  for (const button of document.querySelectorAll('[data-lock]')) {
+    button.onclick = () => guard(log, async () => {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      const type = button.dataset.lock;
+      log('lock', type, '…');
+      await screen.orientation.lock(type);
+      log('lock 完成 ✓', type, '→', screen.orientation.type, screen.orientation.angle);
+    });
+  }
+  $('orientation-unlock').onclick = () => guard(log, async () => {
+    screen.orientation.unlock();
+    if (document.fullscreenElement) await document.exitFullscreen();
+    log('已解锁');
+  });
+}
+</script>
+</body>
+</html>
