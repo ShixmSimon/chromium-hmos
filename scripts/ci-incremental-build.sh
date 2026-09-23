@@ -146,6 +146,7 @@ apply_incremental_patch "${repo_root}/patches/ohos-media-session.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-screen-orientation.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-shape-detection.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-webauthn-platform.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-video-codec.patch"
 # The chooser takes touch now, so the probes that found out why come out.
 retire_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
 
