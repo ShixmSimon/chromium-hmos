@@ -1,0 +1,9 @@
+{
+  "name": "engine",
+  "version": "1.0.0",
+  "description": "Chromium for HarmonyOS as a library: the engine, its runtime, and the ArkTS bridges it calls back into. A shell imports this and draws only UI.",
+  "main": "Index.ets",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

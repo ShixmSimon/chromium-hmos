@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { avSession, AVCastPickerStyle } from '@kit.AVSessionKit';
-import { BrowserStateSnapshot } from '../webwindow/NativeContext';
+import { BrowserStateSnapshot } from 'engine';
 
 export class CurrentTabCastSession {
   private session: avSession.AVSession | null = null;

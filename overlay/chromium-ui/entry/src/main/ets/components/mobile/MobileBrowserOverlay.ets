@@ -6,8 +6,8 @@ import {
   BrowserCommandPayload,
   BrowserStateSnapshot,
   BrowserTabState
-} from '../webwindow/NativeContext';
-import { HuaweiShareAdapter } from '../../utils/HuaweiShareAdapter';
+} from 'engine';
+import { HuaweiShareAdapter } from 'engine';
 import { GripSide, HoldingHandRouter } from './HoldingHandRouter';
 import { CurrentTabCastSession } from './CurrentTabCastSession';
 

@@ -1,5 +1,5 @@
 import { Want } from '@kit.AbilityKit';
-import { CHROMIUM_HOME_URL } from '../DeviceType';
+import { CHROMIUM_HOME_URL } from 'engine';
 
 export interface CrossDeviceSessionSnapshot {
   url: string;

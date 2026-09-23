@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
-import { BrowserCommandPayload, BrowserStateSnapshot } from '../webwindow/NativeContext';
+import { BrowserCommandPayload, BrowserStateSnapshot } from 'engine';
 
 @Component
 export struct PwaCapsuleOverlay {

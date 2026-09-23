@@ -5,8 +5,8 @@ import { http } from '@kit.NetworkKit';
 import display from '@ohos.display';
 import defaultAppManager from '@ohos.bundle.defaultAppManager';
 import bundleManager from '@ohos.bundle.bundleManager';
-import { CHROMIUM_HOME_URL, DeviceRouting, DeviceRoutingPolicy, WindowPolicy, WindowStateSnapshot } from '../utils/DeviceType';
-import { UIManager } from '../utils/UIManager';
+import { CHROMIUM_HOME_URL, DeviceRouting, DeviceRoutingPolicy, WindowPolicy, WindowStateSnapshot } from 'engine';
+import { UIManager } from 'engine';
 import {
   CrossDeviceEntryAdapter,
   CrossDeviceSessionSnapshot

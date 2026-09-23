@@ -13,13 +13,13 @@
  * limitations under the License.
  */
 
-export { WebWindow, WebWindowOptions } from './components/webwindow/WebWindow';
+export { WebWindow, WebWindowOptions } from 'engine';
 export {
   NativeContext,
   WindowRect,
   PointerEventPayload,
   KeyEventPayload
-} from './components/webwindow/NativeContext';
+} from 'engine';
 export {
   AuraStartupConfig,
   CHROMIUM_HOME_URL,
@@ -32,8 +32,8 @@ export {
   UIFamily,
   UIProfile,
   WindowPolicy
-} from './utils/DeviceType';
-export { UIManager } from './utils/UIManager';
+} from 'engine';
+export { UIManager } from 'engine';
 export { CrossDeviceEntryAdapter } from './utils/crossdevice/CrossDeviceEntryAdapter';
 export { CrossDeviceShareAdapter } from './utils/crossdevice/CrossDeviceShareAdapter';
 export { CrossDeviceDragChannel } from './utils/crossdevice/CrossDeviceDragChannel';

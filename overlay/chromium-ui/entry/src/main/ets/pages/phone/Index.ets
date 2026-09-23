@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { WebWindow } from '../../components/webwindow/WebWindow';
-import { CHROMIUM_HOME_URL } from '../../utils/DeviceType';
+import { WebWindow } from 'engine';
+import { CHROMIUM_HOME_URL } from 'engine';
 
 /**
  * 手机UI主页面

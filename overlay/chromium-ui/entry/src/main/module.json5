@@ -101,28 +101,6 @@
     ],
     "requestPermissions": [
       {
-        "name": "ohos.permission.INTERNET",
-        "reason": "$string:internet_permission_reason",
-        "usedScene": {
-          "abilities": [
-            "EntryAbility",
-            "PWASmallAppExperience"
-          ],
-          "when": "inuse"
-        }
-      },
-      {
-        "name": "ohos.permission.GET_NETWORK_INFO",
-        "reason": "$string:network_info_permission_reason",
-        "usedScene": {
-          "abilities": [
-            "EntryAbility",
-            "PWASmallAppExperience"
-          ],
-          "when": "inuse"
-        }
-      },
-      {
         "name": "ohos.permission.DETECT_GESTURE",
         "reason": "$string:holding_hand_permission_reason",
         "usedScene": {
@@ -131,47 +109,6 @@
           ],
           "when": "inuse"
         }
-      },
-      {
-        "name": "ohos.permission.LOCATION",
-        "reason": "$string:location_permission_reason",
-        "usedScene": { "abilities": ["EntryAbility"], "when": "inuse" }
-      },
-      {
-        "name": "ohos.permission.APPROXIMATELY_LOCATION",
-        "reason": "$string:location_permission_reason",
-        "usedScene": { "abilities": ["EntryAbility"], "when": "inuse" }
-      },
-      {
-        "name": "ohos.permission.CAMERA",
-        "reason": "$string:camera_permission_reason",
-        "usedScene": { "abilities": ["EntryAbility"], "when": "inuse" }
-      },
-      {
-        "name": "ohos.permission.MICROPHONE",
-        "reason": "$string:microphone_permission_reason",
-        "usedScene": { "abilities": ["EntryAbility"], "when": "inuse" }
-      },
-      {
-        "name": "ohos.permission.ACCESS_BLUETOOTH",
-        "reason": "$string:bluetooth_permission_reason",
-        "usedScene": { "abilities": ["EntryAbility"], "when": "inuse" }
-      },
-      {
-        "name": "ohos.permission.ACCELEROMETER",
-        "reason": "$string:motion_sensor_permission_reason",
-        "usedScene": { "abilities": ["EntryAbility"], "when": "inuse" }
-      },
-      {
-        "name": "ohos.permission.GYROSCOPE",
-        "reason": "$string:motion_sensor_permission_reason",
-        "usedScene": { "abilities": ["EntryAbility"], "when": "inuse" }
-      },
-      {
-        "name": "ohos.permission.VIBRATE"
-      },
-      {
-        "name": "ohos.permission.PRINT"
       }
     ]
   }

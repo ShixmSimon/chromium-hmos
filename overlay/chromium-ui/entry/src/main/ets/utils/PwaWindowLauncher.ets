@@ -1,6 +1,6 @@
 import { AbilityConstant, common, StartOptions, Want } from '@kit.AbilityKit';
-import { AuraStartupConfig } from './DeviceType';
-import { AuxiliaryWindowState } from '../components/webwindow/NativeContext';
+import { AuraStartupConfig } from 'engine';
+import { AuxiliaryWindowState } from 'engine';
 
 const FLOATING_WINDOW_MODE: number = 102;
 

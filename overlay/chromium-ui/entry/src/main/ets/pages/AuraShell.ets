@@ -14,7 +14,7 @@
  */
 
 import { common } from '@kit.AbilityKit';
-import { WebWindow } from '../components/webwindow/WebWindow';
+import { WebWindow } from 'engine';
 import { MobileBrowserOverlay } from '../components/mobile/MobileBrowserOverlay';
 import { CurrentTabCastSession } from '../components/mobile/CurrentTabCastSession';
 import { BrowserOnboarding } from '../components/onboarding/BrowserOnboarding';
@@ -23,15 +23,15 @@ import {
   BrowserCommandPayload,
   BrowserRuntimeEvent,
   BrowserStateSnapshot
-} from '../components/webwindow/NativeContext';
-import { CHROMIUM_HOME_URL } from '../utils/DeviceType';
-import { HuaweiKnockShareSession, HuaweiShareAdapter } from '../utils/HuaweiShareAdapter';
-import { HarmonyFilePickerAdapter, HarmonyFilePickerResult } from '../utils/HarmonyFilePickerAdapter';
-import { PermissionRequestAdapter, PermissionRequestResultPayload } from '../utils/PermissionRequestAdapter';
-import { BrowserCommandChannel } from '../utils/BrowserCommandChannel';
+} from 'engine';
+import { CHROMIUM_HOME_URL } from 'engine';
+import { HuaweiKnockShareSession, HuaweiShareAdapter } from 'engine';
+import { HarmonyFilePickerAdapter, HarmonyFilePickerResult } from 'engine';
+import { PermissionRequestAdapter, PermissionRequestResultPayload } from 'engine';
+import { BrowserCommandChannel } from 'engine';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { SystemPrintAdapter } from '../utils/SystemPrintAdapter';
-import { ChromiumSystemAction, SystemIntegrationAdapter } from '../utils/SystemIntegrationAdapter';
+import { SystemPrintAdapter } from 'engine';
+import { ChromiumSystemAction, SystemIntegrationAdapter } from 'engine';
 import { PwaWindowLauncher } from '../utils/PwaWindowLauncher';
 import {
   AUXILIARY_WINDOW_MARGIN_VP,
@@ -39,7 +39,7 @@ import {
   auxiliaryWindowLeftVp,
   layoutAuxiliaryWindow,
   ScreenSizeVp
-} from '../utils/AuxiliaryWindowLayout';
+} from 'engine';
 import { BrowserProfileState } from '../utils/profile/BrowserProfileService';
 
 const EMPTY_BROWSER_STATE: BrowserStateSnapshot = {

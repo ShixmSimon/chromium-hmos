@@ -13,40 +13,12 @@
       "value": "Chromium HarmonyOS Adapter"
     },
     {
-      "name": "internet_permission_reason",
-      "value": "需要网络权限以加载网页"
-    },
-    {
-      "name": "network_info_permission_reason",
-      "value": "需要网络信息权限以检测网络状态"
-    },
-    {
       "name": "holding_hand_permission_reason",
       "value": "用于根据握持位置调整浏览器快捷按钮"
     },
     {
       "name": "extensional_device_permission_reason",
       "value": "需要扩展设备权限以访问原生功能"
-    },
-    {
-      "name": "location_permission_reason",
-      "value": "用于向您授权的网站提供当前位置"
-    },
-    {
-      "name": "camera_permission_reason",
-      "value": "用于向您授权的网站提供摄像头画面"
-    },
-    {
-      "name": "microphone_permission_reason",
-      "value": "用于向您授权的网站提供麦克风声音"
-    },
-    {
-      "name": "bluetooth_permission_reason",
-      "value": "用于连接您授权给网站的附近蓝牙设备"
-    },
-    {
-      "name": "motion_sensor_permission_reason",
-      "value": "用于向您授权的网站提供设备方向与运动数据"
     }
   ]
 }

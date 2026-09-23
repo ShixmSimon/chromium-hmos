@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import { WebWindow } from '../components/webwindow/WebWindow';
+import { WebWindow } from 'engine';
 import { PwaCapsuleOverlay } from '../components/pwa/PwaCapsuleOverlay';
 import { CurrentTabCastSession } from '../components/mobile/CurrentTabCastSession';
 import {
@@ -8,13 +8,13 @@ import {
   BrowserStateSnapshot,
   PwaMenuButtonState,
   PwaMenuItemState
-} from '../components/webwindow/NativeContext';
-import { HuaweiKnockShareSession, HuaweiShareAdapter } from '../utils/HuaweiShareAdapter';
-import { HarmonyFilePickerAdapter, HarmonyFilePickerResult } from '../utils/HarmonyFilePickerAdapter';
-import { PermissionRequestAdapter, PermissionRequestResultPayload } from '../utils/PermissionRequestAdapter';
-import { BrowserCommandChannel } from '../utils/BrowserCommandChannel';
-import { SystemPrintAdapter } from '../utils/SystemPrintAdapter';
-import { ChromiumSystemAction, SystemIntegrationAdapter } from '../utils/SystemIntegrationAdapter';
+} from 'engine';
+import { HuaweiKnockShareSession, HuaweiShareAdapter } from 'engine';
+import { HarmonyFilePickerAdapter, HarmonyFilePickerResult } from 'engine';
+import { PermissionRequestAdapter, PermissionRequestResultPayload } from 'engine';
+import { BrowserCommandChannel } from 'engine';
+import { SystemPrintAdapter } from 'engine';
+import { ChromiumSystemAction, SystemIntegrationAdapter } from 'engine';
 
 const EMPTY_PWA_STATE: BrowserStateSnapshot = {
   version: 1,

@@ -12,8 +12,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { WebWindow } from '../../components/webwindow/WebWindow';
-import { CHROMIUM_HOME_URL } from '../../utils/DeviceType';
+import { WebWindow } from 'engine';
+import { CHROMIUM_HOME_URL } from 'engine';
 
 import { KeyCode } from '@kit.InputKit';
 

@@ -28,6 +28,8 @@ overlay/chromium-ui/entry/.hvigor/
 overlay/chromium-ui/entry/build/
 overlay/chromium-ui/entry/libs/
 overlay/chromium-ui/entry/src/main/resources/rawfile/chromium/
+overlay/chromium-ui/engine/libs/
+overlay/chromium-ui/engine/src/main/resources/rawfile/chromium/
 
 # Local-only absolute links into the private SDK/toolchain checkout.
 /overlay/ohos/third_party/ohpm
