@@ -231,7 +231,11 @@ struct AuraShell {
           .id(view.state.componentId)
           .width('100%')
           .height('100%')
-          .focusable(true)
+          // A popup anchored to the page -- the autofill list under a field
+          // -- is not activatable in Chromium either. Taking focus here moved
+          // it off the page's XComponent, which closed the keyboard the user
+          // was typing with and could leave it unable to reopen.
+          .focusable(view.state.anchored !== true)
           .defaultFocus(view.state.widget === this.activeAuxiliaryWidget)
       }
       // Read through this.auxiliaryWindows rather than `view`: the item is keyed
@@ -456,8 +460,10 @@ struct AuraShell {
     }
 
     this.auxiliaryWindows = remaining;
+    const focusable = remaining.filter(
+      (view: AuxiliaryWindowView): boolean => view.state.anchored !== true);
     this.activeAuxiliaryWidget =
-      remaining.length > 0 ? remaining[remaining.length - 1].state.widget : 0;
+      focusable.length > 0 ? focusable[focusable.length - 1].state.widget : 0;
   }
 
   private handlePwaWindowState(state: AuxiliaryWindowState): void {
