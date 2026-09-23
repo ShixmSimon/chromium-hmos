@@ -77,7 +77,6 @@ struct AuraShell {
   @StorageLink('auraBrowserCommandRevision') browserCommandRevision: number = 0;
   @State private auxiliaryWindows: AuxiliaryWindowState[] = [];
   @State private activeAuxiliaryWidget: number = 0;
-  @State private auxiliarySheetVisible: boolean = false;
   @State private auxiliaryDismissWidget: number = 0;
   @State private auxiliaryDismissRevision: number = 0;
   private readonly currentTabCastSession: CurrentTabCastSession = new CurrentTabCastSession();
@@ -160,23 +159,14 @@ struct AuraShell {
             }
           })
         }
+        if (this.auxiliaryWindows.length > 0) {
+          this.AuxiliaryWindowOverlay()
+        }
       }
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.browser_canvas'))
-    .bindSheet($$this.auxiliarySheetVisible, this.AuxiliaryWindowSheet, {
-      height: SheetSize.LARGE,
-      showClose: false,
-      enableOutsideInteractive: false,
-      maskColor: Color.Transparent,
-      onWillDismiss: (action: DismissSheetAction): void => {
-        this.requestAuxiliaryWindowDismiss(this.activeAuxiliaryWidget);
-        if (this.auxiliaryWindows.length <= 1) {
-          action.dismiss();
-        }
-      }
-    })
   }
 
   private startKnockShare(): void {
@@ -190,7 +180,7 @@ struct AuraShell {
   }
 
   @Builder
-  private AuxiliaryWindowSheet() {
+  private AuxiliaryWindowOverlay() {
     Column() {
       Row() {
         Text('Chromium')
@@ -259,10 +249,15 @@ struct AuraShell {
       .layoutWeight(1)
       .backgroundColor($r('app.color.surface_primary'))
     }
-    .width('100%')
-    .height('100%')
+    .width('94%')
+    .height(this.isMobilePhoneUi() ? '48%' : '58%')
+    .margin({ top: 12 })
     .padding({ left: 12, right: 12, bottom: 12 })
+    .borderRadius(8)
     .backgroundColor($r('app.color.surface_primary'))
+    .shadow({ radius: 16, color: $r('app.color.shadow'), offsetY: 4 })
+    .hitTestBehavior(HitTestMode.Block)
+    .align(Alignment.Top)
   }
 
   // Commands are batched rather than written straight to the state pair, so
@@ -418,7 +413,6 @@ struct AuraShell {
     }
 
     this.auxiliaryWindows = remaining;
-    this.auxiliarySheetVisible = remaining.length > 0;
   }
 
   private handlePwaWindowState(state: AuxiliaryWindowState): void {
