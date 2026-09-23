@@ -1,0 +1,70 @@
+Host the Shape Detection API on HarmonyOS ScanKit and CoreVisionKit.
+
+The detectors are new code under overlay/components/ohos_shape_detection/.
+They reach the kits through ArkTS, which runs only in the app's main process,
+so this patch only changes upstream-owned files:
+
+  * content/browser/shape_detection/shape_detection_service.cc binds the
+    service inside the browser process on OHOS instead of asking the GPU
+    process, which is a separate process on tablets and cannot reach ArkTS.
+  * content/browser/BUILD.gn links //components/ohos_shape_detection.
+
+The three detectors are exposed with --enable-blink-features at startup
+(ohos_chrome_main_runner.cc) rather than in runtime_enabled_features.json5,
+which would regenerate a header most of Blink includes.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch. Apply
+this patch once to a persistent runner whose main adapter patch is already
+present:
+
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-shape-detection.patch
+
+diff --git a/content/browser/BUILD.gn b/content/browser/BUILD.gn
+index b92e284..4a9a49d 100644
+--- a/content/browser/BUILD.gn
++++ b/content/browser/BUILD.gn
+@@ -2648,6 +2648,12 @@ source_set("browser") {
+     ]
+   }
+ 
++  # HarmonyOS hosts the shape detection service in the browser process; see
++  # shape_detection/shape_detection_service.cc.
++  if (is_ohos) {
++    deps += [ "//components/ohos_shape_detection" ]
++  }
++
+   if (is_apple) {
+     sources += [
+       "font_access/font_enumeration_data_source_mac.h",
+diff --git a/content/browser/shape_detection/shape_detection_service.cc b/content/browser/shape_detection/shape_detection_service.cc
+index 013e51b..010a60d 100644
+--- a/content/browser/shape_detection/shape_detection_service.cc
++++ b/content/browser/shape_detection/shape_detection_service.cc
+@@ -21,6 +21,10 @@
+ #include "content/browser/gpu/gpu_process_host.h"
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "components/ohos_shape_detection/shape_detection_service_ohos.h"
++#endif
++
+ namespace content {
+ 
+ shape_detection::mojom::ShapeDetectionService* GetShapeDetectionService() {
+@@ -28,8 +32,14 @@ shape_detection::mojom::ShapeDetectionService* GetShapeDetectionService() {
+       mojo::Remote<shape_detection::mojom::ShapeDetectionService>>
+       remote;
+   if (!*remote) {
+-#if BUILDFLAG(IS_WIN) || (BUILDFLAG(GOOGLE_CHROME_BRANDING) && \
+-                          (BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX)))
++#if BUILDFLAG(IS_OHOS)
++    // ScanKit and CoreVisionKit are ArkTS-only, and ArkTS runs only in the
++    // app's main process. Neither the GPU process (separate on tablets) nor a
++    // utility process can reach it, so the service lives here.
++    ohos_shape_detection::BindShapeDetectionServiceInBrowser(
++        remote->BindNewPipeAndPassReceiver());
++#elif BUILDFLAG(IS_WIN) || (BUILDFLAG(GOOGLE_CHROME_BRANDING) && \
++                            (BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX)))
+     ServiceProcessHost::Launch<shape_detection::mojom::ShapeDetectionService>(
+         remote->BindNewPipeAndPassReceiver(),
+         ServiceProcessHost::Options()

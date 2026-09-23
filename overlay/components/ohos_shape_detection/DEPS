@@ -1,0 +1,9 @@
+include_rules = [
+  "+components/ohos_system_service",
+  "+mojo/public/cpp/bindings",
+  "+services/shape_detection/public/mojom",
+  "+skia/ext",
+  "+third_party/libyuv",
+  "+third_party/skia/include",
+  "+ui/gfx/geometry",
+]

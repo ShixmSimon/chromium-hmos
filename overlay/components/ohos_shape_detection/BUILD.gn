@@ -1,0 +1,34 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# The Shape Detection API (BarcodeDetector, FaceDetector, TextDetector) on
+# HarmonyOS ScanKit and CoreVisionKit.
+#
+# Those kits exist only in ArkTS, and ArkTS is reachable only from the app's
+# main process, so this implementation is hosted in the browser process
+# instead of the GPU or utility process upstream uses. See
+# content/browser/shape_detection/shape_detection_service.cc.
+static_library("ohos_shape_detection") {
+  sources = [
+    "barcode_detection_ohos.cc",
+    "barcode_detection_ohos.h",
+    "detection_image_ohos.cc",
+    "detection_image_ohos.h",
+    "face_detection_ohos.cc",
+    "face_detection_ohos.h",
+    "shape_detection_service_ohos.cc",
+    "shape_detection_service_ohos.h",
+    "text_detection_ohos.cc",
+    "text_detection_ohos.h",
+  ]
+  deps = [
+    "//base",
+    "//components/ohos_system_service",
+    "//mojo/public/cpp/bindings",
+    "//skia",
+    "//third_party/libyuv",
+    "//ui/gfx/geometry",
+  ]
+  public_deps = [ "//services/shape_detection/public/mojom" ]
+}

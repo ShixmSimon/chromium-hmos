@@ -294,6 +294,13 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
     arguments.push_back("--use-mobile-user-agent");
   }
 
+  // The Shape Detection API is backed by ScanKit and CoreVisionKit here
+  // (//components/ohos_shape_detection). Upstream ships BarcodeDetector only
+  // where a platform backend exists and keeps the other two experimental;
+  // turning them on at startup avoids regenerating Blink's feature table.
+  arguments.push_back(
+      "--enable-blink-features=BarcodeDetector,FaceDetector,TextDetector");
+
   const bool supports_native_child_process =
       config.device_class == "tablet" || config.device_class == "2in1";
   if (supports_native_child_process) {

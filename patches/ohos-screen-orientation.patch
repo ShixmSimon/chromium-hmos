@@ -13,10 +13,10 @@ skips the Aura 90/270 swap, which exists for desktop panels.
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 
 diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
-index 9f81181..f130a75 100644
+index 9f81181..5a3f444 100644
 --- a/chrome/browser/BUILD.gn
 +++ b/chrome/browser/BUILD.gn
-@@ -885,9 +885,12 @@ source_set("core") {
+@@ -885,6 +885,8 @@ source_set("core") {
      sources += [
        "ui/ohos/aura_shell_runtime_bridge.cc",
        "ui/ohos/aura_shell_runtime_bridge.h",
@@ -25,10 +25,6 @@ index 9f81181..f130a75 100644
        "ui/ohos/system_geolocation_source_ohos.cc",
        "ui/ohos/system_geolocation_source_ohos.h",
      ]
-+    deps += [ "//components/ohos_system_service" ]
-   }
- 
-   configs += [
 diff --git a/ui/display/display_util.cc b/ui/display/display_util.cc
 index c546495..aa78fa8 100644
 --- a/ui/display/display_util.cc
