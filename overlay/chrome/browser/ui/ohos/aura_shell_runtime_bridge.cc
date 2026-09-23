@@ -97,6 +97,7 @@
 #include "ui/views/controls/menu/menu_runner.h"
 #include "ui/views/focus/focus_manager.h"
 #include "ui/views/widget/widget.h"
+#include "ui/views/widget/widget_delegate.h"
 #include "url/gurl.h"
 
 namespace chrome::ohos {
@@ -1717,6 +1718,39 @@ bool IsAuraShellHuaweiWalletAvailable() {
   RuntimeBridgeState& state = GetState();
   base::AutoLock lock(state.lock);
   return state.huawei_wallet_available;
+}
+
+std::optional<bool> IsAuraShellWindowModal(gfx::AcceleratedWidget widget) {
+  // Reports can arrive on the ArkTS thread too -- the surface-binding path in
+  // the window registry fires them -- and Views may only be read on the UI
+  // thread. The shell keeps its last answer when this one is missing.
+  scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner;
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    ui_task_runner = state.ui_task_runner;
+  }
+  if (!ui_task_runner || !ui_task_runner->BelongsToCurrentThread()) {
+    return std::nullopt;
+  }
+
+  aura::WindowTreeHost* host =
+      aura::WindowTreeHost::GetForAcceleratedWidget(widget);
+  if (!host || !host->window()) {
+    return std::nullopt;
+  }
+  for (views::Widget* candidate :
+       views::Widget::GetAllChildWidgets(host->window())) {
+    if (candidate != candidate->GetTopLevelWidget()) {
+      continue;
+    }
+    const views::WidgetDelegate* delegate = candidate->widget_delegate();
+    if (!delegate) {
+      return std::nullopt;
+    }
+    return delegate->GetModalType() != ui::mojom::ModalType::kNone;
+  }
+  return std::nullopt;
 }
 
 std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(

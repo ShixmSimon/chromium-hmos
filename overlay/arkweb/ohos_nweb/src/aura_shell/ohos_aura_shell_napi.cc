@@ -478,6 +478,10 @@ void DispatchAuxiliaryWindowEvent(const ui::OhosLogicalWindowState& state) {
   event.Set("visible", state.visible);
   event.Set("destroyed", state.destroyed);
   event.Set("stackingOrder", static_cast<double>(state.stacking_order));
+  if (std::optional<bool> modal =
+          chrome::ohos::IsAuraShellWindowModal(state.widget)) {
+    event.Set("modal", *modal);
+  }
   event.Set("windowRole", "auxiliary");
   if (std::optional<chrome::ohos::AuraShellWindowMetadata> metadata =
           chrome::ohos::GetAuraShellWindowMetadata(state.widget);

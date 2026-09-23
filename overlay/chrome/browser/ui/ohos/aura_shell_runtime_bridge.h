@@ -53,6 +53,11 @@ std::optional<bool> GetAuraShellDefaultBrowserState();
 void SetAuraShellDefaultBrowserStateCallback(
     AuraShellDefaultBrowserStateCallback callback);
 bool IsAuraShellHuaweiWalletAvailable();
+// Whether the top-level Views widget hosted by `widget` is modal: the media
+// source picker is, the "sharing your screen" bar is not. The shell uses it
+// to decide which auxiliary windows may block the page. nullopt when it
+// cannot be told -- off the UI thread, or before the widget has a host.
+std::optional<bool> IsAuraShellWindowModal(gfx::AcceleratedWidget widget);
 std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(
     gfx::AcceleratedWidget widget);
 void UpdateAuraShellUiFamily(const std::string& ui_family);
