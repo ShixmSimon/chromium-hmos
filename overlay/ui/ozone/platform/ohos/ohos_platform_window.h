@@ -41,6 +41,7 @@ class OhosPlatformWindow : public StubWindow,
   void EndMoveLoop() override;
 
  private:
+  void OnLogicalWindowCloseRequest();
   void OnNativeSurfaceBoundsChanged(gfx::Rect bounds, float density);
   void SetWindowState(PlatformWindowState state);
 

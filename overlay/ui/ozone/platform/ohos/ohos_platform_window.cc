@@ -40,7 +40,9 @@ OhosPlatformWindow::OhosPlatformWindow(PlatformWindowDelegate* delegate,
              base::WeakPtr<OhosPlatformWindow> window) {
             task_runner->PostTask(
                 FROM_HERE,
-                base::BindOnce(&OhosPlatformWindow::Close, std::move(window)));
+                base::BindOnce(
+                    &OhosPlatformWindow::OnLogicalWindowCloseRequest,
+                    std::move(window)));
           },
           base::SingleThreadTaskRunner::GetCurrentDefault(),
           weak_factory_.GetWeakPtr()));
@@ -80,6 +82,10 @@ void OhosPlatformWindow::Close() {
   RequestOhosWindowAction(adapter_.GetAcceleratedWidget(),
                           OhosWindowAction::kClose);
   delegate()->OnClosed();
+}
+
+void OhosPlatformWindow::OnLogicalWindowCloseRequest() {
+  delegate()->OnCloseRequest();
 }
 
 bool OhosPlatformWindow::IsVisible() const {
