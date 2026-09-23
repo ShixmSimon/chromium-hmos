@@ -16,6 +16,8 @@
 import { common } from '@kit.AbilityKit';
 import { BluetoothBridge, BluetoothNativePort } from '../../utils/BluetoothBridge';
 import { UsbBridge, UsbNativePort } from '../../utils/UsbBridge';
+import { SystemServiceBridge, SystemServiceNativePort } from '../../utils/SystemServiceBridge';
+import { registerSystemServices } from '../../utils/SystemServices';
 import { AuraStartupConfig } from '../../utils/DeviceType';
 
 export interface WindowRect {
@@ -190,7 +192,7 @@ export interface AuxiliaryWindowState {
   pwaStartUrl?: string;
 }
 
-export interface INativeContext extends BluetoothNativePort, UsbNativePort {
+export interface INativeContext extends BluetoothNativePort, UsbNativePort, SystemServiceNativePort {
   Initialize(xComponentId: string, configJson: string, onWindowAction: (action: string) => void): void;
   OnSurfaceCreated(xComponentId: string): void;
   OnSurfaceChanged(
@@ -225,6 +227,7 @@ export class NativeContext {
   private nativeContext: INativeContext | null = null;
   private bluetoothBridge: BluetoothBridge | null = null;
   private usbBridge: UsbBridge | null = null;
+  private systemServiceBridge: SystemServiceBridge | null = null;
   private onWindowAction: (action: string) => void = (_action: string): void => {};
   private onBrowserState: (stateJson: string) => void = (_stateJson: string): void => {};
   private onAuxiliaryWindowState: (stateJson: string) => void = (_stateJson: string): void => {};
@@ -256,6 +259,8 @@ export class NativeContext {
     this.onAuxiliaryWindowState = onAuxiliaryWindowState;
     this.bluetoothBridge = new BluetoothBridge(abilityContext, this.xComponentId, context);
     this.usbBridge = new UsbBridge(this.xComponentId, context);
+    this.systemServiceBridge = new SystemServiceBridge(this.xComponentId, context);
+    registerSystemServices(this.systemServiceBridge, abilityContext);
     this.callVoid('Initialize', () => {
       this.nativeContext!.Initialize(this.xComponentId, JSON.stringify(config), this.onWindowAction);
       this.nativeContext!.SetBrowserEventCallback(this.xComponentId, this.onBrowserState);

@@ -19,6 +19,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/values.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+#include "components/ohos_system_service/system_service_ohos.h"
 #include "device/bluetooth/ohos/bluetooth_bridge_ohos.h"
 #include "ohos_nweb/src/aura_shell/ohos_aura_shell_host.h"
 #include "ohos_nweb/src/aura_shell/ohos_chrome_main_runner.h"
@@ -37,6 +38,8 @@ using AuxiliaryWindowEventFunctionMap =
     std::map<std::string, napi_threadsafe_function>;
 using BluetoothFunctionMap = std::map<std::string, napi_threadsafe_function>;
 using UsbFunctionMap = std::map<std::string, napi_threadsafe_function>;
+using SystemServiceFunctionMap =
+    std::map<std::string, napi_threadsafe_function>;
 
 constexpr char kAuxiliarySurfacePrefix[] = "aura_aux_";
 constexpr char kPwaSurfacePrefix[] = "aura_pwa_";
@@ -93,6 +96,16 @@ std::mutex& UsbFunctionsMutex() {
 
 UsbFunctionMap& UsbFunctions() {
   static base::NoDestructor<UsbFunctionMap> functions;
+  return *functions;
+}
+
+std::mutex& SystemServiceFunctionsMutex() {
+  static base::NoDestructor<std::mutex> mutex;
+  return *mutex;
+}
+
+SystemServiceFunctionMap& SystemServiceFunctions() {
+  static base::NoDestructor<SystemServiceFunctionMap> functions;
   return *functions;
 }
 
@@ -1298,6 +1311,102 @@ napi_value SetBrowserEventCallback(napi_env env, napi_callback_info info) {
   return MakeUndefined(env);
 }
 
+// ArkTS-only HarmonyOS services (TTS, notifications, shape detection,
+// biometrics, orientation) share one channel; see system_service_ohos.h.
+void DispatchSystemServiceRequest(const std::string& request_json) {
+  std::lock_guard<std::mutex> lock(SystemServiceFunctionsMutex());
+  napi_threadsafe_function function = nullptr;
+  auto main = SystemServiceFunctions().find("aura_shell");
+  if (main != SystemServiceFunctions().end()) {
+    function = main->second;
+  } else if (!SystemServiceFunctions().empty()) {
+    function = SystemServiceFunctions().begin()->second;
+  }
+  if (!function) {
+    return;
+  }
+  auto request_copy = std::make_unique<std::string>(request_json);
+  if (napi_call_threadsafe_function(function, request_copy.get(),
+                                    napi_tsfn_nonblocking) == napi_ok) {
+    request_copy.release();
+  } else {
+    WVLOG_W("AuraShell dropped a system service request");
+  }
+}
+
+void RegisterSystemServiceFunction(napi_env env,
+                                   const std::string& component_id,
+                                   napi_value callback) {
+  napi_valuetype callback_type = napi_undefined;
+  if (napi_typeof(env, callback, &callback_type) != napi_ok ||
+      callback_type != napi_function) {
+    WVLOG_E("AuraShell system service handler is not a function");
+    return;
+  }
+
+  napi_value resource_name = nullptr;
+  napi_create_string_utf8(env, "ChromiumAuraSystemService", NAPI_AUTO_LENGTH,
+                          &resource_name);
+  napi_threadsafe_function function = nullptr;
+  if (napi_create_threadsafe_function(
+          env, callback, nullptr, resource_name, 0, 1, nullptr, nullptr,
+          nullptr, CallJsBrowserEvent, &function) != napi_ok) {
+    WVLOG_E("AuraShell failed to create the system service bridge");
+    return;
+  }
+  napi_unref_threadsafe_function(env, function);
+  {
+    std::lock_guard<std::mutex> lock(SystemServiceFunctionsMutex());
+    auto [it, inserted] =
+        SystemServiceFunctions().emplace(component_id, function);
+    if (!inserted) {
+      napi_release_threadsafe_function(function, napi_tsfn_abort);
+      return;
+    }
+  }
+  ohos_system_service::SetDispatcher(
+      base::BindRepeating(&DispatchSystemServiceRequest));
+}
+
+void ReleaseSystemServiceFunction(const std::string& component_id) {
+  bool callbacks_remain = false;
+  {
+    std::lock_guard<std::mutex> lock(SystemServiceFunctionsMutex());
+    auto it = SystemServiceFunctions().find(component_id);
+    if (it != SystemServiceFunctions().end()) {
+      napi_release_threadsafe_function(it->second, napi_tsfn_abort);
+      SystemServiceFunctions().erase(it);
+    }
+    callbacks_remain = !SystemServiceFunctions().empty();
+  }
+  if (!callbacks_remain) {
+    ohos_system_service::SetDispatcher(ohos_system_service::Dispatcher());
+  }
+}
+
+napi_value SetSystemServiceCallback(napi_env env, napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  if (argc < 2) {
+    return MakeUndefined(env);
+  }
+  RegisterSystemServiceFunction(env, ReadString(env, args[0]), args[1]);
+  return MakeUndefined(env);
+}
+
+napi_value CompleteSystemServiceMessage(napi_env env,
+                                        napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  if (argc < 2) {
+    return MakeUndefined(env);
+  }
+  ohos_system_service::DeliverMessage(ReadString(env, args[1]));
+  return MakeUndefined(env);
+}
+
 napi_value SetBluetoothEventCallback(napi_env env, napi_callback_info info) {
   size_t argc = 2;
   napi_value args[2] = {nullptr};
@@ -1407,6 +1516,7 @@ napi_value Shutdown(napi_env env, napi_callback_info info) {
   ReleaseAuxiliaryWindowEventFunction(component_id);
   ReleaseBluetoothFunction(component_id);
   ReleaseUsbFunction(component_id);
+  ReleaseSystemServiceFunction(component_id);
   return MakeUndefined(env);
 }
 
@@ -1447,6 +1557,10 @@ napi_value InitAuraShellNapi(napi_env env, napi_value exports) {
        nullptr, napi_default, nullptr},
       {"CompleteUsbMessage", nullptr, CompleteUsbMessage, nullptr, nullptr,
        nullptr, napi_default, nullptr},
+      {"SetSystemServiceCallback", nullptr, SetSystemServiceCallback, nullptr,
+       nullptr, nullptr, napi_default, nullptr},
+      {"CompleteSystemServiceMessage", nullptr, CompleteSystemServiceMessage,
+       nullptr, nullptr, nullptr, napi_default, nullptr},
       {"ExecuteBrowserCommand", nullptr, ExecuteBrowserCommand, nullptr,
        nullptr, nullptr, napi_default, nullptr},
       {"SetAuxiliaryWindowEventCallback", nullptr,

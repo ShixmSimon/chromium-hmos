@@ -1,0 +1,14 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# The channel from Chromium to HarmonyOS services that exist only in ArkTS.
+# The app's N-API layer installs the dispatcher; the features that use it
+# (TTS, notifications, shape detection, WebAuthn, orientation) depend on this.
+static_library("ohos_system_service") {
+  sources = [
+    "system_service_ohos.cc",
+    "system_service_ohos.h",
+  ]
+  deps = [ "//base" ]
+}

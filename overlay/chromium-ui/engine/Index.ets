@@ -49,6 +49,10 @@ export { SystemPrintAdapter } from './src/main/ets/utils/SystemPrintAdapter';
 export { ChromiumSystemAction, SystemIntegrationAdapter } from './src/main/ets/utils/SystemIntegrationAdapter';
 export { HuaweiKnockShareSession, HuaweiShareAdapter } from './src/main/ets/utils/HuaweiShareAdapter';
 
+// A tap on a web notification relaunches the app with this want; the shell's
+// EntryAbility passes every want here (onCreate and onNewWant).
+export { handleNotificationWant } from './src/main/ets/utils/NotificationService';
+
 // Device classification and startup configuration the engine is launched with.
 export {
   AuraStartupConfig,

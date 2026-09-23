@@ -39,6 +39,11 @@ export const SetBluetoothEventCallback: (
   callback: (commandJson: string) => void
 ) => void;
 export const CompleteBluetoothMessage: (xComponentId: string, messageJson: string) => void;
+export const SetSystemServiceCallback: (
+  xComponentId: string,
+  callback: (requestJson: string) => void
+) => void;
+export const CompleteSystemServiceMessage: (xComponentId: string, messageJson: string) => void;
 export const SetUsbEventCallback: (
   xComponentId: string,
   callback: (commandJson: string) => void

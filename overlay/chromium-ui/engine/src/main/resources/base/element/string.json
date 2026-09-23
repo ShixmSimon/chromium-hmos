@@ -27,6 +27,11 @@
     {
       "name": "motion_sensor_permission_reason",
       "value": "用于向您授权的网站提供设备方向与运动数据"
+    },
+    {
+      "name": "permission_reason_biometric",
+      "value": "用于网站的指纹或人脸登录（WebAuthn 通行密钥）"
     }
+
   ]
 }
