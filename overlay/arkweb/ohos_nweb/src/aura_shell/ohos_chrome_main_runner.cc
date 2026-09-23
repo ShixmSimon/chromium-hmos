@@ -286,20 +286,9 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   AppendSwitchWithValue(&arguments, "--lang", config.application_locale);
 
   // A repeated --enable-features switch would replace this list.
-  //
-  // ArkUI resamples touch moves to one per display frame, and now and then a
-  // frame gets none, or gets it after the compositor's scroll deadline. The
-  // default dispatch mode then produces no frame at all, so the page holds
-  // for a refresh and jumps the next one: on PLA-AL10, 86 of 1360 frames
-  // during a drag. UseScrollPredictorForDeadline keeps the wait-for-late-
-  // scroll deadline and, when it passes empty, scrolls by the predicted
-  // finger position instead.
-  constexpr char kScrollPrediction[] =
-      "WaitForLateScrollEvents:mode/UseScrollPredictorForDeadline";
-  arguments.push_back(
-      std::string("--enable-features=UseOzonePlatform,") +
-      (config.ui_family == "mobile_phone" ? "OverlayScrollbar," : "") +
-      kScrollPrediction);
+  arguments.push_back(config.ui_family == "mobile_phone"
+                          ? "--enable-features=UseOzonePlatform,OverlayScrollbar"
+                          : "--enable-features=UseOzonePlatform");
 
   if (config.ui_family == "mobile_phone") {
     arguments.push_back("--use-mobile-user-agent");
