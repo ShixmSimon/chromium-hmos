@@ -35,8 +35,15 @@ OhosPlatformWindow::OhosPlatformWindow(PlatformWindowDelegate* delegate,
           weak_factory_.GetWeakPtr()));
   SetOhosLogicalWindowCloseCallback(
       adapter_.GetAcceleratedWidget(),
-      base::BindRepeating(&OhosPlatformWindow::Close,
-                          weak_factory_.GetWeakPtr()));
+      base::BindRepeating(
+          [](scoped_refptr<base::SingleThreadTaskRunner> task_runner,
+             base::WeakPtr<OhosPlatformWindow> window) {
+            task_runner->PostTask(
+                FROM_HERE,
+                base::BindOnce(&OhosPlatformWindow::Close, std::move(window)));
+          },
+          base::SingleThreadTaskRunner::GetCurrentDefault(),
+          weak_factory_.GetWeakPtr()));
   if (PlatformEventSource* event_source = PlatformEventSource::GetInstance()) {
     event_source->AddPlatformEventDispatcher(this);
   }
