@@ -49,7 +49,7 @@
 
 **不正常时**:
 - 通知栏什么都没有:在 hilog 里搜 `HarmonyOS notification publish failed`。
-- 点了没有 `click`:当前外壳的 `EntryAbility` 没有调用 `handleNotificationWant`。这是新外壳必须接上的,见 `docs/SHELL_CONTRACT.md` 第 3 节;现有的 `entry/` 外壳也要补上这一处。
+- 点了没有 `click`:外壳的 `EntryAbility` 没有把 want 交给 `handleNotificationWant`。现有的 `entry/` 外壳已经接上;新外壳也必须接上,见 `docs/SHELL_CONTRACT.md` 第 3 节。
 
 ## 3. 媒体会话(控制中心)
 
