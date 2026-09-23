@@ -9,6 +9,8 @@
 #include "ui/gl/gl_surface_egl.h"
 #include "ui/ozone/common/egl_util.h"
 #include "ui/ozone/common/gl_ozone_egl.h"
+#include <native_window/external_window.h>
+
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 #include "ui/ozone/platform/ohos/ohos_vsync_provider.h"
 
@@ -16,6 +18,30 @@ namespace ui {
 namespace {
 
 constexpr base::TimeDelta kNativeSurfaceWaitTimeout = base::Seconds(3);
+
+// OH_NativeBuffer_Format's RGBA_8888. Taking the enum by value keeps
+// native_buffer out of this target's headers for one constant.
+constexpr int32_t kPixelFormatRgba8888 = 12;
+
+// Views asks for a translucent window for anything with a rounded corner or a
+// shadow -- an autofill list, a <select> menu, a bubble -- and paints the area
+// outside the rounded rectangle fully transparent, expecting the window system
+// to composite it away. A SURFACE XComponent's buffer defaults to a format
+// with no alpha, so those pixels came out black: the popup showed as a rounded
+// card inside a black rectangle. Ask for a buffer that can carry the alpha
+// Chromium is painting.
+void RequestAlphaCapableBuffer(void* window) {
+  if (!window) {
+    return;
+  }
+  auto* native_window = reinterpret_cast<OHNativeWindow*>(window);
+  const int32_t result = OH_NativeWindow_NativeWindowHandleOpt(
+      native_window, SET_FORMAT, kPixelFormatRgba8888);
+  if (result != 0) {
+    LOG(WARNING) << "OHOS surface: could not ask for an alpha buffer: "
+                 << result;
+  }
+}
 
 class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
  public:
@@ -30,6 +56,9 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
     std::optional<OhosNativeSurface> surface = GetOhosNativeSurface(widget_);
     if (!surface || !surface->window) {
       return false;
+    }
+    if (IsOhosAnchoredWindow(widget_)) {
+      RequestAlphaCapableBuffer(surface->window);
     }
     window_ = reinterpret_cast<EGLNativeWindowType>(surface->window);
     return true;

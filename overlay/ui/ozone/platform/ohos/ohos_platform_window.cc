@@ -166,6 +166,21 @@ PlatformWindowState OhosPlatformWindow::GetPlatformWindowState() const {
   return window_state_;
 }
 
+bool OhosPlatformWindow::ShouldWindowContentsBeTransparent() const {
+  // Views asks for a translucent widget for anything with a rounded corner or
+  // a shadow -- an autofill list, a <select> menu, a bubble -- and paints the
+  // area outside the rounded rectangle transparent. Whether that is honoured
+  // is decided here: DesktopNativeWidgetAura::UpdateWindowTransparency() reads
+  // this through DesktopWindowTreeHostPlatform, and the default answer is
+  // false, so the compositor filled those pixels with an opaque frame colour
+  // instead. Every popup drew as a rounded card inside a black rectangle.
+  //
+  // Only the anchored ones: the browser window itself covers the screen and
+  // has nothing behind it to show through, and an opaque root is cheaper to
+  // composite.
+  return anchored_;
+}
+
 bool OhosPlatformWindow::CanDispatchEvent(const PlatformEvent& event) {
   if (!event || !adapter_.IsVisible()) {
     return false;

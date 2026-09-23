@@ -35,6 +35,8 @@ class OhosPlatformWindow : public StubWindow,
   void Restore() override;
   PlatformWindowState GetPlatformWindowState() const override;
 
+  bool ShouldWindowContentsBeTransparent() const override;
+
   bool CanDispatchEvent(const PlatformEvent& event) override;
   uint32_t DispatchEvent(const PlatformEvent& event) override;
 

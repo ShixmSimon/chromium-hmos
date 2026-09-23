@@ -63,6 +63,7 @@ source_set("ohos") {
   libs = [
     "native_display_manager",
     "native_vsync",
+    "native_window",
     "ohinputmethod",
     "pasteboard",
     "udmf",
