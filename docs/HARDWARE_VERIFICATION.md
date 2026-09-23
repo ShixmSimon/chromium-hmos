@@ -1,0 +1,134 @@
+# 新接入硬件能力的真机验证清单
+
+本文覆盖 2026-09-23 接入的 7 项能力。每一项写明:怎么测、正常时看到什么、不正常时先查什么。
+
+除视频编解码外,其余都用同一个测试页 `docs/test-pages/hardware-apis.html`。页面上每一节对应下面一项,结果显示在该节的黑框里。
+
+## 准备
+
+1. 装 release 里最新的 `build-<sha8>` HAP。建议**卸载后全新安装**:通知、生物识别这类授权,在覆盖安装时会沿用旧的授权状态,首次授权流程就测不到。
+2. 在 Mac 上运行 `scripts/serve-test-pages.sh`,保持窗口开着。
+3. 手机浏览器地址栏输入 `http://localhost:8080/hardware-apis.html`。
+   - 必须用 `localhost`:通知、WebAuthn、形状检测都要求安全上下文,`localhost` 算安全上下文,`about:blank` 和 `data:` 网址不算。
+4. 看第 0 节"环境":`安全上下文` 应为 `true`;"接口是否存在"里,除 `orientationLock` 外都应为 `true`。
+5. 出问题时抓日志:`hdc shell hilog | grep -iE "SystemService|WebNotification|AVSession|TTS|orientation|chromium"`。
+
+---
+
+## 1. 视频硬件编解码
+
+**测试页第 1 节。**
+
+| 步骤 | 正常结果 |
+|---|---|
+| 点"查询能力" | `prefer-hardware` 一行,编码和解码都是 `true` |
+| 同上 | `MediaCapabilities 1080p H.264` 一行 `powerEfficient=true` |
+| 点"编码 → 解码" | "编码完成:60 块左右";"解码完成:60 帧";画布上显示"帧 29" |
+
+**再用真实视频测一次**:打开任意一个 H.264 视频网站,播放 720p 或以上的视频,然后在新标签页打开 `chrome://media-internals`,找到该播放器:
+
+- `kVideoDecoderName` 应为 `MojoVideoDecoder`,`kIsPlatformVideoDecoder` 为 `true`。
+- 360p 及以下的视频走软件解码(FFmpeg)是正常的,这是 Chromium 的设计。
+
+**不正常时**:
+- `prefer-hardware` 为 `false`:看 hilog 里 `OH_VideoDecoder` / `OH_VideoEncoder` 的报错。
+- 解码帧数为 0 或花屏:记下 `chrome://media-internals` 里的错误,连同 hilog 一起发回来。
+
+## 2. 网页通知
+
+**测试页第 2 节。**
+
+| 步骤 | 正常结果 |
+|---|---|
+| 点"申请权限" | 先出现 Chromium 的网站授权气泡,允许后显示 `granted` |
+| 点"发送通知" | 第一次会弹出**系统**的"允许通知"对话框;允许后通知栏出现"硬件验证",下面记录 `show` |
+| 点通知栏里的这条通知 | 浏览器回到前台,记录 `click ✓` |
+| 发送一条后点"关闭通知" | 通知栏里的这条消失 |
+
+**冷启动点击**(可选):发送通知后,从最近任务里把浏览器划掉,再点通知。应用应被拉起,并打开这个页面。
+
+**不正常时**:
+- 通知栏什么都没有:在 hilog 里搜 `HarmonyOS notification publish failed`。
+- 点了没有 `click`:当前外壳的 `EntryAbility` 没有调用 `handleNotificationWant`。这是新外壳必须接上的,见 `docs/SHELL_CONTRACT.md` 第 3 节;现有的 `entry/` 外壳也要补上这一处。
+
+## 3. 媒体会话(控制中心)
+
+**测试页第 3 节。**
+
+| 步骤 | 正常结果 |
+|---|---|
+| 点"播放",下拉控制中心 | 出现播放卡片:标题"硬件验证测试音",艺人"Chromium HarmonyOS" |
+| 在卡片上点暂停、播放 | 声音相应停止和恢复;页面记录 `控制中心 → pause` / `play` |
+| 点上一首、下一首 | 页面记录 `previoustrack` / `nexttrack` |
+| 拖动进度条(如果卡片上有) | 页面记录 `seekto` |
+
+v1 **没有封面图**:AVSession 的 C 接口只接受图片的 URI,不接受位图。
+
+## 4. 语音合成
+
+**测试页第 4 节。**
+
+| 步骤 | 正常结果 |
+|---|---|
+| 点"列出音色" | 至少 1 个音色,例如 `聆小珊 (zh-CN)`。若为 0,等一秒再点一次 |
+| 点"朗读中文" | 听到中文朗读;依次记录 `start`、`end ✓` |
+| 点"朗读英文" | 如果设备上没有下载英文音色,会记录 `error`,属于正常情况;下载了劳拉音色就会朗读 |
+| 朗读中点"停止" | 声音立即停止 |
+
+CoreSpeechKit 没有暂停功能:`speechSynthesis.pause()` 会直接停止,与 Chrome 在 Android 上的行为一致。
+
+## 5. 形状检测
+
+**测试页第 5 节。**
+
+| 步骤 | 正常结果 |
+|---|---|
+| 点"识别左侧二维码" | 支持的格式有 13 种;识别到 1 个码,`format` 为 `qr_code`,显示"内容正确 ✓" |
+| 点"打开摄像头",对准一个商品条码,点"识别当前画面" | `码` 一行出现条码的内容,如 `ean_13: 69...` |
+| 对准人脸,点"识别当前画面" | `人脸 1 张`,landmarks 里有 `eye`、`eye`、`nose`、`mouth` |
+| 对准一段印刷文字 | `文字 N 行`,内容与画面一致 |
+
+**平板上再测一次**:平板的渲染进程和 GPU 进程都是独立进程,这里验证的是"服务放在浏览器进程"这个设计。
+
+## 6. 指纹 / 人脸登录(WebAuthn)
+
+**测试页第 6 节。**
+
+| 步骤 | 正常结果 |
+|---|---|
+| 点"是否可用" | `true`(设备设置了锁屏密码即可) |
+| 点"注册通行密钥" | 弹出**系统**的指纹/人脸/锁屏密码验证;通过后显示 `注册成功 ✓`,`attachment` 为 `platform` |
+| 点"用通行密钥登录" | 再次弹出系统验证;通过后显示 `登录成功 ✓`,`userVerified: true` |
+| 在验证界面点取消 | 显示 `NotAllowedError`,页面不会卡住 |
+
+**也可以用 https://webauthn.io 测试**:注册时选择"平台认证器"。
+
+**不正常时**:在 hilog 里搜 `HUKS` 和 `userauth`,把错误码发回来。常见错误码:12000008/12000009 是用户取消或验证失败,12000016 是设备没有设置锁屏密码。
+
+## 7. 屏幕方向锁定
+
+**测试页第 7 节。** 先看顶部的"当前"一行:竖着拿手机时应为 `portrait-primary`、角度 0°。
+
+| 步骤 | 正常结果 |
+|---|---|
+| 竖着拿手机,把手机向左转成横屏 | "当前"变为 `landscape-...`,角度变为 90 或 270。**记下这时是 primary 还是 secondary,以及角度** |
+| 点"横屏" | 进入全屏,画面转为横屏,显示 `lock 完成 ✓`;此时转动手机,画面不跟着转 |
+| 点"横屏(主)" / "横屏(反)" | 分别转到两个相反的横屏方向,并显示 `lock 完成 ✓` |
+| 点"解锁并退出全屏" | 退出全屏,画面恢复跟随手机旋转 |
+
+**关键核对**:按 Android 的约定,手机向左转(听筒朝左)时应为 `landscape-primary`、角度 90。如果你看到的是 `landscape-secondary` 或者角度相反,说明 HarmonyOS 的旋转方向和 Chromium 的约定相反:
+- 现象是"横屏(主)"锁定后一直不显示 `lock 完成`,或者转到了反方向。
+- 修起来很简单:把 `OrientationService.ets` 里 primary 和 secondary 的映射对调,或者在 `ohos_screen.cc` 里把 90 和 270 对调。
+- 把上面记下的方向和角度告诉我,我来改。
+
+---
+
+## 结果回报模板
+
+每项回一行:`编号 通过/失败 + 失败时的截图或 hilog 片段`。例如:
+
+```
+1 通过(powerEfficient=true,MojoVideoDecoder)
+2 失败:点通知没有 click
+7 通过,但手机向左转时显示 landscape-secondary / 270°
+```

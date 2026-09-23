@@ -68,9 +68,11 @@ HAR 约 128MB,包含:
 ### EntryAbility
 
 ```ts
-import { UIManager, CHROMIUM_HOME_URL } from 'engine';
+import { UIManager, CHROMIUM_HOME_URL, handleNotificationWant } from 'engine';
 
 export default class EntryAbility extends UIAbility {
+  onCreate(want: Want): void { handleNotificationWant(want); }
+  onNewWant(want: Want): void { handleNotificationWant(want); }
   onWindowStageCreate(windowStage: window.WindowStage): void {
     AppStorage.setOrCreate('startupConfig',
       UIManager.serializeAuraStartupConfig(CHROMIUM_HOME_URL));
@@ -90,6 +92,8 @@ export default class EntryAbility extends UIAbility {
 完整写法参考 `entry/src/main/ets/entryability/EntryAbility.ets` 里的 `refreshRouting`。
 
 `AppStorage` 的键名可以随意取,引擎只看 `WebWindow` 收到的参数。
+
+**`handleNotificationWant` 必须接上。** 用户点网页通知时,系统通过 `onCreate`(应用已被杀掉)或 `onNewWant`(应用在后台)把应用拉起来,只有外壳的 `EntryAbility` 能收到这次拉起。不转交的话,通知照常显示,但点了只会打开应用,网页收不到 click 事件。函数返回 true 表示这次拉起来自通知,外壳把浏览器调到前台即可,不需要再做别的。
 
 ### 页面
 
@@ -292,7 +296,7 @@ XComponent({
 
 ## 10. 权限
 
-HAR 的 `module.json5` 声明了 11 项权限,并附带权限说明文案。打包时这些权限会自动合并进外壳的 HAP,外壳不需要重复声明。
+HAR 的 `module.json5` 声明了 12 项权限(包括 WebAuthn 用到的 `ACCESS_BIOMETRIC`),并附带权限说明文案。打包时这些权限会自动合并进外壳的 HAP,外壳不需要重复声明。
 - 外壳自己用到的权限,在外壳里另外声明。
 - 如果外壳的资源和 HAR 里的同名,外壳的会覆盖 HAR 的。所以不要在外壳里定义同名的权限说明字符串,除非你是有意要改这段文案。
 

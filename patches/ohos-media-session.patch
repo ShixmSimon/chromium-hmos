@@ -32,7 +32,7 @@ index 8089e11..b6198a7 100644
      sources = [ "system_media_controls_stub.cc" ]
    }
 diff --git a/content/browser/media/media_keys_listener_manager_impl.cc b/content/browser/media/media_keys_listener_manager_impl.cc
-index edb568e..febf4ac 100644
+index edb568e..b171e72 100644
 --- a/content/browser/media/media_keys_listener_manager_impl.cc
 +++ b/content/browser/media/media_keys_listener_manager_impl.cc
 @@ -326,7 +326,7 @@ void MediaKeysListenerManagerImpl::StartListeningForMediaKeysIfNecessary() {
@@ -44,7 +44,7 @@ index edb568e..febf4ac 100644
    // Create SystemMediaControls with the SingletonHwnd.
    browser_system_media_controls_ =
        system_media_controls::SystemMediaControls::Create(
-@@ -351,6 +351,11 @@ void MediaKeysListenerManagerImpl::StartListeningForMediaKeysIfNecessary() {
+@@ -351,9 +351,15 @@ void MediaKeysListenerManagerImpl::StartListeningForMediaKeysIfNecessary() {
              browser_system_media_controls_.get(),
              base::UnguessableToken::Null());
    } else {
@@ -52,11 +52,15 @@ index edb568e..febf4ac 100644
 +    // AVSession could not be created and there are no media keys to listen
 +    // to instead; try again the next time a session asks.
 +    return;
-+#endif
++#else
      media_keys_listener_ = ui::MediaKeysListener::Create(
          this, ui::MediaKeysListener::Scope::kGlobal);
      DCHECK(media_keys_listener_);
-@@ -453,7 +458,9 @@ void MediaKeysListenerManagerImpl::UpdateSystemMediaControlsEnabledControls() {
++#endif
+   }
+   EnsureAuxiliaryServices();
+ }
+@@ -453,7 +459,9 @@ void MediaKeysListenerManagerImpl::UpdateSystemMediaControlsEnabledControls() {
  }
  
  void MediaKeysListenerManagerImpl::UpdateMediaKeysListener() {

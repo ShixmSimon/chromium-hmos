@@ -80,7 +80,8 @@ void ScreenOrientationDelegateOhos::Lock(
 
 bool ScreenOrientationDelegateOhos::ScreenOrientationProviderSupported(
     content::WebContents* web_contents) {
-  return !IsAuraShellDesktopUi() && ohos_system_service::IsAvailable();
+  return !chrome::ohos::IsAuraShellDesktopUi() &&
+         ohos_system_service::IsAvailable();
 }
 
 void ScreenOrientationDelegateOhos::Unlock(content::WebContents* web_contents) {
