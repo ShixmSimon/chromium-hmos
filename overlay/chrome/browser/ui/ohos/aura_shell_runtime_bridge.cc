@@ -1033,6 +1033,31 @@ void ShutdownOnUiThread() {
   chrome::ExitIgnoreUnloadHandlers();
 }
 
+// Whether a widget belonging to the browser window -- a permission prompt, the
+// Bluetooth device chooser -- holds activation right now. Owned and child
+// widgets are both checked: bubbles are parented to the browser's native view,
+// and which of the two relations aura records for them depends on how they
+// were created.
+bool BrowserOwnedWidgetIsActive(BrowserWindowInterface* browser) {
+  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
+  views::Widget* browser_widget =
+      browser_view ? browser_view->GetWidget() : nullptr;
+  if (!browser_widget) {
+    return false;
+  }
+  const gfx::NativeView native_view = browser_widget->GetNativeView();
+  for (const views::Widget::Widgets& widgets :
+       {views::Widget::GetAllOwnedWidgets(native_view),
+        views::Widget::GetAllChildWidgets(native_view)}) {
+    for (views::Widget* candidate : widgets) {
+      if (candidate != browser_widget && candidate->IsActive()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void ApplyWindowStateOnUiThread(gfx::AcceleratedWidget widget, int attempt) {
   BrowserWindowInterface* browser = FindBrowserForWidget(widget);
   if (!browser || !browser->GetWindow()) {
@@ -1069,10 +1094,20 @@ void ApplyWindowStateOnUiThread(gfx::AcceleratedWidget widget, int attempt) {
 
   window->ShowInactive();
   if (focused) {
-    window->Activate();
-    if (TabStripModel* tabs = browser->GetTabStripModel()) {
-      if (content::WebContents* active = tabs->GetActiveWebContents()) {
-        active->Focus();
+    // Regaining focus must not take activation from the browser's own bubble.
+    // A desktop window manager hands activation back to whichever of the
+    // app's windows had it; this port does not, so activating the browser
+    // window here deactivated the bubble instead. That is how the first
+    // requestDevice() of the app's life failed: the OS Bluetooth dialog
+    // closes, the chooser opens, the app's focus report arrives a moment
+    // later, and the chooser -- which closes on deactivation -- was gone with
+    // "NotFoundError: User cancelled".
+    if (!BrowserOwnedWidgetIsActive(browser)) {
+      window->Activate();
+      if (TabStripModel* tabs = browser->GetTabStripModel()) {
+        if (content::WebContents* active = tabs->GetActiveWebContents()) {
+          active->Focus();
+        }
       }
     }
   } else {
