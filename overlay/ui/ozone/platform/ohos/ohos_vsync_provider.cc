@@ -27,6 +27,21 @@ constexpr base::TimeDelta kKeepRequestingFor = base::Milliseconds(500);
 // A variable refresh rate panel changes its period as content changes.
 constexpr base::TimeDelta kPeriodRecheckEvery = base::Seconds(1);
 
+// How far after VSync Chromium starts its frame.
+//
+// ArkUI hands touch moves to the XComponent at VSync, resampled once per
+// frame, and they reach the renderer compositor 1.9 ms later (p50; 3.5 ms
+// p90). A frame that begins exactly at VSync has always just missed that
+// frame's input, and because the previous frame's event is still queued the
+// scheduler never waits for the new one: every scroll update sat in the queue
+// for ~6 ms and the page trailed the finger by a frame.
+//
+// Starting 2 ms late lets most events arrive first; the ones after that are
+// caught by cc's wait-for-late-scroll deadline, which only engages once the
+// queue is empty at the start of a frame. The frame still finishes well before
+// the render service's next VSync.
+constexpr base::TimeDelta kBeginFramePhaseOffset = base::Milliseconds(2);
+
 // HarmonyOS runs an app at 60 Hz unless it asks for more, which leaves a
 // 120 Hz panel showing every frame twice.
 constexpr int32_t kMinFrameRate = 60;
@@ -123,7 +138,7 @@ void OhosVSyncProvider::OnVSyncOnAnyThread(base::TimeTicks timebase) {
   const base::TimeTicks now = base::TimeTicks::Now();
   {
     base::AutoLock lock(lock_);
-    timebase_ = timebase;
+    timebase_ = timebase + kBeginFramePhaseOffset;
     has_parameters_ = true;
     frame_requested_ = false;
     keep_requesting = now - last_query_ < kKeepRequestingFor;
