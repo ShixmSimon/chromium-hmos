@@ -44,15 +44,20 @@ export class UserAuthService implements SystemServiceHandler {
   // PIN counts: a platform authenticator only needs *some* user verification,
   // and every HarmonyOS phone with a lock screen has one.
   private available(): boolean {
-    for (const type of AUTH_TYPES) {
+    return this.enrolledTypes().length > 0;
+  }
+
+  // Asking for a type the user never enrolled (no face registered, say) can
+  // make the whole prompt fail to open, so only enrolled ones are offered.
+  private enrolledTypes(): userAuth.UserAuthType[] {
+    return AUTH_TYPES.filter((type: userAuth.UserAuthType): boolean => {
       try {
         userAuth.getAvailableStatus(type, userAuth.AuthTrustLevel.ATL3);
         return true;
       } catch (error) {
-        // Not enrolled or not supported; try the next.
+        return false;
       }
-    }
-    return false;
+    });
   }
 
   private authenticate(args: Record<string, Object>): Promise<Object> {
@@ -61,7 +66,7 @@ export class UserAuthService implements SystemServiceHandler {
     const title = String(args['title'] ?? '').length > 0 ? String(args['title']) : '验证身份';
     const authParam: userAuth.AuthParam = {
       challenge: challenge,
-      authType: AUTH_TYPES,
+      authType: this.enrolledTypes(),
       authTrustLevel: userAuth.AuthTrustLevel.ATL3
     };
     const widgetParam: userAuth.WidgetParam = { title: title };
