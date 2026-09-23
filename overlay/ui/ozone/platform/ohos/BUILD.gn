@@ -40,6 +40,8 @@ source_set("ohos") {
   visibility += [ "//ohos_nweb/src/aura_shell:*" ]
 
   sources = [
+    "ohos_clipboard.cc",
+    "ohos_clipboard.h",
     "ohos_input_method.cc",
     "ohos_input_method.h",
     "ohos_native_window_adapter.cc",
@@ -62,6 +64,8 @@ source_set("ohos") {
     "native_display_manager",
     "native_vsync",
     "ohinputmethod",
+    "pasteboard",
+    "udmf",
   ]
 
   deps = [

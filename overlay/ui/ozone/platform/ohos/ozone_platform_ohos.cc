@@ -10,6 +10,7 @@
 #include "ui/ozone/common/bitmap_cursor_factory.h"
 #include "ui/ozone/common/stub_client_native_pixmap_factory.h"
 #include "ui/ozone/common/stub_overlay_manager.h"
+#include "ui/ozone/platform/ohos/ohos_clipboard.h"
 #include "ui/ozone/platform/ohos/ohos_event_source.h"
 #include "ui/ozone/platform/ohos/ohos_input_method.h"
 #include "ui/ozone/platform/ohos/ohos_platform_window.h"
@@ -57,6 +58,12 @@ class OzonePlatformOhos : public OzonePlatform {
         delegate, properties.bounds, expects_native_surface);
   }
   bool IsWindowCompositingSupported() const override { return true; }
+  PlatformClipboard* GetPlatformClipboard() override {
+    if (!clipboard_) {
+      clipboard_ = std::make_unique<OhosClipboard>();
+    }
+    return clipboard_.get();
+  }
   std::unique_ptr<display::NativeDisplayDelegate> CreateNativeDisplayDelegate()
       override {
     return nullptr;
@@ -103,6 +110,7 @@ class OzonePlatformOhos : public OzonePlatform {
   std::unique_ptr<InputController> input_controller_;
   std::unique_ptr<GpuPlatformSupportHost> gpu_platform_support_host_;
   std::unique_ptr<OverlayManagerOzone> overlay_manager_;
+  std::unique_ptr<OhosClipboard> clipboard_;
 };
 
 }  // namespace
