@@ -7,6 +7,7 @@ index 5e6e377..da3b47c 100644
    }
  
 -  if (!is_win && !is_mac && !rtc_use_x11_extensions && !rtc_use_pipewire &&
+-      !is_fuchsia) {
 +  if (is_ohos) {
 +    sources += [
 +      "//third_party/webrtc/modules/desktop_capture/screen_capturer_ohos.cc",
