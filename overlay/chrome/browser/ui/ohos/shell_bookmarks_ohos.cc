@@ -49,6 +49,18 @@ using bookmarks::BookmarkNode;
 constexpr char kBookmarkListEvent[] = "bookmarkList";
 constexpr char kBookmarkCreatedEvent[] = "bookmarkCreated";
 constexpr char kBookmarksChangedEvent[] = "bookmarksChanged";
+constexpr char kBookmarkOpResultEvent[] = "bookmarkOpResult";
+constexpr char kBookmarkPathEvent[] = "bookmarkPath";
+
+// Why an edit was refused. Without these a shell can only see that nothing
+// happened, so it shows "saved" for a rejected URL and offers no reason when
+// a folder cannot be dragged into itself.
+constexpr char kErrNotFound[] = "notFound";
+constexpr char kErrPermanentNode[] = "permanentNode";
+constexpr char kErrInvalidParent[] = "invalidParent";
+constexpr char kErrCycle[] = "cycle";
+constexpr char kErrInvalidUrl[] = "invalidUrl";
+constexpr char kErrUnknown[] = "unknown";
 
 constexpr double kDefaultSearchCount = 50;
 constexpr double kMinSearchCount = 1;
@@ -77,16 +89,27 @@ bool IsManaged(BookmarkModel* model, const BookmarkNode* node) {
   return model->client() && model->client()->IsNodeManaged(node);
 }
 
-// Permanent folders and policy-managed bookmarks are not the user's to edit.
-bool IsEditable(BookmarkModel* model, const BookmarkNode* node) {
-  return node && !model->is_permanent_node(node) && !IsManaged(model, node);
-}
-
 // Whether the shell may put nodes into `folder`. The invisible root only
 // holds the permanent folders.
 bool CanHoldChildren(BookmarkModel* model, const BookmarkNode* folder) {
   return folder && folder->is_folder() && !model->is_root_node(folder) &&
          !IsManaged(model, folder);
+}
+
+// Which of the three permanent folders this is, if any. Their titles are
+// localized, so a shell cannot tell the bookmark bar from the mobile folder
+// by name -- and it needs to, to pick where a new bookmark goes.
+std::string_view RootTypeOf(BookmarkModel* model, const BookmarkNode* node) {
+  if (node == model->mobile_node()) {
+    return "mobile";
+  }
+  if (node == model->bookmark_bar_node()) {
+    return "bookmarkBar";
+  }
+  if (node == model->other_node()) {
+    return "other";
+  }
+  return {};
 }
 
 size_t IndexInParent(const BookmarkNode* node) {
@@ -111,7 +134,30 @@ base::DictValue ToShellNode(BookmarkModel* model, const BookmarkNode* node) {
   }
   result.Set("dateAdded", ToShellTime(node->date_added()));
   result.Set("index", static_cast<int>(IndexInParent(node)));
+  if (node->is_folder()) {
+    // Direct children only. A folder row shows "N items"; counting it here
+    // saves the shell a round trip per folder on every list it draws.
+    result.Set("childCount", static_cast<int>(node->children().size()));
+    if (const std::string_view root = RootTypeOf(model, node); !root.empty()) {
+      result.Set("rootType", root);
+    }
+  }
   return result;
+}
+
+// The titles from the permanent folder down to `node`'s parent. A search hit
+// is shown flat, so this is what tells two same-named bookmarks apart.
+base::ListValue AncestorTitles(BookmarkModel* model, const BookmarkNode* node) {
+  std::vector<const BookmarkNode*> ancestors;
+  for (const BookmarkNode* folder = node->parent();
+       folder && !model->is_root_node(folder); folder = folder->parent()) {
+    ancestors.push_back(folder);
+  }
+  base::ListValue path;
+  for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
+    path.Append(std::u16string_view((*it)->GetTitle()));
+  }
+  return path;
 }
 
 void ReplyNodeList(const ShellCommandContext& context,
@@ -123,6 +169,30 @@ void ReplyNodeList(const ShellCommandContext& context,
   event.Set("requestId", ReadRequestId(command));
   event.Set("parentId", parent_id);
   event.Set("nodes", std::move(nodes));
+  ReplyToShell(context, std::move(event));
+}
+
+// Answers a mutating command, but only one that asked to be answered: a
+// shell built before this existed sends no requestId and would not know what
+// to do with the event.
+void ReplyOpResult(const ShellCommandContext& context,
+                   const base::DictValue& command,
+                   std::string_view error,
+                   base::ListValue failed_ids = base::ListValue()) {
+  const std::optional<int> request_id = command.FindInt("requestId");
+  if (!request_id) {
+    return;
+  }
+  base::DictValue event;
+  event.Set("event", kBookmarkOpResultEvent);
+  event.Set("requestId", *request_id);
+  event.Set("ok", error.empty());
+  if (!error.empty()) {
+    event.Set("error", error);
+  }
+  if (!failed_ids.empty()) {
+    event.Set("failedIds", std::move(failed_ids));
+  }
   ReplyToShell(context, std::move(event));
 }
 
@@ -144,18 +214,36 @@ const BookmarkNode* ReadInsertionParent(BookmarkModel* model,
   return parent;
 }
 
-// The node a command wants to change, or null (logged) when it names nothing
-// editable -- a stale id from a page drawn before another edit, typically.
-const BookmarkNode* ReadEditableNode(BookmarkModel* model,
-                                     const base::DictValue& command) {
-  const std::string* id = command.FindString("id");
+// Like ReadEditableNode, but says which way it failed so the caller can pass
+// that on instead of dropping the command silently.
+const BookmarkNode* ResolveEditableNode(BookmarkModel* model,
+                                        const std::string* id,
+                                        std::string_view* error) {
   const BookmarkNode* node = NodeById(model, id);
-  if (!IsEditable(model, node)) {
-    LOG(WARNING) << "OHOS shell bookmarks: no editable node "
-                 << (id ? *id : std::string("<missing>"));
+  if (!node) {
+    *error = kErrNotFound;
+    return nullptr;
+  }
+  if (model->is_permanent_node(node)) {
+    *error = kErrPermanentNode;
+    return nullptr;
+  }
+  if (IsManaged(model, node)) {
+    // Set by policy, not by this user; nothing the shell can offer changes it.
+    *error = kErrUnknown;
     return nullptr;
   }
   return node;
+}
+
+// Where an insertion lands. Absent still means the end, which is what a shell
+// that cannot ask for a position expects; out of range clamps rather than
+// fails, since a stale list is a normal thing for the shell to be holding.
+size_t ReadInsertionIndex(const base::DictValue& command,
+                          const BookmarkNode* parent) {
+  const double last = static_cast<double>(parent->children().size());
+  return static_cast<size_t>(
+      std::clamp(command.FindDouble("index").value_or(last), 0.0, last));
 }
 
 std::optional<GURL> ReadUrl(const base::DictValue& command) {
@@ -227,7 +315,10 @@ void SearchBookmarks(const ShellCommandContext& context,
         std::make_unique<std::u16string>(base::UTF8ToUTF16(*query));
     for (const BookmarkNode* node : bookmarks::GetBookmarksMatchingProperties(
              model, fields, ReadSearchCount(command))) {
-      nodes.Append(ToShellNode(model, node));
+      base::DictValue entry = ToShellNode(model, node);
+      // Results are shown flat, so each one carries where it lives.
+      entry.Set("path", AncestorTitles(model, node));
+      nodes.Append(std::move(entry));
     }
   }
   ReplyNodeList(context, command, std::string_view(), std::move(nodes));
@@ -236,92 +327,281 @@ void SearchBookmarks(const ShellCommandContext& context,
 void AddBookmark(const ShellCommandContext& context,
                  BookmarkModel* model,
                  const base::DictValue& command) {
-  std::optional<GURL> url = ReadUrl(command);
   const BookmarkNode* parent = ReadInsertionParent(model, command);
-  if (!url || !parent) {
+  if (!parent) {
+    ReplyOpResult(context, command, kErrInvalidParent);
     return;
   }
-  model->AddNewURL(parent, parent->children().size(), ReadTitle(command),
-                   *url);
+  std::optional<GURL> url = ReadUrl(command);
+  if (!url) {
+    ReplyOpResult(context, command, kErrInvalidUrl);
+    return;
+  }
+  const BookmarkNode* node = model->AddNewURL(
+      parent, ReadInsertionIndex(command, parent), ReadTitle(command), *url);
+  if (!node) {
+    ReplyOpResult(context, command, kErrUnknown);
+    return;
+  }
+  // The shell needs the id to offer "edit" on the toast it shows next, and
+  // finding the node again by URL picks the wrong one when the same page is
+  // bookmarked twice in a folder.
+  if (command.FindInt("requestId")) {
+    base::DictValue event;
+    event.Set("event", kBookmarkCreatedEvent);
+    event.Set("requestId", ReadRequestId(command));
+    event.Set("node", ToShellNode(model, node));
+    ReplyToShell(context, std::move(event));
+  }
+}
+
+// Every bookmark of a URL, newest first. The shell uses it to edit the one
+// the current page is bookmarked as, and to say how many folders hold it
+// before removing any.
+void GetBookmarksForUrl(const ShellCommandContext& context,
+                        BookmarkModel* model,
+                        const base::DictValue& command) {
+  base::ListValue nodes;
+  if (std::optional<GURL> url = ReadUrl(command)) {
+    std::vector<raw_ptr<const BookmarkNode, VectorExperimental>> matches =
+        model->GetNodesByURL(*url);
+    std::stable_sort(matches.begin(), matches.end(),
+                     [](const BookmarkNode* a, const BookmarkNode* b) {
+                       return a->date_added() > b->date_added();
+                     });
+    for (const BookmarkNode* node : matches) {
+      nodes.Append(ToShellNode(model, node));
+    }
+  }
+  ReplyNodeList(context, command, std::string_view(), std::move(nodes));
+}
+
+// The chain from the permanent folder down to `id` itself, both ends
+// included. Reached from the page menu the shell has only a parent id, and
+// walking up from the roots means reading the whole tree.
+void GetBookmarkPath(const ShellCommandContext& context,
+                     BookmarkModel* model,
+                     const base::DictValue& command) {
+  std::vector<const BookmarkNode*> chain;
+  for (const BookmarkNode* node = NodeById(model, command.FindString("id"));
+       node && !model->is_root_node(node); node = node->parent()) {
+    chain.push_back(node);
+  }
+  base::ListValue nodes;
+  for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+    nodes.Append(ToShellNode(model, *it));
+  }
+  base::DictValue event;
+  event.Set("event", kBookmarkPathEvent);
+  event.Set("requestId", ReadRequestId(command));
+  event.Set("nodes", std::move(nodes));
+  ReplyToShell(context, std::move(event));
 }
 
 void RemoveBookmarkByUrl(const ShellCommandContext& context,
                          BookmarkModel* model,
                          const base::DictValue& command) {
   std::optional<GURL> url = ReadUrl(command);
-  if (url) {
-    // Leaves policy-managed bookmarks of the URL alone.
-    bookmarks::RemoveAllBookmarks(model, *url, FROM_HERE);
+  if (!url) {
+    ReplyOpResult(context, command, kErrInvalidUrl);
+    return;
   }
+  // Leaves policy-managed bookmarks of the URL alone.
+  bookmarks::RemoveAllBookmarks(model, *url, FROM_HERE);
+  ReplyOpResult(context, command, std::string_view());
 }
 
 void UpdateBookmark(const ShellCommandContext& context,
                     BookmarkModel* model,
                     const base::DictValue& command) {
-  const BookmarkNode* node = ReadEditableNode(model, command);
+  std::string_view error;
+  const BookmarkNode* node =
+      ResolveEditableNode(model, command.FindString("id"), &error);
   if (!node) {
+    ReplyOpResult(context, command, error);
     return;
   }
+  // A URL that will be refused must not leave the title changed behind it,
+  // so check before writing either.
+  std::optional<GURL> url;
+  if (command.FindString("url")) {
+    url = ReadUrl(command);
+    if (!url || !node->is_url()) {
+      ReplyOpResult(context, command, kErrInvalidUrl);
+      return;
+    }
+  }
+  // An empty title is allowed: Chromium permits it and the shell shows the
+  // URL in its place.
   if (command.FindString("title")) {
     model->SetTitle(node, ReadTitle(command), kEditSource);
   }
-  if (!command.FindString("url")) {
-    return;
-  }
-  std::optional<GURL> url = ReadUrl(command);
-  if (!node->is_url()) {
-    LOG(WARNING) << "OHOS shell bookmarks: a folder has no url to set";
-  } else if (url) {
+  if (url) {
     model->SetURL(node, *url, kEditSource);
   }
+  ReplyOpResult(context, command, std::string_view());
 }
 
 void MoveBookmark(const ShellCommandContext& context,
                   BookmarkModel* model,
                   const base::DictValue& command) {
-  const BookmarkNode* node = ReadEditableNode(model, command);
+  std::string_view error;
+  const BookmarkNode* node =
+      ResolveEditableNode(model, command.FindString("id"), &error);
+  if (!node) {
+    ReplyOpResult(context, command, error);
+    return;
+  }
   const BookmarkNode* parent =
       NodeById(model, command.FindString("parentId"));
-  if (!node || !CanHoldChildren(model, parent)) {
-    LOG_IF(WARNING, node) << "OHOS shell bookmarks: unusable move target";
+  if (!CanHoldChildren(model, parent)) {
+    ReplyOpResult(context, command, kErrInvalidParent);
     return;
   }
   // A folder moved into itself or its own subtree would detach the subtree.
   if (parent == node || bookmarks::IsDescendantOf(parent, node)) {
-    LOG(WARNING) << "OHOS shell bookmarks: cannot move a folder into itself";
+    ReplyOpResult(context, command, kErrCycle);
     return;
   }
-  const double last = static_cast<double>(parent->children().size());
-  const double index =
-      std::clamp(command.FindDouble("index").value_or(last), 0.0, last);
-  model->Move(node, parent, static_cast<size_t>(index));
+  model->Move(node, parent, ReadInsertionIndex(command, parent));
+  ReplyOpResult(context, command, std::string_view());
+}
+
+// The ids a batch command names, resolved in the order given. Ids that name
+// nothing editable are collected rather than failing the batch: a selection
+// drawn before someone else's edit will have stale entries in it, and the
+// user meant the rest.
+std::vector<const BookmarkNode*> ReadBatchNodes(BookmarkModel* model,
+                                                const base::DictValue& command,
+                                                base::ListValue* failed_ids,
+                                                std::string_view* error) {
+  std::vector<const BookmarkNode*> nodes;
+  const base::ListValue* ids = command.FindList("ids");
+  if (!ids) {
+    *error = kErrUnknown;
+    return nodes;
+  }
+  for (const base::Value& entry : *ids) {
+    const std::string* id = entry.GetIfString();
+    std::string_view reason;
+    if (const BookmarkNode* node = ResolveEditableNode(model, id, &reason)) {
+      nodes.push_back(node);
+      continue;
+    }
+    if (error->empty()) {
+      *error = reason;
+    }
+    failed_ids->Append(id ? *id : std::string());
+  }
+  return nodes;
+}
+
+// Drops a node that another node in the same batch already carries. Moving a
+// folder takes its subtree with it, so moving a descendant separately would
+// pull it back out.
+void DropNodesCarriedByOthers(std::vector<const BookmarkNode*>* nodes) {
+  std::erase_if(*nodes, [&nodes](const BookmarkNode* node) {
+    for (const BookmarkNode* other : *nodes) {
+      if (other != node && bookmarks::IsDescendantOf(node, other)) {
+        return true;
+      }
+    }
+    return false;
+  });
+}
+
+void MoveBookmarks(const ShellCommandContext& context,
+                   BookmarkModel* model,
+                   const base::DictValue& command) {
+  const BookmarkNode* parent =
+      NodeById(model, command.FindString("parentId"));
+  if (!CanHoldChildren(model, parent)) {
+    ReplyOpResult(context, command, kErrInvalidParent);
+    return;
+  }
+  base::ListValue failed_ids;
+  std::string_view error;
+  std::vector<const BookmarkNode*> nodes =
+      ReadBatchNodes(model, command, &failed_ids, &error);
+  DropNodesCarriedByOthers(&nodes);
+  std::erase_if(nodes, [&](const BookmarkNode* node) {
+    if (parent != node && !bookmarks::IsDescendantOf(parent, node)) {
+      return false;
+    }
+    if (error.empty()) {
+      error = kErrCycle;
+    }
+    failed_ids.Append(ToShellId(node->id()));
+    return true;
+  });
+
+  {
+    // One bookmarksChanged for the batch. Twenty of them redraw the shell's
+    // list twenty times, which is what the user sees as the flicker.
+    model->BeginExtensiveChanges();
+    size_t index = ReadInsertionIndex(command, parent);
+    for (const BookmarkNode* node : nodes) {
+      index = std::min(index, parent->children().size());
+      model->Move(node, parent, index);
+      // Read the landing position back rather than assuming index + 1: within
+      // one parent, Move renumbers around the node it just removed.
+      index = parent->GetIndexOf(node).value_or(index) + 1;
+    }
+    model->EndExtensiveChanges();
+  }
+  ReplyOpResult(context, command, error, std::move(failed_ids));
+}
+
+void RemoveBookmarks(const ShellCommandContext& context,
+                     BookmarkModel* model,
+                     const base::DictValue& command) {
+  base::ListValue failed_ids;
+  std::string_view error;
+  std::vector<const BookmarkNode*> nodes =
+      ReadBatchNodes(model, command, &failed_ids, &error);
+  DropNodesCarriedByOthers(&nodes);
+  {
+    model->BeginExtensiveChanges();
+    for (const BookmarkNode* node : nodes) {
+      model->Remove(node, kEditSource, FROM_HERE);
+    }
+    model->EndExtensiveChanges();
+  }
+  ReplyOpResult(context, command, error, std::move(failed_ids));
 }
 
 void RemoveBookmark(const ShellCommandContext& context,
                     BookmarkModel* model,
                     const base::DictValue& command) {
-  const BookmarkNode* node = ReadEditableNode(model, command);
-  if (node) {
-    model->Remove(node, kEditSource, FROM_HERE);
+  std::string_view error;
+  const BookmarkNode* node =
+      ResolveEditableNode(model, command.FindString("id"), &error);
+  if (!node) {
+    ReplyOpResult(context, command, error);
+    return;
   }
+  model->Remove(node, kEditSource, FROM_HERE);
+  ReplyOpResult(context, command, std::string_view());
 }
 
 void CreateBookmarkFolder(const ShellCommandContext& context,
                           BookmarkModel* model,
                           const base::DictValue& command) {
+  const BookmarkNode* parent = ReadInsertionParent(model, command);
+  if (!parent) {
+    ReplyOpResult(context, command, kErrInvalidParent);
+    return;
+  }
+  const BookmarkNode* folder = model->AddFolder(
+      parent, ReadInsertionIndex(command, parent), ReadTitle(command));
+  if (!folder) {
+    ReplyOpResult(context, command, kErrUnknown);
+    return;
+  }
   base::DictValue event;
   event.Set("event", kBookmarkCreatedEvent);
   event.Set("requestId", ReadRequestId(command));
-  const BookmarkNode* parent = ReadInsertionParent(model, command);
-  // Without a usable parent the answer carries no "node", which the shell
-  // reads as failure rather than waiting forever.
-  if (parent) {
-    const BookmarkNode* folder = model->AddFolder(
-        parent, parent->children().size(), ReadTitle(command));
-    if (folder) {
-      event.Set("node", ToShellNode(model, folder));
-    }
-  }
+  event.Set("node", ToShellNode(model, folder));
   ReplyToShell(context, std::move(event));
 }
 
@@ -343,6 +623,10 @@ constexpr BookmarksCommand kCommands[] = {
     {"moveBookmark", &MoveBookmark},
     {"removeBookmark", &RemoveBookmark},
     {"createBookmarkFolder", &CreateBookmarkFolder},
+    {"getBookmarksForUrl", &GetBookmarksForUrl},
+    {"getBookmarkPath", &GetBookmarkPath},
+    {"moveBookmarks", &MoveBookmarks},
+    {"removeBookmarks", &RemoveBookmarks},
 };
 
 CommandRunner FindCommand(std::string_view name) {
@@ -361,8 +645,11 @@ CommandRunner FindCommand(std::string_view name) {
 // empty model would show the user no bookmarks at all.
 class BookmarksWatcher : public bookmarks::BookmarkModelObserver {
  public:
+  // Keyed on the profile that owns the model. An incognito window shares its
+  // original profile's bookmarks, so both must hear the same changes.
   explicit BookmarksWatcher(Profile* profile)
-      : profile_(profile), model_(ModelFor(profile)) {
+      : profile_(profile ? profile->GetOriginalProfile() : nullptr),
+        model_(ModelFor(profile)) {
     if (model_) {
       observation_.Observe(model_.get());
     }
@@ -440,6 +727,12 @@ class BookmarksWatcher : public bookmarks::BookmarkModelObserver {
     base::DictValue event;
     event.Set("event", kBookmarksChangedEvent);
     event.Set("revision", ++revision_);
+    // Incognito windows show these same bookmarks, and the dispatcher matches
+    // a window's profile by pointer, so the off-the-record ones are named
+    // separately or they never hear that anything changed.
+    for (Profile* otr : profile_->GetAllOffTheRecordProfiles()) {
+      BroadcastToShell(otr, event.Clone());
+    }
     BroadcastToShell(profile_, std::move(event));
   }
 
@@ -490,7 +783,8 @@ bool HandleBookmarksCommand(const ShellCommandContext& context,
     return true;
   }
   if (!model->loaded()) {
-    Watchers().Get(context.profile)->Defer(context, name, command);
+    Watchers().Get(context.profile->GetOriginalProfile())
+        ->Defer(context, name, command);
     return true;
   }
   run(context, model, command);
@@ -499,7 +793,7 @@ bool HandleBookmarksCommand(const ShellCommandContext& context,
 
 void EnsureBookmarksObserver(Profile* profile) {
   if (ModelFor(profile)) {
-    Watchers().Get(profile);
+    Watchers().Get(profile->GetOriginalProfile());
   }
 }
 

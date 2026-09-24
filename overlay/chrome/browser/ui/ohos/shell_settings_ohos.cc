@@ -6,7 +6,8 @@
 // the file that implements each group, and answers getAboutInfo.
 //
 //   getAboutInfo {requestId}
-//     -> "aboutInfo" {requestId, chromiumVersion, engineCommit, userAgent}
+//     -> "aboutInfo" {requestId, chromiumVersion, engineCommit, userAgent,
+//                     bookmarkApiVersion}
 
 #include <string>
 #include <string_view>
@@ -60,6 +61,11 @@ void GetAboutInfo(const ShellCommandContext& context,
   // without a checkout that knows it.
   event.Set("engineCommit", version_info::GetLastChange());
   event.Set("userAgent", embedder_support::GetUserAgent());
+  // What the bookmarks commands understand. 1 was the original set; 2 adds
+  // insertion positions, operation results, child counts, root types, batch
+  // moves and removals, URL lookup and path lookup. A shell reads it once at
+  // startup instead of probing each new command with a timeout.
+  event.Set("bookmarkApiVersion", 2);
   ReplyToShell(context, std::move(event));
 }
 
