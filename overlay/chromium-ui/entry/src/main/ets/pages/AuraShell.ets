@@ -231,6 +231,11 @@ struct AuraShell {
           .id(view.state.componentId)
           .width('100%')
           .height('100%')
+          // A SURFACE XComponent's own background is opaque black by default,
+          // and it shows through wherever the buffer is transparent. Popups
+          // paint their margin transparent (rounded corners, the arrow, the
+          // shadow), so without this each one sat in a black rectangle.
+          .backgroundColor(Color.Transparent)
           // A popup anchored to the page -- the autofill list under a field
           // -- is not activatable in Chromium either. Taking focus here moved
           // it off the page's XComponent, which closed the keyboard the user
