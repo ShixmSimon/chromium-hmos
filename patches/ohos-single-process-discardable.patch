@@ -1,0 +1,59 @@
+Keep one discardable memory allocator for the whole single-process browser.
+
+OHOS phones run single-process with one in-process renderer thread per
+render process host. Each RenderThreadImpl installed its own
+ClientDiscardableSharedMemoryManager as the process-wide
+base::DiscardableMemoryAllocator, and freed it when its host went away
+(a closed tab), so the remaining renderers allocated through a dangling
+pointer: SIGSEGV in GpuImageDecodeCache::DecodeImageIfNecessary via
+DiscardableMemoryAllocator::AllocateLockedDiscardableMemoryWithRetryOrDie,
+jumping to string bytes that reused the freed object. Do what the
+upstream TODO (crbug.com/503724) asks: the browser's
+DiscardableSharedMemoryManager, which lives as long as the process, is the
+process-wide allocator, and renderers leave it in place.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/content/browser/browser_main_loop.cc b/content/browser/browser_main_loop.cc
+index 90d60c4..e5a6691 100644
+--- a/content/browser/browser_main_loop.cc
++++ b/content/browser/browser_main_loop.cc
+@@ -725,7 +725,14 @@ void BrowserMainLoop::PostCreateMainMessageLoop() {
+   // TODO(boliu): kSingleProcess check is a temporary workaround for
+   // in-process Android WebView. crbug.com/503724 tracks proper fix.
+   // Also check to see if a discardable memory manager was set (e.g. unit tests)
+-  if (!parsed_command_line_->HasSwitch(switches::kSingleProcess) &&
++  // OHOS runs phones single-process with several in-process renderers. Each
++  // renderer used to install its own allocator as the process-wide one and
++  // free it when its tab went away, leaving the others to allocate through a
++  // dangling pointer (crashes in GpuImageDecodeCache). The browser's manager
++  // lives as long as the process, so it is the process-wide allocator here
++  // and the renderers leave it alone (render_thread_impl.cc).
++  if ((BUILDFLAG(IS_OHOS) ||
++       !parsed_command_line_->HasSwitch(switches::kSingleProcess)) &&
+       !base::DiscardableMemoryAllocator::HasInstance()) {
+     base::DiscardableMemoryAllocator::SetInstance(
+         discardable_memory::DiscardableSharedMemoryManager::Get());
+diff --git a/content/renderer/render_thread_impl.cc b/content/renderer/render_thread_impl.cc
+index e05ec16..ddaa4c6 100644
+--- a/content/renderer/render_thread_impl.cc
++++ b/content/renderer/render_thread_impl.cc
+@@ -657,8 +657,18 @@ void RenderThreadImpl::Init() {
+   // TODO(boliu): In single process, browser main loop should set up the
+   // discardable memory manager, and should skip this if kSingleProcess.
+   // See crbug.com/503724.
++#if BUILDFLAG(IS_OHOS)
++  // In single-process mode the browser's allocator is already the
++  // process-wide one (browser_main_loop.cc); this renderer must not replace
++  // it with one that dies with the renderer.
++  if (!base::DiscardableMemoryAllocator::HasInstance()) {
++    base::DiscardableMemoryAllocator::SetInstance(
++        discardable_memory_allocator_.get());
++  }
++#else
+   base::DiscardableMemoryAllocator::SetInstance(
+       discardable_memory_allocator_.get());
++#endif
+ 
+ #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+   ChildProcess::current()->SetIOThreadType(base::ThreadType::kPresentation);
