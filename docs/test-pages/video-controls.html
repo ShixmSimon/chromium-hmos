@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>视频控制条</title>
+<body style="margin:12px;font-family:sans-serif">
+<h3>原生控制条</h3>
+<video id="v" controls playsinline src="sample-720p.mp4" style="width:100%"></video>
+<p>正常时:视频下方有播放按钮、进度条、时间、全屏按钮;点一下画面会出现/隐藏。</p>
+<script>
+  const v = document.getElementById('v');
+  navigator.mediaSession.metadata = new MediaMetadata({title: '控制条测试视频', artist: 'Chromium HarmonyOS'});
+</script>

@@ -47,7 +47,9 @@ export struct MobileBrowserOverlay {
     if (this.followGrip) {
       this.startHoldingHandAwareness();
     }
-    this.startCurrentTabCastSession();
+    // The cast session starts when the cast picker opens, not here. HarmonyOS
+    // allows one AVSession per ability, and an idle one held from launch left
+    // the engine's media session (control center card) unable to exist.
   }
 
   aboutToDisappear(): void {
@@ -530,15 +532,5 @@ export struct MobileBrowserOverlay {
       .catch((error: Error) => {
         console.error('Huawei Share failed:', error);
       });
-  }
-
-  private startCurrentTabCastSession(): void {
-    const context = this.getUIContext().getHostContext() as common.UIAbilityContext | undefined;
-    if (!context) {
-      return;
-    }
-    this.currentTabCastSession.start(context, this.browserState).catch((error: Error) => {
-      console.error('Failed to start current-tab cast session:', error);
-    });
   }
 }
