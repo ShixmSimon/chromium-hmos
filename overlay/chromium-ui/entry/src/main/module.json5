@@ -28,6 +28,9 @@
         "startWindowIcon": "$media:chromium_hmos_start_icon",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
+        "backgroundModes": [
+          "audioPlayback"
+        ],
         "continuable": true,
         "continueType": [
           "ChromiumPage"

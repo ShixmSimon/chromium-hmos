@@ -31,6 +31,10 @@
     {
       "name": "permission_reason_biometric",
       "value": "用于网站的指纹或人脸登录（WebAuthn 通行密钥）"
+    },
+    {
+      "name": "background_audio_permission_reason",
+      "value": "用于网页音视频在后台继续播放"
     }
 
   ]

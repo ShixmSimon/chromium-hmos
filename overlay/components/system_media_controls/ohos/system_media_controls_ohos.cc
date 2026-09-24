@@ -20,6 +20,8 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
+#include "base/values.h"
+#include "components/ohos_system_service/system_service_ohos.h"
 #include "components/system_media_controls/system_media_controls_observer.h"
 #include "services/media_session/public/cpp/media_position.h"
 
@@ -30,6 +32,16 @@ namespace internal {
 namespace {
 
 constexpr char kSessionTag[] = "chromium";
+
+// The ArkTS service that holds the audio-playback continuous task
+// (engine HAR, BackgroundAudioService.ets).
+constexpr char kBackgroundAudioService[] = "backgroundaudio";
+
+void LogBackgroundAudioFailure(ohos_system_service::Reply reply) {
+  if (!reply.ok) {
+    LOG(WARNING) << "HarmonyOS background audio task failed: " << reply.error;
+  }
+}
 
 // One bit per AVSession_ControlCommand we register.
 uint32_t Bit(AVSession_ControlCommand command) {
@@ -126,6 +138,7 @@ SystemMediaControlsOhos::~SystemMediaControlsOhos() {
   if (active_) {
     OH_AVSession_Deactivate(session_);
   }
+  SetBackgroundAudio(false);
   OH_AVSession_Destroy(session_);
 }
 
@@ -178,6 +191,22 @@ void SystemMediaControlsOhos::SetEnabled(bool enabled) {
     return;
   }
   active_ = enabled;
+  SetBackgroundAudio(enabled);
+}
+
+// Without an audio-playback continuous task HarmonyOS mutes the app a moment
+// after it leaves the foreground and freezes it a few seconds later, so the
+// page falls silent while the control center still says it is playing. The
+// task is held for as long as the session is active, paused included, so
+// "play" from the control center reaches a process that is still running.
+void SystemMediaControlsOhos::SetBackgroundAudio(bool running) {
+  if (running == background_audio_ || !ohos_system_service::IsAvailable()) {
+    return;
+  }
+  background_audio_ = running;
+  ohos_system_service::Call(kBackgroundAudioService, running ? "start" : "stop",
+                            base::DictValue(),
+                            base::BindOnce(&LogBackgroundAudioFailure));
 }
 
 void SystemMediaControlsOhos::SetIsNextEnabled(bool value) {

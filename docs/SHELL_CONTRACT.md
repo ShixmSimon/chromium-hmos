@@ -95,6 +95,10 @@ export default class EntryAbility extends UIAbility {
 
 **`handleNotificationWant` 必须接上。** 用户点网页通知时,系统通过 `onCreate`(应用已被杀掉)或 `onNewWant`(应用在后台)把应用拉起来,只有外壳的 `EntryAbility` 能收到这次拉起。不转交的话,通知照常显示,但点了只会打开应用,网页收不到 click 事件。函数返回 true 表示这次拉起来自通知,外壳把浏览器调到前台即可,不需要再做别的。
 
+**`EntryAbility` 必须声明后台音频。** 在外壳 `module.json5` 的这个 ability 上加 `"backgroundModes": ["audioPlayback"]`。网页播放音视频期间,引擎会申请"后台音频播放"长时任务;没有这项声明,申请会失败,应用一切到后台就会被系统静音,几秒后被冻结,而控制中心还显示"播放中"。
+
+**不要自己创建 AVSession。** 系统只允许一个 ability 有一个媒体会话,网页的媒体会话(控制中心卡片)由引擎创建。外壳如果启动时就建了一个会话,引擎就建不起来了。投屏选择器需要会话时,等用户打开选择器再建。
+
 ### 页面
 
 ```ts
@@ -303,7 +307,7 @@ XComponent({
 
 ## 10. 权限
 
-HAR 的 `module.json5` 声明了 12 项权限(包括 WebAuthn 用到的 `ACCESS_BIOMETRIC`),并附带权限说明文案。打包时这些权限会自动合并进外壳的 HAP,外壳不需要重复声明。
+HAR 的 `module.json5` 声明了 13 项权限(包括 WebAuthn 用到的 `ACCESS_BIOMETRIC`、后台播放用到的 `KEEP_BACKGROUND_RUNNING`),并附带权限说明文案。打包时这些权限会自动合并进外壳的 HAP,外壳不需要重复声明。
 - 外壳自己用到的权限,在外壳里另外声明。
 - 如果外壳的资源和 HAR 里的同名,外壳的会覆盖 HAR 的。所以不要在外壳里定义同名的权限说明字符串,除非你是有意要改这段文案。
 

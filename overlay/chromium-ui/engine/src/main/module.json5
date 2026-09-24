@@ -70,6 +70,11 @@
         "name": "ohos.permission.PRINT"
       },
       {
+        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING",
+        "reason": "$string:background_audio_permission_reason",
+        "usedScene": { "when": "always" }
+      },
+      {
         "name": "ohos.permission.ACCESS_BIOMETRIC",
         "reason": "$string:permission_reason_biometric",
         "usedScene": { "when": "inuse" }

@@ -58,12 +58,15 @@ class SystemMediaControlsOhos : public SystemMediaControls {
   void OnSeekTo(uint64_t milliseconds);
 
  private:
+  void SetBackgroundAudio(bool running);
   void SetCommandEnabled(AVSession_ControlCommand command, bool enabled);
 
   SEQUENCE_CHECKER(sequence_checker_);
 
   OH_AVSession* session_ = nullptr;
   bool active_ = false;
+  // Whether the audio-playback continuous task is held; see SetEnabled.
+  bool background_audio_ = false;
   bool seek_enabled_ = false;
   // Which commands have a callback registered; the control center shows a
   // button only for those.

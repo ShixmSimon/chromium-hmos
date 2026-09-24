@@ -15,7 +15,7 @@ diff --git a/components/system_media_controls/BUILD.gn b/components/system_media
 index 8089e11..b6198a7 100644
 --- a/components/system_media_controls/BUILD.gn
 +++ b/components/system_media_controls/BUILD.gn
-@@ -78,6 +78,15 @@ component("system_media_controls") {
+@@ -78,6 +78,16 @@ component("system_media_controls") {
        "Foundation.framework",
        "MediaPlayer.framework",
      ]
@@ -24,6 +24,7 @@ index 8089e11..b6198a7 100644
 +      "ohos/system_media_controls_ohos.cc",
 +      "ohos/system_media_controls_ohos.h",
 +    ]
++    deps += [ "//components/ohos_system_service" ]
 +    libs = [
 +      "bundle_ndk.z",
 +      "ohavsession",

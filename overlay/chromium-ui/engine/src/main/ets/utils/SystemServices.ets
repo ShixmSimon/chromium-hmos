@@ -9,6 +9,7 @@
 
 import { common } from '@kit.AbilityKit';
 import { SystemServiceBridge, SystemServiceEmitter, SystemServiceHandler } from './SystemServiceBridge';
+import { BackgroundAudioService } from './BackgroundAudioService';
 import { NotificationService } from './NotificationService';
 import { OrientationService } from './OrientationService';
 import { ShapeDetectionService } from './ShapeDetectionService';
@@ -23,4 +24,5 @@ export function registerSystemServices(bridge: SystemServiceBridge,
   bridge.register('orientation', (): SystemServiceHandler => new OrientationService(context));
   bridge.register('shape', (): SystemServiceHandler => new ShapeDetectionService());
   bridge.register('userauth', (): SystemServiceHandler => new UserAuthService());
+  bridge.register('backgroundaudio', (): SystemServiceHandler => new BackgroundAudioService(context));
 }
