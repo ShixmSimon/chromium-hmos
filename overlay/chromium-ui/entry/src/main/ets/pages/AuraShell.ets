@@ -17,6 +17,7 @@ import { common } from '@kit.AbilityKit';
 import { WebWindow } from 'engine';
 import { MobileBrowserOverlay } from '../components/mobile/MobileBrowserOverlay';
 import { CurrentTabCastSession } from '../components/mobile/CurrentTabCastSession';
+import { showContextMenuSheet } from '../components/mobile/ContextMenuSheet';
 import { BrowserOnboarding } from '../components/onboarding/BrowserOnboarding';
 import {
   AuxiliaryWindowState,
@@ -335,6 +336,13 @@ struct AuraShell {
           action: (): void => {
           }
         }
+      });
+      return;
+    }
+
+    if (event.event === 'contextMenuRequested') {
+      showContextMenuSheet(this.getUIContext(), event, (command: BrowserCommandPayload): void => {
+        this.executeBrowserCommand(command);
       });
       return;
     }

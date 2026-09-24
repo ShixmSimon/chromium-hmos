@@ -9,6 +9,7 @@
 #include <string>
 
 #include "base/functional/callback_forward.h"
+#include "base/values.h"
 #include "ui/gfx/native_ui_types.h"
 
 namespace content {
@@ -70,6 +71,10 @@ void UpdateAuraShellPrintOutputDirectory(const std::string& output_directory);
 bool IsAuraShellMobilePhoneUi();
 bool IsAuraShellDesktopUi();
 bool RequestAuraShellSystemPrint(content::WebContents* contents);
+// Sends `event` to the shell hosting `contents`. False when no browser window
+// holds it.
+bool DispatchAuraShellRuntimeEvent(content::WebContents* contents,
+                                   base::DictValue event);
 bool RequestAuraShellSystemShare(content::WebContents* contents);
 bool RequestAuraShellSystemCast(content::WebContents* contents);
 bool RequestAuraShellSystemAction(const std::string& action);

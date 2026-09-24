@@ -106,6 +106,10 @@ export interface AuraStartupConfig {
   icuDataLength?: number;
   jitless: boolean;
   fullscreenRequested: boolean;
+  // Who draws long-press menus. 'shell': the engine sends contextMenuRequested
+  // and the shell draws the menu. 'native': Chromium's own menu. Unset, phones
+  // use 'shell' and other devices 'native'.
+  contextMenu?: 'shell' | 'native';
   windowRole?: 'browser' | 'pwa';
   targetWidget?: number;
   pwaAppId?: string;

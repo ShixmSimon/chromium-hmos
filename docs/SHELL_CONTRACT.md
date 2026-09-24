@@ -195,7 +195,35 @@ struct Browser {
 | `systemPrintFailed`、`inputRecovered` | 否 | 记日志即可。 |
 | `findResult` | 否 | `matches` 匹配总数，`activeMatch` 当前是第几个（从 1 开始，0 表示没有），`finalUpdate` 为 true 时计数已定 |
 | `pageText` | 否 | 回复 `getPageText`：`requestId`、`text` |
+| `contextMenuRequested` | **是**(手机) | 长按网页元素。引擎这时不弹自己的菜单，由外壳画，见下文"长按菜单"。**每次都要回一条命令**：选了某项发 `contextMenuAction`，没选就关掉发 `contextMenuDismissed`。 |
 | `browserControlsRatio` | 否 | 用了 `setBrowserControls` 才会有。`ratio` 为顶栏当前露出的比例（1 全部显示，0 完全滑走），外壳把顶栏往上移 `(1 - ratio) × 顶栏高度`。传了 `minTop` 时，比例的下限是 `minTop / top`（顶栏收起到 `minTop` 就不会再往上滑了）。 |
+
+### 长按菜单
+
+手机上长按网页元素时，引擎仍由 Chromium 决定菜单里有什么、哪些项可用，但不再弹 Chromium 的桌面菜单，而是发 `contextMenuRequested`，由外壳画（例如底部菜单）。参考实现见 `entry/.../ContextMenuSheet.ets`。
+
+| 字段 | 说明 |
+|---|---|
+| `requestId` | 之后的命令用它对应这次长按。新的长按会替换上一次，旧 `requestId` 的命令会被忽略 |
+| `x`、`y` | 长按位置，窗口坐标，单位 vp |
+| `linkUrl`、`linkText` | 长按的是链接时有值，否则为空字符串 |
+| `srcUrl`、`mediaType` | `mediaType` 为 `'image' \| 'video' \| 'audio' \| 'none'` |
+| `mediaFlags` | 视频和音频的状态：`paused`、`muted`、`loop`、`canLoop`、`controls`、`canToggleControls`、`canSave`、`hasAudio`、`inError` |
+| `selectionText` | 有选中文字时有值 |
+| `isEditable` | 是否是输入框 |
+| `frameUrl`、`pageUrl`、`incognito` | 所在框架、页面，是否无痕 |
+| `supportedActions` | 这次能做的动作，已按 Chromium 的判断过滤（例如没有可粘贴的内容时没有 `paste`）。**外壳只显示列表里的项**，顺序可以自己排 |
+
+动作（`ContextMenuAction`）：
+
+- 链接：`openLinkInNewTab`、`copyLinkAddress`、`copyLinkText`、`saveLinkAs`
+- 图片：`openImageInNewTab`、`saveImageAs`、`copyImage`、`copyImageAddress`
+- 视频和音频：`toggleLoop`、`toggleControls`、`openMediaInNewTab`、`saveMediaAs`、`copyMediaAddress`、`copyVideoFrame`
+- 文字：`copy`、`cut`、`paste`、`selectAll`、`searchSelection`
+
+`toggleLoop`、`toggleControls` 的文案按 `mediaFlags.loop`、`mediaFlags.controls` 显示成"取消循环""隐藏控件"。检查、投放、画中画、以图搜图不提供。
+
+谁来画由启动配置的 `contextMenu` 决定：`'shell'` 外壳画，`'native'` 用 Chromium 自己的菜单。不填时手机为 `'shell'`，平板、2in1 等为 `'native'`。
 
 ### 定位权限状态(必须做)
 
@@ -238,6 +266,8 @@ function report() {
 | `findInPage` | `text`, `forward?` | 在当前标签页查找，同一段文字再发一次即跳到下一个（`forward: false` 为上一个）。结果通过 `findResult` 事件返回 |
 | `stopFind` | | 结束查找，清除高亮 |
 | `getPageText` | `requestId` | 读取当前网页的可见文字（最多 20000 字），在独立的脚本环境里执行，网页自己的脚本看不到。结果通过 `pageText` 事件返回 |
+| `contextMenuAction` | `requestId`, `action` | 回复 `contextMenuRequested`：执行选中的项。`action` 必须是事件 `supportedActions` 里的一项 |
+| `contextMenuDismissed` | `requestId` | 回复 `contextMenuRequested`：用户没选任何项就关掉了菜单 |
 | `setViewportInsets` | `bottom`（vp） | 外壳在网页底部盖了多高的悬浮栏。网页照常画到底，但可视区域缩小这么多，网页末尾能滚到悬浮栏上方。切换标签、新建标签后引擎会自动沿用，不用重发；传 0 取消 |
 | `pwaHome`、`pwaMenu`、`pwaMenuAction`、`pwaMenuDismiss` | 见 `BrowserCommandPayload` | PWA 窗口菜单 |
 | `defaultBrowserState`、`systemCapabilities` | 见参考实现 | 系统集成相关状态 |

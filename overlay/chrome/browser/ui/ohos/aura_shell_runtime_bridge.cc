@@ -48,6 +48,7 @@
 #include "chrome/browser/profiles/profile_manager_observer.h"
 #include "chrome/browser/permissions/system/system_permission_common.h"
 #include "chrome/browser/permissions/system/system_permission_settings_ohos.h"
+#include "chrome/browser/ui/ohos/shell_context_menu_ohos.h"
 #include "chrome/browser/ui/ohos/system_geolocation_source_ohos.h"
 #include "services/device/public/cpp/geolocation/buildflags.h"
 #include "services/device/public/cpp/geolocation/geolocation_system_permission_manager.h"
@@ -1460,6 +1461,22 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     return;
   }
 
+  if (*name == "contextMenuAction") {
+    const std::optional<int> request_id = command.FindInt("requestId");
+    const std::string* action = command.FindString("action");
+    if (request_id && action) {
+      RunShellContextMenuAction(*request_id, *action);
+    }
+    return;
+  }
+
+  if (*name == "contextMenuDismissed") {
+    if (const std::optional<int> request_id = command.FindInt("requestId")) {
+      DismissShellContextMenu(*request_id);
+    }
+    return;
+  }
+
   if (*name == "defaultBrowserState") {
     std::optional<bool> is_default;
     if (command.FindBool("known").value_or(true)) {
@@ -2043,6 +2060,8 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "findInPage",
       "stopFind",
       "getPageText",
+      "contextMenuAction",
+      "contextMenuDismissed",
   };
   if (!name || std::ranges::find(kSupportedCommands, *name) ==
                    std::ranges::end(kSupportedCommands)) {
@@ -2303,6 +2322,17 @@ bool RequestAuraShellSystemPrint(content::WebContents* contents) {
                       base::BindOnce(&OnPdfGenerated, widget, path,
                                      base::UTF16ToUTF8(contents->GetTitle()),
                                      contents->GetLastCommittedURL().spec()));
+  return true;
+}
+
+bool DispatchAuraShellRuntimeEvent(content::WebContents* contents,
+                                   base::DictValue event) {
+  BrowserWindowInterface* browser =
+      contents ? FindBrowserForWebContents(contents) : nullptr;
+  if (!browser) {
+    return false;
+  }
+  DispatchRuntimeEvent(GetBrowserWidget(browser), std::move(event));
   return true;
 }
 

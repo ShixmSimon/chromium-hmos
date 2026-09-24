@@ -109,12 +109,50 @@ export interface BrowserStateSnapshot {
   pwaStartUrl: string;
 }
 
+// What a long-press menu can offer. contextMenuRequested lists the ones that
+// apply in supportedActions; the shell sends one back in contextMenuAction.
+export type ContextMenuAction =
+  'openLinkInNewTab' | 'copyLinkAddress' | 'copyLinkText' | 'saveLinkAs' |
+  'openImageInNewTab' | 'saveImageAs' | 'copyImage' | 'copyImageAddress' |
+  'toggleLoop' | 'toggleControls' | 'openMediaInNewTab' | 'saveMediaAs' |
+  'copyMediaAddress' | 'copyVideoFrame' |
+  'copy' | 'cut' | 'paste' | 'selectAll' | 'searchSelection';
+
+// The long-pressed video or audio element's state.
+export interface ContextMenuMediaFlags {
+  paused: boolean;
+  muted: boolean;
+  loop: boolean;
+  canLoop: boolean;
+  controls: boolean;
+  canToggleControls: boolean;
+  canSave: boolean;
+  hasAudio: boolean;
+  inError: boolean;
+}
+
 export interface BrowserRuntimeEvent {
   version: number;
   event: 'systemPrintReady' | 'systemPrintFailed' | 'shareRequested' |
     'castRequested' | 'filePickerRequested' | 'pwaInstalled' | 'pwaMenuModel' |
     'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
-    'permissionsRequested' | 'browserControlsRatio' | 'findResult' | 'pageText';
+    'permissionsRequested' | 'browserControlsRatio' | 'findResult' | 'pageText' |
+    'contextMenuRequested';
+  // contextMenuRequested: where the press was, in vp in the window.
+  x?: number;
+  y?: number;
+  // contextMenuRequested: the page context. Empty strings when absent.
+  linkUrl?: string;
+  linkText?: string;
+  srcUrl?: string;
+  mediaType?: 'image' | 'video' | 'audio' | 'none';
+  mediaFlags?: ContextMenuMediaFlags;
+  selectionText?: string;
+  isEditable?: boolean;
+  frameUrl?: string;
+  pageUrl?: string;
+  incognito?: boolean;
+  supportedActions?: ContextMenuAction[];
   // browserControlsRatio: how much of the shell's top bar the page shows, 0-1.
   ratio?: number;
   // findResult: the match count, the active match (1-based; 0 for none) and
@@ -152,6 +190,8 @@ export interface BrowserRuntimeEvent {
 export interface BrowserCommandPayload {
   command: string;
   url?: string;
+  // contextMenuAction: the item chosen, one of the event's supportedActions.
+  action?: ContextMenuAction;
   // setViewportInsets: how much of the page bottom the shell covers, in vp.
   bottom?: number;
   // setBrowserControls: the shell's top bar height, in vp; 0 for none.

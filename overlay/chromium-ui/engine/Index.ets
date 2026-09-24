@@ -17,6 +17,8 @@ export {
   AuxiliaryWindowState,
   BrowserCommandPayload,
   BrowserRuntimeEvent,
+  ContextMenuAction,
+  ContextMenuMediaFlags,
   BrowserStateSnapshot,
   BrowserTabState,
   PwaMenuButtonState,

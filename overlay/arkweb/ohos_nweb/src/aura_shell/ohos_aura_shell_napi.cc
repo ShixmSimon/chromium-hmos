@@ -1111,6 +1111,16 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
     }
   }
 
+  // Who draws long-press menus: "shell" (the ArkUI shell) or "native"
+  // (Chromium's own). Absent, phones use the shell; see
+  // chrome/browser/ui/ohos/shell_context_menu_ohos.h.
+  if (const std::string* context_menu = dict.FindString("contextMenu")) {
+    if (*context_menu == "shell" || *context_menu == "native") {
+      config.additional_switches.push_back(
+          {"ohos-context-menu", *context_menu});
+    }
+  }
+
   std::optional<bool> jitless = dict.FindBool("jitless");
   if (jitless.has_value()) {
     config.jitless = *jitless;
