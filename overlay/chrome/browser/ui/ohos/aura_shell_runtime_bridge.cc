@@ -104,6 +104,7 @@
 #include "ui/base/pointer/touch_ui_controller.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/window_open_disposition.h"
+#include "ui/compositor/layer.h"
 #include "ui/display/screen.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/transform.h"
@@ -1787,8 +1788,9 @@ namespace {
 // its scene layers apply). Aura has no such step, so the renderer shrinks the
 // viewport for the controls while the page still starts at the top of the
 // window, under the shell's bar. Translate the view's window by the same
-// amount, in the units Chromium was given the height in, so the page begins
-// right below the visible part of the bar and follows it as it slides.
+// amount so the page begins right below the visible part of the bar and
+// follows it as it slides. Chromium is given the height in physical pixels
+// while a window's transform is in its DIPs, so divide by the window's scale.
 void ApplyTopControlsOffset(content::WebContents* contents, float ratio) {
   content::RenderWidgetHostView* view =
       contents ? contents->GetRenderWidgetHostView() : nullptr;
@@ -1797,8 +1799,10 @@ void ApplyTopControlsOffset(content::WebContents* contents, float ratio) {
     return;
   }
   const int height = GetAuraShellTopControlsHeight();
-  const float offset =
-      height > 0 ? height * std::clamp(ratio, 0.0f, 1.0f) : 0.0f;
+  const float scale = window->layer()->device_scale_factor();
+  const float offset = height > 0 && scale > 0.0f
+                           ? height / scale * std::clamp(ratio, 0.0f, 1.0f)
+                           : 0.0f;
   gfx::Transform transform;
   transform.Translate(0, offset);
   if (window->transform() != transform) {
