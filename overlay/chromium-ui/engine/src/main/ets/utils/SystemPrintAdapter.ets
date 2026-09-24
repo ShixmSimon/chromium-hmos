@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { print } from '@kit.BasicServicesKit';
+import { fileUri } from '@kit.CoreFileKit';
 
 export class SystemPrintAdapter {
   static async printPdf(context: common.UIAbilityContext, filePath: string): Promise<void> {
@@ -9,6 +10,9 @@ export class SystemPrintAdapter {
     if (!canIUse('SystemCapability.Print.PrintFramework')) {
       throw new Error('System printing is not supported on this device');
     }
-    await print.print([filePath], context);
+    // The print service reads the file from its own process and only accepts a
+    // file:// URI; a sandbox path makes its preview say the format is unsupported.
+    const uri = filePath.startsWith('/') ? fileUri.getUriFromPath(filePath) : filePath;
+    await print.print([uri], context);
   }
 }
