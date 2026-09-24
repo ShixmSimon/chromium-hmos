@@ -20,6 +20,8 @@ namespace {
 
 constexpr char kAuxiliarySurfacePrefix[] = "aura_aux_";
 constexpr char kPwaSurfacePrefix[] = "aura_pwa_";
+// A browser window the shell hosts full screen, like the first one.
+constexpr char kBrowserSurfacePrefix[] = "aura_win_";
 
 std::optional<gfx::AcceleratedWidget> ParseTargetedSurfaceWidget(
     const std::string& component_id,
@@ -45,6 +47,11 @@ std::optional<gfx::AcceleratedWidget> ParseAuxiliarySurfaceWidget(
 std::optional<gfx::AcceleratedWidget> ParsePwaSurfaceWidget(
     const std::string& component_id) {
   return ParseTargetedSurfaceWidget(component_id, kPwaSurfacePrefix);
+}
+
+std::optional<gfx::AcceleratedWidget> ParseBrowserSurfaceWidget(
+    const std::string& component_id) {
+  return ParseTargetedSurfaceWidget(component_id, kBrowserSurfacePrefix);
 }
 
 struct SurfaceRecord {
@@ -99,9 +106,17 @@ class NativeWindowRegistry {
       } else {
         const std::optional<gfx::AcceleratedWidget> pwa_widget =
             ParsePwaSurfaceWidget(component_id);
+        const std::optional<gfx::AcceleratedWidget> browser_widget =
+            pwa_widget ? std::nullopt
+                       : ParseBrowserSurfaceWidget(component_id);
+        // A window the shell hosts in a surface of its own is not auxiliary,
+        // whichever kind it is: leaving it marked so routes input and stacking
+        // as though it were a popup over the first window.
+        const std::optional<gfx::AcceleratedWidget> own_surface_widget =
+            pwa_widget ? pwa_widget : browser_widget;
         const std::optional<gfx::AcceleratedWidget> requested_widget =
-            pwa_widget ? pwa_widget
-                       : ParseAuxiliarySurfaceWidget(component_id);
+            own_surface_widget ? own_surface_widget
+                               : ParseAuxiliarySurfaceWidget(component_id);
         if (requested_widget) {
           auto pending =
               std::ranges::find(pending_widgets_, *requested_widget);
@@ -112,7 +127,7 @@ class NativeWindowRegistry {
             record.widget = *requested_widget;
             pending_widgets_.erase(pending);
             widget_bindings_[record.widget] = component_id;
-            if (pwa_widget) {
+            if (own_surface_widget) {
               promoted_state =
                   MakeLogicalWindowState(record.widget, logical->second, true);
               logical->second.auxiliary = false;

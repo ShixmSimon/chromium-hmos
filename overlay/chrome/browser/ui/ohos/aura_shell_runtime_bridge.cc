@@ -62,6 +62,7 @@
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "chrome/browser/printing/print_view_manager.h"
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_window/public/create_browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
@@ -1622,6 +1623,25 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     if (url && GURL(*url).is_valid()) {
       NavigateOnUiThread(widget, GURL(*url), 0);
     }
+  } else if (*name == "newIncognitoWindow") {
+    // A Browser is bound to one Profile, so incognito tabs cannot join this
+    // window's tab strip -- desktop Chrome opens a second window for them and
+    // so does this. The off-the-record profile is derived from the one already
+    // open, and Chromium clears it when the last window using it closes.
+    Profile* profile = browser->GetProfile();
+    if (profile) {
+      Profile* otr = profile->GetOffTheRecordProfile(
+          Profile::OTRProfileID::PrimaryID(), /*create_if_needed=*/true);
+      if (otr) {
+        BrowserWindowCreateParams create_params(otr, /*from_user_gesture=*/true);
+        if (BrowserWindowInterface* incognito =
+                CreateBrowserWindow(std::move(create_params))) {
+          incognito->OpenGURL(GURL("chrome://newtab/"),
+                              WindowOpenDisposition::NEW_FOREGROUND_TAB);
+
+        }
+      }
+    }
   } else if (*name == "newTab") {
     content::OpenURLParams params(GURL("chrome://newtab/"), content::Referrer(),
                                   WindowOpenDisposition::NEW_FOREGROUND_TAB,
@@ -1940,6 +1960,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "pwaHome",
       "navigate",
       "newTab",
+      "newIncognitoWindow",
       "activateTab",
       "closeTab",
       "print",
@@ -2091,6 +2112,10 @@ std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(
   metadata.is_pwa =
       browser->GetType() == BrowserWindowInterface::Type::TYPE_APP ||
       browser->GetType() == BrowserWindowInterface::Type::TYPE_APP_POPUP;
+  metadata.is_browser =
+      browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL;
+  metadata.is_incognito =
+      browser->GetProfile() && browser->GetProfile()->IsOffTheRecord();
   TabStripModel* tabs = browser->GetTabStripModel();
   content::WebContents* active = tabs ? tabs->GetActiveWebContents() : nullptr;
   if (!active) {

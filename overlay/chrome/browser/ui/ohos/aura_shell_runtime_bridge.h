@@ -19,6 +19,10 @@ namespace chrome::ohos {
 
 struct AuraShellWindowMetadata {
   bool is_pwa = false;
+  // A second browser window -- an incognito one, today. The shell hosts it the
+  // way it hosts the first: full screen, not as a popup.
+  bool is_browser = false;
+  bool is_incognito = false;
   std::string app_id;
   std::string title;
   std::string url;

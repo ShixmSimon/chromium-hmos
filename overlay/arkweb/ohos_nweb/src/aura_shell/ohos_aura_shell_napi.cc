@@ -43,6 +43,7 @@ using SystemServiceFunctionMap =
 
 constexpr char kAuxiliarySurfacePrefix[] = "aura_aux_";
 constexpr char kPwaSurfacePrefix[] = "aura_pwa_";
+constexpr char kBrowserSurfacePrefix[] = "aura_win_";
 
 std::mutex& HostsMutex() {
   static base::NoDestructor<std::mutex> mutex;
@@ -497,10 +498,22 @@ void DispatchAuxiliaryWindowEvent(const ui::OhosLogicalWindowState& state) {
     event.Set("modal", *modal);
   }
   event.Set("windowRole", "auxiliary");
+  if (std::optional<chrome::ohos::AuraShellWindowMetadata> incognito =
+          chrome::ohos::GetAuraShellWindowMetadata(state.widget);
+      incognito) {
+    event.Set("incognito", incognito->is_incognito);
+  }
   if (std::optional<chrome::ohos::AuraShellWindowMetadata> metadata =
           chrome::ohos::GetAuraShellWindowMetadata(state.widget);
       metadata && metadata->is_pwa) {
     event.Set("windowRole", "pwa");
+  } else if (metadata && metadata->is_browser) {
+    // Not a popup: a browser window of its own. Saying so keeps the shell from
+    // drawing it as an auxiliary window -- clamped to a fraction of the screen
+    // and hung in the middle.
+    event.Set("windowRole", "browser");
+    event.Set("componentId", std::string(kBrowserSurfacePrefix) +
+                                 base::NumberToString(state.widget));
     event.Set("pwaAppId", metadata->app_id);
     event.Set("title", metadata->title);
     event.Set("url", metadata->url);
