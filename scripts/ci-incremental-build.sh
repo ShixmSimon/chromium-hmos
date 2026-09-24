@@ -67,8 +67,13 @@ apply_incremental_patch() {
   # dropped a `deps +=` line and was reported as already applied while the
   # old line kept breaking gn). Of the revisions that reverse-apply, the one
   # adding the most lines is the one actually present.
+  #
+  # Reverse checks ignore context (-C0): patches later in the list add lines
+  # next to earlier ones (several add sources to the same BUILD.gn list), so an
+  # earlier patch's context no longer matches once they are in, although its
+  # own lines are all there.
   local rev best_rev="" best_lines=-1 lines
-  if git -C "$src" apply --reverse --check "$patch" 2>/dev/null; then
+  if git -C "$src" apply -C0 --reverse --check "$patch" 2>/dev/null; then
     best_rev=current
     best_lines=$(grep -c '^+[^+]' "$patch" || true)
   fi
@@ -77,7 +82,7 @@ apply_incremental_patch() {
       continue
     fi
     if git -C "$repo_root" show "${rev}:${rel}" 2>/dev/null |
-        git -C "$src" apply --reverse --check - 2>/dev/null; then
+        git -C "$src" apply -C0 --reverse --check - 2>/dev/null; then
       lines=$(git -C "$repo_root" show "${rev}:${rel}" | grep -c '^+[^+]' || true)
       if (( lines > best_lines )); then
         best_rev=$rev
@@ -90,7 +95,8 @@ apply_incremental_patch() {
     return
   fi
   if [[ -n "$best_rev" ]]; then
-    git -C "$repo_root" show "${best_rev}:${rel}" | git -C "$src" apply --reverse ||
+    git -C "$repo_root" show "${best_rev}:${rel}" |
+      git -C "$src" apply -C0 --reverse ||
       die "failed to back out ${name} at ${best_rev}"
     say "backed out incremental patch ${name} at ${best_rev:0:8}"
     git -C "$src" apply "$patch" || die "failed to apply ${name}"
