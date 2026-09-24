@@ -77,6 +77,10 @@ export class DownloadNotifier {
   private readonly lastPublish: Map<string, number> = new Map();
   private readonly lastState: Map<string, string> = new Map();
   private templateSupported: boolean | undefined = undefined;
+  // Publishing is asynchronous (permission and template checks first), so
+  // publishes are chained: otherwise a slow "downloading" notification could
+  // land after, and cover, the "download complete" one sent later.
+  private queue: Promise<void> = Promise.resolve();
   private permissionAsked: boolean = false;
 
   constructor(context: common.UIAbilityContext) {
@@ -87,7 +91,7 @@ export class DownloadNotifier {
     const id = numericId(item.id);
     if (item.removed || item.state === 'cancelled') {
       this.forget(item.id);
-      notificationManager.cancel(id, LABEL).catch((): void => {});
+      this.enqueue(() => notificationManager.cancel(id, LABEL));
       return;
     }
     const stateChanged = this.lastState.get(item.id) !== item.state;
@@ -98,7 +102,11 @@ export class DownloadNotifier {
     }
     this.lastState.set(item.id, item.state);
     this.lastPublish.set(item.id, now);
-    this.publish(id, item).catch((error: Error): void => {
+    this.enqueue(() => this.publish(id, item));
+  }
+
+  private enqueue(task: () => Promise<void>): void {
+    this.queue = this.queue.then(task).catch((error: Error): void => {
       hilog.warn(DOMAIN, TAG, 'Download notification failed: %{public}s', JSON.stringify(error));
     });
   }
