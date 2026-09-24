@@ -435,6 +435,12 @@ XComponent({
 
 ## 10. 权限
 
+**JIT 需要重新签名（必须做）**：引擎 HAR 声明了 `ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY`，这是个 ACL 权限，外壳的签名 profile 里也必须带上它，否则会出现两种情况：
+- 安装时报 `9568289 grant request permissions failed`；
+- 装上后系统不给 JIT，引擎退回解释器（日志 `AuraShell JIT unavailable`）。JS 会慢好几倍，Cloudflare 人机验证也会失败（600010）。
+
+做法：外壳自己的 `module.json5` 里也声明一遍这个权限，然后在 DevEco Studio 的 Signing Configs 里重新生成自动签名。
+
 HAR 的 `module.json5` 声明了 13 项权限(包括 WebAuthn 用到的 `ACCESS_BIOMETRIC`、后台播放用到的 `KEEP_BACKGROUND_RUNNING`),并附带权限说明文案。打包时这些权限会自动合并进外壳的 HAP,外壳不需要重复声明。
 - 外壳自己用到的权限,在外壳里另外声明。
 - 如果外壳的资源和 HAR 里的同名,外壳的会覆盖 HAR 的。所以不要在外壳里定义同名的权限说明字符串,除非你是有意要改这段文案。
