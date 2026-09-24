@@ -1,0 +1,128 @@
+Present HarmonyOS as Chrome on Android (desktop Linux on 2in1).
+
+The User-Agent mixed OpenHarmony, Android and ArkWeb tokens, UA-CH said
+platform HarmonyOS 0.0.0, navigator.platform said 'HarmonyOS arm64' and
+navigator.plugins listed desktop PDF viewers behind a Mobile UA. Bot
+checks read that as a spoofed browser: Cloudflare Turnstile failed with
+600010. Report what Chrome itself reports on those devices.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedder_support/user_agent_utils.cc
+index dd84e74..b9d703d 100644
+--- a/components/embedder_support/user_agent_utils.cc
++++ b/components/embedder_support/user_agent_utils.cc
+@@ -222,6 +222,11 @@ const blink::UserAgentBrandList GetUserAgentBrandFullVersionListInternal(
+ // Internal function to handle return the full or "reduced" user agent string,
+ // depending on the Reduce User-Agent reduction phase features.
+ #if BUILDFLAG(IS_OHOS)
++bool IsOhosDesktopDeviceClass() {
++  return base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
++             "ohos-device-class") == "2in1";
++}
++
+ // Follows ArkWeb's default User-Agent. Sites such as Baidu recognize
+ // HarmonyOS phones by the ArkWeb token and serve desktop pages otherwise.
+ std::string BuildOhosUserAgent(const std::string& product, bool mobile) {
+@@ -249,16 +254,22 @@ std::string BuildOhosUserAgent(const std::string& product, bool mobile) {
+     device_type = "PC";
+   }
+ 
+-  // The OpenHarmony and ArkWeb tokens are what sites like Baidu key on to
+-  // recognise a HarmonyOS phone, so they stay. But a UA naming no OS that
+-  // anyone knows also gets treated as unclassifiable: google.com serves its
+-  // no-JavaScript basic page against the token order above. Adding an Android
+-  // token gives those sites something to match without taking the HarmonyOS
+-  // markers away.
+-  return base::StrCat(
+-      {"Mozilla/5.0 (", device_type, "; OpenHarmony ", major_minor,
+-       "; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) ", product,
+-       " Safari/537.36 ArkWeb/", version, mobile ? " Mobile" : ""});
++  // Chrome's own reduced User-Agent: Chrome on Android for phones and
++  // tablets, desktop Linux for 2in1. A UA mixing OpenHarmony, Android and
++  // ArkWeb tokens, with a UA-CH platform and navigator.platform that matched
++  // none of them, read as a spoofed browser to bot checks (Cloudflare
++  // Turnstile failed with 600010). The platform, platform version and
++  // navigator.platform follow this UA (see GetOhosUAPlatform()).
++  (void)device_type;
++  (void)major_minor;
++  if (device_class == "2in1") {
++    return base::StrCat({"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
++                         "(KHTML, like Gecko) ",
++                         product, " Safari/537.36"});
++  }
++  return base::StrCat({"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
++                       "(KHTML, like Gecko) ",
++                       product, mobile ? " Mobile" : "", " Safari/537.36"});
+ }
+ #endif  // BUILDFLAG(IS_OHOS)
+ 
+@@ -708,6 +719,9 @@ std::string GetPlatformVersion() {
+   return GetWindowsPlatformVersion();
+ #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA)
+   return std::string();
++#elif BUILDFLAG(IS_OHOS)
++  // The Android version BuildOhosUserAgent() names; desktop Linux sends none.
++  return IsOhosDesktopDeviceClass() ? std::string() : "10.0.0";
+ #else
+ 
+   int32_t major, minor, bugfix = 0;
+@@ -743,6 +757,9 @@ std::string GetPlatformForUAMetadata() {
+ #else
+   return "Chromium OS";
+ #endif
++#elif BUILDFLAG(IS_OHOS)
++  // Matches BuildOhosUserAgent(): Android, or Linux on 2in1.
++  return IsOhosDesktopDeviceClass() ? "Linux" : "Android";
+ #else
+   return std::string(version_info::GetOSType());
+ #endif
+diff --git a/third_party/blink/renderer/core/execution_context/navigator_base.cc b/third_party/blink/renderer/core/execution_context/navigator_base.cc
+index 6234f22..901e6d7 100644
+--- a/third_party/blink/renderer/core/execution_context/navigator_base.cc
++++ b/third_party/blink/renderer/core/execution_context/navigator_base.cc
+@@ -34,7 +34,9 @@ String GetReducedNavigatorPlatform() {
+ #elif BUILDFLAG(IS_FUCHSIA)
+   return "";
+ #elif BUILDFLAG(IS_OHOS)
+-  return "HarmonyOS arm64";
++  // 2in1 presents as desktop Linux; phones and tablets are handled in
++  // NavigatorBase::platform(), which can see the User-Agent.
++  return "Linux x86_64";
+ #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+   return "Linux x86_64";
+ #elif BUILDFLAG(IS_IOS)
+@@ -55,6 +57,13 @@ String NavigatorBase::userAgent() const {
+ }
+ 
+ String NavigatorBase::platform() const {
++#if BUILDFLAG(IS_OHOS)
++  // Follow the User-Agent the browser sends: Chrome on Android on phones and
++  // tablets. The device class is only on the browser's command line.
++  if (userAgent().Contains("Android")) {
++    return "Linux armv81";
++  }
++#endif
+ #if BUILDFLAG(IS_ANDROID)
+   // We need to check the ReduceUserAgentMinorVersion feature flag for
+   // Android WebView, which does not currently ship a reduced User-Agent.
+diff --git a/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc b/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
+index 3608837..e32e409 100644
+--- a/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
++++ b/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
+@@ -136,6 +136,15 @@ HeapVector<Member<DOMMimeType>> DOMPluginArray::GetFixedMimeTypeArray() {
+ }
+ 
+ bool DOMPluginArray::IsPdfViewerAvailable() {
++#if BUILDFLAG(IS_OHOS)
++  // Chrome on Android lists no plugins and reports pdfViewerEnabled false; a
++  // browser claiming to be it (see BuildOhosUserAgent()) must too, or bot
++  // checks see a desktop fingerprint behind a mobile User-Agent. Viewing PDFs
++  // is unaffected: this only shapes navigator.plugins.
++  if (window_ && window_->UserAgent().Contains("Android")) {
++    return false;
++  }
++#endif
+ #if BUILDFLAG(IS_ANDROID)
+   // TODO(crbug.com/556858610, crbug.com/556857897): Other desktop platforms
+   // dynamically check whether PDF viewing is handled by an extension or
