@@ -139,10 +139,16 @@ constexpr base::TimeDelta kBrowserLookupDelay = base::Milliseconds(100);
 constexpr base::TimeDelta kThemeFontRendererRestartDelay =
     base::Milliseconds(250);
 constexpr base::TimeDelta kBrowserStatePollInterval = base::Milliseconds(200);
+// Enough for a shell's startup burst; anything past it is dropped and logged.
+constexpr size_t kMaxPendingCommands = 64;
 
 struct RuntimeBridgeState {
   base::Lock lock;
   scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner GUARDED_BY(lock);
+  // Commands the shell sent before Chromium's UI thread was up -- the shell
+  // starts talking as its page appears, which is earlier -- run once it is.
+  std::vector<std::pair<gfx::AcceleratedWidget, base::DictValue>>
+      pending_commands GUARDED_BY(lock);
   std::optional<GURL> pending_url GUARDED_BY(lock);
   std::optional<std::string> pending_theme_font_id GUARDED_BY(lock);
   std::optional<std::string> requested_theme_font_id GUARDED_BY(lock);
@@ -1937,6 +1943,8 @@ void NotifyAuraShellBrowserStarted() {
   std::string ui_family;
   std::string color_scheme;
   scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner;
+  std::vector<std::pair<gfx::AcceleratedWidget, base::DictValue>>
+      pending_commands;
   uint64_t browser_generation = 0;
   {
     base::AutoLock lock(state.lock);
@@ -1944,6 +1952,8 @@ void NotifyAuraShellBrowserStarted() {
     browser_generation = ++state.browser_generation;
     state.last_browser_state_json.clear();
     ui_task_runner = state.ui_task_runner;
+    pending_commands = std::move(state.pending_commands);
+    state.pending_commands.clear();
     pending_url = std::move(state.pending_url);
     pending_theme_font_id = std::move(state.pending_theme_font_id);
     ui_family = state.ui_family;
@@ -1957,6 +1967,11 @@ void NotifyAuraShellBrowserStarted() {
   ui_task_runner->PostTask(
       FROM_HERE,
       base::BindOnce(&PollBrowserStateOnUiThread, browser_generation));
+  for (auto& [widget, command] : pending_commands) {
+    ui_task_runner->PostTask(
+        FROM_HERE, base::BindOnce(&ExecuteBrowserCommandOnUiThread, widget,
+                                  std::move(command)));
+  }
   ui_task_runner->PostTask(FROM_HERE,
                            base::BindOnce(&ApplyWindowStateOnUiThread,
                                           gfx::kNullAcceleratedWidget, 0));
@@ -2097,9 +2112,14 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
     RuntimeBridgeState& state = GetState();
     base::AutoLock lock(state.lock);
     ui_task_runner = state.ui_task_runner;
-  }
-  if (!ui_task_runner) {
-    return false;
+    if (!ui_task_runner) {
+      if (state.pending_commands.size() >= kMaxPendingCommands) {
+        LOG(ERROR) << "OHOS Aura shell dropped a command sent before startup";
+        return false;
+      }
+      state.pending_commands.emplace_back(widget, std::move(command));
+      return true;
+    }
   }
   ui_task_runner->PostTask(
       FROM_HERE, base::BindOnce(&ExecuteBrowserCommandOnUiThread, widget,
