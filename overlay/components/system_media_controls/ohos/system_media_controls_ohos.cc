@@ -9,13 +9,13 @@
 #include <multimedia/av_session/native_avplaybackstate.h>
 #include <multimedia/av_session/native_avsession_errors.h>
 
-#include <cstdlib>
 #include <memory>
 #include <utility>
 
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/no_destructor.h"
 #include "base/notimplemented.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
@@ -49,25 +49,32 @@ AVSession_PlaybackState ToAVSessionState(
   return PLAYBACK_STATE_STOPPED;
 }
 
-// OH_NativeBundle_GetMainElementName hands back strings the caller frees.
 struct AppElement {
   std::string bundle_name;
   std::string ability_name;
 };
 
-AppElement ReadMainElement() {
-  OH_NativeBundle_ElementName element = OH_NativeBundle_GetMainElementName();
-  AppElement result;
-  if (element.bundleName) {
-    result.bundle_name = element.bundleName;
-  }
-  if (element.abilityName) {
-    result.ability_name = element.abilityName;
-  }
-  free(element.bundleName);
-  free(element.moduleName);
-  free(element.abilityName);
-  return result;
+// Read once and kept: the app's main element does not change while it runs.
+//
+// OH_NativeBundle_GetMainElementName's strings come from the system allocator
+// and the caller is told to free them, but free() in this library is
+// PartitionAlloc's shim. Handing it a pointer it never allocated crashed the
+// browser in PartitionRoot::FreeInUnknownRoot the first time a page played
+// media. The strings are left alone instead: a few bytes, once per process.
+const AppElement& MainElement() {
+  static const base::NoDestructor<AppElement> element([] {
+    const OH_NativeBundle_ElementName raw =
+        OH_NativeBundle_GetMainElementName();
+    AppElement result;
+    if (raw.bundleName) {
+      result.bundle_name = raw.bundleName;
+    }
+    if (raw.abilityName) {
+      result.ability_name = raw.abilityName;
+    }
+    return result;
+  }());
+  return *element;
 }
 
 }  // namespace
@@ -126,7 +133,7 @@ bool SystemMediaControlsOhos::Initialize() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   // AVSession ties the session to an ability so the control center can bring
   // the app back when the user taps "now playing".
-  const AppElement element = ReadMainElement();
+  const AppElement& element = MainElement();
   if (element.bundle_name.empty() || element.ability_name.empty()) {
     LOG(ERROR) << "AVSession needs the app's bundle and ability name";
     return false;
