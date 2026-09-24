@@ -5,6 +5,7 @@
 
 #include <dlfcn.h>
 #include <hilog/log.h>
+#include <stdlib.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -51,6 +52,32 @@ bool ProcessCanJit() {
   const bool executable = mprotect(page, size, PROT_READ | PROT_EXEC) == 0;
   munmap(page, size);
   return executable;
+}
+
+// Points ICU, and so every page's Date and Intl, at the system time zone.
+// HarmonyOS has no /etc/localtime and sets no TZ, so ICU fell back to the C
+// library's abbreviation "CST" and read it as America/Chicago: pages ran 13
+// hours off China time, and Cloudflare's checks failed on the mismatch with
+// the IP's location. Must run before Chromium initializes ICU; a TZ the
+// environment already sets wins. Loaded dynamically: the call is API 12+.
+void ApplySystemTimeZone() {
+  if (getenv("TZ")) {
+    return;
+  }
+  using GetTimeZoneFn = int (*)(char*, uint32_t);
+  void* library = dlopen("libtime_service_ndk.so", RTLD_NOW | RTLD_LOCAL);
+  auto* get_time_zone = library ? reinterpret_cast<GetTimeZoneFn>(dlsym(
+                                      library, "OH_TimeService_GetTimeZone"))
+                                : nullptr;
+  constexpr uint32_t kTimeZoneBufferSize = 64;
+  char time_zone[kTimeZoneBufferSize] = {};
+  if (!get_time_zone ||
+      get_time_zone(time_zone, kTimeZoneBufferSize) != 0 || !time_zone[0]) {
+    AURA_LOG_E("AuraShell could not read the system time zone");
+    return;
+  }
+  setenv("TZ", time_zone, /*overwrite=*/0);
+  AURA_LOG_I("AuraShell time zone %{public}s", time_zone);
 }
 
 void AppendSwitchWithValue(std::vector<std::string>* arguments,
@@ -173,6 +200,7 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
   }
 
   startup_config_ = config;
+  ApplySystemTimeZone();
   arguments_ = BuildArgumentsLocked(config);
   started_ = true;
   if (!config.headless) {
