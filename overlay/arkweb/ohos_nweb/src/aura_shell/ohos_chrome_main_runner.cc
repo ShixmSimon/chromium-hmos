@@ -5,6 +5,7 @@
 
 #include <dlfcn.h>
 #include <hilog/log.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #include <limits>
@@ -34,6 +35,23 @@ namespace {
 #define AURA_LOG_E(...) \
   OH_LOG_Print(LOG_APP, LOG_ERROR, 0xc233, "AuraShell", __VA_ARGS__)
 
+
+// Whether this process may make anonymous memory executable, which V8's JIT
+// needs. HarmonyOS withdraws that from apps in some security modes, and V8
+// then dies while its first isolate reserves the JIT code range ("V8 process
+// OOM (Failed to reserve virtual memory for CodeRange)") -- a crash on every
+// launch. Asked once per process, before Chromium starts.
+bool ProcessCanJit() {
+  const size_t size = static_cast<size_t>(getpagesize());
+  void* page = mmap(nullptr, size, PROT_READ | PROT_WRITE,
+                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (page == MAP_FAILED) {
+    return false;
+  }
+  const bool executable = mprotect(page, size, PROT_READ | PROT_EXEC) == 0;
+  munmap(page, size);
+  return executable;
+}
 
 void AppendSwitchWithValue(std::vector<std::string>* arguments,
                            const std::string& name,
@@ -268,9 +286,12 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   } else {
     arguments.push_back("--remote-debugging-address=127.0.0.1");
     arguments.push_back("--remote-debugging-port=9222");
-    if (config.jitless) {
-    arguments.push_back("--js-flags=--jitless --wasm-jitless");
-  }
+    const bool can_jit = ProcessCanJit();
+    AURA_LOG_I("AuraShell JIT %{public}s (config jitless=%{public}d)",
+               can_jit ? "available" : "unavailable", config.jitless);
+    if (config.jitless || !can_jit) {
+      arguments.push_back("--js-flags=--jitless --wasm-jitless");
+    }
 
   arguments.push_back("--use-gl=angle");
     // The device Vulkan driver lacks VK_KHR_display required by ANGLE's
