@@ -47,9 +47,11 @@ base::FilePath PickerUriToPath(const std::string& uri) {
   if (result != ERR_OK || !converted_path) {
     return base::FilePath();
   }
-  base::FilePath path(converted_path);
-  free(converted_path);
-  return path;
+  // The string comes from the system allocator, but free() here is
+  // PartitionAlloc's shim, which crashes (FreeInUnknownRoot) on a pointer it
+  // did not hand out -- every "save as" answered by the shell hit it. It is
+  // left alone instead: one path per file picked.
+  return base::FilePath(converted_path);
 }
 
 std::vector<std::string> BuildSuffixFilters(
