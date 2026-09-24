@@ -105,6 +105,35 @@ void PostToInputMethod(InputMethod_TextEditorProxy* proxy,
                      entry->input_method, std::move(callback)));
 }
 
+// What a field is for, from its autocomplete tokens. Set by Blink's
+// InputMethodController::TextInputFlags() on OHOS only
+// (patches/ohos-autocomplete-hints.patch); the values must match.
+constexpr int kOhosAutocompleteUsername = 1 << 24;
+constexpr int kOhosAutocompleteNewPassword = 1 << 25;
+constexpr int kOhosAutocompleteOneTimeCode = 1 << 26;
+
+InputMethod_TextInputType ToOhosInputType(TextInputType type);
+
+// The keyboard HarmonyOS should show. Password Vault fills and saves only
+// when it sees a user-name field next to a password field, and offers a
+// strong password only for a new-password one.
+InputMethod_TextInputType ToOhosInputType(TextInputType type, int flags) {
+  if (type == TEXT_INPUT_TYPE_PASSWORD &&
+      (flags & kOhosAutocompleteNewPassword)) {
+    return IME_TEXT_INPUT_TYPE_NEW_PASSWORD;
+  }
+  if ((type == TEXT_INPUT_TYPE_TEXT || type == TEXT_INPUT_TYPE_EMAIL) &&
+      (flags & kOhosAutocompleteUsername)) {
+    return IME_TEXT_INPUT_TYPE_USER_NAME;
+  }
+  if ((type == TEXT_INPUT_TYPE_TEXT || type == TEXT_INPUT_TYPE_NUMBER ||
+       type == TEXT_INPUT_TYPE_TELEPHONE) &&
+      (flags & kOhosAutocompleteOneTimeCode)) {
+    return IME_TEXT_INPUT_TYPE_ONE_TIME_CODE;
+  }
+  return ToOhosInputType(type);
+}
+
 InputMethod_TextInputType ToOhosInputType(TextInputType type) {
   switch (type) {
     case TEXT_INPUT_TYPE_NONE:
@@ -376,9 +405,12 @@ void OhosInputMethod::UpdateImeState() {
 
   RefreshTextSnapshot(true);
   const TextInputType type = GetTextInputType();
+  const int flags =
+      GetTextInputClient() ? GetTextInputClient()->GetTextInputFlags() : 0;
   const InputMethod_ErrorCode result =
       OH_InputMethodProxy_NotifyConfigurationChange(
-          input_method_proxy_, ToOhosEnterKeyType(type), ToOhosInputType(type));
+          input_method_proxy_, ToOhosEnterKeyType(type),
+          ToOhosInputType(type, flags));
   if (result != IME_ERR_OK) {
     LOG(WARNING) << "HarmonyOS IME configuration update failed result="
                  << result;
@@ -392,7 +424,9 @@ void OhosInputMethod::RefreshTextSnapshot(bool notify_input_method) {
 
   ProxySnapshot snapshot;
   const TextInputType input_type = GetTextInputType();
-  snapshot.input_type = ToOhosInputType(input_type);
+  snapshot.input_type = ToOhosInputType(
+      input_type,
+      GetTextInputClient() ? GetTextInputClient()->GetTextInputFlags() : 0);
   snapshot.enter_key_type = ToOhosEnterKeyType(input_type);
   snapshot.window_id = GetOhosApplicationWindowIdForWidget(widget_);
 
