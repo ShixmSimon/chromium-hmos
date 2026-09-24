@@ -151,6 +151,7 @@ apply_incremental_patch "${repo_root}/patches/ohos-webauthn-platform.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-video-codec.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-autocomplete-hints.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-shell-context-menu.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-shell-services.patch"
 # The chooser takes touch now, so the probes that found out why come out.
 retire_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
 

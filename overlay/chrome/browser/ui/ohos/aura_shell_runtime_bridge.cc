@@ -49,6 +49,7 @@
 #include "chrome/browser/permissions/system/system_permission_common.h"
 #include "chrome/browser/permissions/system/system_permission_settings_ohos.h"
 #include "chrome/browser/ui/ohos/shell_context_menu_ohos.h"
+#include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "chrome/browser/ui/ohos/system_geolocation_source_ohos.h"
 #include "services/device/public/cpp/geolocation/buildflags.h"
 #include "services/device/public/cpp/geolocation/geolocation_system_permission_manager.h"
@@ -962,6 +963,7 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   state.Set("isPwaWindow", false);
   state.Set("pwaAppId", "");
   state.Set("pwaStartUrl", "");
+  state.Set("bookmarked", false);
 
   TabStripModel* tabs = browser ? browser->GetTabStripModel() : nullptr;
   if (!tabs) {
@@ -1003,9 +1005,14 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   }
   state.Set("tabs", std::move(tab_values));
 
+  // The snapshot is built for every window regularly, which makes it the
+  // place the shell services' observers get started early enough to see the
+  // first download or bookmark change.
+  EnsureShellServices(browser->GetProfile());
   content::WebContents* active = tabs->GetActiveWebContents();
   if (active) {
     const GURL url = active->GetVisibleURL();
+    state.Set("bookmarked", IsUrlBookmarked(browser->GetProfile(), url));
     const std::string visible_url = ShellVisibleUrl(url);
     state.Set("url", visible_url);
     state.Set("domain", url.host().empty() ? visible_url : url.host());
@@ -1519,6 +1526,12 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
   TabStripModel* tabs = browser ? browser->GetTabStripModel() : nullptr;
   if (!browser || !tabs) {
     LOG(ERROR) << "OHOS Aura shell command has no active browser: " << *name;
+    return;
+  }
+
+  if (IsShellServiceCommand(*name)) {
+    HandleShellServiceCommand({widget, browser, browser->GetProfile()}, *name,
+                              command);
     return;
   }
 
@@ -2063,8 +2076,9 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "contextMenuAction",
       "contextMenuDismissed",
   };
-  if (!name || std::ranges::find(kSupportedCommands, *name) ==
-                   std::ranges::end(kSupportedCommands)) {
+  if (!name || (!IsShellServiceCommand(*name) &&
+                std::ranges::find(kSupportedCommands, *name) ==
+                    std::ranges::end(kSupportedCommands))) {
     LOG(ERROR) << "OHOS Aura shell rejected browser command JSON";
     return false;
   }
@@ -2323,6 +2337,25 @@ bool RequestAuraShellSystemPrint(content::WebContents* contents) {
                                      base::UTF16ToUTF8(contents->GetTitle()),
                                      contents->GetLastCommittedURL().spec()));
   return true;
+}
+
+void DispatchAuraShellRuntimeEventToWidget(gfx::AcceleratedWidget widget,
+                                           base::DictValue event) {
+  DispatchRuntimeEvent(widget, std::move(event));
+}
+
+void DispatchAuraShellRuntimeEventToProfile(Profile* profile,
+                                            const base::DictValue& event) {
+  GlobalBrowserCollection* browsers = GlobalBrowserCollection::GetInstance();
+  if (!browsers || !profile) {
+    return;
+  }
+  browsers->ForEach([profile, &event](BrowserWindowInterface* browser) {
+    if (browser->GetProfile() == profile) {
+      DispatchRuntimeEvent(GetBrowserWidget(browser), event.Clone());
+    }
+    return true;
+  });
 }
 
 bool DispatchAuraShellRuntimeEvent(content::WebContents* contents,

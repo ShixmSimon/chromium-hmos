@@ -12,6 +12,8 @@
 #include "base/values.h"
 #include "ui/gfx/native_ui_types.h"
 
+class Profile;
+
 namespace content {
 class WebContents;
 }
@@ -71,6 +73,12 @@ void UpdateAuraShellPrintOutputDirectory(const std::string& output_directory);
 bool IsAuraShellMobilePhoneUi();
 bool IsAuraShellDesktopUi();
 bool RequestAuraShellSystemPrint(content::WebContents* contents);
+// Sends `event` to the shell window hosting `widget`.
+void DispatchAuraShellRuntimeEventToWidget(gfx::AcceleratedWidget widget,
+                                           base::DictValue event);
+// Sends a copy of `event` to every shell window showing `profile`.
+void DispatchAuraShellRuntimeEventToProfile(Profile* profile,
+                                            const base::DictValue& event);
 // Sends `event` to the shell hosting `contents`. False when no browser window
 // holds it.
 bool DispatchAuraShellRuntimeEvent(content::WebContents* contents,

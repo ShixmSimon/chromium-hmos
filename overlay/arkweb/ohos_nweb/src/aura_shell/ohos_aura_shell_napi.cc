@@ -1056,6 +1056,18 @@ void ReadNonNegativeIntegerField(const base::DictValue& dict,
   }
 }
 
+// A startup option naming who draws a piece of UI, passed on to Chromium as
+// --<switch_name>=shell|native. Other values are ignored.
+void ReadUiOwnerSwitch(const base::DictValue& dict,
+                       const std::string& key,
+                       const std::string& switch_name,
+                       std::vector<AuraAdditionalSwitch>* switches) {
+  const std::string* value = dict.FindString(key);
+  if (value && (*value == "shell" || *value == "native")) {
+    switches->push_back({switch_name, *value});
+  }
+}
+
 AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
   AuraStartupConfig config;
   std::optional<base::DictValue> parsed =
@@ -1111,14 +1123,19 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
     }
   }
 
-  // Who draws long-press menus: "shell" (the ArkUI shell) or "native"
-  // (Chromium's own). Absent, phones use the shell; see
-  // chrome/browser/ui/ohos/shell_context_menu_ohos.h.
-  if (const std::string* context_menu = dict.FindString("contextMenu")) {
-    if (*context_menu == "shell" || *context_menu == "native") {
-      config.additional_switches.push_back(
-          {"ohos-context-menu", *context_menu});
-    }
+  // Who draws long-press menus and download UI: "shell" (the ArkUI shell) or
+  // "native" (Chromium's own). Absent, phones use the shell; see
+  // chrome/browser/ui/ohos/shell_context_menu_ohos.h and
+  // shell_downloads_ohos.h.
+  ReadUiOwnerSwitch(dict, "contextMenu", "ohos-context-menu",
+                    &config.additional_switches);
+  ReadUiOwnerSwitch(dict, "downloadUi", "ohos-download-ui",
+                    &config.additional_switches);
+  // Where downloads go: the shell's Download/<bundle> directory, as the URI
+  // DocumentViewPicker returned. The engine turns it into a path.
+  if (const std::string* directory = dict.FindString("downloadDirectoryUri");
+      directory && !directory->empty()) {
+    config.additional_switches.push_back({"ohos-download-dir", *directory});
   }
 
   std::optional<bool> jitless = dict.FindBool("jitless");

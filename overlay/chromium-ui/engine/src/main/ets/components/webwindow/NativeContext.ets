@@ -19,6 +19,15 @@ import { UsbBridge, UsbNativePort } from '../../utils/UsbBridge';
 import { SystemServiceBridge, SystemServiceNativePort } from '../../utils/SystemServiceBridge';
 import { registerSystemServices } from '../../utils/SystemServices';
 import { AuraStartupConfig } from '../../utils/DeviceType';
+import {
+  BrowsingDataTimeRange,
+  BrowsingDataType,
+  DownloadAction,
+  HistoryVisitRef,
+  ShellPrefKey,
+  SiteSettingType,
+  SiteSettingValue
+} from './ShellServiceTypes';
 
 export interface WindowRect {
   x: number;
@@ -137,7 +146,13 @@ export interface BrowserRuntimeEvent {
     'castRequested' | 'filePickerRequested' | 'pwaInstalled' | 'pwaMenuModel' |
     'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
     'permissionsRequested' | 'browserControlsRatio' | 'findResult' | 'pageText' |
-    'contextMenuRequested';
+    'contextMenuRequested' |
+    // Profile data; read these through shellEvent<T>() (ShellServiceTypes).
+    'bookmarkList' | 'bookmarkCreated' | 'bookmarksChanged' |
+    'historyResults' | 'historyChanged' | 'autocompleteResults' | 'topSites' |
+    'downloadUpdated' | 'downloadList' |
+    'clearBrowsingDataDone' | 'browsingDataCounts' | 'searchEngines' |
+    'prefs' | 'prefsChanged' | 'siteSettings' | 'aboutInfo' | 'favicons';
   // contextMenuRequested: where the press was, in vp in the window.
   x?: number;
   y?: number;
@@ -191,7 +206,29 @@ export interface BrowserCommandPayload {
   command: string;
   url?: string;
   // contextMenuAction: the item chosen, one of the event's supportedActions.
-  action?: ContextMenuAction;
+  // downloadAction: what to do with the download `id`.
+  action?: ContextMenuAction | DownloadAction;
+  // Profile data commands (docs/SHELL_CONTRACT.md, "Profile data").
+  id?: string;
+  parentId?: string;
+  title?: string;
+  query?: string;
+  maxCount?: number;
+  beforeTime?: number;
+  beginTime?: number;
+  endTime?: number;
+  count?: number;
+  items?: HistoryVisitRef[];
+  types?: BrowsingDataType[];
+  timeRange?: BrowsingDataTimeRange;
+  keys?: ShellPrefKey[];
+  key?: ShellPrefKey;
+  value?: boolean | number | string;
+  origin?: string;
+  type?: SiteSettingType;
+  setting?: SiteSettingValue;
+  urls?: string[];
+  sizeVp?: number;
   // setViewportInsets: how much of the page bottom the shell covers, in vp.
   bottom?: number;
   // setBrowserControls: the shell's top bar height, in vp; 0 for none.

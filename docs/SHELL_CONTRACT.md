@@ -175,6 +175,7 @@ struct Browser {
 | `tabs`、`tabCount`、`activeTabIndex` | 标签列表。每个标签有 `index`、`active`、`url`、`title`、`loading`。 |
 | `mobileUi`、`uiFamily` | 引擎当前使用的 UI 形态。 |
 | `isPwaWindow`、`pwaAppId`、`pwaStartUrl` | 当前窗口是否是 PWA。 |
+| `bookmarked` | 当前标签页的网址是否已加入书签。菜单里的书签开关用它。 |
 | `version` | 协议版本。 |
 
 ---
@@ -273,6 +274,95 @@ function report() {
 | `defaultBrowserState`、`systemCapabilities` | 见参考实现 | 系统集成相关状态 |
 
 后退、前进、刷新这类命令,以 `aura_shell_runtime_bridge.cc` 里 `ExecuteAuraShellBrowserCommand` 实际接受的为准。这张表是按 `286a844` 整理的。
+
+### Profile 数据（书签、历史、下载、设置）
+
+书签、历史、下载、偏好设置都存在 Chromium 的 Profile 里。外壳想自己画这几个页面时，不要打开 `chrome://bookmarks` 这类页面，改用下面的命令查询和修改。结果通过事件返回。
+
+**共同约定**
+
+- 查询命令带 `requestId`，返回的事件里带同一个 `requestId`。
+- 数据在别处变了（其它标签页加了书签、下载进度变化、历史被清除），引擎会主动推一条 `…Changed` 事件（下载是 `downloadUpdated`），外壳收到后刷新正在显示的页面。
+- 每个事件都带 `incognito`。命令作用于发命令的窗口所在的 Profile。
+- 时间一律是毫秒时间戳（UTC），未知时为 -1。字节数未知时为 -1。Chromium 的 64 位 id 以字符串传递。
+- 事件的字段类型在 HAR 的 `ShellServiceTypes.ets` 里，每种事件一个接口，用 `shellEvent<HistoryResultsEvent>(event)` 这种方式读取。
+
+**书签**
+
+| 命令 | 参数 | 返回 |
+|---|---|---|
+| `getBookmarks` | `requestId`, `parentId?` | `bookmarkList { requestId, parentId, nodes }`。不传 `parentId` 时返回三个根文件夹：移动设备书签、书签栏、其他书签 |
+| `searchBookmarks` | `requestId`, `query`, `maxCount` | `bookmarkList`，`parentId` 为空。按标题和网址匹配 |
+| `addBookmark` | `url`, `title`, `parentId?` | 默认加到"移动设备书签" |
+| `removeBookmarkByUrl` | `url` | 删除这个网址的所有书签 |
+| `updateBookmark` | `id`, `title?`, `url?` | |
+| `moveBookmark` | `id`, `parentId`, `index` | |
+| `removeBookmark` | `id` | 文件夹连同里面的内容一起删 |
+| `createBookmarkFolder` | `requestId`, `parentId`, `title` | `bookmarkCreated { requestId, node }` |
+
+`BookmarkNode { id, parentId, type: 'url' \| 'folder', title, url?, dateAdded, index }`。任何变化后推送 `bookmarksChanged { revision }`。
+
+**历史**
+
+| 命令 | 参数 | 返回 |
+|---|---|---|
+| `queryHistory` | `requestId`, `text`（空为全部）, `beforeTime?`（分页游标）, `maxCount` | `historyResults { requestId, items, reachedEnd }`，按时间倒序，每个网址每天一条。翻页时把最后一条的 `visitTime` 作为下一次的 `beforeTime` |
+| `removeHistoryItems` | `items: { url, visitTime }[]` | 删除这个网址在 `visitTime` 所在那一天的全部访问。`historyResults` 本来就是每个网址每天一条，和 chrome://history 的做法一致 |
+| `removeHistoryForUrl` | `url` | 删除这个网址的全部访问记录 |
+| `clearHistory` | `beginTime?`, `endTime?` | 不传为全部时间 |
+| `autocomplete` | `requestId`, `text` | `autocompleteResults { requestId, items, done }`。同一个 `requestId` 可能收到多次，直到 `done` 为 true |
+| `getTopSites` | `requestId`, `count` | `topSites { requestId, items: { url, title }[] }` |
+
+`HistoryItem { url, title, visitTime, visitCount }`。有变化时推送 `historyChanged { revision }`，最多每秒一次。
+
+**下载**
+
+下载开始、进度变化（每个下载约 500ms 最多一次）、状态变化、被删除时，引擎推送 `downloadUpdated`，字段见 `DownloadItem`：`id`、`url`、`fileName`、`filePath`、`mimeType`、`receivedBytes`、`totalBytes`、`state`（`'inProgress' | 'paused' | 'completed' | 'cancelled' | 'failed'`）、`failReason`、`canResume`、`dangerous`、`dangerType`、`startTime`、`endTime`，被删除时另带 `removed: true`。
+
+**危险文件**：`dangerous` 为 true 的下载会停在 `inProgress`，等用户决定。外壳必须给出"仍然保留"和"丢弃"两个选项，分别发 `keepDangerous` 和 `discardDangerous`，否则这个下载会一直停在那里。
+
+| 命令 | 参数 | 返回 |
+|---|---|---|
+| `listDownloads` | `requestId` | `downloadList { requestId, items }`，最新的在前 |
+| `downloadAction` | `id`, `action`: `'pause' \| 'resume' \| 'cancel' \| 'retry' \| 'remove' \| 'removeAndDeleteFile' \| 'keepDangerous' \| 'discardDangerous'` | `remove` 只删记录，`removeAndDeleteFile` 连文件一起删 |
+
+- **保存位置**：外壳在启动时用 `DocumentViewPicker` 的下载模式（`pickerMode = DOWNLOAD`）取到 `Download/<包名>` 目录的 URI，填进启动配置的 `downloadDirectoryUri`。引擎把它设为 Chromium 的默认下载目录，并关掉"下载前询问保存位置"。`filePath` 是真实路径，外壳用 `fileUri.getUriFromPath` 转成 URI 后再打开或分享。
+- **下载提示由谁显示**：启动配置 `downloadUi: 'shell' | 'native'`。手机默认为 `'shell'`，此时 Chromium 不显示下载气泡和下载栏，由外壳根据 `downloadUpdated` 自己提示。
+- 长按菜单里的各种"另存为"也走这套下载流程。
+
+**设置**
+
+| 命令 | 参数 | 返回 |
+|---|---|---|
+| `clearBrowsingData` | `requestId`, `types`, `timeRange` | `clearBrowsingDataDone { requestId, ok }`，`ok` 为 false 表示请求无效或有数据没清掉。已安装网页应用的数据不清。`passwords` 只清 Chromium 自己存的密码，不影响系统密码保险箱 |
+| `getBrowsingDataCounts` | `requestId`, `timeRange` | `browsingDataCounts { requestId, historyCount, cacheBytes, siteCount }`。`historyCount` 按每个网址每天计一条；10 秒内算不出的项为 -1 |
+| `getSearchEngines` | `requestId` | `searchEngines { requestId, items: { id, name, keyword, url, isDefault }[] }`，只列出能设为默认的搜索引擎 |
+| `setDefaultSearchEngine` | `id` | 策略或扩展控制默认搜索引擎时不生效 |
+| `getPrefs` | `requestId`, `keys?` | `prefs { requestId, values: { key, value }[] }`。不传 `keys` 返回全部；本版本不支持的键不返回 |
+| `setPref` | `key`, `value` | 写入成功后推送 `prefsChanged { keys }`。被策略锁定的项写不进去 |
+| `getSiteSettings` | `requestId`, `type?` | `siteSettings { requestId, items: { origin, type, setting, embeddingOrigin? }[] }`，只列出用户单独设置过的网站。`origin` 是 Chromium 的匹配规则，例如 `https://a.com:443`、`[*.]a.com` |
+| `getSiteSettingsForOrigin` | `requestId`, `origin` | 同上，列出这个网站每一类权限的当前值 |
+| `setSiteSetting` | `origin`, `type`, `setting` | `setting` 为 `'allow' \| 'block' \| 'ask' \| 'default'`，`default` 表示删除这条单独设置。定位、摄像头、麦克风、通知、剪贴板只能对 https 网站设置；`storageAccess` 不能按单个网站设置 |
+| `setDefaultSiteSetting` | `type`, `setting` | |
+| `resetSiteSettings` | `origin` | 清除这个网站的全部权限和存储 |
+| `getAboutInfo` | `requestId` | `aboutInfo { requestId, chromiumVersion, engineCommit, userAgent }` |
+
+`types`：`history`、`cookies`、`cache`、`siteSettings`、`formData`、`passwords`、`downloads`。`timeRange`：`lastHour`、`lastDay`、`lastWeek`、`last4Weeks`、`all`。
+
+偏好键（只接受这些）：`blockThirdPartyCookies`、`doNotTrack`、`safeBrowsing`（`'off' | 'standard' | 'enhanced'`）、`preloadPages`、`popupsBlocked`、`javascriptEnabled`、`textScale`、`autofillAddresses`、`autofillCards`、`downloadAskWhereToSave`。
+
+- `textScale` 是 50–200 的百分比。桌面版 Chromium 没有只放大文字的设置，所以这里改的是网页的默认缩放比例，整页一起放大。
+- 这个版本没有配置 Google API 密钥，`safeBrowsing` 开关能保存，但实际上很可能不起作用，设置页不要承诺有安全浏览保护。
+
+权限类型：`location`、`camera`、`microphone`、`notifications`、`javascript`、`popups`、`sound`、`clipboard`、`storageAccess`。没有 `autoplay`：桌面版 Chromium 实际上不执行这项设置，要控制声音请用 `sound`。
+
+所有设置都读写普通 Profile，从无痕窗口发的命令也一样。
+
+**网站图标**
+
+| 命令 | 参数 | 返回 |
+|---|---|---|
+| `getFavicons` | `requestId`, `urls`, `sizeVp` | `favicons { requestId, items: { url, pngBase64 }[] }`。取不到的网址不返回，外壳用首字母占位。一次最多 100 个 |
 
 ---
 

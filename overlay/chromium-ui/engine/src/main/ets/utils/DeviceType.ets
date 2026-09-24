@@ -110,6 +110,12 @@ export interface AuraStartupConfig {
   // and the shell draws the menu. 'native': Chromium's own menu. Unset, phones
   // use 'shell' and other devices 'native'.
   contextMenu?: 'shell' | 'native';
+  // Who draws download UI. 'shell': no Chromium download bubble or shelf; the
+  // shell follows downloadUpdated events. Unset, as contextMenu.
+  downloadUi?: 'shell' | 'native';
+  // Where downloads are saved: the Download/<bundle> directory URI the shell
+  // got from DocumentViewPicker in DOWNLOAD mode. Unset keeps Chromium's.
+  downloadDirectoryUri?: string;
   windowRole?: 'browser' | 'pwa';
   targetWidget?: number;
   pwaAppId?: string;
