@@ -21,6 +21,16 @@ export interface BookmarkNode {
   url?: string;
   dateAdded: number;
   index: number;
+  // Folders only: how many children they hold directly, not counting what is
+  // nested deeper. Absent on an engine older than bookmarkApiVersion 2.
+  childCount?: number;
+  // Only the three permanent folders carry this. Their titles are localized,
+  // so it is the only reliable way to tell the bookmark bar from the mobile
+  // folder -- which is where a new bookmark goes by default.
+  rootType?: 'mobile' | 'bookmarkBar' | 'other';
+  // searchBookmarks only: the titles from the permanent folder down to this
+  // node's parent, for the "where it lives" line under a flat search hit.
+  path?: string[];
 }
 
 export interface HistoryItem {
@@ -153,6 +163,39 @@ export interface BookmarkCreatedEvent extends ShellServiceEvent {
   node: BookmarkNode;
 }
 
+// The answer to a bookmark command that changes something, sent only when the
+// command carried a requestId. Without it a failed edit is indistinguishable
+// from a slow one.
+export interface BookmarkOpResultEvent extends ShellServiceEvent {
+  requestId: number;
+  ok: boolean;
+  error?: BookmarkOpError;
+  // moveBookmarks and removeBookmarks: the ids that were skipped. The rest of
+  // the batch still went through.
+  failedIds?: string[];
+}
+
+export type BookmarkOpError =
+  // The id names nothing -- deleted from another window, typically.
+  | 'notFound'
+  // One of the three permanent folders, which cannot be edited or removed.
+  | 'permanentNode'
+  // The target parentId does not exist or is not a folder.
+  | 'invalidParent'
+  // A folder cannot be moved into itself or its own subtree.
+  | 'cycle'
+  // Not a valid URL, or a URL was set on a folder.
+  | 'invalidUrl'
+  // Anything else, including a bookmark managed by policy.
+  | 'unknown';
+
+// getBookmarkPath: the chain from the permanent folder down to the node
+// asked for, both ends included; empty when the id names nothing.
+export interface BookmarkPathEvent extends ShellServiceEvent {
+  requestId: number;
+  nodes: BookmarkNode[];
+}
+
 // bookmarksChanged and historyChanged: something changed; reload what is
 // showing. `revision` only ever grows.
 export interface ShellDataChangedEvent extends ShellServiceEvent {
@@ -222,6 +265,11 @@ export interface AboutInfoEvent extends ShellServiceEvent {
   chromiumVersion: string;
   engineCommit: string;
   userAgent: string;
+  // Which bookmark commands this engine understands: 1 is the original set,
+  // 2 adds insertion positions, bookmarkOpResult, childCount, rootType, the
+  // batch commands and the two lookups. Absent means 1. Read it once at
+  // startup instead of probing each command with a timeout.
+  bookmarkApiVersion?: number;
 }
 
 export interface FaviconsEvent extends ShellServiceEvent {

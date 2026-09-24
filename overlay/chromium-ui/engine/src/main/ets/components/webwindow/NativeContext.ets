@@ -230,6 +230,8 @@ export interface BrowserCommandPayload {
   type?: SiteSettingType;
   setting?: SiteSettingValue;
   urls?: string[];
+  // moveBookmarks and removeBookmarks: the bookmarks to act on, in order.
+  ids?: string[];
   sizeVp?: number;
   // setViewportInsets: how much of the page bottom the shell covers, in vp.
   bottom?: number;
