@@ -110,7 +110,11 @@ InputMethod_TextInputType ToOhosInputType(TextInputType type) {
     case TEXT_INPUT_TYPE_NONE:
       return IME_TEXT_INPUT_TYPE_NONE;
     case TEXT_INPUT_TYPE_PASSWORD:
-      return IME_TEXT_INPUT_TYPE_SCREEN_LOCK_PASSWORD;
+      // What ArkUI's own TextInput sends for InputType.Password (both are 7):
+      // the system's secure password keyboard. SCREEN_LOCK_PASSWORD is the
+      // lock screen's own keyboard, which the IME draws as a translucent
+      // overlay rather than its password keyboard.
+      return IME_TEXT_INPUT_TYPE_VISIBLE_PASSWORD;
     case TEXT_INPUT_TYPE_EMAIL:
       return IME_TEXT_INPUT_TYPE_EMAIL_ADDRESS;
     case TEXT_INPUT_TYPE_NUMBER:
