@@ -199,6 +199,19 @@ void OhosScreen::OnDisplayMetricsChanged(gfx::Size pixel_size, float density) {
 }
 
 void OhosScreen::OnDisplayChanged() {
+  // A rotation reaches this listener before the window metrics callback
+  // reports the new size. Publishing the new rotation with the old size told
+  // pages "portrait-primary, 270 degrees" after a landscape lock, and the
+  // lock never resolved; read the size the display has now.
+  int32_t width = 0;
+  int32_t height = 0;
+  if (OH_NativeDisplayManager_GetDefaultDisplayWidth(&width) ==
+          DISPLAY_MANAGER_OK &&
+      OH_NativeDisplayManager_GetDefaultDisplayHeight(&height) ==
+          DISPLAY_MANAGER_OK &&
+      width > 0 && height > 0) {
+    pixel_size_ = gfx::Size(width, height);
+  }
   UpdatePrimaryDisplay();
 }
 

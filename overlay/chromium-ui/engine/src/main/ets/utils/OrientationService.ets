@@ -22,8 +22,13 @@ import { SystemServiceHandler } from './SystemServiceBridge';
 const LOCK_TYPES: Map<string, window.Orientation> = new Map([
   ['portrait-primary', window.Orientation.PORTRAIT],
   ['portrait-secondary', window.Orientation.PORTRAIT_INVERTED],
-  ['landscape-primary', window.Orientation.LANDSCAPE],
-  ['landscape-secondary', window.Orientation.LANDSCAPE_INVERTED],
+  // Chromium derives the type from the display angle: 90 is
+  // landscape-primary, 270 landscape-secondary. Window LANDSCAPE turns the
+  // display to 270 and LANDSCAPE_INVERTED to 90 (measured on device), so the
+  // names cross here; mapped straight, a landscape-primary lock never saw its
+  // own orientation and never resolved.
+  ['landscape-primary', window.Orientation.LANDSCAPE_INVERTED],
+  ['landscape-secondary', window.Orientation.LANDSCAPE],
   ['portrait', window.Orientation.AUTO_ROTATION_PORTRAIT],
   ['landscape', window.Orientation.AUTO_ROTATION_LANDSCAPE],
   ['natural', window.Orientation.PORTRAIT],
