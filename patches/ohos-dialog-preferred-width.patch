@@ -1,0 +1,57 @@
+Keep dialogs that ask for a preferred width on a phone screen.
+
+ohos-dialog-width-fits-screen.patch capped GetSnappedDialogWidth, but dialogs
+that take DISTANCE_MODAL_DIALOG_PREFERRED_WIDTH (or the large variant, or the
+standalone bubble width) directly bypass it. The WebAuthn "use a phone or
+tablet" QR sheet is one: it was laid out past the right edge of the screen and
+cut off. On OHOS those metrics are capped to the work area as well.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch and
+ohos-dialog-width-fits-screen.patch.
+
+diff --git a/chrome/browser/ui/views/chrome_layout_provider.cc b/chrome/browser/ui/views/chrome_layout_provider.cc
+index 3dcdbc5..d743cb1 100644
+--- a/chrome/browser/ui/views/chrome_layout_provider.cc
++++ b/chrome/browser/ui/views/chrome_layout_provider.cc
+@@ -18,6 +18,22 @@
+ 
+ namespace {
+ 
++#if BUILDFLAG(IS_OHOS)
++// The preferred dialog and bubble widths are desktop sizes, all wider than a
++// phone screen. A dialog that asks for one by metric rather than through
++// GetSnappedDialogWidth -- the WebAuthn "use a phone" QR sheet, for one --
++// was laid out past the right edge and cut off. Keep every such width inside
++// the work area.
++int FitDialogWidthToScreen(int width) {
++  constexpr int kScreenEdgeMargin = 16;
++  if (const display::Screen* screen = display::Screen::Get()) {
++    return std::min(width, screen->GetPrimaryDisplay().work_area().width() -
++                               kScreenEdgeMargin);
++  }
++  return width;
++}
++#endif
++
+ ChromeLayoutProvider* g_chrome_layout_provider = nullptr;
+ 
+ }  // namespace
+@@ -116,6 +132,18 @@ int ChromeLayoutProvider::GetDistanceMetric(int metric) const {
+   DCHECK_GE(metric, views::VIEWS_DISTANCE_START);
+   DCHECK_LT(metric, views::VIEWS_DISTANCE_MAX);
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (metric == views::DISTANCE_MODAL_DIALOG_PREFERRED_WIDTH ||
++      metric == views::DISTANCE_LARGE_MODAL_DIALOG_PREFERRED_WIDTH ||
++      metric == DISTANCE_STANDALONE_BUBBLE_PREFERRED_WIDTH) {
++    const int width =
++        metric < views::VIEWS_DISTANCE_END
++            ? LayoutProvider::GetDistanceMetric(metric)
++            : kMediumDialogWidth;
++    return FitDialogWidthToScreen(width);
++  }
++#endif
++
+   if (metric < views::VIEWS_DISTANCE_END) {
+     return LayoutProvider::GetDistanceMetric(metric);
+   }
