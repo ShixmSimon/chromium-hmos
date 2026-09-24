@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "base/logging.h"
 #include "base/strings/string_number_conversions.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "chrome/browser/ui/ohos/shell_downloads_ohos.h"
@@ -36,6 +37,12 @@ constexpr ShellServiceCommand kShellServiceCommands[] = {
     {"moveBookmark", &HandleBookmarksCommand},
     {"removeBookmark", &HandleBookmarksCommand},
     {"createBookmarkFolder", &HandleBookmarksCommand},
+    {"getBookmarksForUrl", &HandleBookmarksCommand},
+    {"getBookmarkPath", &HandleBookmarksCommand},
+    {"moveBookmarks", &HandleBookmarksCommand},
+    {"removeBookmarks", &HandleBookmarksCommand},
+    {"exportBookmarks", &HandleBookmarksCommand},
+    {"importBookmarks", &HandleBookmarksCommand},
     // History, and the omnibox data built on it.
     {"queryHistory", &HandleHistoryCommand},
     {"removeHistoryItems", &HandleHistoryCommand},
@@ -101,10 +108,27 @@ bool HandleShellServiceCommand(const ShellCommandContext& context,
   return entry->handler(context, name, command);
 }
 
+// Adding a bookmark command means touching two lists in two files, and
+// forgetting the second one costs nothing at build time and everything at
+// run time: the bridge drops the command and the shell waits for a reply that
+// never comes. Say so once, in the log, the first time services start.
+void WarnAboutUnreachableCommands() {
+  for (std::string_view name : BookmarksCommandNames()) {
+    if (!FindCommand(name)) {
+      LOG(ERROR) << "OHOS shell services: bookmark command '" << name
+                 << "' is not in kShellServiceCommands and will be dropped";
+    }
+  }
+}
+
 void EnsureShellServices(Profile* profile) {
   if (!profile) {
     return;
   }
+  [[maybe_unused]] static const bool checked = [] {
+    WarnAboutUnreachableCommands();
+    return true;
+  }();
   ApplyShellDownloadDirectory(profile);
   EnsureBookmarksObserver(profile);
   EnsureHistoryObserver(profile);

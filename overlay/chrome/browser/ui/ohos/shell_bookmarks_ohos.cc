@@ -18,16 +18,23 @@
 #include <utility>
 #include <vector>
 
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/functional/bind.h"
+#include "base/task/bind_post_task.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
+#include "base/containers/span.h"
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
 #include "base/scoped_observation.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/task/thread_pool.h"
 #include "base/values.h"
+#include "base/task/task_traits.h"
+#include "chrome/browser/bookmarks/bookmark_html_writer.h"
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
@@ -37,6 +44,9 @@
 #include "components/bookmarks/browser/bookmark_node.h"
 #include "components/bookmarks/browser/bookmark_utils.h"
 #include "components/bookmarks/common/bookmark_metrics.h"
+#include "components/user_data_importer/common/imported_bookmark_entry.h"
+#include "components/user_data_importer/content/content_bookmark_parser_utils.h"
+#include "components/user_data_importer/utility/bookmark_parser.h"
 #include "url/gurl.h"
 
 namespace chrome::ohos {
@@ -51,6 +61,8 @@ constexpr char kBookmarkCreatedEvent[] = "bookmarkCreated";
 constexpr char kBookmarksChangedEvent[] = "bookmarksChanged";
 constexpr char kBookmarkOpResultEvent[] = "bookmarkOpResult";
 constexpr char kBookmarkPathEvent[] = "bookmarkPath";
+constexpr char kBookmarkExportDoneEvent[] = "bookmarkExportDone";
+constexpr char kBookmarkImportDoneEvent[] = "bookmarkImportDone";
 
 // Why an edit was refused. Without these a shell can only see that nothing
 // happened, so it shows "saved" for a rejected URL and offers no reason when
@@ -61,6 +73,20 @@ constexpr char kErrInvalidParent[] = "invalidParent";
 constexpr char kErrCycle[] = "cycle";
 constexpr char kErrInvalidUrl[] = "invalidUrl";
 constexpr char kErrUnknown[] = "unknown";
+
+// Import and export, which fail in their own ways.
+constexpr char kErrWriteFailed[] = "writeFailed";
+constexpr char kErrFileNotFound[] = "fileNotFound";
+constexpr char kErrNotBookmarkFile[] = "notBookmarkFile";
+constexpr char kErrTooLarge[] = "tooLarge";
+
+// A bookmarks file this big is not one the user meant to pick: Chrome's
+// export of tens of thousands of bookmarks is a few megabytes.
+constexpr int64_t kMaxImportBytes = 20 * 1024 * 1024;
+
+// What the imported folder is called when the shell does not say. The shell
+// normally passes a name carrying the date.
+constexpr char kDefaultImportFolderTitle[] = "Imported bookmarks";
 
 constexpr double kDefaultSearchCount = 50;
 constexpr double kMinSearchCount = 1;
@@ -605,6 +631,277 @@ void CreateBookmarkFolder(const ShellCommandContext& context,
   ReplyToShell(context, std::move(event));
 }
 
+// --- Import and export. ---------------------------------------------------
+//
+// Both work on a plain path inside the app sandbox. The shell owns the system
+// file picker and the copy in or out; this end never sees a document URI and
+// needs no storage permission, because the engine and the shell share one
+// process.
+
+// Everything under the three permanent folders, which is what the writer
+// writes and what the shell wants counted.
+void CountTree(const BookmarkNode* node, int* urls, int* folders) {
+  for (const auto& child : node->children()) {
+    if (child->is_url()) {
+      ++*urls;
+    } else if (child->is_folder()) {
+      ++*folders;
+      CountTree(child.get(), urls, folders);
+    }
+  }
+}
+
+void ReplyExportDone(const ShellCommandContext& context,
+                     int request_id,
+                     std::string_view error,
+                     int bookmark_count,
+                     int folder_count) {
+  base::DictValue event;
+  event.Set("event", kBookmarkExportDoneEvent);
+  event.Set("requestId", request_id);
+  event.Set("ok", error.empty());
+  event.Set("bookmarkCount", bookmark_count);
+  event.Set("folderCount", folder_count);
+  if (!error.empty()) {
+    event.Set("error", error);
+  }
+  ReplyToShell(context, std::move(event));
+}
+
+void OnExportFinished(ShellCommandContext context,
+                      int request_id,
+                      int bookmark_count,
+                      int folder_count,
+                      bookmark_html_writer::Result result) {
+  const bool ok = result == bookmark_html_writer::Result::kSuccess;
+  ReplyExportDone(context, request_id, ok ? std::string_view() : kErrWriteFailed,
+                  ok ? bookmark_count : 0, ok ? folder_count : 0);
+}
+
+void ExportBookmarks(const ShellCommandContext& context,
+                     BookmarkModel* model,
+                     const base::DictValue& command) {
+  const int request_id = ReadRequestId(command);
+  const std::string* path = command.FindString("path");
+  if (!path || path->empty()) {
+    ReplyExportDone(context, request_id, kErrWriteFailed, 0, 0);
+    return;
+  }
+  // Counted before writing: the writer reports only whether it succeeded, and
+  // the tree cannot change underneath it because both run on this sequence
+  // until the write is handed to the thread pool.
+  int urls = 0;
+  int folders = 0;
+  for (const BookmarkNode* root : {model->bookmark_bar_node(),
+                                   model->other_node(), model->mobile_node()}) {
+    if (root) {
+      CountTree(root, &urls, &folders);
+    }
+  }
+  // The writer takes a Profile and resolves the model from it; an incognito
+  // one resolves to its original, the same way every other command here does.
+  Profile* profile = context.profile;
+  if (!profile) {
+    ReplyExportDone(context, request_id, kErrUnknown, 0, 0);
+    return;
+  }
+  bookmark_html_writer::WriteBookmarks(
+      profile, base::FilePath(*path),
+      base::BindPostTask(
+          base::SequencedTaskRunner::GetCurrentDefault(),
+          base::BindOnce(&OnExportFinished, context, request_id, urls,
+                         folders)));
+}
+
+void ReplyImportDone(const ShellCommandContext& context,
+                     int request_id,
+                     std::string_view error,
+                     std::string_view folder_id,
+                     int bookmark_count,
+                     int folder_count,
+                     int skipped_count) {
+  base::DictValue event;
+  event.Set("event", kBookmarkImportDoneEvent);
+  event.Set("requestId", request_id);
+  event.Set("ok", error.empty());
+  event.Set("folderId", folder_id);
+  event.Set("bookmarkCount", bookmark_count);
+  event.Set("folderCount", folder_count);
+  event.Set("skippedCount", skipped_count);
+  if (!error.empty()) {
+    event.Set("error", error);
+  }
+  ReplyToShell(context, std::move(event));
+}
+
+struct ParsedImport {
+  std::string error;
+  std::vector<user_data_importer::ImportedBookmarkEntry> entries;
+};
+
+// Reads and parses off the UI thread. The parser is Chromium's own; upstream
+// runs it in a sandboxed utility process, which this platform does not give a
+// phone, so it runs here instead (see ohos-bookmark-html-parsing.patch).
+ParsedImport ReadAndParse(base::FilePath path) {
+  ParsedImport result;
+  const std::optional<int64_t> size = base::GetFileSize(path);
+  if (!size) {
+    result.error = kErrFileNotFound;
+    return result;
+  }
+  if (*size > kMaxImportBytes) {
+    result.error = kErrTooLarge;
+    return result;
+  }
+  std::string html;
+  if (!base::ReadFileToString(path, &html) || html.empty()) {
+    result.error = kErrFileNotFound;
+    return result;
+  }
+  user_data_importer::BookmarkParser::ParsedBookmarks parsed =
+      user_data_importer::ParseBookmarksUnsafe(html);
+  if (parsed.bookmarks.empty()) {
+    // Search engines and reading-list entries alone do not make this a
+    // bookmarks file as far as the user is concerned.
+    result.error = kErrNotBookmarkFile;
+    return result;
+  }
+  result.entries = std::move(parsed.bookmarks);
+  return result;
+}
+
+// The folder an entry belongs in, creating the chain under `root` as needed.
+// `path` is the entry's own folder chain as the file recorded it, including
+// the file's "Bookmarks bar" folder, which stays a folder here rather than
+// merging into ours.
+const BookmarkNode* FolderForPath(BookmarkModel* model,
+                                  const BookmarkNode* root,
+                                  const std::vector<std::u16string>& path) {
+  const BookmarkNode* parent = root;
+  for (const std::u16string& name : path) {
+    const BookmarkNode* next = nullptr;
+    for (const auto& child : parent->children()) {
+      if (child->is_folder() && child->GetTitle() == name) {
+        next = child.get();
+        break;
+      }
+    }
+    parent = next ? next
+                  : model->AddFolder(parent, parent->children().size(), name);
+    if (!parent) {
+      return nullptr;
+    }
+  }
+  return parent;
+}
+
+void OnImportParsed(ShellCommandContext context,
+                    int request_id,
+                    std::string parent_id,
+                    std::u16string folder_title,
+                    ParsedImport parsed) {
+  BookmarkModel* model = ModelFor(context.profile);
+  if (!model || !model->loaded()) {
+    ReplyImportDone(context, request_id, kErrUnknown, std::string_view(), 0, 0,
+                    0);
+    return;
+  }
+  if (!parsed.error.empty()) {
+    ReplyImportDone(context, request_id, parsed.error, std::string_view(), 0, 0,
+                    0);
+    return;
+  }
+  const BookmarkNode* parent = model->mobile_node();
+  if (!parent_id.empty()) {
+    parent = NodeById(model, &parent_id);
+    if (!CanHoldChildren(model, parent)) {
+      ReplyImportDone(context, request_id, kErrInvalidParent,
+                      std::string_view(), 0, 0, 0);
+      return;
+    }
+  }
+
+  int skipped = 0;
+  std::string folder_id;
+  {
+    // Everything under one batch: five thousand bookmarks must not redraw the
+    // shell five thousand times.
+    model->BeginExtensiveChanges();
+    // Imported into a folder of its own rather than merged, so the user can
+    // undo the whole thing by deleting one folder -- the same bargain Chrome
+    // offers. At the top, where the shell puts everything new.
+    const BookmarkNode* root = model->AddFolder(parent, 0, folder_title);
+    if (root) {
+      folder_id = ToShellId(root->id());
+      for (const user_data_importer::ImportedBookmarkEntry& entry :
+           parsed.entries) {
+        const BookmarkNode* holder = FolderForPath(model, root, entry.path);
+        if (!holder) {
+          ++skipped;
+          continue;
+        }
+        if (entry.is_folder) {
+          if (!FolderForPath(model, holder, {entry.title})) {
+            ++skipped;
+          }
+          continue;
+        }
+        // Firefox writes place: URLs for its smart folders, and any file
+        // can carry a malformed href.
+        if (!entry.url.is_valid()) {
+          ++skipped;
+          continue;
+        }
+        const base::Time added = entry.creation_time.is_null()
+                                     ? base::Time::Now()
+                                     : entry.creation_time;
+        if (!model->AddURL(holder, holder->children().size(), entry.title,
+                           entry.url, nullptr, added)) {
+          ++skipped;
+        }
+      }
+    }
+    model->EndExtensiveChanges();
+    if (!root) {
+      ReplyImportDone(context, request_id, kErrUnknown, std::string_view(), 0,
+                      0, 0);
+      return;
+    }
+  }
+  // Folders the file's own hierarchy implied are counted too, so the number
+  // matches what the user sees.
+  int created_urls = 0;
+  int created_folders = 0;
+  if (const BookmarkNode* root = NodeById(model, &folder_id)) {
+    CountTree(root, &created_urls, &created_folders);
+  }
+  ReplyImportDone(context, request_id, std::string_view(), folder_id,
+                  created_urls, created_folders, skipped);
+}
+
+void ImportBookmarks(const ShellCommandContext& context,
+                     BookmarkModel* model,
+                     const base::DictValue& command) {
+  const int request_id = ReadRequestId(command);
+  const std::string* path = command.FindString("path");
+  if (!path || path->empty()) {
+    ReplyImportDone(context, request_id, kErrFileNotFound, std::string_view(),
+                    0, 0, 0);
+    return;
+  }
+  const std::string* parent_id = command.FindString("parentId");
+  const std::string* title = command.FindString("title");
+  base::ThreadPool::PostTaskAndReplyWithResult(
+      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
+      base::BindOnce(&ReadAndParse, base::FilePath(*path)),
+      base::BindOnce(&OnImportParsed, context, request_id,
+                     parent_id ? *parent_id : std::string(),
+                     title && !title->empty()
+                         ? base::UTF8ToUTF16(*title)
+                         : base::UTF8ToUTF16(std::string_view(
+                               kDefaultImportFolderTitle))));
+}
+
 using CommandRunner = void (*)(const ShellCommandContext&,
                                BookmarkModel*,
                                const base::DictValue&);
@@ -627,7 +924,20 @@ constexpr BookmarksCommand kCommands[] = {
     {"getBookmarkPath", &GetBookmarkPath},
     {"moveBookmarks", &MoveBookmarks},
     {"removeBookmarks", &RemoveBookmarks},
+    {"exportBookmarks", &ExportBookmarks},
+    {"importBookmarks", &ImportBookmarks},
 };
+
+base::span<const std::string_view> CommandNames() {
+  static const base::NoDestructor<std::vector<std::string_view>> names([] {
+    std::vector<std::string_view> result;
+    for (const BookmarksCommand& command : kCommands) {
+      result.push_back(command.name);
+    }
+    return result;
+  }());
+  return *names;
+}
 
 CommandRunner FindCommand(std::string_view name) {
   for (const BookmarksCommand& command : kCommands) {
@@ -769,6 +1079,10 @@ PerProfile<BookmarksWatcher>& Watchers() {
 }
 
 }  // namespace
+
+base::span<const std::string_view> BookmarksCommandNames() {
+  return CommandNames();
+}
 
 bool HandleBookmarksCommand(const ShellCommandContext& context,
                             std::string_view name,

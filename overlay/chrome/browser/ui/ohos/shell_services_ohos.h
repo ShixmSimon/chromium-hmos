@@ -13,6 +13,7 @@
 #include <string>
 #include <string_view>
 
+#include "base/containers/span.h"
 #include "base/functional/callback.h"
 #include "base/time/time.h"
 #include "base/values.h"
@@ -133,6 +134,11 @@ class PerProfile : public ProfileObserver {
 bool HandleBookmarksCommand(const ShellCommandContext& context,
                             std::string_view name,
                             const base::DictValue& command);
+// Every command HandleBookmarksCommand answers. kShellServiceCommands is the
+// native bridge's allowlist and must list all of them -- a command missing
+// from it is dropped before it ever reaches the handler, with no reply and no
+// log, which is a very quiet way to fail.
+base::span<const std::string_view> BookmarksCommandNames();
 bool HandleFaviconsCommand(const ShellCommandContext& context,
                            std::string_view name,
                            const base::DictValue& command);

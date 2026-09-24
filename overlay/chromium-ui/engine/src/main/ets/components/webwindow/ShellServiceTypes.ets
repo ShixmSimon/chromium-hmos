@@ -196,6 +196,45 @@ export interface BookmarkPathEvent extends ShellServiceEvent {
   nodes: BookmarkNode[];
 }
 
+// exportBookmarks: the file at the path given has been written. The counts
+// leave out the three permanent folders.
+export interface BookmarkExportDoneEvent extends ShellServiceEvent {
+  requestId: number;
+  ok: boolean;
+  bookmarkCount: number;
+  folderCount: number;
+  error?: BookmarkExportError;
+}
+
+// The path could not be written: the directory is missing, or the disk is
+// full. 'unknown' is anything else.
+export type BookmarkExportError = 'writeFailed' | 'unknown';
+
+// importBookmarks: everything in the file has been added under one new
+// folder, whose id is folderId. skippedCount counts entries that were not
+// bookmarks this browser can hold -- Firefox's place: smart folders, mainly.
+// The counts leave out that new folder itself.
+export interface BookmarkImportDoneEvent extends ShellServiceEvent {
+  requestId: number;
+  ok: boolean;
+  folderId: string;
+  bookmarkCount: number;
+  folderCount: number;
+  skippedCount: number;
+  error?: BookmarkImportError;
+}
+
+export type BookmarkImportError =
+  // The path does not exist, or could not be read.
+  | 'fileNotFound'
+  // Readable, but nothing in it parsed as a bookmark.
+  | 'notBookmarkFile'
+  // Larger than 20 MB, which no real bookmarks file is.
+  | 'tooLarge'
+  // The parentId to import into does not exist or is not a folder.
+  | 'invalidParent'
+  | 'unknown';
+
 // bookmarksChanged and historyChanged: something changed; reload what is
 // showing. `revision` only ever grows.
 export interface ShellDataChangedEvent extends ShellServiceEvent {
@@ -267,8 +306,9 @@ export interface AboutInfoEvent extends ShellServiceEvent {
   userAgent: string;
   // Which bookmark commands this engine understands: 1 is the original set,
   // 2 adds insertion positions, bookmarkOpResult, childCount, rootType, the
-  // batch commands and the two lookups. Absent means 1. Read it once at
-  // startup instead of probing each command with a timeout.
+  // batch commands and the two lookups, 3 adds importBookmarks and
+  // exportBookmarks. Absent means 1. Read it once at startup instead of
+  // probing each command with a timeout.
   bookmarkApiVersion?: number;
 }
 

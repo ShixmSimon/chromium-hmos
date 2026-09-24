@@ -290,7 +290,8 @@ function report() {
 **书签**
 
 `aboutInfo` 里的 `bookmarkApiVersion` 说明这份引擎支持到哪一版：`1` 是最初
-的一组命令，`2` 是下表的全部。外壳启动时读一次，不必逐条用超时去探测。
+的一组命令，`2` 加上插入位置、操作结果、`childCount`/`rootType`、批量命令和两个
+查询，`3` 加上导入导出。外壳启动时读一次，不必逐条用超时去探测。
 
 | 命令 | 参数 | 返回 |
 |---|---|---|
@@ -306,6 +307,8 @@ function report() {
 | `removeBookmark` | `id`, `requestId?` | 文件夹连同里面的内容一起删 |
 | `moveBookmarks` | `ids`, `parentId`, `index`, `requestId?` | 按数组顺序连续放到 `index` 起的位置 |
 | `removeBookmarks` | `ids`, `requestId?` | |
+| `exportBookmarks` | `requestId`, `path` | `bookmarkExportDone { requestId, ok, bookmarkCount, folderCount, error? }` |
+| `importBookmarks` | `requestId`, `path`, `parentId?`, `title?` | `bookmarkImportDone { requestId, ok, folderId, bookmarkCount, folderCount, skippedCount, error? }` |
 
 ```
 BookmarkNode {
@@ -348,6 +351,39 @@ bookmarkOpResult { requestId, ok, error?, failedIds? }
 
 **无痕窗口。** 无痕 Profile 没有自己的书签：命令和事件都作用在原始 Profile 上，
 和 Chrome 一致。`bookmarksChanged` 会同时推给普通窗口和无痕窗口。
+
+**导入导出（v3）。** 格式是通用的书签 HTML（Netscape Bookmark File Format），
+Chrome、Edge、Firefox、Safari 导出的都是它。
+
+`path` 是**应用沙箱里的绝对路径**。系统文件选择器、沙箱内外的复制、界面提示都归
+外壳；引擎只读写这一个路径，不接触文件 URI，也不需要存储权限——两边在同一个进程
+里。
+
+导出写全部书签，三个根文件夹的写法与 Chrome 一致（书签栏带
+`PERSONAL_TOOLBAR_FOLDER="true"`），带 `ADD_DATE` 和 `ICON`，UTF-8。写在后台线程，
+写完才回复。计数不含三个根文件夹。
+
+导入**建一个新文件夹装进去，不合并、不去重**，放在 `parentId`（省略时"移动设备
+书签"）的最前面，文件夹名用 `title`（省略时"Imported bookmarks"）。文件里原来的
+层级原样保留。整批在一次 `BeginExtensiveChanges` 里完成，**只推一次
+`bookmarksChanged`**；解析在后台线程，写模型回 UI 线程。`folderId` 是新文件夹的
+id。无效网址（Firefox 的 `place:` 智能书签等）计入 `skippedCount`，不算失败。
+文件里的搜索引擎不导入。
+
+**导入不带图标。** 解码图标要 `content::DecodeImage`，那是子进程设施（用 blink
+解码），而这里在浏览器进程解析——手机根本没有子进程。书签正常导入，图标由
+Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
+
+| `error` | 命令 | 含义 |
+|---|---|---|
+| `writeFailed` | 导出 | 路径写不了：目录不存在、没权限、磁盘满 |
+| `fileNotFound` | 导入 | `path` 不存在或读不了 |
+| `notBookmarkFile` | 导入 | 能读，但解析不出任何书签 |
+| `tooLarge` | 导入 | 超过 20 MB |
+| `invalidParent` | 导入 | `parentId` 不存在或不是文件夹 |
+| `unknown` | 两者 | 其它失败 |
+
+失败时不留半截数据，也不推 `bookmarksChanged`。
 
 **历史**
 

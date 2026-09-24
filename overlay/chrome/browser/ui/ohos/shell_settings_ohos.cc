@@ -63,9 +63,10 @@ void GetAboutInfo(const ShellCommandContext& context,
   event.Set("userAgent", embedder_support::GetUserAgent());
   // What the bookmarks commands understand. 1 was the original set; 2 adds
   // insertion positions, operation results, child counts, root types, batch
-  // moves and removals, URL lookup and path lookup. A shell reads it once at
-  // startup instead of probing each new command with a timeout.
-  event.Set("bookmarkApiVersion", 2);
+  // moves and removals, URL lookup and path lookup; 3 adds import and export.
+  // A shell reads it once at startup instead of probing each new command with
+  // a timeout.
+  event.Set("bookmarkApiVersion", 3);
   ReplyToShell(context, std::move(event));
 }
 

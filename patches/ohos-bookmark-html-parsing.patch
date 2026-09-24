@@ -1,0 +1,79 @@
+Parse bookmark HTML in the browser process on HarmonyOS.
+
+Importing a bookmarks file needs Chromium's Netscape-format parser. In 154 it
+runs behind a mojo service in a utility process, and a HarmonyOS phone is
+denied native child processes by the platform, so it runs single-process and
+has no utility process to launch. ParseBookmarksUnsafe is the same parser
+without the service, so chrome/browser calls it directly.
+
+Favicon decoding is the one part that genuinely needs a child process: it
+calls content::DecodeImage, which decodes with blink, and the browser process
+does not initialize blink. It is skipped on OHOS; bookmarks import without
+their stored icons and Chromium refetches them on first visit.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/components/user_data_importer/content/content_bookmark_parser_utils.cc b/components/user_data_importer/content/content_bookmark_parser_utils.cc
+--- a/components/user_data_importer/content/content_bookmark_parser_utils.cc
++++ b/components/user_data_importer/content/content_bookmark_parser_utils.cc
+@@ -19,7 +19,9 @@
+ #include "components/search_engines/search_terms_data.h"
+ #include "components/search_engines/template_url.h"
+ #include "components/user_data_importer/common/importer_data_types.h"
++#if !BUILDFLAG(IS_OHOS)
+ #include "components/user_data_importer/content/favicon_reencode.h"
++#endif
+ #include "net/base/data_url.h"
+ #include "url/gurl.h"
+ #include "url/url_constants.h"
+diff --git a/components/user_data_importer/content/content_bookmark_parser_utils.cc b/components/user_data_importer/content/content_bookmark_parser_utils.cc
+--- a/components/user_data_importer/content/content_bookmark_parser_utils.cc
++++ b/components/user_data_importer/content/content_bookmark_parser_utils.cc
+@@ -143,6 +143,11 @@
+ void DataURLToFaviconUsage(const GURL& link_url,
+                            const GURL& favicon_data,
+                            favicon_base::FaviconUsageDataList* favicons) {
++#if BUILDFLAG(IS_OHOS)
++  // Decoding needs blink, which lives in a child process this platform may
++  // not have. Import the bookmark without its icon.
++  return;
++#else
+   if (!link_url.is_valid() || !favicon_data.is_valid() ||
+       !favicon_data.SchemeIs(url::kDataScheme)) {
+     return;
+diff --git a/components/user_data_importer/content/content_bookmark_parser_utils.cc b/components/user_data_importer/content/content_bookmark_parser_utils.cc
+--- a/components/user_data_importer/content/content_bookmark_parser_utils.cc
++++ b/components/user_data_importer/content/content_bookmark_parser_utils.cc
+@@ -177,6 +177,7 @@
+   usage.urls.insert(link_url);
+ 
+   favicons->push_back(std::move(usage));
++#endif  // BUILDFLAG(IS_OHOS)
+ }
+ 
+ std::optional<std::string> ParseCharsetFromLine(std::string_view line) {
+diff --git a/components/user_data_importer/content/content_bookmark_parser_utils.cc b/components/user_data_importer/content/content_bookmark_parser_utils.cc
+--- a/components/user_data_importer/content/content_bookmark_parser_utils.cc
++++ b/components/user_data_importer/content/content_bookmark_parser_utils.cc
+@@ -6,6 +6,8 @@
+ 
+ #include <stddef.h>
+ #include <stdint.h>
++
++#include "build/build_config.h"
+ 
+ #include "base/i18n/icu_string_conversions.h"
+ #include "base/strings/escape.h"
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -1714,6 +1714,9 @@
+     ]
+     deps += [
+       "//chrome/browser/printing",
++      # Importing a bookmarks file. The parser normally runs behind a mojo
++      # service in a utility process; we call into it directly instead.
++      "//components/user_data_importer/content",
+       "//components/os_crypt/browser:posix_key_provider",
+       "//components/printing/browser/print_to_pdf",
+     ]

@@ -232,6 +232,10 @@ export interface BrowserCommandPayload {
   urls?: string[];
   // moveBookmarks and removeBookmarks: the bookmarks to act on, in order.
   ids?: string[];
+  // importBookmarks and exportBookmarks: an absolute path inside the app
+  // sandbox. The shell owns the system file picker and the copy in or out;
+  // the engine only reads and writes this path.
+  path?: string;
   sizeVp?: number;
   // setViewportInsets: how much of the page bottom the shell covers, in vp.
   bottom?: number;
