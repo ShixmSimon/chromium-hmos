@@ -42,11 +42,19 @@ struct ChangeRelay {
   base::WeakPtr<OhosClipboard> clipboard;
 
   static void OnChanged(void* context, Pasteboard_NotifyType type) {
+    // The pasteboard has called this with a null context (two crashes on
+    // PLA-AL10 when another app copied). Nothing can be routed without one.
+    if (!context) {
+      return;
+    }
     auto* relay = static_cast<ChangeRelay*>(context);
     relay->task_runner->PostTask(
         FROM_HERE,
         base::BindOnce(&OhosClipboard::OnPasteboardChanged, relay->clipboard));
   }
+
+  // The relay is never freed (see above), so there is nothing to release.
+  static void OnFinalize(void* context) {}
 };
 
 // Plain text, and HTML when the page copied rich content; other apps pick
@@ -112,8 +120,14 @@ OhosClipboard::OhosClipboard() : pasteboard_(OH_Pasteboard_Create()) {
   }
   auto* relay = new ChangeRelay{base::SequencedTaskRunner::GetCurrentDefault(),
                                 weak_factory_.GetWeakPtr()};
-  OH_PasteboardObserver_SetData(observer, relay, &ChangeRelay::OnChanged,
-                                /*finalize=*/nullptr);
+  // Only subscribe once the context is really attached; a null finalize is
+  // one way to have SetData refuse it.
+  if (OH_PasteboardObserver_SetData(observer, relay, &ChangeRelay::OnChanged,
+                                    &ChangeRelay::OnFinalize) != ERR_OK) {
+    LOG(ERROR) << "Pasteboard observer rejected its context; not listening";
+    OH_PasteboardObserver_Destroy(observer);
+    return;
+  }
   OH_Pasteboard_Subscribe(pasteboard_, NOTIFY_LOCAL_DATA_CHANGE, observer);
   OH_Pasteboard_Subscribe(pasteboard_, NOTIFY_REMOTE_DATA_CHANGE, observer);
 }
