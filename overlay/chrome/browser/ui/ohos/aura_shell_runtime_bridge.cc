@@ -106,6 +106,7 @@
 #include "ui/base/window_open_disposition.h"
 #include "ui/display/screen.h"
 #include "ui/gfx/geometry/insets.h"
+#include "ui/gfx/geometry/transform.h"
 #include "ui/native_theme/native_theme.h"
 #include "ui/ozone/platform/ohos/ohos_event_source.h"
 #include "ui/shell_dialogs/select_file_dialog_ohos.h"
@@ -1061,6 +1062,9 @@ int DipToPixels(int dip) {
   return static_cast<int>(std::lround(dip * scale));
 }
 
+// Defined next to OnAuraShellTopControlsShownRatio.
+void ApplyTopControlsOffset(content::WebContents* contents, float ratio);
+
 void ApplyViewportInsets(content::WebContents* contents, int bottom_dip) {
   if (!contents) {
     return;
@@ -1539,6 +1543,10 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
       state.last_shown_ratio = -1.0f;
     }
     LOG(WARNING) << "OHOS browser controls: top=" << top << " min=" << min_top;
+    if (top == 0) {
+      // No controls any more: put the page back at the top of the window.
+      ApplyTopControlsOffset(active, 0.0f);
+    }
     ShowBrowserControls(active);
     return;
   }
@@ -1772,8 +1780,40 @@ int GetAuraShellTopControlsMinHeight() {
   return DipToPixels(state.top_controls_min_height);
 }
 
+namespace {
+
+// Chrome on Android moves the page itself: the browser draws the tab's content
+// layer lower by the part of the controls that is showing (the content offset
+// its scene layers apply). Aura has no such step, so the renderer shrinks the
+// viewport for the controls while the page still starts at the top of the
+// window, under the shell's bar. Translate the view's window by the same
+// amount, in the units Chromium was given the height in, so the page begins
+// right below the visible part of the bar and follows it as it slides.
+void ApplyTopControlsOffset(content::WebContents* contents, float ratio) {
+  content::RenderWidgetHostView* view =
+      contents ? contents->GetRenderWidgetHostView() : nullptr;
+  aura::Window* window = view ? view->GetNativeView() : nullptr;
+  if (!window) {
+    return;
+  }
+  const int height = GetAuraShellTopControlsHeight();
+  const float offset =
+      height > 0 ? height * std::clamp(ratio, 0.0f, 1.0f) : 0.0f;
+  gfx::Transform transform;
+  transform.Translate(0, offset);
+  if (window->transform() != transform) {
+    window->SetTransform(transform);
+    VLOG(1) << "OHOS browser controls: page offset " << offset;
+  }
+}
+
+}  // namespace
+
 void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
                                       float ratio) {
+  // Before the early return below: a new view after a navigation reports the
+  // same ratio as the old one, and still has to be moved.
+  ApplyTopControlsOffset(contents, ratio);
   {
     RuntimeBridgeState& state = GetState();
     base::AutoLock lock(state.lock);
