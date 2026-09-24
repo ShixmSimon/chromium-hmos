@@ -289,18 +289,65 @@ function report() {
 
 **书签**
 
+`aboutInfo` 里的 `bookmarkApiVersion` 说明这份引擎支持到哪一版：`1` 是最初
+的一组命令，`2` 是下表的全部。外壳启动时读一次，不必逐条用超时去探测。
+
 | 命令 | 参数 | 返回 |
 |---|---|---|
 | `getBookmarks` | `requestId`, `parentId?` | `bookmarkList { requestId, parentId, nodes }`。不传 `parentId` 时返回三个根文件夹：移动设备书签、书签栏、其他书签 |
-| `searchBookmarks` | `requestId`, `query`, `maxCount` | `bookmarkList`，`parentId` 为空。按标题和网址匹配 |
-| `addBookmark` | `url`, `title`, `parentId?` | 默认加到"移动设备书签" |
-| `removeBookmarkByUrl` | `url` | 删除这个网址的所有书签 |
-| `updateBookmark` | `id`, `title?`, `url?` | |
-| `moveBookmark` | `id`, `parentId`, `index` | |
-| `removeBookmark` | `id` | 文件夹连同里面的内容一起删 |
-| `createBookmarkFolder` | `requestId`, `parentId`, `title` | `bookmarkCreated { requestId, node }` |
+| `searchBookmarks` | `requestId`, `query`, `maxCount` | `bookmarkList`，`parentId` 为空。按标题和网址匹配，每个节点另带 `path` |
+| `getBookmarksForUrl` | `requestId`, `url` | `bookmarkList`，网址完全相同的全部书签，按 `dateAdded` 倒序 |
+| `getBookmarkPath` | `requestId`, `id` | `bookmarkPath { requestId, nodes }`，从根文件夹到 `id` 自身，含两端；`id` 不存在时为空 |
+| `addBookmark` | `url`, `title`, `parentId?`, `index?`, `requestId?` | 默认加到"移动设备书签"、末尾。带 `requestId` 时回 `bookmarkCreated { requestId, node }` |
+| `createBookmarkFolder` | `requestId`, `parentId`, `title`, `index?` | `bookmarkCreated { requestId, node }` |
+| `removeBookmarkByUrl` | `url`, `requestId?` | 删除这个网址的所有书签 |
+| `updateBookmark` | `id`, `title?`, `url?`, `requestId?` | |
+| `moveBookmark` | `id`, `parentId`, `index`, `requestId?` | |
+| `removeBookmark` | `id`, `requestId?` | 文件夹连同里面的内容一起删 |
+| `moveBookmarks` | `ids`, `parentId`, `index`, `requestId?` | 按数组顺序连续放到 `index` 起的位置 |
+| `removeBookmarks` | `ids`, `requestId?` | |
 
-`BookmarkNode { id, parentId, type: 'url' \| 'folder', title, url?, dateAdded, index }`。任何变化后推送 `bookmarksChanged { revision }`。
+```
+BookmarkNode {
+  id, parentId, type: 'url' | 'folder', title, url?, dateAdded, index,
+  childCount?,   // 文件夹的直接子项数量，不递归
+  rootType?,     // 'mobile' | 'bookmarkBar' | 'other'，仅三个根文件夹
+  path?          // 仅 searchBookmarks：从根文件夹到父文件夹的标题
+}
+```
+
+任何变化后推送 `bookmarksChanged { revision }`。
+
+`index` 省略时是末尾，超出范围按末尾、小于 0 按 0，不算失败。
+
+**修改类命令的结果。** 上表里带 `requestId?` 的命令，传了 `requestId` 就会在执行
+后回一条：
+
+```
+bookmarkOpResult { requestId, ok, error?, failedIds? }
+```
+
+不传 `requestId` 就不回，旧外壳的行为不变。成功时照常推 `bookmarksChanged`，
+失败时不推。
+
+| `error` | 含义 |
+|---|---|
+| `notFound` | `id` 不存在 |
+| `permanentNode` | 试图修改、移动或删除三个根文件夹 |
+| `invalidParent` | 目标 `parentId` 不存在或不是文件夹 |
+| `cycle` | 试图把文件夹移到它自己或它的子孙里 |
+| `invalidUrl` | `url` 不是合法网址，或对文件夹设网址 |
+| `unknown` | 其它失败，包括被策略管理的书签 |
+
+`updateBookmark` 先校验后写：`url` 会被拒时，`title` 也不会改。空 `title` 是允许的。
+
+批量命令（`moveBookmarks` / `removeBookmarks`）整批在一次 `BeginExtensiveChanges`
+里完成，**只推一次 `bookmarksChanged`**。同一批里同时包含某个文件夹和它的子孙
+时，只处理这个文件夹。部分失败时跳过失败项、继续处理其余项，回 `ok: false`、
+`error` 取第一个失败原因，并带 `failedIds`。
+
+**无痕窗口。** 无痕 Profile 没有自己的书签：命令和事件都作用在原始 Profile 上，
+和 Chrome 一致。`bookmarksChanged` 会同时推给普通窗口和无痕窗口。
 
 **历史**
 
