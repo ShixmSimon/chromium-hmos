@@ -26,13 +26,16 @@ bool ShouldShellDrawDownloadUi();
 // Points the download and "save page as" directories at the one the shell
 // passed in --ohos-download-dir, and turns off the "where to save" prompt,
 // since the phone has no desktop file dialog to answer it. Takes a plain path
-// or a HarmonyOS "file://docs/..." URI. Applied once per process, to the
-// original profile; does nothing when the switch is absent.
+// or a HarmonyOS "file://docs/..." URI. Applies whatever directory is pending
+// (the switch, or a later SetShellDownloadDirectory) that has not been applied
+// yet, to the original profile; cheap to call often.
 void ApplyShellDownloadDirectory(Profile* profile);
 
 // The same at run time, for the setDownloadDirectory command: HarmonyOS only
 // hands out the Download/<bundle> directory once the shell's UI is up, after
-// Chromium has started. False when `location` is not a usable directory.
+// Chromium has started -- possibly before any profile exists, in which case
+// `profile` is null and the directory is applied by the next
+// ApplyShellDownloadDirectory(). False when `location` is not usable.
 bool SetShellDownloadDirectory(Profile* profile, const std::string& location);
 
 }  // namespace chrome::ohos

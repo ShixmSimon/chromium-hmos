@@ -49,6 +49,7 @@
 #include "chrome/browser/permissions/system/system_permission_common.h"
 #include "chrome/browser/permissions/system/system_permission_settings_ohos.h"
 #include "chrome/browser/ui/ohos/shell_context_menu_ohos.h"
+#include "chrome/browser/ui/ohos/shell_downloads_ohos.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "chrome/browser/ui/ohos/system_geolocation_source_ohos.h"
 #include "services/device/public/cpp/geolocation/buildflags.h"
@@ -1524,6 +1525,14 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
 
   BrowserWindowInterface* browser = FindBrowserForWidget(widget);
   TabStripModel* tabs = browser ? browser->GetTabStripModel() : nullptr;
+  if (*name == "setDownloadDirectory" && !browser) {
+    // Sent as the shell's page appears, often before the browser exists; the
+    // directory is kept and applied once a profile is there.
+    if (const std::string* uri = command.FindString("uri")) {
+      SetShellDownloadDirectory(nullptr, *uri);
+    }
+    return;
+  }
   if (!browser || !tabs) {
     LOG(ERROR) << "OHOS Aura shell command has no active browser: " << *name;
     return;

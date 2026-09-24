@@ -18,6 +18,7 @@
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
+#include "base/no_destructor.h"
 #include "base/strings/escape.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
@@ -93,27 +94,44 @@ bool ShouldShellDrawDownloadUi() {
   return IsAuraShellMobilePhoneUi();
 }
 
+// The directory the shell asked for most recently, and the one last applied.
+// A request can come before any profile exists -- the shell learns the
+// directory as its page appears, while Chromium is still starting -- so it is
+// kept here and applied once there is a profile to apply it to.
+struct ShellDownloadDirectoryState {
+  std::string requested;
+  std::string applied;
+};
+
+ShellDownloadDirectoryState& DirectoryState() {
+  static base::NoDestructor<ShellDownloadDirectoryState> state([] {
+    ShellDownloadDirectoryState initial;
+    initial.requested =
+        base::CommandLine::ForCurrentProcess()->GetSwitchValueUTF8(
+            kDownloadDirSwitch);
+    return initial;
+  }());
+  return *state;
+}
+
 void ApplyShellDownloadDirectory(Profile* profile) {
-  static bool applied = false;
-  if (applied || !profile) {
+  ShellDownloadDirectoryState& state = DirectoryState();
+  if (!profile || state.requested == state.applied) {
     return;
   }
-  applied = true;
-  const std::optional<base::FilePath> directory = ParseShellDownloadDirectory(
-      base::CommandLine::ForCurrentProcess()->GetSwitchValueUTF8(
-          kDownloadDirSwitch));
-  if (directory) {
+  state.applied = state.requested;
+  if (const std::optional<base::FilePath> directory =
+          ParseShellDownloadDirectory(state.requested)) {
     UseDownloadDirectory(profile, *directory);
   }
 }
 
 bool SetShellDownloadDirectory(Profile* profile, const std::string& location) {
-  const std::optional<base::FilePath> directory =
-      ParseShellDownloadDirectory(location);
-  if (!profile || !directory) {
+  if (!ParseShellDownloadDirectory(location)) {
     return false;
   }
-  UseDownloadDirectory(profile, *directory);
+  DirectoryState().requested = location;
+  ApplyShellDownloadDirectory(profile);
   return true;
 }
 
