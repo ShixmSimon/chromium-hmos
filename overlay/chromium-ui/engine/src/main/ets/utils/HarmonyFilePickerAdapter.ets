@@ -24,6 +24,11 @@ export class HarmonyFilePickerAdapter {
     let paths: string[] = [];
     if (request.pickerType === 'save') {
       const options = new picker.DocumentSaveOptions();
+      // No empty placeholder file: if Chromium cannot write the chosen file
+      // (phones may not write outside the app's own Download/<bundle>), a 0 B
+      // file would be left behind. The URI then also carries create and
+      // delete permission.
+      options.autoCreateEmptyFile = false;
       if (request.defaultName && request.defaultName.length > 0) {
         options.newFileNames = [request.defaultName];
       }

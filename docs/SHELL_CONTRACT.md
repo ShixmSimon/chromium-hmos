@@ -334,7 +334,8 @@ function report() {
   - 引擎收到目录之前开始的下载，仍会弹出系统的"选择保存位置"面板。
   - `filePath` 是真实路径，外壳用 `fileUri.getUriFromPath` 转成 URI 后再打开或分享。
 - **下载提示由谁显示**：启动配置 `downloadUi: 'shell' | 'native'`。手机默认为 `'shell'`，此时 Chromium 不显示下载气泡和下载栏，由外壳根据 `downloadUpdated` 自己提示。
-- 长按菜单里的各种"另存为"也走这套下载流程。
+- 长按菜单里的各种"另存为"也走这套下载流程。手机上（`downloadUi` 为 `'shell'` 时）"另存为"不弹保存面板，直接存进下载目录，同名文件会自动加序号。原因是手机应用只能按路径写自己的 `Download/<包名>` 目录，保存面板选中的文件只能通过 URI 访问，Chromium 按路径写会报 `FILE_ACCESS_DENIED`。
+- 下载开始、确定目标路径、失败时，hilog 里各有一行 `OHOS download started` / `target` / `failed`，失败那一行带原因。
 
 **设置**
 

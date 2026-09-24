@@ -33,6 +33,7 @@
 #include "chrome/browser/ui/ohos/shell_downloads_item_ohos.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "chrome/common/pref_names.h"
+#include "components/download/public/common/download_interrupt_reasons.h"
 #include "components/download/public/common/download_item.h"
 #include "components/download/public/common/download_source.h"
 #include "components/download/public/common/download_url_parameters.h"
@@ -138,6 +139,8 @@ class DownloadsWatcher : public content::DownloadManager::Observer,
     }
     // History items are not news; the shell lists them when it asks.
     if (item->GetDownloadCreationType() != DownloadItem::TYPE_HISTORY_IMPORT) {
+      LOG(INFO) << "OHOS download started: " << item->GetURL().spec();
+      LogMilestones(*item);
       Send(*item, /*removed=*/false);
     }
   }
@@ -154,6 +157,7 @@ class DownloadsWatcher : public content::DownloadManager::Observer,
 
   // DownloadItem::Observer:
   void OnDownloadUpdated(DownloadItem* item) override {
+    LogMilestones(*item);
     auto it = last_sent_.find(item->GetGuid());
     if (it == last_sent_.end() ||
         it->second.signature != DownloadChangeSignature(*item)) {
@@ -228,6 +232,29 @@ class DownloadsWatcher : public content::DownloadManager::Observer,
   void Forget(const std::string& guid) {
     last_sent_.erase(guid);
     pending_.erase(guid);
+    logged_.erase(guid);
+  }
+
+  // One log line when a download's target path is decided and one when it
+  // fails, so a failed save can be traced in hilog without a debugger.
+  void LogMilestones(const DownloadItem& item) {
+    Logged& logged = logged_[item.GetGuid()];
+    if (!logged.target && !item.GetTargetFilePath().empty()) {
+      logged.target = true;
+      LOG(INFO) << "OHOS download target: " << item.GetTargetFilePath()
+                << " for " << item.GetURL().spec();
+    }
+    if (!logged.failure &&
+        item.GetState() == DownloadItem::INTERRUPTED) {
+      logged.failure = true;
+      LOG(WARNING) << "OHOS download failed: "
+                   << download::DownloadInterruptReasonToString(
+                          item.GetLastReason())
+                   << " writing "
+                   << (item.GetTargetFilePath().empty()
+                           ? item.GetFullPath()
+                           : item.GetTargetFilePath());
+    }
   }
 
   void OnFileDeleted(const std::string& guid, bool deleted) {
@@ -252,6 +279,12 @@ class DownloadsWatcher : public content::DownloadManager::Observer,
   std::map<std::string, LastSent> last_sent_;
   // GUIDs with an update held back by the throttle.
   std::set<std::string> pending_;
+  struct Logged {
+    bool target = false;
+    bool failure = false;
+  };
+  // Keyed by GUID, which milestones have been logged.
+  std::map<std::string, Logged> logged_;
   base::OneShotTimer flush_timer_;
   base::WeakPtrFactory<DownloadsWatcher> weak_factory_{this};
 };

@@ -159,6 +159,7 @@ apply_incremental_patch "${repo_root}/patches/ohos-autocomplete-hints.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-shell-context-menu.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-shell-services.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-ua-chrome-android.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-save-as-no-prompt.patch"
 # The chooser takes touch now, so the probes that found out why come out.
 retire_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
 

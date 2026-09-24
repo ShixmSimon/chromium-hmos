@@ -1,0 +1,46 @@
+Save 'save as' downloads straight to the download directory on phones.
+
+A HarmonyOS phone app can write only its own Download/<bundle>
+directory by path; a file chosen in the system save panel is granted to
+the app as a URI and writing it by path fails with FILE_ACCESS_DENIED,
+leaving a 0-byte file behind. When the shell draws download UI (phones),
+'save as' skips the prompt and lands in the download directory, numbered
+on a name clash, like any other download.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/download/download_target_determiner.cc b/chrome/browser/download/download_target_determiner.cc
+index 2633e23..e548556 100644
+--- a/chrome/browser/download/download_target_determiner.cc
++++ b/chrome/browser/download/download_target_determiner.cc
+@@ -20,6 +20,10 @@
+ #include "base/task/thread_pool.h"
+ #include "base/time/time.h"
+ #include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/shell_downloads_ohos.h"
++#endif
+ #include "chrome/browser/download/chrome_download_manager_delegate.h"
+ #include "chrome/browser/download/download_confirmation_reason.h"
+ #include "chrome/browser/download/download_crx_util.h"
+@@ -1174,8 +1178,18 @@ DownloadConfirmationReason DownloadTargetDeterminer::NeedsConfirmation(
+ 
+   // Prompt if this is a 'Save As' download.
+   if (download_->GetTargetDisposition() ==
+-      DownloadItem::TARGET_DISPOSITION_PROMPT)
++      DownloadItem::TARGET_DISPOSITION_PROMPT) {
++#if BUILDFLAG(IS_OHOS)
++    // On phones the app may write only its own Download/<bundle> directory;
++    // a path chosen in the system save panel is refused (FILE_ACCESS_DENIED).
++    // "Save as" goes to the download directory like any download, with a
++    // numbered name on a clash.
++    if (chrome::ohos::ShouldShellDrawDownloadUi()) {
++      return DownloadConfirmationReason::NONE;
++    }
++#endif
+     return DownloadConfirmationReason::SAVE_AS;
++  }
+ 
+ #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+   // Don't prompt for extension downloads if the installation site is allow
