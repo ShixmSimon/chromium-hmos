@@ -247,7 +247,8 @@ export struct WebWindow {
       this.attachIcuDataDescriptor(startupConfig);
       this.surfaceReady = false;
       this.setSurfaceReady(false);
-      this.showDiagnostic('1/2 onLoad 已触发 (libweb_engine.so 已加载)');
+      // Success is logged, not toasted: shells ship this, and users should not see bring-up steps.
+      console.info('WebWindow: 1/2 onLoad fired (libweb_engine.so loaded)');
       this.nativeContext = new NativeContext(this.xComponentId);
       const abilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
       this.nativeContext.init(
@@ -271,7 +272,7 @@ export struct WebWindow {
       if (swallowed) {
         this.showDiagnostic(`2/2 初始化失败: ${swallowed}`);
       } else {
-        this.showDiagnostic('2/2 引擎初始化完成');
+        console.info('WebWindow: 2/2 engine initialized');
       }
     } catch (error) {
       this.closeIcuDataDescriptor();
@@ -1046,8 +1047,9 @@ export struct WebWindow {
   }
 
   // Every failure in this component used to reach console.error only, which on
-  // a device is indistinguishable from the engine simply doing nothing. Until
-  // the bring-up is verified these are surfaced.
+  // a device is indistinguishable from the engine simply doing nothing, so
+  // failures are surfaced as toasts. The bring-up progress messages that used
+  // to share this path are logged instead.
   private showDiagnostic(message: string): void {
     try {
       promptAction.showToast({ message: message, duration: 5000 });
