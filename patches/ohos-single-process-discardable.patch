@@ -15,25 +15,28 @@ process-wide allocator, and renderers leave it in place.
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 
 diff --git a/content/browser/browser_main_loop.cc b/content/browser/browser_main_loop.cc
-index 90d60c4..e5a6691 100644
+index 90d60c4..94dc006 100644
 --- a/content/browser/browser_main_loop.cc
 +++ b/content/browser/browser_main_loop.cc
-@@ -725,7 +725,14 @@ void BrowserMainLoop::PostCreateMainMessageLoop() {
+@@ -725,8 +725,18 @@ void BrowserMainLoop::PostCreateMainMessageLoop() {
    // TODO(boliu): kSingleProcess check is a temporary workaround for
    // in-process Android WebView. crbug.com/503724 tracks proper fix.
    // Also check to see if a discardable memory manager was set (e.g. unit tests)
--  if (!parsed_command_line_->HasSwitch(switches::kSingleProcess) &&
 +  // OHOS runs phones single-process with several in-process renderers. Each
 +  // renderer used to install its own allocator as the process-wide one and
 +  // free it when its tab went away, leaving the others to allocate through a
 +  // dangling pointer (crashes in GpuImageDecodeCache). The browser's manager
 +  // lives as long as the process, so it is the process-wide allocator here
 +  // and the renderers leave it alone (render_thread_impl.cc).
-+  if ((BUILDFLAG(IS_OHOS) ||
-+       !parsed_command_line_->HasSwitch(switches::kSingleProcess)) &&
++#if BUILDFLAG(IS_OHOS)
++  if (!base::DiscardableMemoryAllocator::HasInstance()) {
++#else
+   if (!parsed_command_line_->HasSwitch(switches::kSingleProcess) &&
        !base::DiscardableMemoryAllocator::HasInstance()) {
++#endif
      base::DiscardableMemoryAllocator::SetInstance(
          discardable_memory::DiscardableSharedMemoryManager::Get());
+   }
 diff --git a/content/renderer/render_thread_impl.cc b/content/renderer/render_thread_impl.cc
 index e05ec16..ddaa4c6 100644
 --- a/content/renderer/render_thread_impl.cc
