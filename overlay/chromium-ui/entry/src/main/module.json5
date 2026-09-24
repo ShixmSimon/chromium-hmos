@@ -104,6 +104,11 @@
     ],
     "requestPermissions": [
       {
+        // Also declared by the engine HAR; listed here so DevEco Studio's
+        // automatic signing puts the ACL into this app's profile.
+        "name": "ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY"
+      },
+      {
         "name": "ohos.permission.DETECT_GESTURE",
         "reason": "$string:holding_hand_permission_reason",
         "usedScene": {

@@ -70,6 +70,13 @@
         "name": "ohos.permission.PRINT"
       },
       {
+        // V8's JIT writes machine code and then makes it executable. Without
+        // this ACL permission (in the signing profile too) the phone refuses
+        // and the engine runs jitless, several times slower on JS-heavy pages
+        // and flagged by bot checks such as Cloudflare Turnstile.
+        "name": "ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY"
+      },
+      {
         "name": "ohos.permission.KEEP_BACKGROUND_RUNNING",
         "reason": "$string:background_audio_permission_reason",
         "usedScene": { "when": "always" }
