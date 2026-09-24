@@ -78,7 +78,7 @@ index dd84e74..b9d703d 100644
    return std::string(version_info::GetOSType());
  #endif
 diff --git a/third_party/blink/renderer/core/execution_context/navigator_base.cc b/third_party/blink/renderer/core/execution_context/navigator_base.cc
-index 6234f22..901e6d7 100644
+index 6234f22..d3a3339 100644
 --- a/third_party/blink/renderer/core/execution_context/navigator_base.cc
 +++ b/third_party/blink/renderer/core/execution_context/navigator_base.cc
 @@ -34,7 +34,9 @@ String GetReducedNavigatorPlatform() {
@@ -99,7 +99,7 @@ index 6234f22..901e6d7 100644
 +#if BUILDFLAG(IS_OHOS)
 +  // Follow the User-Agent the browser sends: Chrome on Android on phones and
 +  // tablets. The device class is only on the browser's command line.
-+  if (userAgent().Contains("Android")) {
++  if (userAgent().contains("Android")) {
 +    return "Linux armv81";
 +  }
 +#endif
@@ -107,7 +107,7 @@ index 6234f22..901e6d7 100644
    // We need to check the ReduceUserAgentMinorVersion feature flag for
    // Android WebView, which does not currently ship a reduced User-Agent.
 diff --git a/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc b/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
-index 3608837..e32e409 100644
+index 3608837..db110a6 100644
 --- a/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
 +++ b/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
 @@ -136,6 +136,15 @@ HeapVector<Member<DOMMimeType>> DOMPluginArray::GetFixedMimeTypeArray() {
@@ -119,7 +119,7 @@ index 3608837..e32e409 100644
 +  // browser claiming to be it (see BuildOhosUserAgent()) must too, or bot
 +  // checks see a desktop fingerprint behind a mobile User-Agent. Viewing PDFs
 +  // is unaffected: this only shapes navigator.plugins.
-+  if (window_ && window_->UserAgent().Contains("Android")) {
++  if (window_ && window_->UserAgent().contains("Android")) {
 +    return false;
 +  }
 +#endif
