@@ -88,6 +88,40 @@ void AppendSwitchWithValue(std::vector<std::string>* arguments,
   }
 }
 
+// Whether this device lets the app create native child processes. HarmonyOS
+// opens that only on PC/2-in-1 and tablet; a phone refuses with
+// NCP_ERR_NOT_SUPPORTED (801). Without child processes Chromium has to run
+// --single-process, and single-process Chromium cannot hold more than one
+// BrowserContext -- which is why incognito is unavailable on phones.
+//
+// OH_Ability_IsNativeChildProcessSupported() is the platform's own answer, but
+// it only exists from API 26. Resolve it at run time and fall back to the
+// device class where it is missing, so an older device still boots.
+bool SupportsNativeChildProcess(const std::string& device_class) {
+  using IsSupportedFn = bool (*)();
+  static IsSupportedFn is_supported = []() -> IsSupportedFn {
+    void* lib = dlopen("libchild_process.so", RTLD_NOW | RTLD_LOCAL);
+    if (!lib) {
+      return nullptr;
+    }
+    return reinterpret_cast<IsSupportedFn>(
+        dlsym(lib, "OH_Ability_IsNativeChildProcessSupported"));
+  }();
+
+  if (is_supported) {
+    const bool supported = is_supported();
+    AURA_LOG_I("AuraShell native child process supported=%{public}d (platform)",
+               supported ? 1 : 0);
+    return supported;
+  }
+  const bool supported = device_class == "tablet" || device_class == "2in1";
+  AURA_LOG_I(
+      "AuraShell native child process supported=%{public}d (device class, "
+      "platform query unavailable)",
+      supported ? 1 : 0);
+  return supported;
+}
+
 bool IsValidSwitchKey(const std::string& key) {
   if (key.empty() || key.front() == '-') {
     return false;
@@ -351,7 +385,7 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
       "--enable-blink-features=BarcodeDetector,FaceDetector,TextDetector");
 
   const bool supports_native_child_process =
-      config.device_class == "tablet" || config.device_class == "2in1";
+      SupportsNativeChildProcess(config.device_class);
   if (supports_native_child_process) {
     arguments.push_back("--renderer-process-limit=16");
   } else {

@@ -22,6 +22,36 @@ isolated from each other as well as from the record profile. Brave's Tor
 windows use it. `PrimaryID()` is the ordinary incognito profile that every
 incognito window shares, which is what `newIncognitoWindow` asks for.
 
+## Not every device can do this
+
+Incognito needs a second `Profile`, a second `Profile` needs a second renderer
+process, and HarmonyOS grants native child processes only on 2-in-1/PC and
+tablet. A phone is refused (`NCP_ERR_NOT_SUPPORTED`, 801), so Chromium starts
+with `--single-process`, where it asserts outright:
+
+```
+Single-process mode does not support multiple browser contexts.
+```
+
+There is no permission that changes this -- `native_child_process.h` declares
+none. It is a device capability, and the engine now asks for it by name
+(`OH_Ability_IsNativeChildProcessSupported()`, API 26, resolved at run time
+with the device class as a fallback) rather than inferring it from the model.
+
+So the browser state carries the answer:
+
+```
+incognitoSupported: false   // phone
+incognitoSupported: true    // tablet, 2-in-1
+```
+
+Read it and disable or hide the menu item. The engine refuses the command on a
+single-process device and logs why; it no longer crashes, but a button that
+does nothing is still worse than a button that is not there.
+
+The same state also carries `isIncognito` for the window it describes, so a
+shell can mark the current window without waiting for a window event.
+
 ## The command
 
 ```json

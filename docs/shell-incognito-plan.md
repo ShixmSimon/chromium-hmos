@@ -4,6 +4,27 @@ The engine half is on `hmos-154-adapter` (`0aa2291`). It can create the window;
 nothing draws it. This is what the shell has to add. The contract it implements
 is in `shell-incognito.md`; this is the order to build it in.
 
+## First: check whether the device can do it at all
+
+The browser state the shell already parses now has:
+
+```
+incognitoSupported: boolean
+isIncognito:        boolean
+```
+
+`incognitoSupported` is false on phones and true on tablets and 2-in-1s, for a
+reason no amount of shell work can route around: HarmonyOS does not grant
+phones native child processes, so Chromium runs `--single-process`, and
+single-process Chromium cannot hold a second profile. See `shell-incognito.md`.
+
+Gate the menu item on it. The engine refuses `newIncognitoWindow` on such a
+device rather than crashing, but the user should never see the entry.
+
+Everything below applies to tablet and 2-in-1. None of it has run on real
+hardware yet -- the phone was the only device the command had ever reached, and
+there it only ever crashed.
+
 ## What the engine gives you
 
 One command:
@@ -106,10 +127,9 @@ not exit.
 
 ## What this does not cover
 
-- **Multi-process.** Phones run `--single-process`; tablets and 2-in-1s get
-  `--renderer-process-limit=16`. On those, opening an incognito window spawns a
-  renderer process and takes a code path nothing has exercised yet. Test there
-  separately.
+- **Multi-process.** Opening an incognito window on a tablet spawns a renderer
+  process and takes a code path nothing has exercised yet. Test there
+  separately, and expect to find things.
 - **Session semantics.** Every incognito window shares one session today
   (`OTRProfileID::PrimaryID()`). Per-window isolation is a one-line engine
   change (`CreateUnique`) if the product wants it -- say so and it can be done.

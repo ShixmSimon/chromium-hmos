@@ -968,6 +968,12 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   state.Set("canGoBack", false);
   state.Set("canGoForward", false);
   state.Set("isPwaWindow", false);
+  // Whether newIncognitoWindow will do anything on this device. False on
+  // phones, where --single-process rules out a second profile entirely.
+  state.Set("incognitoSupported",
+            !content::RenderProcessHost::run_renderer_in_process());
+  state.Set("isIncognito", browser && browser->GetProfile() &&
+                               browser->GetProfile()->IsOffTheRecord());
   state.Set("pwaAppId", "");
   state.Set("pwaStartUrl", "");
   state.Set("bookmarked", false);
@@ -1699,6 +1705,19 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     // window's tab strip -- desktop Chrome opens a second window for them and
     // so does this. The off-the-record profile is derived from the one already
     // open, and Chromium clears it when the last window using it closes.
+    //
+    // Not everywhere, though. A second profile needs a second renderer
+    // process, and a device that denies native child processes leaves Chromium
+    // in --single-process, where RenderProcessHostImpl asserts outright that
+    // "Single-process mode does not support multiple browser contexts." Asking
+    // anyway is a guaranteed crash, so refuse here and say so in the state the
+    // shell already reads (incognitoSupported), which lets it disable the menu
+    // item rather than offer a button that kills the browser.
+    if (content::RenderProcessHost::run_renderer_in_process()) {
+      LOG(WARNING) << "OHOS Aura shell refused newIncognitoWindow: this device "
+                      "runs single-process, which cannot hold a second profile";
+      return;
+    }
     Profile* profile = browser->GetProfile();
     if (profile) {
       Profile* otr = profile->GetOffTheRecordProfile(

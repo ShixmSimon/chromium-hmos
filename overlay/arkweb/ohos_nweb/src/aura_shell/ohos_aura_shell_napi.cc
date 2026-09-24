@@ -507,15 +507,17 @@ void DispatchAuxiliaryWindowEvent(const ui::OhosLogicalWindowState& state) {
     event.Set("modal", *modal);
   }
   event.Set("windowRole", "auxiliary");
-  if (std::optional<chrome::ohos::AuraShellWindowMetadata> incognito =
-          chrome::ohos::GetAuraShellWindowMetadata(state.widget);
-      incognito) {
-    event.Set("incognito", incognito->is_incognito);
+  const std::optional<chrome::ohos::AuraShellWindowMetadata> metadata =
+      chrome::ohos::GetAuraShellWindowMetadata(state.widget);
+  if (metadata) {
+    event.Set("incognito", metadata->is_incognito);
   }
-  if (std::optional<chrome::ohos::AuraShellWindowMetadata> metadata =
-          chrome::ohos::GetAuraShellWindowMetadata(state.widget);
-      metadata && metadata->is_pwa) {
+  if (metadata && metadata->is_pwa) {
     event.Set("windowRole", "pwa");
+    event.Set("pwaAppId", metadata->app_id);
+    event.Set("title", metadata->title);
+    event.Set("url", metadata->url);
+    event.Set("pwaStartUrl", metadata->start_url);
   } else if (metadata && metadata->is_browser) {
     // Not a popup: a browser window of its own. Saying so keeps the shell from
     // drawing it as an auxiliary window -- clamped to a fraction of the screen
@@ -523,10 +525,8 @@ void DispatchAuxiliaryWindowEvent(const ui::OhosLogicalWindowState& state) {
     event.Set("windowRole", "browser");
     event.Set("componentId", std::string(kBrowserSurfacePrefix) +
                                  base::NumberToString(state.widget));
-    event.Set("pwaAppId", metadata->app_id);
     event.Set("title", metadata->title);
     event.Set("url", metadata->url);
-    event.Set("pwaStartUrl", metadata->start_url);
   }
 
   std::string state_json;
