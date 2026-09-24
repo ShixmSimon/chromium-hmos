@@ -250,6 +250,7 @@ Chromium 的一部分窗口是独立的原生窗口,需要外壳给它们放一�
 
 - `visible && !destroyed`:显示或更新这个窗口;否则移除。
 - `windowRole === 'pwa'`:这是 PWA 窗口,要用单独的应用窗口打开。参考 `entry/.../PwaWindowLauncher.ets`。
+- `windowRole === 'browser'`:这是外壳自己的第二个浏览器窗口(比如无痕窗口),不要按辅助窗口的布局处理——不裁剪、不居中、不加遮罩。外壳需要一个独立的、全屏的 `WebWindow`,XComponent 的 `id`/`componentId` 用引擎给的 `aura_win_<widget>`。事件上还带 `incognito`,标记这个窗口的 profile 是否是无痕的。
 - `stackingOrder` 越大越靠上。
 - `modal` 可能缺省,缺省时沿用上一次的值。模态窗口下方应该加一层遮罩。
 

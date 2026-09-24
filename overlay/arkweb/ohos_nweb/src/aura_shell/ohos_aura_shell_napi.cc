@@ -118,10 +118,21 @@ bool IsPwaComponentId(const std::string& component_id) {
   return component_id.starts_with(kPwaSurfacePrefix);
 }
 
+bool IsBrowserComponentId(const std::string& component_id) {
+  return component_id.starts_with(kBrowserSurfacePrefix);
+}
+
+// A surface the shell hosts for a window of its own -- a popup, a PWA or a
+// second browser window -- rather than the main one.
+bool IsSecondaryComponentId(const std::string& component_id) {
+  return IsAuxiliaryComponentId(component_id) ||
+         IsPwaComponentId(component_id) ||
+         IsBrowserComponentId(component_id);
+}
+
 void AddComponentEventTarget(const std::string& component_id,
                              base::DictValue* event) {
-  if (!event || (!IsAuxiliaryComponentId(component_id) &&
-                 !IsPwaComponentId(component_id))) {
+  if (!event || !IsSecondaryComponentId(component_id)) {
     return;
   }
   const gfx::AcceleratedWidget widget =
@@ -135,8 +146,7 @@ void AddComponentEventTarget(const std::string& component_id,
 
 gfx::AcceleratedWidget GetComponentEventTarget(
     const std::string& component_id) {
-  if (!IsAuxiliaryComponentId(component_id) &&
-      !IsPwaComponentId(component_id)) {
+  if (!IsSecondaryComponentId(component_id)) {
     return gfx::kNullAcceleratedWidget;
   }
   return ui::GetOhosAcceleratedWidgetForNativeSurface(component_id);
@@ -269,8 +279,7 @@ void DispatchBrowserEvent(gfx::AcceleratedWidget widget,
       function = main->second;
     } else {
       for (const auto& [component_id, candidate] : BrowserEventFunctions()) {
-        if (!IsAuxiliaryComponentId(component_id) &&
-            !IsPwaComponentId(component_id)) {
+        if (!IsSecondaryComponentId(component_id)) {
           target_component = component_id;
           function = candidate;
           break;

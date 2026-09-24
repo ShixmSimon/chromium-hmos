@@ -68,6 +68,12 @@ first one.
 Getting the id wrong is not a drawing bug: the window stays auxiliary, presses
 land on the wrong window and the stacking order is wrong.
 
+Native touch and pointer routing in `ohos_aura_shell_napi.cc` picks its target
+by that same prefix, not by role: `aura_aux_`, `aura_pwa_` and `aura_win_` each
+name a surface the shell hosts for a window of its own, and all three count as
+independent windows for input dispatch and targeting, distinct from the main
+one.
+
 ## What a shell still has to decide
 
 The engine stops at "there is a second browser window and here is its surface".

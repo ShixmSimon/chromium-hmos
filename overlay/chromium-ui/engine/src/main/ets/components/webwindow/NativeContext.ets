@@ -205,11 +205,13 @@ export interface AuxiliaryWindowState {
   // A popup, menu or tooltip Chromium placed next to page content: draw it
   // at x/y, not where the shell would put a window of its own.
   anchored?: boolean;
-  windowRole: 'auxiliary' | 'pwa';
+  windowRole: 'auxiliary' | 'pwa' | 'browser';
   pwaAppId?: string;
   title?: string;
   url?: string;
   pwaStartUrl?: string;
+  // Sent with a 'browser' event: whether the window's profile is incognito.
+  incognito?: boolean;
 }
 
 export interface INativeContext extends BluetoothNativePort, UsbNativePort, SystemServiceNativePort {
