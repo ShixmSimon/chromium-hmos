@@ -1066,13 +1066,26 @@ int DipToPixels(int dip) {
 // Defined next to OnAuraShellTopControlsShownRatio.
 void ApplyTopControlsOffset(content::WebContents* contents, float ratio);
 
+// The page's bottom is covered by the shell's floating bar (bottom_dip) and,
+// once ApplyTopControlsOffset() moves the page down, also pushed off the
+// screen by the controls: the renderer lets the viewport grow as the controls
+// hide but never shrinks it for the controls it shows, so the end of the page
+// sits one full controls height too low. Inset the bottom by both so the last
+// line still scrolls up to just above the floating bar.
 void ApplyViewportInsets(content::WebContents* contents, int bottom_dip) {
   if (!contents) {
     return;
   }
+  int top_dip = 0;
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    top_dip = state.top_controls_height;
+  }
   if (content::RenderWidgetHostView* view =
           contents->GetRenderWidgetHostView()) {
-    view->SetInsets(gfx::Insets::TLBR(0, 0, std::max(0, bottom_dip), 0));
+    view->SetInsets(gfx::Insets::TLBR(
+        0, 0, std::max(0, bottom_dip) + std::max(0, top_dip), 0));
   }
 }
 
@@ -1534,6 +1547,7 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     const int top = std::max(0, command.FindInt("top").value_or(0));
     const int min_top =
         std::clamp(command.FindInt("minTop").value_or(0), 0, top);
+    int bottom_inset = 0;
     {
       RuntimeBridgeState& state = GetState();
       base::AutoLock lock(state.lock);
@@ -1542,8 +1556,11 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
       state.controls_shown_for[widget] = reinterpret_cast<uintptr_t>(
           active ? active->GetRenderWidgetHostView() : nullptr);
       state.last_shown_ratio = -1.0f;
+      bottom_inset = state.viewport_bottom_inset[widget];
     }
     LOG(WARNING) << "OHOS browser controls: top=" << top << " min=" << min_top;
+    // The bottom inset includes the controls height; see ApplyViewportInsets().
+    ApplyViewportInsets(active, bottom_inset);
     if (top == 0) {
       // No controls any more: put the page back at the top of the window.
       ApplyTopControlsOffset(active, 0.0f);
