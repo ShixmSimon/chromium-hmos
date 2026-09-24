@@ -214,6 +214,11 @@ void SystemMediaControlsOhos::SetIsSeekToEnabled(bool value) {
 void SystemMediaControlsOhos::SetPlaybackStatus(PlaybackStatus value) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   OH_AVSession_SetPlaybackState(session_, ToAVSessionState(value));
+  // SystemMediaControlsNotifier calls SetEnabled only on Windows, for the
+  // lock screen; other platforms show their controls from creation. AVSession
+  // drops every command sent to an inactive session, so the session follows
+  // whether a page has an active media session instead.
+  SetEnabled(value != PlaybackStatus::kStopped);
 }
 
 void SystemMediaControlsOhos::SetTitle(const std::u16string& value) {
