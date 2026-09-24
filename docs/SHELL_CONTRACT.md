@@ -335,6 +335,7 @@ function report() {
   - `filePath` 是真实路径，外壳用 `fileUri.getUriFromPath` 转成 URI 后再打开或分享。
 - **下载提示由谁显示**：启动配置 `downloadUi: 'shell' | 'native'`。手机默认为 `'shell'`，此时 Chromium 不显示下载气泡和下载栏，由外壳根据 `downloadUpdated` 自己提示。
 - 长按菜单里的各种"另存为"也走这套下载流程。手机上（`downloadUi` 为 `'shell'` 时）"另存为"不弹保存面板，直接存进下载目录，同名文件会自动加序号。原因是手机应用只能按路径写自己的 `Download/<包名>` 目录，保存面板选中的文件只能通过 URI 访问，Chromium 按路径写会报 `FILE_ACCESS_DENIED`。
+- **通知栏**：HAR 提供 `DownloadNotifier`。外壳把每个 `downloadUpdated` 事件都交给 `notifier.update(shellEvent<DownloadUpdatedEvent>(event))`，它会在通知栏显示下载状态：下载中用系统的进度条模板（`downloadTemplate`，最多每秒刷新一次）；完成后变成"下载完成"，点击就用系统里对应的应用打开文件；失败时显示"下载失败"；需要用户确认的危险文件会提示去下载页处理；取消或删除后通知消失。外壳还要在 `EntryAbility` 的 `onCreate` 和 `onNewWant` 里调用 `handleDownloadNotificationWant(context, want)`，因为点击通知拉起的只有外壳的 ability 能收到。参考实现见 `entry/` 的 `AuraShell.ets` 和 `EntryAbility.ets`。
 - 下载开始、确定目标路径、失败时，hilog 里各有一行 `OHOS download started` / `target` / `failed`，失败那一行带原因。
 
 **设置**

@@ -52,7 +52,7 @@ export function handleNotificationWant(want: Want): boolean {
 
 // HarmonyOS ids are 32-bit numbers; Chromium's are strings. The string rides
 // along as the label, which is what identifies the notification for cancel.
-function numericId(id: string): number {
+export function numericId(id: string): number {
   let hash = 0;
   for (let i = 0; i < id.length; i++) {
     hash = (hash * 31 + id.charCodeAt(i)) | 0;

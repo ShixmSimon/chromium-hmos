@@ -6,7 +6,7 @@ import display from '@ohos.display';
 import defaultAppManager from '@ohos.bundle.defaultAppManager';
 import bundleManager from '@ohos.bundle.bundleManager';
 import { CHROMIUM_HOME_URL, DeviceRouting, DeviceRoutingPolicy, WindowPolicy, WindowStateSnapshot } from 'engine';
-import { UIManager, handleNotificationWant } from 'engine';
+import { UIManager, handleDownloadNotificationWant, handleNotificationWant } from 'engine';
 import {
   CrossDeviceEntryAdapter,
   CrossDeviceSessionSnapshot
@@ -70,6 +70,9 @@ export default class EntryAbility extends UIAbility {
     // A tap on a web notification that launched the app from cold; the
     // engine delivers the click once it is up.
     handleNotificationWant(want);
+    // A tap on a "download complete" notification: open the file; the
+    // browser still starts behind it.
+    handleDownloadNotificationWant(this.context, want);
     this.startupWant = want;
     const initialThemeFontId = this.context.config.fontId ?? '';
     this.lastThemeFontId = initialThemeFontId;
@@ -138,7 +141,7 @@ export default class EntryAbility extends UIAbility {
   onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     // A notification tap only brings the browser forward. It carries no URL,
     // so letting it through would navigate the page to the home page.
-    if (handleNotificationWant(want)) {
+    if (handleNotificationWant(want) || handleDownloadNotificationWant(this.context, want)) {
       return;
     }
     this.startupWant = want;
