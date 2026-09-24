@@ -5,6 +5,8 @@
 #ifndef CHROME_BROWSER_UI_OHOS_SHELL_DOWNLOADS_OHOS_H_
 #define CHROME_BROWSER_UI_OHOS_SHELL_DOWNLOADS_OHOS_H_
 
+#include <string>
+
 class Profile;
 
 namespace chrome::ohos {
@@ -27,6 +29,11 @@ bool ShouldShellDrawDownloadUi();
 // or a HarmonyOS "file://docs/..." URI. Applied once per process, to the
 // original profile; does nothing when the switch is absent.
 void ApplyShellDownloadDirectory(Profile* profile);
+
+// The same at run time, for the setDownloadDirectory command: HarmonyOS only
+// hands out the Download/<bundle> directory once the shell's UI is up, after
+// Chromium has started. False when `location` is not a usable directory.
+bool SetShellDownloadDirectory(Profile* profile, const std::string& location);
 
 }  // namespace chrome::ohos
 

@@ -25,6 +25,7 @@ export {
   PwaMenuItemState
 } from './src/main/ets/components/webwindow/NativeContext';
 export { BrowserCommandChannel } from './src/main/ets/utils/BrowserCommandChannel';
+export { ShellDownloadDirectory } from './src/main/ets/utils/ShellDownloadDirectory';
 export * from './src/main/ets/components/webwindow/ShellServiceTypes';
 
 // Auxiliary Chromium windows: sizing only. Where and how they are drawn is the

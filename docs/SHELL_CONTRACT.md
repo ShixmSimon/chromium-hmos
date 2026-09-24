@@ -324,9 +324,15 @@ function report() {
 | 命令 | 参数 | 返回 |
 |---|---|---|
 | `listDownloads` | `requestId` | `downloadList { requestId, items }`，最新的在前 |
+| `setDownloadDirectory` | `uri` | 设定下载目录，见下文"保存位置" |
 | `downloadAction` | `id`, `action`: `'pause' \| 'resume' \| 'cancel' \| 'retry' \| 'remove' \| 'removeAndDeleteFile' \| 'keepDangerous' \| 'discardDangerous'` | `remove` 只删记录，`removeAndDeleteFile` 连文件一起删 |
 
-- **保存位置**：外壳在启动时用 `DocumentViewPicker` 的下载模式（`pickerMode = DOWNLOAD`）取到 `Download/<包名>` 目录的 URI，填进启动配置的 `downloadDirectoryUri`。引擎把它设为 Chromium 的默认下载目录，并关掉"下载前询问保存位置"。`filePath` 是真实路径，外壳用 `fileUri.getUriFromPath` 转成 URI 后再打开或分享。
+- **保存位置**：
+  - 外壳页面出现后调用 HAR 的 `ShellDownloadDirectory.prepare(context)`。它用 `DocumentViewPicker` 的下载模式取到 `Download/<包名>` 目录，不弹界面，授权长期有效。
+  - 再把拿到的 URI 用 `setDownloadDirectory { uri }` 命令发给引擎。引擎把它设为 Chromium 的默认下载目录，并关掉"下载前询问保存位置"。
+  - **不能在页面出现之前调用**：在 `onWindowStageCreate` 里调用，选择器会报 13900042 错误。所以这个目录没法通过启动配置传，启动配置里的 `downloadDirectoryUri` 只适用于外壳已经保存了上次拿到的 URI 的情况。
+  - 引擎收到目录之前开始的下载，仍会弹出系统的"选择保存位置"面板。
+  - `filePath` 是真实路径，外壳用 `fileUri.getUriFromPath` 转成 URI 后再打开或分享。
 - **下载提示由谁显示**：启动配置 `downloadUi: 'shell' | 'native'`。手机默认为 `'shell'`，此时 Chromium 不显示下载气泡和下载栏，由外壳根据 `downloadUpdated` 自己提示。
 - 长按菜单里的各种"另存为"也走这套下载流程。
 

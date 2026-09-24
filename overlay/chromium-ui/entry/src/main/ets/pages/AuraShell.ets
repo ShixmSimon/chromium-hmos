@@ -29,7 +29,7 @@ import { CHROMIUM_HOME_URL } from 'engine';
 import { HuaweiKnockShareSession, HuaweiShareAdapter } from 'engine';
 import { HarmonyFilePickerAdapter, HarmonyFilePickerResult } from 'engine';
 import { PermissionRequestAdapter, PermissionRequestResultPayload } from 'engine';
-import { BrowserCommandChannel } from 'engine';
+import { BrowserCommandChannel, ShellDownloadDirectory } from 'engine';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { SystemPrintAdapter } from 'engine';
 import { ChromiumSystemAction, SystemIntegrationAdapter } from 'engine';
@@ -93,6 +93,18 @@ struct AuraShell {
 
   aboutToAppear(): void {
     this.startKnockShare();
+    this.useSystemDownloadDirectory();
+  }
+
+  // Downloads go to Download/<bundle>, where the Files app shows them. The
+  // directory can only be had once this page is up, after Chromium started.
+  private useSystemDownloadDirectory(): void {
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    ShellDownloadDirectory.prepare(context).then((uri: string): void => {
+      if (uri.length > 0) {
+        this.executeBrowserCommand({ command: 'setDownloadDirectory', uri: uri });
+      }
+    });
   }
 
   onPageShow(): void {

@@ -113,8 +113,10 @@ export interface AuraStartupConfig {
   // Who draws download UI. 'shell': no Chromium download bubble or shelf; the
   // shell follows downloadUpdated events. Unset, as contextMenu.
   downloadUi?: 'shell' | 'native';
-  // Where downloads are saved: the Download/<bundle> directory URI the shell
-  // got from DocumentViewPicker in DOWNLOAD mode. Unset keeps Chromium's.
+  // Where downloads are saved, when the shell already knows at startup (a URI
+  // it kept from an earlier run). Usually it does not: HarmonyOS hands out the
+  // directory only once the UI is up, so shells send setDownloadDirectory
+  // instead (see ShellDownloadDirectory).
   downloadDirectoryUri?: string;
   windowRole?: 'browser' | 'pwa';
   targetWidget?: number;

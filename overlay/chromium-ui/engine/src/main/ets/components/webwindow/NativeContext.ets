@@ -209,6 +209,8 @@ export interface BrowserCommandPayload {
   // downloadAction: what to do with the download `id`.
   action?: ContextMenuAction | DownloadAction;
   // Profile data commands (docs/SHELL_CONTRACT.md, "Profile data").
+  // setDownloadDirectory: the directory URI from ShellDownloadDirectory.
+  uri?: string;
   id?: string;
   parentId?: string;
   title?: string;

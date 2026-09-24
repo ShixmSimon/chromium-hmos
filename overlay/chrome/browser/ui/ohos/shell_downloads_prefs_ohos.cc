@@ -36,12 +36,10 @@ constexpr char kDownloadDirSwitch[] = "ohos-download-dir";
 // of it is the escaped sandbox path.
 constexpr std::string_view kHarmonyDocsUriPrefix = "file://docs";
 
-// The directory named by --ohos-download-dir, or nullopt (logged) when it is
-// absent or not a usable absolute path.
-std::optional<base::FilePath> ReadShellDownloadDirectory() {
-  std::string value =
-      base::CommandLine::ForCurrentProcess()->GetSwitchValueUTF8(
-          kDownloadDirSwitch);
+// The directory a shell named -- a plain path or a HarmonyOS
+// "file://docs/..." URI -- or nullopt (logged) when it is empty or not a
+// usable absolute path.
+std::optional<base::FilePath> ParseShellDownloadDirectory(std::string value) {
   if (value.empty()) {
     return std::nullopt;
   }
@@ -66,6 +64,20 @@ void EnsureDirectoryExists(const base::FilePath& path) {
   }
 }
 
+void UseDownloadDirectory(Profile* profile, const base::FilePath& directory) {
+  // Incognito reads these through to the original profile's prefs.
+  PrefService* prefs = profile->GetOriginalProfile()->GetPrefs();
+  prefs->SetFilePath(prefs::kDownloadDefaultDirectory, directory);
+  prefs->SetFilePath(prefs::kSaveFileDefaultDirectory, directory);
+  prefs->SetBoolean(prefs::kPromptForDownload, false);
+  // Downloads would fail with FILE_FAILED into a missing directory.
+  base::ThreadPool::PostTask(
+      FROM_HERE,
+      {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
+       base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
+      base::BindOnce(&EnsureDirectoryExists, directory));
+}
+
 }  // namespace
 
 bool ShouldShellDrawDownloadUi() {
@@ -87,21 +99,22 @@ void ApplyShellDownloadDirectory(Profile* profile) {
     return;
   }
   applied = true;
-  const std::optional<base::FilePath> directory = ReadShellDownloadDirectory();
-  if (!directory) {
-    return;
+  const std::optional<base::FilePath> directory = ParseShellDownloadDirectory(
+      base::CommandLine::ForCurrentProcess()->GetSwitchValueUTF8(
+          kDownloadDirSwitch));
+  if (directory) {
+    UseDownloadDirectory(profile, *directory);
   }
-  // Incognito reads these through to the original profile's prefs.
-  PrefService* prefs = profile->GetOriginalProfile()->GetPrefs();
-  prefs->SetFilePath(prefs::kDownloadDefaultDirectory, *directory);
-  prefs->SetFilePath(prefs::kSaveFileDefaultDirectory, *directory);
-  prefs->SetBoolean(prefs::kPromptForDownload, false);
-  // Downloads would fail with FILE_FAILED into a missing directory.
-  base::ThreadPool::PostTask(
-      FROM_HERE,
-      {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
-       base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
-      base::BindOnce(&EnsureDirectoryExists, *directory));
+}
+
+bool SetShellDownloadDirectory(Profile* profile, const std::string& location) {
+  const std::optional<base::FilePath> directory =
+      ParseShellDownloadDirectory(location);
+  if (!profile || !directory) {
+    return false;
+  }
+  UseDownloadDirectory(profile, *directory);
+  return true;
 }
 
 }  // namespace chrome::ohos

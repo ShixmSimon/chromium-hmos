@@ -46,6 +46,7 @@ constexpr ShellServiceCommand kShellServiceCommands[] = {
     // Downloads.
     {"listDownloads", &HandleDownloadsCommand},
     {"downloadAction", &HandleDownloadsCommand},
+    {"setDownloadDirectory", &HandleDownloadsCommand},
     // Settings.
     {"clearBrowsingData", &HandleSettingsCommand},
     {"getBrowsingDataCounts", &HandleSettingsCommand},

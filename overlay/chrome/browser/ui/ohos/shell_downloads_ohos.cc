@@ -50,6 +50,7 @@ using download::DownloadItem;
 
 constexpr char kListDownloadsCommand[] = "listDownloads";
 constexpr char kDownloadActionCommand[] = "downloadAction";
+constexpr char kSetDownloadDirectoryCommand[] = "setDownloadDirectory";
 constexpr char kDownloadUpdatedEvent[] = "downloadUpdated";
 constexpr char kDownloadListEvent[] = "downloadList";
 
@@ -465,6 +466,13 @@ bool HandleDownloadsCommand(const ShellCommandContext& context,
   }
   if (name == kDownloadActionCommand) {
     RunDownloadAction(context, command);
+    return true;
+  }
+  if (name == kSetDownloadDirectoryCommand) {
+    const std::string* uri = command.FindString("uri");
+    if (!uri || !SetShellDownloadDirectory(context.profile, *uri)) {
+      LOG(WARNING) << "OHOS shell downloads: bad setDownloadDirectory";
+    }
     return true;
   }
   return false;
