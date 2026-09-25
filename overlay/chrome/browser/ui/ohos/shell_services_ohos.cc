@@ -11,6 +11,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "chrome/browser/ui/ohos/shell_downloads_ohos.h"
+#include "chrome/browser/ui/ohos/shell_password_cleanup_ohos.h"
 
 namespace chrome::ohos {
 
@@ -138,6 +139,9 @@ void EnsureShellServices(Profile* profile) {
     WarnAboutUnreachableCommands();
     return true;
   }();
+  // Before anything else touches the profile: passwords saved while this
+  // platform had nowhere safe to keep them are cleared once.
+  ClearPasswordsSavedWithoutProtection(profile);
   ApplyShellDownloadDirectory(profile);
   EnsureBookmarksObserver(profile);
   EnsureHistoryObserver(profile);
