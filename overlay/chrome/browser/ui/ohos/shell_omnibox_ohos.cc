@@ -333,10 +333,28 @@ void RunGetTopSites(const ShellCommandContext& context,
 
 }  // namespace
 
+// The user has told the new tab page to stop suggesting a site. TopSites
+// keeps its own blocklist, so the site stays gone across restarts without the
+// shell remembering anything.
+void RunRemoveTopSite(const ShellCommandContext& context,
+                      const base::DictValue& command) {
+  const std::string* url = command.FindString("url");
+  if (!url || url->empty()) {
+    return;
+  }
+  const GURL parsed(*url);
+  scoped_refptr<history::TopSites> top_sites =
+      TopSitesFactory::GetForProfile(context.profile);
+  if (parsed.is_valid() && top_sites) {
+    top_sites->AddBlockedUrl(parsed);
+  }
+}
+
 bool HandleOmniboxCommand(const ShellCommandContext& context,
                           std::string_view name,
                           const base::DictValue& command) {
-  if (name != "autocomplete" && name != "getTopSites") {
+  if (name != "autocomplete" && name != "getTopSites" &&
+      name != "removeTopSite") {
     return false;
   }
   if (!context.profile) {
@@ -345,6 +363,8 @@ bool HandleOmniboxCommand(const ShellCommandContext& context,
   }
   if (name == "autocomplete") {
     RunAutocomplete(context, command);
+  } else if (name == "removeTopSite") {
+    RunRemoveTopSite(context, command);
   } else {
     RunGetTopSites(context, command);
   }

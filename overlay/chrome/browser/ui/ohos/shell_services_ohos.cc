@@ -50,6 +50,7 @@ constexpr ShellServiceCommand kShellServiceCommands[] = {
     {"clearHistory", &HandleHistoryCommand},
     {"autocomplete", &HandleHistoryCommand},
     {"getTopSites", &HandleHistoryCommand},
+    {"removeTopSite", &HandleHistoryCommand},
     // Downloads.
     {"listDownloads", &HandleDownloadsCommand},
     {"downloadAction", &HandleDownloadsCommand},

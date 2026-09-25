@@ -68,6 +68,11 @@ export interface BrowserTabState {
   url: string;
   title: string;
   loading: boolean;
+  // Stable for the tab's life and never reused, unlike index, which shifts
+  // whenever a neighbour closes or moves. Name the tab by this in anything
+  // asynchronous -- a thumbnail arriving, a drag finishing. Empty on an
+  // engine older than browsingApiVersion 1.
+  id?: string;
 }
 
 export type PwaMenuItemType = 'command' | 'check' | 'radio' | 'separator' |
@@ -107,6 +112,11 @@ export interface BrowserStateSnapshot {
   focusedTarget: 'webContents' | 'sidePanel';
   activationEpoch: number;
   tabs: BrowserTabState[];
+  // 0..1, and 1 whenever nothing is loading, so one progress bar needs no
+  // special case for the idle state.
+  loadProgress?: number;
+  // Whether the current tab is asking sites for their desktop pages.
+  requestDesktopSite?: boolean;
   url: string;
   domain: string;
   title: string;
@@ -236,6 +246,10 @@ export interface BrowserCommandPayload {
   // sandbox. The shell owns the system file picker and the copy in or out;
   // the engine only reads and writes this path.
   path?: string;
+  // moveTab: where the tab should end up, counting positions after the move.
+  toIndex?: number;
+  // setRequestDesktopSite: ask this tab's site for its desktop pages.
+  enabled?: boolean;
   sizeVp?: number;
   // setViewportInsets: how much of the page bottom the shell covers, in vp.
   bottom?: number;

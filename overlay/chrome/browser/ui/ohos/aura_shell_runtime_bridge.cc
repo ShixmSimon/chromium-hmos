@@ -59,6 +59,8 @@
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_types.h"
+#include "components/embedder_support/user_agent_utils.h"
+#include "components/sessions/content/session_tab_helper.h"
 #include "chrome/common/chrome_isolated_world_ids.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
@@ -80,7 +82,6 @@
 #include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "base/scoped_multi_source_observation.h"
-#include "components/embedder_support/user_agent_utils.h"
 #include "components/find_in_page/find_notification_details.h"
 #include "components/find_in_page/find_result_observer.h"
 #include "components/find_in_page/find_tab_helper.h"
@@ -88,6 +89,7 @@
 #include "components/printing/browser/print_to_pdf/pdf_print_result.h"
 #include "components/printing/browser/print_to_pdf/pdf_print_utils.h"
 #include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/page_navigator.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
@@ -946,6 +948,82 @@ std::string ShellVisibleUrl(const GURL& url) {
              : spec.substr(0, kMaxShellUrlLength);
 }
 
+// A tab's stable id as the shell sees it. Empty when the tab has no session
+// id yet, which the shell reads as "not addressable".
+std::string ShellTabId(content::WebContents* contents) {
+  if (!contents) {
+    return std::string();
+  }
+  const SessionID id = sessions::SessionTabHelper::IdForTab(contents);
+  return id.is_valid() ? base::NumberToString(id.id()) : std::string();
+}
+
+content::WebContents* FindTabById(TabStripModel* tabs,
+                                  const std::string* id) {
+  if (!tabs || !id || id->empty()) {
+    return nullptr;
+  }
+  for (int index = 0; index < tabs->count(); ++index) {
+    content::WebContents* contents = tabs->GetWebContentsAt(index);
+    if (ShellTabId(contents) == *id) {
+      return contents;
+    }
+  }
+  return nullptr;
+}
+
+// The index a command means: by id when it gives one, since an index the
+// shell read before someone else closed a tab now points at the wrong tab.
+std::optional<int> ReadTabIndex(TabStripModel* tabs,
+                                const base::DictValue& command) {
+  if (content::WebContents* contents =
+          FindTabById(tabs, command.FindString("id"))) {
+    const std::optional<int> index = tabs->GetIndexOfWebContents(contents);
+    if (index) {
+      return index;
+    }
+  }
+  const std::optional<int> index = command.FindInt("index");
+  return index && tabs->ContainsIndex(*index) ? index : std::nullopt;
+}
+
+// Whether this tab is asking sites for their desktop pages. Phones send a
+// mobile user agent by default, so an override means desktop.
+bool IsRequestingDesktopSite(content::WebContents* contents) {
+  if (!contents) {
+    return false;
+  }
+  content::NavigationEntry* entry =
+      contents->GetController().GetLastCommittedEntry();
+  return entry && entry->GetIsOverridingUserAgent();
+}
+
+// Ask this tab's site for its desktop pages, or stop. Chrome for Android
+// does the same three things: swap the user agent, mark the entry so a
+// back-forward step keeps the choice, and reload from the original URL so a
+// server that redirected us to its mobile host gets another say.
+void SetRequestDesktopSite(content::WebContents* contents, bool enabled) {
+  if (!contents) {
+    return;
+  }
+  const bool mobile = !enabled;
+  blink::UserAgentOverride override;
+  if (enabled) {
+    override.ua_string_override = embedder_support::GetUserAgentForOhos(mobile);
+    override.ua_metadata_override =
+        embedder_support::GetUserAgentMetadataForOhos(mobile);
+  }
+  contents->SetUserAgentOverride(override, /*override_in_new_tabs=*/false);
+  content::NavigationController& controller = contents->GetController();
+  if (content::NavigationEntry* entry = controller.GetLastCommittedEntry()) {
+    entry->SetIsOverridingUserAgent(enabled);
+  }
+  // Not a plain reload: a site that redirected us to its mobile host would
+  // just redirect again. Chromium own ToggleRequestTabletSite does the same
+  // thing for the same reason.
+  controller.LoadOriginalRequestURL();
+}
+
 std::string BuildBrowserStateJson(std::string_view ui_family,
                                   gfx::AcceleratedWidget widget,
                                   BrowserWindowInterface* browser) {
@@ -965,6 +1043,10 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   state.Set("domain", "");
   state.Set("title", "");
   state.Set("loading", false);
+  // 0..1, and 1 when nothing is loading, so the shell can draw one progress
+  // bar without special-casing the idle state.
+  state.Set("loadProgress", 1.0);
+  state.Set("requestDesktopSite", false);
   state.Set("canGoBack", false);
   state.Set("canGoForward", false);
   state.Set("isPwaWindow", false);
@@ -1008,6 +1090,10 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
     tab.Set("url", "");
     tab.Set("title", "");
     tab.Set("loading", false);
+    // Stable for the tab's life and never reused. An index shifts whenever a
+    // neighbour closes or moves, so anything asynchronous -- a thumbnail
+    // arriving, a drag finishing -- has to name the tab by this instead.
+    tab.Set("id", ShellTabId(contents));
     if (contents) {
       const GURL url = contents->GetVisibleURL();
       tab.Set("url", ShellVisibleUrl(url));
@@ -1031,6 +1117,9 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
     state.Set("domain", url.host().empty() ? visible_url : url.host());
     state.Set("title", base::UTF16ToUTF8(active->GetTitle()));
     state.Set("loading", active->IsLoading());
+    state.Set("loadProgress",
+              active->IsLoading() ? active->GetLoadProgress() : 1.0);
+    state.Set("requestDesktopSite", IsRequestingDesktopSite(active));
     state.Set("canGoBack", active->GetController().CanGoBack());
     state.Set("canGoForward", active->GetController().CanGoForward());
     if (is_pwa_window) {
@@ -1739,17 +1828,28 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
                                   /*is_renderer_initiated=*/false);
     browser->OpenURL(params, {});
   } else if (*name == "activateTab") {
-    const std::optional<int> index = command.FindInt("index");
-    if (index && tabs->ContainsIndex(*index)) {
+    if (const std::optional<int> index = ReadTabIndex(tabs, command)) {
       tabs->ActivateTabAt(*index);
     }
   } else if (*name == "closeTab") {
-    const int index = command.FindInt("index").value_or(tabs->active_index());
+    const int index =
+        ReadTabIndex(tabs, command).value_or(tabs->active_index());
     if (tabs->ContainsIndex(index) && tabs->count() > 1) {
       tabs->CloseWebContentsAt(index, TabCloseTypes::CLOSE_USER_GESTURE);
     } else if (active) {
       NavigateOnUiThread(widget, GURL("chrome://newtab/"), 0);
     }
+  } else if (*name == "moveTab") {
+    // to_position is where the tab ends up, which is what a finished drag
+    // knows; TabStripModel takes the same meaning.
+    const std::optional<int> from = ReadTabIndex(tabs, command);
+    const std::optional<int> to = command.FindInt("toIndex");
+    if (from && to) {
+      tabs->MoveWebContentsAt(*from, std::clamp(*to, 0, tabs->count() - 1),
+                              /*select_after_move=*/false);
+    }
+  } else if (*name == "setRequestDesktopSite" && active) {
+    SetRequestDesktopSite(active, command.FindBool("enabled").value_or(false));
   } else if (*name == "print" && active) {
     RequestAuraShellSystemPrint(active);
   } else if (*name == "share" && active) {
@@ -2097,6 +2197,8 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "newIncognitoWindow",
       "activateTab",
       "closeTab",
+      "moveTab",
+      "setRequestDesktopSite",
       "print",
       "share",
       "pwaMenu",
