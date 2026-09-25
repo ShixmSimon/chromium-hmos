@@ -1,0 +1,71 @@
+Let the shell draw permission prompts.
+
+Chromium's permission bubble hangs off the location bar. A shell that draws
+its own browser UI shows no location bar, so the bubble has nothing to anchor
+to -- and on a phone the user is meant to see a bottom sheet in the shell's
+own language, with "allow once" and "allow while using this site" as separate
+answers.
+
+PermissionPrompt::Delegate already has exactly those outcomes -- Accept,
+AcceptThisTime, Deny, Dismiss -- so the shell prompt is a thin one: it sends
+sitePermissionRequested, waits, and calls the matching method when
+sitePermissionDecision comes back. A request Chromium abandons first sends
+sitePermissionCancelled so the shell can take its sheet down.
+
+This is a different thing from the existing permissionsRequested event, which
+asks the shell for a HarmonyOS application permission after the user has
+already agreed. Both still run, in that order.
+
+Requests the shell has no wording for fall through to Chromium's own UI
+rather than going unanswered.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -1711,6 +1711,8 @@
+       "icon_loader_ohos.cc",
+       "memory_details_linux.cc",
+       "platform_util_ohos.cc",
++      "ui/ohos/shell_permission_prompt_ohos.cc",
++      "ui/ohos/shell_permission_prompt_ohos.h",
+     ]
+     deps += [
+       "//chrome/browser/printing",
+diff --git a/chrome/browser/ui/views/permissions/permission_prompt_factory.cc b/chrome/browser/ui/views/permissions/permission_prompt_factory.cc
+--- a/chrome/browser/ui/views/permissions/permission_prompt_factory.cc
++++ b/chrome/browser/ui/views/permissions/permission_prompt_factory.cc
+@@ -289,6 +289,19 @@
+     return nullptr;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Before anything that reaches for the location bar: where the shell draws
++  // the browser UI there is none, and every bubble below would hang off a
++  // view that is not on screen. Falls through when the shell has no sheet for
++  // this kind of request.
++  if (chrome::ohos::ShellDrawsPermissionPrompts()) {
++    if (std::unique_ptr<permissions::PermissionPrompt> prompt =
++            chrome::ohos::CreateShellPermissionPrompt(web_contents, delegate)) {
++      return prompt;
++    }
++  }
++#endif
++
+   if (ShouldIgnorePermissionRequest(web_contents, delegate)) {
+     return nullptr;
+   }
+diff --git a/chrome/browser/ui/views/permissions/permission_prompt_factory.cc b/chrome/browser/ui/views/permissions/permission_prompt_factory.cc
+--- a/chrome/browser/ui/views/permissions/permission_prompt_factory.cc
++++ b/chrome/browser/ui/views/permissions/permission_prompt_factory.cc
+@@ -12,6 +12,9 @@
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+ #include "chrome/browser/ui/lens/lens_overlay_controller.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/shell_permission_prompt_ohos.h"
++#endif
+ #include "chrome/browser/ui/location_bar/location_bar_override_data.h"
+ #include "chrome/browser/ui/permission_bubble/permission_prompt.h"
+ #include "chrome/browser/ui/tabs/public/tab_features.h"

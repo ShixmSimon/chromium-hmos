@@ -151,6 +151,47 @@ export interface ShellServiceEvent {
   incognito: boolean;
 }
 
+// A site is asking the user for a permission, and the shell draws the sheet
+// that asks. Answer with the sitePermissionDecision command carrying the same
+// requestId; answer exactly once.
+//
+// This is not permissionsRequested, which asks the shell to obtain a
+// HarmonyOS application permission once the user has already agreed. Both
+// happen, in that order.
+export interface SitePermissionRequestedEvent extends ShellServiceEvent {
+  requestId: number;
+  // The site asking, as an origin: "https://map.example.com".
+  origin: string;
+  // Whether the origin is a secure context. Do not offer "always" when this
+  // is false -- a grant written against plain http is a grant to whoever is
+  // on the wire, and the engine downgrades one to allowOnce anyway.
+  isSecure: boolean;
+  // What it is asking for. More than one when a site asks for several at
+  // once, for example camera and microphone for a call.
+  webPermissions: SitePermission[];
+}
+
+export type SitePermission =
+  'location' | 'camera' | 'microphone' | 'notifications' | 'clipboard';
+
+export type SitePermissionDecision =
+  // Allow this once, remember nothing; the site asks again next time.
+  | 'allowOnce'
+  // Allow and remember for this site. Downgraded to allowOnce on http.
+  | 'allowAlways'
+  // Refuse and remember; the site is not asked about again.
+  | 'block'
+  // The user closed the sheet or pressed back: refuse this time, remember
+  // nothing.
+  | 'dismiss';
+
+// The engine gave up on a request -- the page navigated away, the tab closed
+// -- while its sheet may still be on screen. Take the sheet down; do not
+// answer.
+export interface SitePermissionCancelledEvent extends ShellServiceEvent {
+  requestId: number;
+}
+
 export interface BookmarkListEvent extends ShellServiceEvent {
   requestId: number;
   // Empty for the root list and for search results.

@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "chrome/browser/ui/ohos/screen_orientation_delegate_ohos.h"
+#include "chrome/browser/ui/ohos/shell_permission_prompt_ohos.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1586,6 +1587,18 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     return;
   }
 
+  if (*name == "sitePermissionDecision") {
+    // The user answered the sheet the shell drew for
+    // sitePermissionRequested. Handled before the browser lookup below: a
+    // question can outlive the window that asked it.
+    const std::optional<int> id = command.FindInt("requestId");
+    const std::string* decision = command.FindString("decision");
+    if (id && decision) {
+      ResolveShellPermissionRequest(*id, *decision);
+    }
+    return;
+  }
+
   if (*name == "defaultBrowserState") {
     std::optional<bool> is_default;
     if (command.FindBool("known").value_or(true)) {
@@ -2208,6 +2221,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "recoverInput",
       "defaultBrowserState",
       "systemCapabilities",
+      "sitePermissionDecision",
       "requestState",
       "filePickerResult",
       "permissionResult",

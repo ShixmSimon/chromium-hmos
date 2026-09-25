@@ -25,6 +25,7 @@ import {
   DownloadAction,
   HistoryVisitRef,
   ShellPrefKey,
+  SitePermissionDecision,
   SiteSettingType,
   SiteSettingValue
 } from './ShellServiceTypes';
@@ -155,7 +156,9 @@ export interface BrowserRuntimeEvent {
   event: 'systemPrintReady' | 'systemPrintFailed' | 'shareRequested' |
     'castRequested' | 'filePickerRequested' | 'pwaInstalled' | 'pwaMenuModel' |
     'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
-    'permissionsRequested' | 'browserControlsRatio' | 'findResult' | 'pageText' |
+    'permissionsRequested' | 'sitePermissionRequested' |
+    'sitePermissionCancelled' |
+    'browserControlsRatio' | 'findResult' | 'pageText' |
     'contextMenuRequested' |
     // Profile data; read these through shellEvent<T>() (ShellServiceTypes).
     'bookmarkList' | 'bookmarkCreated' | 'bookmarksChanged' |
@@ -250,6 +253,8 @@ export interface BrowserCommandPayload {
   toIndex?: number;
   // setRequestDesktopSite: ask this tab's site for its desktop pages.
   enabled?: boolean;
+  // sitePermissionDecision: the answer to sitePermissionRequested.
+  decision?: SitePermissionDecision;
   sizeVp?: number;
   // setViewportInsets: how much of the page bottom the shell covers, in vp.
   bottom?: number;
