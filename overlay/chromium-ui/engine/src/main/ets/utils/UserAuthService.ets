@@ -17,9 +17,17 @@
 //                             -> { token }       challenge and token are base64
 // A cancelled or failed authentication rejects; Chromium maps that to
 // NotAllowedError.
+//
+// The password manager uses the same service for a plainer question -- is this
+// the person who saved the password -- and wants an answer, not a token:
+//   verify { title }          -> { ok }
+//   cancel                    -> {}               the caller went away
+// verify resolves either way rather than rejecting, because "the user said no"
+// is an answer and the engine logs a rejection as a transport failure.
 
 import { userAuth } from '@kit.UserAuthenticationKit';
 import { util } from '@kit.ArkTS';
+import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { SystemServiceHandler } from './SystemServiceBridge';
 
 const AUTH_TYPES: userAuth.UserAuthType[] = [
@@ -29,6 +37,9 @@ const AUTH_TYPES: userAuth.UserAuthType[] = [
 ];
 
 export class UserAuthService implements SystemServiceHandler {
+  // The verification currently on screen, so cancel has something to cancel.
+  private pending: userAuth.UserAuthInstance | null = null;
+
   async handle(method: string, args: Record<string, Object>): Promise<Object | undefined> {
     switch (method) {
       case 'available':
@@ -36,6 +47,12 @@ export class UserAuthService implements SystemServiceHandler {
         return result;
       case 'authenticate':
         return this.authenticate(args);
+      case 'verify':
+        return this.verify(args);
+      case 'cancel':
+        this.cancel();
+        const empty: Record<string, Object> = {};
+        return empty;
       default:
         throw new Error(`userauth has no method ${method}`);
     }
@@ -58,6 +75,67 @@ export class UserAuthService implements SystemServiceHandler {
         return false;
       }
     });
+  }
+
+  // Whoever is holding the phone, are they the person who saved this? The
+  // challenge is thrown away: nothing is being signed, so it only has to be
+  // unpredictable, and HUKS is not involved.
+  private async verify(args: Record<string, Object>): Promise<Object> {
+    if (!this.available()) {
+      const none: Record<string, Object> = { 'ok': false };
+      return none;
+    }
+    const challenge: Uint8Array = cryptoFramework.createRandom().generateRandomSync(32).data;
+    const title = String(args['title'] ?? '').length > 0 ? String(args['title']) : '验证身份';
+    const authParam: userAuth.AuthParam = {
+      challenge: challenge,
+      authType: this.enrolledTypes(),
+      authTrustLevel: userAuth.AuthTrustLevel.ATL3
+    };
+    const widgetParam: userAuth.WidgetParam = { title: title };
+    return new Promise((resolve) => {
+      let instance: userAuth.UserAuthInstance;
+      try {
+        instance = userAuth.getUserAuthInstance(authParam, widgetParam);
+      } catch (error) {
+        const failed: Record<string, Object> = { 'ok': false };
+        resolve(failed);
+        return;
+      }
+      this.pending = instance;
+      instance.on('result', {
+        onResult: (result: userAuth.UserAuthResult): void => {
+          try {
+            instance.off('result');
+          } catch (error) {
+            // Already detached.
+          }
+          if (this.pending === instance) {
+            this.pending = null;
+          }
+          const reply: Record<string, Object> = {
+            'ok': result.result === userAuth.UserAuthResultCode.SUCCESS
+          };
+          resolve(reply);
+        }
+      });
+      instance.start();
+    });
+  }
+
+  // The caller stopped waiting -- the tab closed, the window went away. Take
+  // the prompt down rather than leave it over whatever is there now.
+  private cancel(): void {
+    const instance = this.pending;
+    this.pending = null;
+    if (instance === null) {
+      return;
+    }
+    try {
+      instance.cancel();
+    } catch (error) {
+      // Already finished.
+    }
   }
 
   private authenticate(args: Record<string, Object>): Promise<Object> {

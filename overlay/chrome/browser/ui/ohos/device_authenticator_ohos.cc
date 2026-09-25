@@ -24,7 +24,10 @@ namespace chrome::ohos {
 
 namespace {
 
-constexpr char kService[] = "userAuth";
+// The name the HAR registers, not "userAuth": the shell cannot add a service
+// of its own, the engine's SystemServices.ets owns this list, and there was
+// already a UserAuthService there for WebAuthn. Passwords reuse it.
+constexpr char kService[] = "userauth";
 
 // When the user last proved who they are, and the window during which that
 // still counts.

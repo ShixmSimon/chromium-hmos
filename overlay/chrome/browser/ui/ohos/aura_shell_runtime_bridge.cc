@@ -2343,52 +2343,6 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     }
     return;
   }
-  if (*name == "measureViewport" && active) {
-    // TEMPORARY. The document says it fits -- clientWidth, scrollWidth and
-    // innerWidth all 377, scale 1 -- and the right side is still cut off, so
-    // whatever is too wide is inside a shadow root where none of those
-    // numbers look. Walk the tree, open shadow roots as they come, and report
-    // the elements that overflow their own box.
-    active->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
-        uR"(JSON.stringify((() => {
-          const over = [];
-          const seen = new Set();
-          const walk = (root, depth) => {
-            if (!root || depth > 12) return;
-            for (const el of root.querySelectorAll('*')) {
-              if (seen.has(el)) continue;
-              seen.add(el);
-              if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0) {
-                const cs = getComputedStyle(el);
-                over.push({
-                  tag: el.tagName + (el.id ? '#' + el.id : '') +
-                       (el.className && typeof el.className === 'string'
-                        ? '.' + el.className.trim().split(/\s+/)[0] : ''),
-                  clientWidth: el.clientWidth,
-                  scrollWidth: el.scrollWidth,
-                  minWidth: cs.minWidth,
-                  width: cs.width,
-                  overflowX: cs.overflowX
-                });
-              }
-              if (el.shadowRoot) walk(el.shadowRoot, depth + 1);
-            }
-          };
-          walk(document, 0);
-          return {
-            url: location.href,
-            clientWidth: document.documentElement.clientWidth,
-            overflowing: over.slice(0, 12)
-          };
-        })()))",
-        base::BindOnce([](base::Value result) {
-          LOG(WARNING) << "OHOS viewport probe: "
-                       << (result.is_string() ? result.GetString()
-                                              : std::string("<no answer>"));
-        }),
-        ISOLATED_WORLD_ID_CHROME_INTERNAL);
-    return;
-  }
   if (*name == "getPageText" && active) {
     // The shell's summarizer reads the page's text. An isolated world keeps
     // the page's own scripts from seeing, or tampering with, the read.
@@ -3010,7 +2964,6 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "findInPage",
       "stopFind",
       "getPageText",
-      "measureViewport",
       "contextMenuAction",
       "contextMenuDismissed",
   };

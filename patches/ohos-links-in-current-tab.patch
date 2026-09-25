@@ -18,12 +18,18 @@ and restoring a closed tab all still open one.
 Phones only, read from ui_family at the moment of the click, so unfolding a
 foldable changes the behaviour with it and no preference is involved.
 
+On device the tab still opened and nothing was logged, so the paragraph above
+is in doubt: the click may be reaching AddNewContents instead, which would
+mean the renderer creates the window itself rather than asking. Both doors now
+log the disposition and whether the renderer started it. Those two LOG lines
+are temporary and come out once the answer is in.
+
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 
 diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 --- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 +++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
-@@ -571,6 +571,34 @@
+@@ -571,6 +571,43 @@
    DCHECK(params.Valid());
  #endif
  
@@ -43,6 +49,15 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
 +  //
 +  // Renderer-initiated only, so the shell's own "open in new tab", the newTab
 +  // command and restoring a closed tab all still open one.
++  //
++  // TEMPORARY probe. On device the tab still opened and none of this was
++  // reached, so the routing above is in doubt; AddNewContents logs the same
++  // line. Both come out once it is known which door the click arrives at.
++  LOG(WARNING) << "OHOS link probe: OpenURLFromTab disposition="
++               << static_cast<int>(params.disposition)
++               << " rendererInitiated=" << params.is_renderer_initiated
++               << " phoneUi=" << chrome::ohos::IsAuraShellMobilePhoneUi()
++               << " url=" << params.url.possibly_invalid_spec();
 +  content::OpenURLParams phone_params = params;
 +  if (chrome::ohos::IsAuraShellMobilePhoneUi() && params.is_renderer_initiated &&
 +      (params.disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB ||
@@ -58,3 +73,20 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
    if ((browser_->GetType() == BrowserWindowInterface::Type::TYPE_DEVTOOLS)) {
      DevToolsWindow* window = DevToolsWindow::AsDevToolsWindow(source);
      DCHECK(window);
+@@ -702,6 +739,16 @@
+     const blink::mojom::WindowFeatures& window_features,
+     bool user_gesture,
+     bool* was_blocked) {
++#if BUILDFLAG(IS_OHOS)
++  // TEMPORARY, the other half of the probe above. AddNewContents has no
++  // is_renderer_initiated -- by the time it is reached the renderer has
++  // already been handed a WebContents -- so user_gesture stands in for it.
++  LOG(WARNING) << "OHOS link probe: AddNewContents disposition="
++               << static_cast<int>(disposition)
++               << " userGesture=" << user_gesture
++               << " phoneUi=" << chrome::ohos::IsAuraShellMobilePhoneUi()
++               << " url=" << target_url.possibly_invalid_spec();
++#endif
+   FullscreenController* fullscreen_controller =
+       exclusive_access_manager_->fullscreen_controller();
+ #if BUILDFLAG(IS_MAC)
