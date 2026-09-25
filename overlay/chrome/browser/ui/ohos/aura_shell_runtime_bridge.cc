@@ -691,6 +691,43 @@ std::vector<const char*> OhosPermissionsFor(ContentSettingsType content_type) {
   }
 }
 
+// The content settings whose OS permission Chromium must wait for before it
+// uses the capability.
+//
+// system_permission_settings treats a type it has never heard of as allowed,
+// which is right for a desktop where the OS does not gate these at all, and
+// wrong here: Chromium started the camera the moment the site was allowed,
+// while the HarmonyOS prompt was still on screen, and the first getUserMedia
+// failed. Registering them makes IsAllowed() honest, so the media path asks
+// through Request() and waits for the answer.
+//
+// Registering a permission the app already holds costs one round trip and no
+// UI: requestPermissionsFromUser returns a granted permission immediately.
+void RegisterOhosManagedPermissions() {
+  for (ContentSettingsType type :
+       {ContentSettingsType::MEDIASTREAM_CAMERA,
+        ContentSettingsType::MEDIASTREAM_MIC}) {
+    if (::system_permission_settings::GetOhosSystemPermission(type) ==
+        ::system_permission_settings::SystemPermission::kNotDetermined) {
+      ::system_permission_settings::SetOhosSystemPermission(
+          type, ::system_permission_settings::SystemPermission::kNotDetermined);
+    }
+  }
+}
+
+// The content setting an OHOS permission name belongs to, for turning the
+// shell's answer back into something Chromium understands.
+std::optional<ContentSettingsType> ContentTypeForOhosPermission(
+    std::string_view permission) {
+  if (permission == "ohos.permission.CAMERA") {
+    return ContentSettingsType::MEDIASTREAM_CAMERA;
+  }
+  if (permission == "ohos.permission.MICROPHONE") {
+    return ContentSettingsType::MEDIASTREAM_MIC;
+  }
+  return std::nullopt;
+}
+
 constexpr ContentSettingsType kOhosBackedPermissions[] = {
     ContentSettingsType::GEOLOCATION,
     ContentSettingsType::MEDIASTREAM_CAMERA,
@@ -2105,6 +2142,29 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     const base::ListValue* denied_values = command.FindList("denied");
     const size_t granted = granted_values ? granted_values->size() : 0u;
     const size_t denied = denied_values ? denied_values->size() : 0u;
+    // Record the outcome before running the continuation: the thing waiting
+    // on it is about to ask whether the permission is allowed.
+    for (const auto& [answered, outcome] :
+         {std::make_pair(granted_values,
+                         ::system_permission_settings::SystemPermission::
+                             kAllowed),
+          std::make_pair(denied_values,
+                         ::system_permission_settings::SystemPermission::
+                             kDenied)}) {
+      if (!answered) {
+        continue;
+      }
+      for (const base::Value& entry : *answered) {
+        const std::string* permission = entry.GetIfString();
+        std::optional<ContentSettingsType> type =
+            permission ? ContentTypeForOhosPermission(*permission)
+                       : std::nullopt;
+        if (type) {
+          ::system_permission_settings::SetOhosSystemPermission(*type,
+                                                                outcome);
+        }
+      }
+    }
     if (const std::optional<int> request_id = command.FindInt("requestId")) {
       auto pending = PendingPermissionRequests().find(*request_id);
       if (pending != PendingPermissionRequests().end()) {
@@ -2675,6 +2735,7 @@ void NotifyAuraShellBrowserStarted() {
       base::BindRepeating([](ContentSettingsType type, base::OnceClosure done) {
         RequestOhosPermissionsFor(type, std::move(done));
       }));
+  RegisterOhosManagedPermissions();
   ::system_permission_settings::SetOhosSettingsOpener(
       base::BindRepeating([]() {
         base::DictValue event;

@@ -341,6 +341,13 @@ export type BookmarkOpError =
   // Anything else, including a bookmark managed by policy.
   | 'unknown';
 
+// getRecentBookmarks: the bookmarks added most recently, newest first. URLs
+// only -- a folder is not somewhere to go back to.
+export interface RecentBookmarksEvent extends ShellServiceEvent {
+  requestId: number;
+  nodes: BookmarkNode[];
+}
+
 // getBookmarkPath: the chain from the permanent folder down to the node
 // asked for, both ends included; empty when the id names nothing.
 export interface BookmarkPathEvent extends ShellServiceEvent {

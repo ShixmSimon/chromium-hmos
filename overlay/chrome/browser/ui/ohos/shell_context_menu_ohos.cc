@@ -43,6 +43,7 @@ struct ShellAction {
 constexpr ShellAction kShellActions[] = {
     // Links.
     {"openLinkInNewTab", IDC_CONTENT_CONTEXT_OPENLINKNEWTAB},
+    {"openLinkInIncognito", IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD},
     {"copyLinkAddress", IDC_CONTENT_CONTEXT_COPYLINKLOCATION},
     {"copyLinkText", IDC_CONTENT_CONTEXT_COPYLINKTEXT},
     {"saveLinkAs", IDC_CONTENT_CONTEXT_SAVELINKAS},
@@ -73,6 +74,12 @@ ui::SimpleMenuModel* ModelOf(RenderViewContextMenuBase& menu) {
 }
 
 // Chromium put the item in this menu and it can run now.
+// Handing the link to the system share sheet, which the shell owns from end
+// to end. Not in kShellActions because there is no Chromium command behind
+// it: Chromium's own sharing entry is a desktop submenu that this build never
+// puts in the menu, so keying off it would mean the action never appeared.
+constexpr char kShareLinkAction[] = "shareLink";
+
 bool IsOffered(RenderViewContextMenuBase& menu, int command_id) {
   return menu.menu_model().GetIndexOfCommandId(command_id).has_value() &&
          menu.IsCommandIdEnabled(command_id);
@@ -205,6 +212,9 @@ base::DictValue BuildRequestEvent(int request_id,
       supported.Append(std::string(action.name));
     }
   }
+  if (params.link_url.is_valid()) {
+    supported.Append(std::string(kShareLinkAction));
+  }
 
   base::DictValue event;
   event.Set("event", "contextMenuRequested");
@@ -269,6 +279,11 @@ void RunShellContextMenuAction(int request_id, const std::string& action) {
       std::move(CurrentSession());
   if (!session || session->request_id() != request_id || !session->menu()) {
     CurrentSession() = std::move(session);
+    return;
+  }
+  if (action == kShareLinkAction) {
+    // Nothing for Chromium to run; the shell has already opened the sheet.
+    // Falling through to the loop would log this as unknown.
     return;
   }
   for (const ShellAction& entry : kShellActions) {

@@ -371,14 +371,39 @@ void DiscardDangerousDownload(DownloadItem& item) {
   item.Remove();
 }
 
+// Whether what stopped the download was the place it was being written to
+// rather than the transfer. Resuming keeps the target path, so a download
+// that failed because the directory could not be written would fail again
+// the moment it resumed -- which is what the user saw as "retry cancels it".
+// Fetching afresh picks a target from the download directory as it is now.
+bool FailedOnTheDestination(const DownloadItem& item) {
+  switch (item.GetLastReason()) {
+    case download::DOWNLOAD_INTERRUPT_REASON_FILE_FAILED:
+    case download::DOWNLOAD_INTERRUPT_REASON_FILE_ACCESS_DENIED:
+    case download::DOWNLOAD_INTERRUPT_REASON_FILE_NO_SPACE:
+    case download::DOWNLOAD_INTERRUPT_REASON_FILE_NAME_TOO_LONG:
+    case download::DOWNLOAD_INTERRUPT_REASON_FILE_TOO_LARGE:
+    case download::DOWNLOAD_INTERRUPT_REASON_FILE_TRANSIENT_ERROR:
+    case download::DOWNLOAD_INTERRUPT_REASON_FILE_BLOCKED:
+    case download::DOWNLOAD_INTERRUPT_REASON_FILE_SECURITY_CHECK_FAILED:
+    case download::DOWNLOAD_INTERRUPT_REASON_FILE_SAME_AS_SOURCE:
+      return true;
+    default:
+      return false;
+  }
+}
+
 void RetryDownload(DownloadsWatcher& watcher, DownloadItem& item) {
-  if (item.CanResume()) {
+  if (item.CanResume() && !FailedOnTheDestination(item)) {
     item.Resume(/*user_resume=*/true);
     return;
   }
   const DownloadItem::DownloadState state = item.GetState();
   if (state != DownloadItem::CANCELLED &&
-      state != DownloadItem::INTERRUPTED) {
+      state != DownloadItem::INTERRUPTED &&
+      // A destination failure can leave the item still nominally in progress
+      // for a moment; it is stopped as far as the user is concerned.
+      !FailedOnTheDestination(item)) {
     LOG(WARNING) << "OHOS shell downloads: retry of a download that has not "
                     "stopped";
     return;

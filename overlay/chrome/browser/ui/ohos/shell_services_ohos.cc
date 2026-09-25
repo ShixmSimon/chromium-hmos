@@ -39,6 +39,7 @@ constexpr ShellServiceCommand kShellServiceCommands[] = {
     {"createBookmarkFolder", &HandleBookmarksCommand},
     {"getBookmarksForUrl", &HandleBookmarksCommand},
     {"getBookmarkPath", &HandleBookmarksCommand},
+    {"getRecentBookmarks", &HandleBookmarksCommand},
     {"moveBookmarks", &HandleBookmarksCommand},
     {"removeBookmarks", &HandleBookmarksCommand},
     {"exportBookmarks", &HandleBookmarksCommand},

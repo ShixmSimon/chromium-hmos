@@ -31,6 +31,7 @@
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "chrome/browser/ui/ohos/shell_settings_ohos_internal.h"
+#include "base/strings/utf_string_conversions.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_service.h"
 
@@ -55,7 +56,20 @@ void ReplyEngines(const ShellCommandContext& context,
   if (service && service->loaded()) {
     const TemplateURL* default_engine = service->GetDefaultSearchProvider();
     for (const TemplateURL* engine : service->GetTemplateURLs()) {
-      if (service->ShowInDefaultList(engine)) {
+      const bool shown = service->ShowInDefaultList(engine);
+      // TEMPORARY. Google is missing from the settings list on device and the
+      // list is Chromium's own, prepopulated per country -- there is no list
+      // here to add it to. Print what the service actually holds and which
+      // test dropped each one, rather than guess at the cause again.
+      LOG(WARNING) << "OHOS search engines: "
+                   << base::UTF16ToUTF8(engine->short_name())
+                   << " prepopulateId=" << engine->prepopulate_id()
+                   << " active=" << static_cast<int>(engine->is_active())
+                   << " supportsReplacement="
+                   << engine->SupportsReplacement(service->search_terms_data())
+                   << " isDefault=" << (engine == default_engine)
+                   << " shown=" << shown;
+      if (shown) {
         items.Append(EngineToShell(*engine, engine == default_engine));
       }
     }

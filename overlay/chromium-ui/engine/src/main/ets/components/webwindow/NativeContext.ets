@@ -172,6 +172,7 @@ export interface BrowserRuntimeEvent {
     'permissionsRequested' | 'sitePermissionRequested' |
     'shellAccelerator' | 'linkHovered' | 'tabThumbnails' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
+    'recentBookmarks' |
     'extensionActionsChanged' |
     'sitePermissionCancelled' |
     'browserControlsRatio' | 'findResult' | 'pageText' |

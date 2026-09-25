@@ -61,6 +61,7 @@ constexpr char kBookmarkCreatedEvent[] = "bookmarkCreated";
 constexpr char kBookmarksChangedEvent[] = "bookmarksChanged";
 constexpr char kBookmarkOpResultEvent[] = "bookmarkOpResult";
 constexpr char kBookmarkPathEvent[] = "bookmarkPath";
+constexpr char kRecentBookmarksEvent[] = "recentBookmarks";
 constexpr char kBookmarkExportDoneEvent[] = "bookmarkExportDone";
 constexpr char kBookmarkImportDoneEvent[] = "bookmarkImportDone";
 
@@ -400,6 +401,27 @@ void GetBookmarksForUrl(const ShellCommandContext& context,
     }
   }
   ReplyNodeList(context, command, std::string_view(), std::move(nodes));
+}
+
+// The bookmarks added most recently, newest first. Folders are left out: the
+// list is an entry point back to a page, and a folder is not one.
+void GetRecentBookmarks(const ShellCommandContext& context,
+                        BookmarkModel* model,
+                        const base::DictValue& command) {
+  const size_t max = static_cast<size_t>(std::clamp(
+      command.FindDouble("maxCount").value_or(10.0), 1.0, 100.0));
+  std::vector<const BookmarkNode*> recent;
+  bookmarks::GetMostRecentlyAddedEntries(model, max, &recent);
+
+  base::ListValue nodes;
+  for (const BookmarkNode* node : recent) {
+    nodes.Append(ToShellNode(model, node));
+  }
+  base::DictValue event;
+  event.Set("event", kRecentBookmarksEvent);
+  event.Set("requestId", ReadRequestId(command));
+  event.Set("nodes", std::move(nodes));
+  ReplyToShell(context, std::move(event));
 }
 
 // The chain from the permanent folder down to `id` itself, both ends
@@ -922,6 +944,7 @@ constexpr BookmarksCommand kCommands[] = {
     {"createBookmarkFolder", &CreateBookmarkFolder},
     {"getBookmarksForUrl", &GetBookmarksForUrl},
     {"getBookmarkPath", &GetBookmarkPath},
+    {"getRecentBookmarks", &GetRecentBookmarks},
     {"moveBookmarks", &MoveBookmarks},
     {"removeBookmarks", &RemoveBookmarks},
     {"exportBookmarks", &ExportBookmarks},

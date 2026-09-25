@@ -405,6 +405,7 @@ function report() {
 | `getBookmarks` | `requestId`, `parentId?` | `bookmarkList { requestId, parentId, nodes }`。不传 `parentId` 时返回三个根文件夹：移动设备书签、书签栏、其他书签 |
 | `searchBookmarks` | `requestId`, `query`, `maxCount` | `bookmarkList`，`parentId` 为空。按标题和网址匹配，每个节点另带 `path` |
 | `getBookmarksForUrl` | `requestId`, `url` | `bookmarkList`，网址完全相同的全部书签，按 `dateAdded` 倒序 |
+| `getRecentBookmarks` | `requestId`, `maxCount` | `recentBookmarks { requestId, nodes }`,按添加时间倒序,只含网址书签 |
 | `getBookmarkPath` | `requestId`, `id` | `bookmarkPath { requestId, nodes }`，从根文件夹到 `id` 自身，含两端；`id` 不存在时为空 |
 | `addBookmark` | `url`, `title`, `parentId?`, `index?`, `requestId?` | 默认加到"移动设备书签"、末尾。带 `requestId` 时回 `bookmarkCreated { requestId, node }` |
 | `createBookmarkFolder` | `requestId`, `parentId`, `title`, `index?` | `bookmarkCreated { requestId, node }` |
