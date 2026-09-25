@@ -68,6 +68,7 @@ export {
   CHROMIUM_HOME_URL,
   DeviceRouting,
   DeviceRoutingPolicy,
+  ShellSurface,
   WindowPolicy,
   WindowStateSnapshot
 } from './src/main/ets/utils/DeviceType';

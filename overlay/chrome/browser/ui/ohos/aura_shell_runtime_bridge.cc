@@ -48,6 +48,29 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_manager_observer.h"
+#include "chrome/browser/sessions/tab_restore_service_factory.h"
+#include "components/sessions/core/tab_restore_service.h"
+#include "components/sessions/core/tab_restore_service_observer.h"
+#include "base/base64.h"
+#include "base/strings/stringprintf.h"
+#include "base/scoped_observation.h"
+#include "chrome/browser/extensions/extension_action_runner.h"
+#include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
+#include "extensions/browser/extension_action.h"
+#include "extensions/browser/extension_action_manager.h"
+#include "extensions/browser/extension_registry.h"
+#include "base/containers/lru_cache.h"
+#include "chrome/browser/dom_distiller/tab_utils.h"
+#include "ui/gfx/codec/png_codec.h"
+#include "chrome/browser/ui/browser_live_tab_context.h"
+#include "components/viz/common/frame_sinks/copy_output_result.h"
+#include "components/dom_distiller/content/browser/distillability_driver.h"
+#include "components/dom_distiller/content/browser/distillable_page_utils.h"
+#include "components/dom_distiller/core/url_constants.h"
+#include "components/dom_distiller/core/url_utils.h"
+#include "components/sessions/core/tab_restore_types.h"
+#include "components/zoom/zoom_controller.h"
+#include "third_party/blink/public/common/page/page_zoom.h"
 #include "chrome/browser/permissions/system/system_permission_common.h"
 #include "chrome/browser/permissions/system/system_permission_settings_ohos.h"
 #include "chrome/browser/ui/ohos/shell_context_menu_ohos.h"
@@ -126,6 +149,10 @@
 #include "url/url_constants.h"
 
 namespace chrome::ohos {
+
+// Defined further down, past this namespace: the settings switch that says
+// who draws the browser, as opposed to the screen changing shape.
+void SetAuraShellBrowserChrome(const std::string& mode);
 
 namespace {
 
@@ -1026,6 +1053,535 @@ void SetRequestDesktopSite(content::WebContents* contents, bool enabled) {
   controller.LoadOriginalRequestURL();
 }
 
+// Anchor rectangles the shell reported, per window. Small, rewritten whenever
+// the shell's layout changes, and read when a bubble is about to be shown.
+using AnchorRects = std::map<std::string, gfx::Rect>;
+
+std::map<gfx::AcceleratedWidget, AnchorRects>& AnchorStore() {
+  static base::NoDestructor<std::map<gfx::AcceleratedWidget, AnchorRects>>
+      store;
+  return *store;
+}
+
+void SetAuraShellAnchorRects(gfx::AcceleratedWidget widget,
+                             const base::DictValue& command) {
+  AnchorRects rects;
+  if (const base::ListValue* anchors = command.FindList("anchors")) {
+    for (const base::Value& value : *anchors) {
+      const base::DictValue* anchor = value.GetIfDict();
+      const std::string* id = anchor ? anchor->FindString("id") : nullptr;
+      if (!id || id->empty()) {
+        continue;
+      }
+      rects[*id] = gfx::Rect(
+          static_cast<int>(anchor->FindDouble("x").value_or(0.0)),
+          static_cast<int>(anchor->FindDouble("y").value_or(0.0)),
+          static_cast<int>(anchor->FindDouble("width").value_or(0.0)),
+          static_cast<int>(anchor->FindDouble("height").value_or(0.0)));
+    }
+  }
+  // Replaces wholesale: the shell reports its whole set on every layout, so
+  // an anchor it stops sending is one it stopped drawing.
+  AnchorStore()[widget] = std::move(rects);
+}
+
+// --- Extensions. ----------------------------------------------------------
+//
+// A shell drawing its own toolbar needs the buttons that would have been on
+// Chromium's. The popup a button opens stays Chromium's -- it is the
+// extension's own page, and it points at wherever the shell said it drew the
+// button (see setAnchorRects).
+
+std::string EncodeExtensionIcon(const gfx::Image& image) {
+  if (image.IsEmpty()) {
+    return std::string();
+  }
+  std::optional<std::vector<uint8_t>> png = gfx::PNGCodec::EncodeBGRASkBitmap(
+      image.AsBitmap(), /*discard_transparency=*/false);
+  return png ? base::Base64Encode(*png) : std::string();
+}
+
+// Tells every window of a profile that a list it may be drawing has changed,
+// so it refetches rather than showing a stale one. One watcher per profile,
+// created the first time that profile is asked for the list.
+class ShellListWatcher : public sessions::TabRestoreServiceObserver,
+                         public ToolbarActionsModel::Observer {
+ public:
+  explicit ShellListWatcher(Profile* profile) : profile_(profile) {
+    if (auto* restore = TabRestoreServiceFactory::GetForProfile(profile)) {
+      restore_observation_.Observe(restore);
+    }
+    if (auto* toolbar = ToolbarActionsModel::Get(profile)) {
+      toolbar_observation_.Observe(toolbar);
+    }
+  }
+  ShellListWatcher(const ShellListWatcher&) = delete;
+  ShellListWatcher& operator=(const ShellListWatcher&) = delete;
+  ~ShellListWatcher() override = default;
+
+  // sessions::TabRestoreServiceObserver:
+  void TabRestoreServiceChanged(sessions::TabRestoreService*) override {
+    Notify("recentlyClosedChanged");
+  }
+  void TabRestoreServiceDestroyed(sessions::TabRestoreService*) override {
+    restore_observation_.Reset();
+  }
+
+  // ToolbarActionsModel::Observer:
+  void OnToolbarActionAdded(const ToolbarActionsModel::ActionId&) override {
+    Notify("extensionActionsChanged");
+  }
+  void OnToolbarActionRemoved(const ToolbarActionsModel::ActionId&) override {
+    Notify("extensionActionsChanged");
+  }
+  void OnToolbarActionUpdated(const ToolbarActionsModel::ActionId&) override {
+    Notify("extensionActionsChanged");
+  }
+  void OnToolbarModelInitialized() override {
+    Notify("extensionActionsChanged");
+  }
+  void OnToolbarPinnedActionsChanged() override {
+    Notify("extensionActionsChanged");
+  }
+
+ private:
+  void Notify(std::string_view name) {
+    base::DictValue event;
+    event.Set("event", name);
+    DispatchAuraShellRuntimeEventToProfile(profile_, event);
+  }
+
+  const raw_ptr<Profile> profile_;
+  base::ScopedObservation<sessions::TabRestoreService,
+                          sessions::TabRestoreServiceObserver>
+      restore_observation_{this};
+  base::ScopedObservation<ToolbarActionsModel, ToolbarActionsModel::Observer>
+      toolbar_observation_{this};
+};
+
+void EnsureShellListWatcher(Profile* profile) {
+  static base::NoDestructor<
+      std::map<Profile*, std::unique_ptr<ShellListWatcher>>>
+      watchers;
+  if (!profile || watchers->contains(profile)) {
+    return;
+  }
+  watchers->emplace(profile, std::make_unique<ShellListWatcher>(profile));
+}
+
+void SendExtensionActions(gfx::AcceleratedWidget widget,
+                          BrowserWindowInterface* browser,
+                          const base::DictValue& command) {
+  base::ListValue items;
+  Profile* profile = browser ? browser->GetProfile() : nullptr;
+  EnsureShellListWatcher(profile);
+  ToolbarActionsModel* model = profile ? ToolbarActionsModel::Get(profile)
+                                       : nullptr;
+  if (model) {
+    extensions::ExtensionActionManager* actions =
+        extensions::ExtensionActionManager::Get(profile);
+    extensions::ExtensionRegistry* registry =
+        extensions::ExtensionRegistry::Get(profile);
+    content::WebContents* active =
+        browser->GetTabStripModel()->GetActiveWebContents();
+    // Per-tab state -- a badge, a greyed-out icon -- is keyed on the tab the
+    // user is looking at.
+    const int tab_id =
+        active ? sessions::SessionTabHelper::IdForTab(active).id() : -1;
+
+    for (const ToolbarActionsModel::ActionId& id : model->action_ids()) {
+      const extensions::Extension* extension =
+          registry ? registry->enabled_extensions().GetByID(id) : nullptr;
+      if (!extension) {
+        continue;
+      }
+      extensions::ExtensionAction* action =
+          actions ? actions->GetExtensionAction(*extension) : nullptr;
+      base::DictValue item;
+      item.Set("id", id);
+      item.Set("name", extension->name());
+      item.Set("iconPngBase64",
+               action ? EncodeExtensionIcon(action->GetExplicitlySetIcon(tab_id))
+                      : std::string());
+      item.Set("badgeText",
+               action ? action->GetDisplayBadgeText(tab_id) : std::string());
+      // #AARRGGBB, which is what the shell's colour parser takes.
+      item.Set("badgeColor",
+               base::StringPrintf(
+                   "#%08X",
+                   action ? action->GetBadgeBackgroundColor(tab_id) : 0u));
+      item.Set("enabled", action ? action->GetIsVisible(tab_id) : true);
+      item.Set("pinned", model->IsActionPinned(id));
+      items.Append(std::move(item));
+    }
+  }
+  base::DictValue event;
+  event.Set("event", "extensionActions");
+  event.Set("requestId", command.FindInt("requestId").value_or(0));
+  event.Set("items", std::move(items));
+  DispatchRuntimeEvent(widget, std::move(event));
+}
+
+// The same thing as clicking the button on Chromium's toolbar: the extension
+// gets its onClicked event, or its popup opens -- drawn by Chromium, anchored
+// at wherever the shell said it put the button.
+void RunExtensionAction(BrowserWindowInterface* browser,
+                        const base::DictValue& command) {
+  Profile* profile = browser ? browser->GetProfile() : nullptr;
+  const std::string* id = command.FindString("id");
+  content::WebContents* active =
+      browser ? browser->GetTabStripModel()->GetActiveWebContents() : nullptr;
+  if (!profile || !id || id->empty() || !active) {
+    return;
+  }
+  extensions::ExtensionRegistry* registry =
+      extensions::ExtensionRegistry::Get(profile);
+  const extensions::Extension* extension =
+      registry ? registry->enabled_extensions().GetByID(*id) : nullptr;
+  extensions::ExtensionActionRunner* runner =
+      extensions::ExtensionActionRunner::GetForWebContents(active);
+  if (extension && runner) {
+    runner->RunAction(extension, /*grant_tab_permissions=*/true);
+  }
+}
+
+void SetExtensionPinned(BrowserWindowInterface* browser,
+                        const base::DictValue& command) {
+  Profile* profile = browser ? browser->GetProfile() : nullptr;
+  ToolbarActionsModel* model = profile ? ToolbarActionsModel::Get(profile)
+                                       : nullptr;
+  const std::string* id = command.FindString("id");
+  if (model && id && !id->empty()) {
+    model->SetActionVisibility(*id,
+                               command.FindBool("pinned").value_or(false));
+  }
+}
+
+// --- Tab thumbnails. ------------------------------------------------------
+//
+// The tab grid draws a picture of each tab. The current one can be captured on
+// demand; a background tab has no live surface to capture, so the last picture
+// taken of it -- when it was last on screen -- is kept and handed back.
+
+// Twelve of them. A phone's grid is two columns of about 170vp at 4:3, which
+// at three times density is roughly 510x382 and 100-200KB of PNG each, so
+// this is a couple of megabytes. Tabs past that draw a placeholder, which is
+// what the shell shows for a tab it has never seen either.
+constexpr size_t kMaxCachedThumbnails = 12;
+
+// Wide enough to look right on the grid without paying for the whole screen.
+constexpr int kMaxThumbnailWidthPx = 720;
+constexpr double kThumbnailAspect = 4.0 / 3.0;
+
+base::LRUCache<std::string, std::string>& ThumbnailCache() {
+  static base::NoDestructor<base::LRUCache<std::string, std::string>> cache(
+      kMaxCachedThumbnails);
+  return *cache;
+}
+
+// Incognito pictures live here and nowhere else: this cache is in memory and
+// is emptied when the last incognito window goes.
+std::set<std::string>& IncognitoThumbnailIds() {
+  static base::NoDestructor<std::set<std::string>> ids;
+  return *ids;
+}
+
+std::string EncodeThumbnail(const SkBitmap& bitmap) {
+  if (bitmap.drawsNothing()) {
+    return std::string();
+  }
+  std::optional<std::vector<uint8_t>> png =
+      gfx::PNGCodec::EncodeBGRASkBitmap(bitmap, /*discard_transparency=*/true);
+  return png ? base::Base64Encode(*png) : std::string();
+}
+
+gfx::Size ThumbnailSizeFor(content::RenderWidgetHostView* view,
+                           double width_vp,
+                           float scale) {
+  const int width = std::clamp(
+      static_cast<int>(width_vp * scale), 64, kMaxThumbnailWidthPx);
+  return gfx::Size(width, static_cast<int>(width / kThumbnailAspect));
+}
+
+// The top of the page, cropped to the card's shape rather than squashed into
+// it: a squashed screenshot reads as a broken image.
+gfx::Rect ThumbnailSourceRect(const gfx::Size& view_size) {
+  const int height = std::min(
+      view_size.height(),
+      static_cast<int>(view_size.width() / kThumbnailAspect));
+  return gfx::Rect(0, 0, view_size.width(), std::max(height, 1));
+}
+
+void RememberThumbnail(content::WebContents* contents,
+                       const std::string& id,
+                       const std::string& png_base64) {
+  if (png_base64.empty()) {
+    return;
+  }
+  ThumbnailCache().Put(id, png_base64);
+  if (contents && contents->GetBrowserContext() &&
+      contents->GetBrowserContext()->IsOffTheRecord()) {
+    IncognitoThumbnailIds().insert(id);
+  }
+}
+
+void ForgetIncognitoThumbnails() {
+  for (const std::string& id : IncognitoThumbnailIds()) {
+    ThumbnailCache().Erase(ThumbnailCache().Peek(id));
+  }
+  IncognitoThumbnailIds().clear();
+}
+
+// Collects a batch of thumbnails and answers exactly once, the same bargain
+// the favicon batch makes: a capture that never comes back must not leave the
+// grid empty forever.
+class ThumbnailBatch : public base::RefCounted<ThumbnailBatch> {
+ public:
+  ThumbnailBatch(gfx::AcceleratedWidget widget, int request_id, size_t expected)
+      : widget_(widget), request_id_(request_id), remaining_(expected) {}
+
+  ThumbnailBatch(const ThumbnailBatch&) = delete;
+  ThumbnailBatch& operator=(const ThumbnailBatch&) = delete;
+
+  void Add(std::string id, std::string png_base64) {
+    if (!sent_ && !png_base64.empty()) {
+      base::DictValue item;
+      item.Set("id", std::move(id));
+      item.Set("pngBase64", std::move(png_base64));
+      items_.Append(std::move(item));
+    }
+    if (remaining_ > 0 && --remaining_ == 0) {
+      Send();
+    }
+  }
+
+  void SendWhatArrived() { Send(); }
+
+ private:
+  friend class base::RefCounted<ThumbnailBatch>;
+  ~ThumbnailBatch() = default;
+
+  void Send() {
+    if (std::exchange(sent_, true)) {
+      return;
+    }
+    base::DictValue event;
+    event.Set("event", "tabThumbnails");
+    event.Set("requestId", request_id_);
+    event.Set("items", std::move(items_));
+    DispatchRuntimeEvent(widget_, std::move(event));
+  }
+
+  const gfx::AcceleratedWidget widget_;
+  const int request_id_;
+  size_t remaining_;
+  bool sent_ = false;
+  base::ListValue items_;
+};
+
+void OnThumbnailCaptured(scoped_refptr<ThumbnailBatch> batch,
+                         base::WeakPtr<content::WebContents> contents,
+                         std::string id,
+                         const content::CopyFromSurfaceResult& result) {
+  std::string png;
+  if (result.has_value()) {
+    png = EncodeThumbnail(result.value().bitmap);
+    RememberThumbnail(contents.get(), id, png);
+  }
+  if (png.empty()) {
+    // Fall back to whatever was last seen of this tab rather than nothing.
+    auto cached = ThumbnailCache().Get(id);
+    if (cached != ThumbnailCache().end()) {
+      png = cached->second;
+    }
+  }
+  batch->Add(std::move(id), std::move(png));
+}
+
+void SendTabThumbnails(gfx::AcceleratedWidget widget,
+                       TabStripModel* tabs,
+                       const base::DictValue& command) {
+  const int request_id = command.FindInt("requestId").value_or(0);
+  const double width_vp = command.FindDouble("widthVp").value_or(170.0);
+  const base::ListValue* ids = command.FindList("ids");
+  std::vector<std::pair<std::string, content::WebContents*>> wanted;
+  if (ids) {
+    for (const base::Value& value : *ids) {
+      const std::string* id = value.GetIfString();
+      if (id && !id->empty()) {
+        wanted.emplace_back(*id, FindTabById(tabs, id));
+      }
+    }
+  }
+
+  auto batch = base::MakeRefCounted<ThumbnailBatch>(widget, request_id,
+                                                    wanted.size());
+  if (wanted.empty()) {
+    batch->SendWhatArrived();
+    return;
+  }
+
+  display::Screen* screen = display::Screen::Get();
+  const float scale =
+      screen ? screen->GetPrimaryDisplay().device_scale_factor() : 1.0f;
+  content::WebContents* active = tabs ? tabs->GetActiveWebContents() : nullptr;
+
+  for (auto& [id, contents] : wanted) {
+    content::RenderWidgetHostView* view =
+        contents ? contents->GetRenderWidgetHostView() : nullptr;
+    // Only the tab on screen has a surface to copy. A background tab answers
+    // from the picture taken when it was last current, which is what the grid
+    // is showing anyway.
+    if (contents != active || !view || !view->IsSurfaceAvailableForCopy()) {
+      auto cached = ThumbnailCache().Get(id);
+      batch->Add(id, cached != ThumbnailCache().end() ? cached->second
+                                                      : std::string());
+      continue;
+    }
+    view->CopyFromSurface(
+        ThumbnailSourceRect(view->GetVisibleViewportSize()),
+        ThumbnailSizeFor(view, width_vp, scale), base::Seconds(2),
+        base::BindOnce(&OnThumbnailCaptured, batch, contents->GetWeakPtr(),
+                       id));
+  }
+}
+
+// --- Reader mode. ---------------------------------------------------------
+
+// Whether this tab is showing a distilled page rather than the original.
+bool IsInReaderMode(content::WebContents* contents) {
+  return contents && contents->GetLastCommittedURL().SchemeIs(
+                         dom_distiller::kDomDistillerScheme);
+}
+
+// Whether the distiller thinks this page is an article. Blink reports this
+// after each navigation and the driver keeps the last answer, so reading it
+// costs nothing -- which matters when the state is polled every 200ms.
+bool IsReaderModeAvailable(content::WebContents* contents) {
+  if (!contents || IsInReaderMode(contents)) {
+    return false;
+  }
+  dom_distiller::DistillabilityDriver* driver =
+      dom_distiller::DistillabilityDriver::FromWebContents(contents);
+  if (!driver) {
+    return false;
+  }
+  const std::optional<dom_distiller::DistillabilityResult> result =
+      driver->GetLatestResult();
+  return result && result->is_distillable;
+}
+
+void ToggleReaderMode(content::WebContents* contents) {
+  if (!contents) {
+    return;
+  }
+  if (IsInReaderMode(contents)) {
+    // Back to the page it was distilled from. The distilled URL carries the
+    // original inside it, which is how the back button finds its way home
+    // too.
+    const GURL original = dom_distiller::url_utils::GetOriginalUrlFromDistillerUrl(
+        contents->GetLastCommittedURL());
+    if (original.is_valid()) {
+      contents->GetController().LoadURL(original, content::Referrer(),
+                                        ui::PAGE_TRANSITION_AUTO_BOOKMARK,
+                                        std::string());
+    }
+    return;
+  }
+  DistillCurrentPage(contents);
+}
+
+// --- Recently closed tabs. ------------------------------------------------
+//
+// Windows are left out on purpose: the shell has one window per browser and
+// nothing to restore a window into.
+
+sessions::TabRestoreService* RestoreServiceFor(
+    BrowserWindowInterface* browser) {
+  Profile* profile = browser ? browser->GetProfile() : nullptr;
+  if (!profile || profile->IsOffTheRecord()) {
+    // An incognito tab that closes leaves no trace, which is the point.
+    return nullptr;
+  }
+  return TabRestoreServiceFactory::GetForProfile(profile);
+}
+
+void SendRecentlyClosed(gfx::AcceleratedWidget widget,
+                        BrowserWindowInterface* browser,
+                        const base::DictValue& command) {
+  base::ListValue items;
+  sessions::TabRestoreService* service = RestoreServiceFor(browser);
+  if (service) {
+    EnsureShellListWatcher(browser->GetProfile());
+    // The service reads the last session lazily; without this a restart shows
+    // an empty list until something else closes a tab.
+    service->LoadTabsFromLastSession();
+    const int max = std::clamp(
+        static_cast<int>(command.FindDouble("maxCount").value_or(25.0)), 1,
+        100);
+    for (const auto& entry : service->entries()) {
+      if (static_cast<int>(items.size()) >= max) {
+        break;
+      }
+      if (entry->type != sessions::tab_restore::Type::TAB) {
+        continue;
+      }
+      const auto& tab = static_cast<const sessions::tab_restore::Tab&>(*entry);
+      if (tab.navigations.empty()) {
+        continue;
+      }
+      const sessions::SerializedNavigationEntry& current =
+          tab.navigations[tab.normalized_navigation_index()];
+      base::DictValue item;
+      item.Set("id", base::NumberToString(entry->id.id()));
+      item.Set("title", base::UTF16ToUTF8(current.title()));
+      item.Set("url", ShellVisibleUrl(current.virtual_url()));
+      item.Set("closedTime", entry->timestamp.is_null()
+                                 ? -1.0
+                                 : entry->timestamp
+                                       .InMillisecondsFSinceUnixEpochIgnoringNull());
+      items.Append(std::move(item));
+    }
+  }
+  base::DictValue event;
+  event.Set("event", "recentlyClosed");
+  event.Set("requestId", command.FindInt("requestId").value_or(0));
+  event.Set("items", std::move(items));
+  DispatchRuntimeEvent(widget, std::move(event));
+}
+
+void RestoreRecentlyClosed(BrowserWindowInterface* browser,
+                           const base::DictValue& command) {
+  sessions::TabRestoreService* service = RestoreServiceFor(browser);
+  if (!service) {
+    return;
+  }
+  service->LoadTabsFromLastSession();
+  sessions::LiveTabContext* context =
+      BrowserLiveTabContext::FindContextForWebContents(
+          browser->GetTabStripModel()->GetActiveWebContents());
+  const std::string* id = command.FindString("id");
+  if (!id || id->empty()) {
+    // No id: the most recent one, which is what a single "reopen" button does.
+    service->RestoreMostRecentEntry(context);
+    return;
+  }
+  const std::optional<int64_t> value = FromShellId(id);
+  if (!value) {
+    return;
+  }
+  service->RestoreEntryById(context, SessionID::FromSerializedValue(*value),
+                            WindowOpenDisposition::NEW_FOREGROUND_TAB);
+}
+
+// What the zoom menu shows, and what Ctrl+0 returns to. 100 when the tab has
+// no zoom controller, which is the same thing the user would read as "normal".
+int ShellZoomPercent(content::WebContents* contents) {
+  zoom::ZoomController* controller =
+      contents ? zoom::ZoomController::FromWebContents(contents) : nullptr;
+  return controller ? controller->GetZoomPercent() : 100;
+}
+
 std::string BuildBrowserStateJson(std::string_view ui_family,
                                   gfx::AcceleratedWidget widget,
                                   BrowserWindowInterface* browser) {
@@ -1049,6 +1605,9 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   // bar without special-casing the idle state.
   state.Set("loadProgress", 1.0);
   state.Set("requestDesktopSite", false);
+  state.Set("zoomPercent", 100);
+  state.Set("inReaderMode", false);
+  state.Set("readerModeAvailable", false);
   state.Set("canGoBack", false);
   state.Set("canGoForward", false);
   state.Set("isPwaWindow", false);
@@ -1101,6 +1660,11 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
       tab.Set("url", ShellVisibleUrl(url));
       tab.Set("title", base::UTF16ToUTF8(contents->GetTitle()));
       tab.Set("loading", contents->IsLoading());
+      // The tab strip shows a speaker on a tab making noise and a crossed-out
+      // one on a tab the user silenced; they are different states and a tab
+      // can be muted without ever having made a sound.
+      tab.Set("audible", contents->IsCurrentlyAudible());
+      tab.Set("muted", contents->IsAudioMuted());
     }
     tab_values.Append(std::move(tab));
   }
@@ -1122,6 +1686,9 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
     state.Set("loadProgress",
               active->IsLoading() ? active->GetLoadProgress() : 1.0);
     state.Set("requestDesktopSite", IsRequestingDesktopSite(active));
+    state.Set("zoomPercent", ShellZoomPercent(active));
+    state.Set("inReaderMode", IsInReaderMode(active));
+    state.Set("readerModeAvailable", IsReaderModeAvailable(active));
     state.Set("canGoBack", active->GetController().CanGoBack());
     state.Set("canGoForward", active->GetController().CanGoForward());
     if (is_pwa_window) {
@@ -1588,6 +2155,18 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     return;
   }
 
+  if (*name == "setBrowserChrome") {
+    if (const std::string* mode = command.FindString("mode")) {
+      SetAuraShellBrowserChrome(*mode);
+    }
+    return;
+  }
+
+  if (*name == "setAnchorRects") {
+    SetAuraShellAnchorRects(widget, command);
+    return;
+  }
+
   if (*name == "sitePermissionDecision") {
     // The user answered the sheet the shell drew for
     // sitePermissionRequested. Handled before the browser lookup below: a
@@ -1864,6 +2443,42 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     }
   } else if (*name == "setRequestDesktopSite" && active) {
     SetRequestDesktopSite(active, command.FindBool("enabled").value_or(false));
+  } else if (*name == "setTabMuted") {
+    content::WebContents* target = FindTabById(tabs, command.FindString("id"));
+    if (!target) {
+      target = active;
+    }
+    if (target) {
+      target->SetAudioMuted(command.FindBool("muted").value_or(false));
+    }
+  } else if (*name == "setZoom" && active) {
+    if (zoom::ZoomController* controller =
+            zoom::ZoomController::FromWebContents(active)) {
+      const std::optional<double> percent = command.FindDouble("percent");
+      if (percent) {
+        // Clamped rather than refused: the shell's + and - walk a list of
+        // steps and the ends of that list are not this code's business.
+        controller->SetZoomLevel(blink::ZoomFactorToZoomLevel(
+            std::clamp(*percent, 25.0, 500.0) / 100.0));
+      } else {
+        // No percent means "back to normal", which is what Ctrl+0 does.
+        controller->SetZoomLevel(blink::ZoomFactorToZoomLevel(1.0));
+      }
+    }
+  } else if (*name == "getExtensionActions") {
+    SendExtensionActions(widget, browser, command);
+  } else if (*name == "runExtensionAction") {
+    RunExtensionAction(browser, command);
+  } else if (*name == "setExtensionPinned") {
+    SetExtensionPinned(browser, command);
+  } else if (*name == "getTabThumbnails") {
+    SendTabThumbnails(widget, tabs, command);
+  } else if (*name == "toggleReaderMode" && active) {
+    ToggleReaderMode(active);
+  } else if (*name == "getRecentlyClosed") {
+    SendRecentlyClosed(widget, browser, command);
+  } else if (*name == "restoreRecentlyClosed") {
+    RestoreRecentlyClosed(browser, command);
   } else if (*name == "print" && active) {
     RequestAuraShellSystemPrint(active);
   } else if (*name == "share" && active) {
@@ -2213,6 +2828,15 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "closeTab",
       "moveTab",
       "setRequestDesktopSite",
+      "setTabMuted",
+      "setZoom",
+      "getExtensionActions",
+      "runExtensionAction",
+      "setExtensionPinned",
+      "getTabThumbnails",
+      "toggleReaderMode",
+      "getRecentlyClosed",
+      "restoreRecentlyClosed",
       "print",
       "share",
       "pwaMenu",
@@ -2223,6 +2847,8 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "defaultBrowserState",
       "systemCapabilities",
       "sitePermissionDecision",
+      "setAnchorRects",
+      "setBrowserChrome",
       "requestState",
       "filePickerResult",
       "permissionResult",
@@ -2404,8 +3030,109 @@ std::string& BrowserChromeMode() {
   return *mode;
 }
 
+// Keyboard shortcuts whose UI the shell owns. Chromium still resolves the key
+// to a command -- its accelerator table stays the single source of which keys
+// do what -- and this only decides who carries the command out.
+//
+// Only the command id travels. What the keys are called for a menu is the
+// shell's business and lives in the HAR, so neither side writes the other's
+// list down.
+struct ShellAcceleratorAction {
+  int command_id;
+  std::string_view action;
+};
+
+constexpr ShellAcceleratorAction kShellAccelerators[] = {
+    {IDC_FOCUS_LOCATION, "focusLocation"},
+    {IDC_FIND, "find"},
+    {IDC_BOOKMARK_THIS_TAB, "bookmarkPage"},
+    {IDC_SHOW_BOOKMARK_MANAGER, "showBookmarks"},
+    {IDC_SHOW_BOOKMARK_BAR, "toggleBookmarkBar"},
+    {IDC_SHOW_HISTORY, "showHistory"},
+    {IDC_SHOW_DOWNLOADS, "showDownloads"},
+    {IDC_SHOW_APP_MENU, "showMenu"},
+};
+
+bool DispatchAuraShellAccelerator(BrowserWindowInterface* browser,
+                                  int command_id) {
+  if (!browser || !IsAuraShellChromeHiddenByShell()) {
+    return false;
+  }
+  std::string_view action;
+  for (const ShellAcceleratorAction& entry : kShellAccelerators) {
+    if (entry.command_id == command_id) {
+      action = entry.action;
+      break;
+    }
+  }
+  // Escape is not in the table because it has a second meaning Chromium must
+  // keep: it stops a load. The shell hears it so it can close whatever it has
+  // open, and Chromium stops the page as well, which is what a browser does.
+  const bool escape = command_id == IDC_STOP;
+  if (action.empty() && !escape) {
+    return false;
+  }
+
+  base::DictValue event;
+  event.Set("event", "shellAccelerator");
+  event.Set("action", escape ? std::string_view("escape") : action);
+  DispatchRuntimeEvent(GetBrowserWidget(browser), std::move(event));
+  return !escape;
+}
+
+gfx::Rect GetAuraShellAnchorRect(gfx::AcceleratedWidget widget,
+                                 std::string_view anchor_id) {
+  auto window = AnchorStore().find(widget);
+  if (window == AnchorStore().end()) {
+    return gfx::Rect();
+  }
+  auto anchor = window->second.find(std::string(anchor_id));
+  return anchor == window->second.end() ? gfx::Rect() : anchor->second;
+}
+
+bool DispatchAuraShellLinkHovered(content::WebContents* contents,
+                                  const GURL& url) {
+  if (!contents || !IsAuraShellChromeHiddenByShell()) {
+    return false;
+  }
+  base::DictValue event;
+  event.Set("event", "linkHovered");
+  // Empty when the pointer left the link, which is the shell's cue to hide
+  // the label.
+  event.Set("url", url.is_valid() ? ShellVisibleUrl(url) : std::string());
+  return DispatchAuraShellRuntimeEvent(contents, std::move(event));
+}
+
 void UpdateAuraShellBrowserChrome(const std::string& browser_chrome) {
   BrowserChromeMode() = browser_chrome;
+}
+
+// The settings switch, which is a different thing from the screen changing
+// shape. ui_family moving must never put Chromium's frame back on screen --
+// unfolding a phone is not a request to change browsers -- but the user asking
+// for the classic UI is exactly that request, and it should not need a
+// restart.
+void SetAuraShellBrowserChrome(const std::string& mode) {
+  if (mode != "shell" && mode != "native") {
+    return;
+  }
+  if (BrowserChromeMode() == mode) {
+    return;
+  }
+  BrowserChromeMode() = mode;
+  // Reuses the path that already hides and restores the frame when the screen
+  // changes: BrowserView and ToolbarView remember what they hid, so coming
+  // back is not lossy and the tabs are untouched.
+  if (GlobalBrowserCollection* browsers =
+          GlobalBrowserCollection::GetInstance()) {
+    browsers->ForEach([](BrowserWindowInterface* browser) {
+      if (BrowserView* browser_view =
+              BrowserView::GetBrowserViewForBrowser(browser)) {
+        browser_view->OnOhosUiFamilyChanged();
+      }
+      return true;
+    });
+  }
 }
 
 // The surfaces a phone's shell has always drawn. Hiding the frame on a tablet

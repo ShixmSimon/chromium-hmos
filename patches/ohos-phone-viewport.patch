@@ -37,7 +37,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  #include "content/public/browser/network_service_instance.h"
  #include "content/public/browser/permission_controller.h"
  #include "content/public/browser/permission_descriptor_util.h"
-@@ -4524,6 +4528,117 @@
+@@ -4524,6 +4528,138 @@
  #endif
  }
  
@@ -103,21 +103,41 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
 +      web_contents ? web_contents->GetController().GetVisibleEntry() : nullptr;
 +  const bool desktop_site = entry && entry->GetIsOverridingUserAgent();
 +
-+  const bool viewport_enabled = !is_web_ui;
-+  const bool viewport_meta_enabled = !is_web_ui && !desktop_site;
++  // The viewport machinery stays on in every case. Turning it off for WebUI
++  // was wrong twice over: the same machinery computes the right width for an
++  // ordinary page from the same ScreenInfo, and with it off the layout width
++  // came out as the screen's width in physical pixels -- 3.5 times too wide,
++  // then scaled back down, which is what made the text unreadable.
++  //
++  // Two settings do the work instead.
++  //
++  // viewport_meta_enabled, because chrome://version and other WebUI pages do
++  // declare <meta name="viewport" content="width=device-width">, and ignoring
++  // it was the whole problem. It is turned off only for the desktop site,
++  // where ignoring the page's own meta is the point: swapping the user agent
++  // alone leaves a responsive site reading the phone's width and laying out
++  // for a phone, which is what it is supposed to do. content turns it off a
++  // few lines before it calls us, and this would otherwise undo that.
++  //
++  // viewport_style, because it supplies the default for a page that declares
++  // no meta at all. kMobile means the legacy 980px layout scaled to fit, which
++  // is right for an old website; kDefault means the window's own width, which
++  // is right for chrome://password-manager and chrome://settings, neither of
++  // which declares one.
++  const bool viewport_meta_enabled = !desktop_site;
 +  const blink::mojom::ViewportStyle viewport_style =
 +      is_web_ui ? blink::mojom::ViewportStyle::kDefault
 +                : blink::mojom::ViewportStyle::kMobile;
 +
 +  const bool changed =
-+      web_prefs->viewport_enabled != viewport_enabled ||
++      !web_prefs->viewport_enabled ||
 +      web_prefs->viewport_meta_enabled != viewport_meta_enabled ||
 +      web_prefs->viewport_style != viewport_style ||
 +      web_prefs->shrinks_viewport_contents_to_fit == is_web_ui ||
 +      web_prefs->main_frame_resizes_are_orientation_changes == is_web_ui ||
 +      web_prefs->double_tap_to_zoom_enabled == is_web_ui;
 +
-+  web_prefs->viewport_enabled = viewport_enabled;
++  web_prefs->viewport_enabled = true;
 +  web_prefs->viewport_meta_enabled = viewport_meta_enabled;
 +  web_prefs->viewport_style = viewport_style;
 +  web_prefs->shrinks_viewport_contents_to_fit = !is_web_ui;
@@ -146,7 +166,8 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
 +                 << " viewScale=" << view_scale
 +                 << " displayScale=" << display.device_scale_factor()
 +                 << " displaySize=" << display.size().ToString()
-+                 << " viewportEnabled=" << viewport_enabled;
++                 << " metaEnabled=" << viewport_meta_enabled
++                 << " style=" << static_cast<int>(viewport_style);
 +  }
 +  return changed;
 +}
@@ -155,7 +176,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  void ChromeContentBrowserClient::OverrideWebPreferences(
      WebContents* web_contents,
      content::SiteInstance& main_frame_site,
-@@ -4859,43 +4974,7 @@
+@@ -4859,43 +4995,7 @@
  #endif
  
  #if BUILDFLAG(IS_OHOS)
@@ -200,7 +221,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  #endif
  
    for (auto& parts : extra_parts_) {
-@@ -4928,6 +5007,14 @@
+@@ -4928,6 +5028,14 @@
      content::SiteInstance& main_frame_site,
      WebPreferences* web_prefs) {
    bool prefs_changed = false;

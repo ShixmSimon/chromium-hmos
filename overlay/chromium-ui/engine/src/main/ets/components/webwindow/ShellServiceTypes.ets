@@ -151,6 +151,117 @@ export interface ShellServiceEvent {
   incognito: boolean;
 }
 
+// A keyboard shortcut whose UI the shell owns. Chromium resolved the key and
+// decided which command it means; the shell carries it out. Keys a page
+// consumed with preventDefault never arrive.
+export interface ShellAcceleratorEvent extends ShellServiceEvent {
+  action: ShellAcceleratorAction;
+}
+
+export type ShellAcceleratorAction =
+  | 'focusLocation'      // Ctrl+L, Alt+D
+  | 'find'               // Ctrl+F
+  | 'bookmarkPage'       // Ctrl+D
+  | 'showBookmarks'      // Ctrl+Shift+O
+  | 'toggleBookmarkBar'  // Ctrl+Shift+B
+  | 'showHistory'        // Ctrl+H
+  | 'showDownloads'      // Ctrl+J
+  | 'showMenu'           // Alt+F, Alt+E
+  // Esc. Sent when the page did not consume it. Chromium also stops the load,
+  // which is what a browser does; close whatever the shell has open.
+  | 'escape';
+
+// What each action is called for a menu. One list, here, so the shell does not
+// keep a second copy: the engine never sends key names, only the action.
+// ArkTS wants a named interface for an object literal, so the map has one.
+export interface ShellAcceleratorKeys {
+  focusLocation: string;
+  find: string;
+  bookmarkPage: string;
+  showBookmarks: string;
+  toggleBookmarkBar: string;
+  showHistory: string;
+  showDownloads: string;
+  showMenu: string;
+  escape: string;
+}
+
+export const SHELL_ACCELERATOR_KEYS: ShellAcceleratorKeys = {
+  focusLocation: 'Ctrl+L',
+  find: 'Ctrl+F',
+  bookmarkPage: 'Ctrl+D',
+  showBookmarks: 'Ctrl+Shift+O',
+  toggleBookmarkBar: 'Ctrl+Shift+B',
+  showHistory: 'Ctrl+H',
+  showDownloads: 'Ctrl+J',
+  showMenu: 'Alt+F',
+  escape: 'Esc'
+};
+
+// The link under the pointer, for the label a shell draws in the corner of the
+// page. An empty url means the pointer left the link: hide the label.
+export interface LinkHoveredEvent extends ShellServiceEvent {
+  url: string;
+}
+
+// Where the shell drew a button that one of Chromium's bubbles points at, in
+// the window's own coordinates (vp). Reported as a whole set on every layout
+// change; an anchor left out is one the shell stopped drawing, and its bubble
+// falls back to the top right of the page area.
+export interface ShellAnchorRect {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// getTabThumbnails. Only tabs with a picture come back: the current one is
+// captured now, a background one is whatever was last seen of it, and a tab
+// never seen is simply absent -- draw a placeholder.
+export interface TabThumbnailsEvent extends ShellServiceEvent {
+  requestId: number;
+  items: TabThumbnail[];
+}
+
+export interface TabThumbnail {
+  id: string;
+  pngBase64: string;
+}
+
+// getRecentlyClosed, newest first. Tabs only, and never incognito ones.
+export interface RecentlyClosedEvent extends ShellServiceEvent {
+  requestId: number;
+  items: RecentlyClosedTab[];
+}
+
+export interface RecentlyClosedTab {
+  id: string;
+  title: string;
+  url: string;
+  closedTime: number;
+}
+
+// getExtensionActions: the buttons that would have been on Chromium's toolbar.
+// Tapping one is runExtensionAction; the popup it opens is still Chromium's.
+export interface ExtensionActionsEvent extends ShellServiceEvent {
+  requestId: number;
+  items: ExtensionActionItem[];
+}
+
+export interface ExtensionActionItem {
+  id: string;
+  name: string;
+  // Empty when the extension supplied no icon; draw a letter tile.
+  iconPngBase64: string;
+  badgeText: string;
+  // #AARRGGBB.
+  badgeColor: string;
+  // False when the extension has nothing to do on this page.
+  enabled: boolean;
+  pinned: boolean;
+}
+
 // A site is asking the user for a permission, and the shell draws the sheet
 // that asks. Answer with the sitePermissionDecision command carrying the same
 // requestId; answer exactly once.

@@ -176,6 +176,9 @@ struct Browser {
 | `mobileUi`、`uiFamily` | 引擎当前使用的 UI 形态。 |
 | `loadProgress` | 0–1,不在加载时为 1。地址栏进度条用它。 |
 | `requestDesktopSite` | 当前标签是否在请求桌面版网站。 |
+| `zoomPercent` | 当前标签的网页缩放,100 为正常。 |
+| `inReaderMode`、`readerModeAvailable` | 是否在阅读模式;当前页能否进入。 |
+| 标签的 `id`、`audible`、`muted` | 稳定 id;正在发声;已静音。 |
 | `isPwaWindow`、`pwaAppId`、`pwaStartUrl` | 当前窗口是否是 PWA。 |
 | `bookmarked` | 当前标签页的网址是否已加入书签。菜单里的书签开关用它。 |
 | `version` | 协议版本。 |
@@ -195,7 +198,7 @@ browserChrome?: 'shell' | 'native'
 `uiFamily`,但不会把 Chromium 的标签栏画回来。平板和 PC 要的组合是"外壳画界
 面、但用平板的 UA",这两件事原本绑在一起,所以要单独说。
 
-为 `shell` 时**不画**:
+**只藏框架**:
 
 | 界面 | 落点 |
 |---|---|
@@ -203,16 +206,84 @@ browserChrome?: 'shell' | 'native'
 | 工具栏 | `BrowserView::IsToolbarVisible()` |
 | 地址栏 | `BrowserView::IsLocationBarVisible()` |
 | 工具栏子控件、书签栏 | `BrowserView` / `ToolbarView::OnOhosUiFamilyChanged()`,会记住隐藏了什么,切回时恢复 |
-| 右键 / 长按菜单 | `shell_context_menu_ohos.cc` |
-| 下载气泡 / 下载栏 | `shell_downloads_prefs_ohos.cc` |
-| 权限气泡 | `shell_permission_prompt_ohos.cc` |
 
 **不受影响**(仍按 `uiFamily`):UA、滚动条样式、触控 / 指针 UI、viewport 规
 则、状态里的 `mobileUi` 字段。
 
+**其余界面 Chromium 照画**,外壳接好一项再用 `shellSurfaces` 关掉那一项:
+
+```
+shellSurfaces?: string[]
+```
+
+| 值 | 关掉的 Chromium 界面 |
+|---|---|
+| `contextMenu` | 右键 / 长按菜单,改发 `contextMenuRequested` |
+| `downloadUi` | 下载气泡和下载栏,改用 `downloadUpdated` |
+| `permissionPrompt` | 权限气泡,改发 `sitePermissionRequested` |
+
+手机不传 `shellSurfaces` 时这三项默认就是外壳画(一直如此)。**目前只有这三
+项**;其余(查找栏、页面信息、保存密码、翻译、缩放、PWA 安装、扩展工具栏)还
+没有接管开关,Chromium 照画。要哪一项告诉内核,逐项加。
+
+`setBrowserChrome { mode }` 可以运行中切换,标签不丢——`uiFamily` 变化仍然不
+改判据,只有这条命令改。
+
+**气泡锚点。** 工具栏藏了以后 Chromium 的气泡没有按钮可锚。外壳在布局变化时报
+告一整套:
+
+```
+setAnchorRects { anchors: { id, x, y, width, height }[] }
+```
+
+坐标是窗口自身的 vp。整套替换:没报告的锚点视为外壳不再画它,对应气泡回落到网
+页区右上角。
+
 应用菜单、查找栏、状态气泡、标签悬停卡片、侧边栏**没有单独关闭**:手机上它们
 不出现,是因为没有工具栏按钮能触发。平板上如果发现某个仍会弹出(例如通过快捷
-键),告诉内核单独处理。
+键),告诉内核单独处理。侧边栏在 154 里已从 `BrowserView` 搬到
+`chrome/browser/ui/side_panel/`,需要单独处理,尚未做。
+
+### 快捷键
+
+网页没有消费的按键,Chromium 解析成命令之后,属于外壳界面的那些改发事件:
+
+```
+shellAccelerator { action }
+```
+
+`action` 取值和对应按键见 HAR 的 `SHELL_ACCELERATOR_KEYS`——**只有那一份**,引
+擎不发按键名,菜单右侧显示的快捷键直接读它。
+
+`escape` 是特例:引擎发给外壳的同时,Chromium 自己也会停止加载(浏览器本来就该
+这样)。
+
+### 扩展程序
+
+| 命令 | 参数 | 返回 |
+|---|---|---|
+| `getExtensionActions` | `requestId` | `extensionActions { requestId, items }` |
+| `runExtensionAction` | `id` | 等同于点工具栏上的扩展图标;弹窗仍由 Chromium 画,锚到 `setAnchorRects` 的 `extensions` |
+| `setExtensionPinned` | `id`, `pinned` | |
+
+### 其它宽屏命令
+
+| 命令 | 参数 | 说明 |
+|---|---|---|
+| `moveTab` | `id`, `toIndex` | 按 id 重排标签 |
+| `setTabMuted` | `id?`, `muted` | 不传 `id` 时作用于当前标签 |
+| `setZoom` | `percent?` | 25–500,不传表示回到 100 |
+| `toggleReaderMode` | | 进入 / 退出阅读模式 |
+| `getTabThumbnails` | `requestId`, `ids`, `widthVp` | `tabThumbnails { requestId, items }` |
+| `getRecentlyClosed` | `requestId`, `maxCount` | `recentlyClosed { requestId, items }` |
+| `restoreRecentlyClosed` | `id?` | 不传 `id` 时恢复最近一项 |
+| `removeTopSite` | `url` | 加入 top sites 黑名单 |
+
+缩略图只缓存最近 12 个标签(约 2MB 封顶):当前标签实时截取、不占额度,后台标
+签用它最后一次显示时的快照,没有缓存的不返回,外壳画骨架。无痕标签的快照只在内
+存里。
+
+`linkHovered { url }` 在指针移到链接上时发,`url` 为空表示移开了。
 
 ---
 

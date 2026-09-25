@@ -83,6 +83,16 @@ export interface DeviceRouting {
   identity: DeviceIdentity;
 }
 
+// The surfaces a shell can take over today. Ask the engine to add one when
+// the shell has written its own; until then Chromium draws it.
+export type ShellSurface =
+  // Long-press and right-click menus; the shell gets contextMenuRequested.
+  | 'contextMenu'
+  // The download bubble and shelf; the shell follows downloadUpdated.
+  | 'downloadUi'
+  // Permission questions; the shell gets sitePermissionRequested.
+  | 'permissionPrompt';
+
 export interface AuraStartupConfig {
   startUrl: string;
   uiProfile: 'phone' | 'tablet' | 'pc';
@@ -99,6 +109,14 @@ export interface AuraStartupConfig {
   // Read once at startup and fixed for the run: unfolding a foldable changes
   // uiFamily and must not put Chromium's tab strip back on screen.
   browserChrome?: 'shell' | 'native';
+  // Which of Chromium's own dialogs and bubbles the shell has taken over.
+  // Hiding the frame says nothing about these: a shell adopts them one at a
+  // time, and Chromium keeps drawing the rest so a feature the shell has not
+  // reached yet does not simply vanish.
+  //
+  // A phone that passes nothing still gets all three, which is what it has
+  // always had.
+  shellSurfaces?: ShellSurface[];
   windowMode: 'fullscreen' | 'windowed';
   deviceClass: 'phone' | 'foldable' | 'tablet' | '2in1' | 'tv' | 'car';
   marketName: string;

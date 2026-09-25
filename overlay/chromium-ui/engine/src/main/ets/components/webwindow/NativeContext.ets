@@ -24,6 +24,7 @@ import {
   BrowsingDataType,
   DownloadAction,
   HistoryVisitRef,
+  ShellAnchorRect,
   ShellPrefKey,
   SitePermissionDecision,
   SiteSettingType,
@@ -74,6 +75,11 @@ export interface BrowserTabState {
   // asynchronous -- a thumbnail arriving, a drag finishing. Empty on an
   // engine older than browsingApiVersion 1.
   id?: string;
+  // Making a sound right now. Separate from muted: a tab can be silenced
+  // before it ever makes one.
+  audible?: boolean;
+  // Silenced by the user.
+  muted?: boolean;
 }
 
 export type PwaMenuItemType = 'command' | 'check' | 'radio' | 'separator' |
@@ -118,6 +124,13 @@ export interface BrowserStateSnapshot {
   loadProgress?: number;
   // Whether the current tab is asking sites for their desktop pages.
   requestDesktopSite?: boolean;
+  // Page zoom of the current tab, as a percentage; 100 is normal.
+  zoomPercent?: number;
+  // Whether the current tab is showing a distilled page.
+  inReaderMode?: boolean;
+  // Whether the distiller thinks the current page is an article. Drives
+  // whether the menu offers reader mode at all.
+  readerModeAvailable?: boolean;
   url: string;
   domain: string;
   title: string;
@@ -157,6 +170,9 @@ export interface BrowserRuntimeEvent {
     'castRequested' | 'filePickerRequested' | 'pwaInstalled' | 'pwaMenuModel' |
     'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
     'permissionsRequested' | 'sitePermissionRequested' |
+    'shellAccelerator' | 'linkHovered' | 'tabThumbnails' |
+    'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
+    'extensionActionsChanged' |
     'sitePermissionCancelled' |
     'browserControlsRatio' | 'findResult' | 'pageText' |
     'contextMenuRequested' |
@@ -253,6 +269,20 @@ export interface BrowserCommandPayload {
   toIndex?: number;
   // setRequestDesktopSite: ask this tab's site for its desktop pages.
   enabled?: boolean;
+  // setTabMuted: silence this tab, or let it speak again.
+  muted?: boolean;
+  // setZoom: the page zoom to apply, 25 to 500. Omitted means back to 100.
+  percent?: number;
+  // getTabThumbnails: how wide the grid's cards are, so the capture is not
+  // bigger than it needs to be.
+  widthVp?: number;
+  // setAnchorRects: where the shell drew the buttons Chromium's bubbles point
+  // at, in this window's coordinates.
+  anchors?: ShellAnchorRect[];
+  // setExtensionPinned.
+  pinned?: boolean;
+  // setBrowserChrome: who draws the browser from now on.
+  mode?: 'shell' | 'native';
   // sitePermissionDecision: the answer to sitePermissionRequested.
   decision?: SitePermissionDecision;
   sizeVp?: number;

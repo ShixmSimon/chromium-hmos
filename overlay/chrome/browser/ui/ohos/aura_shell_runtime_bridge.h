@@ -10,8 +10,11 @@
 
 #include "base/functional/callback_forward.h"
 #include "base/values.h"
+#include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/native_ui_types.h"
 
+class BrowserWindowInterface;
+class GURL;
 class Profile;
 
 namespace content {
@@ -85,6 +88,26 @@ bool IsAuraShellChromeHiddenByShell();
 // Chromium's own must still appear or the feature simply vanishes. `name` is
 // one of the values the shellSurfaces startup option accepts.
 bool ShellDrawsSurface(std::string_view name);
+
+// A keyboard shortcut whose UI belongs to the shell: the location bar, find
+// bar, bookmark and history pages, the app menu. Sends shellAccelerator and
+// returns true when the shell took it, which means Chromium must not also run
+// its own command for that key.
+bool DispatchAuraShellAccelerator(BrowserWindowInterface* browser,
+                                  int command_id);
+
+// The link the pointer is over, for the label a shell draws in the corner of
+// the page. Returns true when the shell took it, which means Chromium should
+// not also look for a status bubble it is not drawing.
+bool DispatchAuraShellLinkHovered(content::WebContents* contents,
+                                  const GURL& url);
+
+// Where the shell drew the button a bubble should point at, in the window's
+// own coordinates (vp, which is what Aura calls DIP). Empty when the shell has
+// not said, and a bubble with no anchor goes to the top right of the page
+// area rather than to a toolbar that is not there.
+gfx::Rect GetAuraShellAnchorRect(gfx::AcceleratedWidget widget,
+                                 std::string_view anchor_id);
 void UpdateAuraShellBrowserChrome(const std::string& browser_chrome);
 bool IsAuraShellDesktopUi();
 bool RequestAuraShellSystemPrint(content::WebContents* contents);
