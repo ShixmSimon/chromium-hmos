@@ -271,6 +271,7 @@ shellAccelerator { action }
 | 命令 | 参数 | 说明 |
 |---|---|---|
 | `moveTab` | `id`, `toIndex` | 按 id 重排标签 |
+| `moveTabToNewWindow` | `id` | 把标签拖出成为独立窗口。新窗口和无痕窗口同一形状:`windowRole: "browser"` 事件 + `aura_win_<widget>` 表面。同 Profile,不受单进程限制 |
 | `setTabMuted` | `id?`, `muted` | 不传 `id` 时作用于当前标签 |
 | `setZoom` | `percent?` | 25–500,不传表示回到 100 |
 | `toggleReaderMode` | | 进入 / 退出阅读模式 |

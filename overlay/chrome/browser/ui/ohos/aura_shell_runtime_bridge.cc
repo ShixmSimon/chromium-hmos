@@ -62,6 +62,7 @@
 #include "base/containers/lru_cache.h"
 #include "chrome/browser/dom_distiller/tab_utils.h"
 #include "ui/gfx/codec/png_codec.h"
+#include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_live_tab_context.h"
 #include "components/viz/common/frame_sinks/copy_output_result.h"
 #include "components/dom_distiller/content/browser/distillability_driver.h"
@@ -2492,6 +2493,21 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     } else if (active) {
       NavigateOnUiThread(widget, GURL("chrome://newtab/"), 0);
     }
+  } else if (*name == "moveTabToNewWindow") {
+    // A tab dragged off the strip. Chromium's own command does the work --
+    // detaching the tab, opening a window for it, keeping the session id --
+    // and the shell hears about the window the same way it hears about an
+    // incognito one: an auxiliary window event with windowRole "browser" and
+    // an aura_win_<widget> surface to draw it in.
+    //
+    // Same profile as the window it left, so this works on a phone too: the
+    // assertion single-process trips over is about holding two profiles, not
+    // two windows.
+    const std::optional<int> index = ReadTabIndex(tabs, command);
+    if (index && tabs->count() > 1 &&
+        chrome::CanMoveTabsToNewWindow(browser, {*index})) {
+      chrome::MoveTabsToNewWindow(browser, {*index});
+    }
   } else if (*name == "moveTab") {
     // to_position is where the tab ends up, which is what a finished drag
     // knows; TabStripModel takes the same meaning.
@@ -2888,6 +2904,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "activateTab",
       "closeTab",
       "moveTab",
+      "moveTabToNewWindow",
       "setRequestDesktopSite",
       "setTabMuted",
       "setZoom",
