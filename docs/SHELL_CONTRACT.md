@@ -249,6 +249,10 @@ setAnchorRects { anchors: { id, x, y, width, height }[] }
 网页没有消费的按键,Chromium 解析成命令之后,属于外壳界面的那些改发事件:
 
 ```
+openedInGroup { id }
+
+从 Chromium 的长按菜单在组内打开了一页。当前页没有变,`id` 是新标签的 `id`。
+
 shellAccelerator { action }
 ```
 
@@ -271,6 +275,8 @@ shellAccelerator { action }
 | 命令 | 参数 | 说明 |
 |---|---|---|
 | `moveTab` | `id`, `toIndex` | 按 id 重排标签 |
+| `activateTabById` | `id` | 按 id 切换标签 |
+| `closeTabById` | `id`, `returnToOpener?` | 按 id 关闭标签。`returnToOpener: true` 时关掉后切回打开它的那个标签(它还在的话);不传时用 Chromium 自己的规则挑下一个 |
 | `passwordAuthReset` | `reason?` | 让上一次身份验证立即失效。外壳在进入后台、以及在普通/无痕窗口之间切换时发。锁屏由内核自己监听,不用发 |
 | `moveTabToNewWindow` | `id` | 把标签拖出成为独立窗口。新窗口和无痕窗口同一形状:`windowRole: "browser"` 事件 + `aura_win_<widget>` 表面。同 Profile,不受单进程限制 |
 | `setTabMuted` | `id?`, `muted` | 不传 `id` 时作用于当前标签 |
@@ -575,6 +581,40 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 权限类型：`location`、`camera`、`microphone`、`notifications`、`javascript`、`popups`、`sound`、`clipboard`、`storageAccess`。没有 `autoplay`：桌面版 Chromium 实际上不执行这项设置，要控制声音请用 `sound`。
 
 所有设置都读写普通 Profile，从无痕窗口发的命令也一样。
+
+**标签组(手机)**
+
+手机把标签藏在网格后面,网页打开的新标签页用户看不见,返回也回不到来处。所以
+**在手机布局下**,一个页面打开另一个页面时,内核把两者归进同一个组;平板和 PC
+跟桌面 Chromium 一样,平铺、不建组。组由内核保存,外壳只决定怎么画。
+
+`aboutInfo` 里的 `browsingApiVersion` 说明支持到哪一版:`1` 是浏览 UI 那一轮
+(权限、加载进度、标签 id、缩略图、最近关闭、桌面版、阅读模式),`2` 加上标签组。
+
+每个标签多两个字段:
+
+| 字段 | 说明 |
+|---|---|
+| `groupId` | 所在组,不在组里为 `''`。就是 Chromium 的 `TabGroupId`,同组标签在标签栏里总是挨着,顺序就是打开的顺序 |
+| `openerId` | 打开它的那个标签的 `id`,没有、或那个标签已经关掉时为 `''`。跨重启保留 |
+
+什么时候自动建组(只在 `uiFamily = mobile_phone`):
+
+- 点 `target="_blank"` 链接,或用户手势触发、不带窗口特性的 `window.open`:新页
+  插到来源标签所在组的末尾并切过去;来源标签还没有组就新建一个,**来源页排在第
+  一个**。
+- 带窗口特性的 `window.open`(弹窗)不进组,照旧走弹窗拦截。`opener` 关系原样
+  保留,OAuth 和支付弹窗不受影响。
+- 长按菜单里的"在新标签页中打开"同样进组,但**后台打开**,当前页不动,随后发
+  `openedInGroup { id }`。
+- 组里只剩一个标签时自动解散,那个标签的 `groupId` 变回 `''`。解散由内核在任何
+  一次标签变动之后自己做,外壳不用管。
+- 折叠屏运行中改变布局:已有的组和 opener 不动,之后新开的按当前布局的规则走。
+
+`newTab` 加了两个参数:`groupId` 非空时新页插到这个组的末尾、`openerId` 设为当
+前标签;`background: true` 时不切过去。
+
+组成员变化不另发事件,照常在 `tabs` 里读。
 
 **网站图标**
 

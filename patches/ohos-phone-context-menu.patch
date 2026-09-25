@@ -1,0 +1,182 @@
+Make Chromium's long-press menu fit a phone.
+
+It is the desktop menu, which is what it looks like: inspect, view source,
+save the page, print, cast, translate, a second window and a split view, none
+of which a phone has anywhere to put. They go.
+
+A remove-list rather than a keep-list, deliberately. The same menu carries
+cut, copy, paste, select all, spelling and the input-method items, and a
+keep-list would have had to name every one of them or quietly break every
+text field on the phone.
+
+"Open link in new tab" now puts the page in the reader's group, the same as a
+link that opens one itself: the group is started around the page they are on
+if it has none, the new page goes to its end, and the reader stays where they
+are. The shell is told, so it can mark the group's button rather than leave
+the new page to be found by accident.
+
+Two things this does not do yet and the shell should know. The item is still
+labelled "open in new tab" -- renaming it needs a new string in the resource
+bundle, which would read English in every locale until the translations
+arrive, and that seemed worse than the old wording. And the rows are still
+desktop height: that is MenuConfig, not this menu, and it is worth doing only
+if the product keeps Chromium's menu rather than going back to the shell's.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch and
+ohos-phone-tab-groups.patch.
+
+diff --git a/chrome/browser/renderer_context_menu/render_view_context_menu.cc b/chrome/browser/renderer_context_menu/render_view_context_menu.cc
+--- a/chrome/browser/renderer_context_menu/render_view_context_menu.cc
++++ b/chrome/browser/renderer_context_menu/render_view_context_menu.cc
+@@ -3,6 +3,11 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/renderer_context_menu/render_view_context_menu.h"
++
++#include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
+ 
+ #include <stddef.h>
+ 
+@@ -1265,6 +1270,73 @@
+           browser->GetType() == BrowserWindowInterface::TYPE_APP_POPUP);
+ }
+ 
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++// Items a phone has nowhere to put. Inspect and view-source want a devtools
++// window; save-as-a-page, print and cast want a file picker, a printer or a
++// second screen the reader is not looking at; a second browser window is not
++// a thing that exists on a phone, and neither is a split view. Translation
++// goes when the toolbar that drives it is not on screen.
++//
++// A remove-list rather than a keep-list on purpose: the menu also carries
++// cut, copy, paste, select-all, spelling and the input-method items, and a
++// keep-list would have to name all of them or quietly break every text field.
++constexpr int kNotOnAPhone[] = {
++    IDC_CONTENT_CONTEXT_INSPECTELEMENT,
++    IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_DEVTOOLS,
++    IDC_CONTENT_CONTEXT_INSPECTBACKGROUNDPAGE,
++    IDC_CONTENT_CONTEXT_VIEWFRAMESOURCE,
++    IDC_CONTENT_CONTEXT_RELOADFRAME,
++    IDC_CONTENT_CONTEXT_OPENLINKNEWWINDOW,
++    IDC_CONTENT_CONTEXT_OPENLINKSPLITVIEW,
++    IDC_CONTENT_CONTEXT_TRANSLATE,
++    IDC_VIEW_SOURCE,
++    IDC_SAVE_PAGE,
++    IDC_PRINT,
++    IDC_ROUTE_MEDIA,
++};
++
++bool IsNotOnAPhone(int command_id) {
++  for (int id : kNotOnAPhone) {
++    if (id == command_id) {
++      return true;
++    }
++  }
++  return false;
++}
++
++// Drops those items and any separator left with nothing on one side of it.
++void TrimMenuForPhone(ui::SimpleMenuModel* model) {
++  for (size_t index = model->GetItemCount(); index > 0; --index) {
++    const size_t at = index - 1;
++    if (model->GetTypeAt(at) != ui::MenuModel::TYPE_SEPARATOR &&
++        IsNotOnAPhone(model->GetCommandIdAt(at))) {
++      model->RemoveItemAt(at);
++    }
++  }
++  // Leading, trailing and doubled separators, back to front so the indices
++  // behind the one being removed stay put.
++  bool next_is_separator = true;  // The end counts as one.
++  for (size_t index = model->GetItemCount(); index > 0; --index) {
++    const size_t at = index - 1;
++    const bool separator =
++        model->GetTypeAt(at) == ui::MenuModel::TYPE_SEPARATOR;
++    if (separator && next_is_separator) {
++      model->RemoveItemAt(at);
++      continue;
++    }
++    next_is_separator = separator;
++  }
++  if (model->GetItemCount() > 0 &&
++      model->GetTypeAt(0) == ui::MenuModel::TYPE_SEPARATOR) {
++    model->RemoveItemAt(0);
++  }
++}
++
++}  // namespace
++#endif  // BUILDFLAG(IS_OHOS)
++
+ void RenderViewContextMenu::InitMenu() {
+   RenderViewContextMenuBase::InitMenu();
+ 
+@@ -1573,6 +1645,13 @@
+       AppendReadAnythingItem();
+     }
+   }
++
++#if BUILDFLAG(IS_OHOS)
++  // Last, so that everything that adds items has added them.
++  if (chrome::ohos::IsAuraShellMobilePhoneUi()) {
++    TrimMenuForPhone(&menu_model_);
++  }
++#endif
+ }
+ 
+ Profile* RenderViewContextMenu::GetProfile() const {
+diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+@@ -3,6 +3,11 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
++
++#include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
++#endif
+ 
+ #include "base/check_deref.h"
+ #include "base/metrics/histogram_macros.h"
+@@ -624,8 +629,36 @@
+ 
+   chrome::ConfigureTabGroupForNavigation(popup_delegate->nav_params());
+ 
++#if BUILDFLAG(IS_OHOS)
++  // "Open in group" in the long-press menu. ConfigureTabGroupForNavigation()
++  // has already joined the group the source tab is in; what it does not do is
++  // start one when the source is on its own, which on a phone is the usual
++  // case. Only for something the reader chose from the menu -- an ordinary
++  // navigation that happens to want a new tab is not asking to be grouped.
++  const bool opened_from_context_menu =
++      params.started_from_context_menu &&
++      (params.disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB ||
++       params.disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB);
++  if (opened_from_context_menu && !popup_delegate->nav_params()->group) {
++    popup_delegate->nav_params()->group =
++        chrome::ohos::GroupForPageOpenedFrom(browser_->GetTabStripModel(),
++                                             source);
++  }
++#endif
++
+   base::WeakPtr<content::NavigationHandle> navigation_handle =
+       Navigate(popup_delegate->nav_params());
++
++#if BUILDFLAG(IS_OHOS)
++  if (opened_from_context_menu) {
++    content::WebContents* opened =
++        popup_delegate->nav_params()->navigated_or_inserted_contents;
++    chrome::ohos::RecordPageOpener(opened, source);
++    // The reader stayed on the page they were on, so the shell marks the
++    // group's button rather than leaving the new page to be discovered.
++    chrome::ohos::AnnouncePageOpenedInGroup(opened);
++  }
++#endif
+ 
+   if (navigation_handle_callback && navigation_handle) {
+     std::move(navigation_handle_callback).Run(*navigation_handle);

@@ -1,0 +1,138 @@
+Keep a page and the page it opened together, on a phone.
+
+A phone keeps its tabs behind a grid. A link that opens a new one opens it
+somewhere the reader cannot see, the tab count changes under them, and back
+does not return to the page they came from, because the new tab has no
+history of its own. Chrome and Brave on Android answer this by grouping the
+two, and the shell draws the group as a strip of favicons beside the dock.
+
+The engine decides membership and the shell decides how to draw it, so one
+answer serves every window and survives a restart. Two fields carry it:
+groupId, which is Chromium's own tab group, and openerId, which is the tab
+that opened this one.
+
+Grouping is added in AddWebContents, which is reached only when a page opens
+another page -- the shell's own new tab, a restored tab and a bookmark go
+elsewhere and none of them should start a group. Chromium already puts the new
+page into the group the old one is in; what it does not do is start a group
+when the old one is on its own, which on a phone is the usual case. The opener
+goes in first, so the reader can get back to where they were from inside the
+group rather than out of it. A window.open() carrying window features arrives
+as NEW_POPUP and is left alone, because a page that asked for a window is
+usually a login or a payment watching it.
+
+Phones only, read from the UI family at the moment of the click, so an
+unfolded foldable behaves like the tablet it has become and a folded one like
+a phone. Groups made before a fold survive it; only what happens next changes.
+
+The opener is kept beside TabStripModel's own rather than in it. The model
+keeps one chain at a time -- inserting an active tab with ADD_INHERIT_OPENER
+calls ForgetAllOpeners() first -- so opening a second page from the first
+erases the first pair, and the shell draws every link. Chromium also does not
+persist openers at all, so this one is written into the tab's session extra
+data and translated back on restore, where the ids have changed.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/ui/browser_tabstrip.cc b/chrome/browser/ui/browser_tabstrip.cc
+--- a/chrome/browser/ui/browser_tabstrip.cc
++++ b/chrome/browser/ui/browser_tabstrip.cc
+@@ -3,6 +3,11 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/browser_tabstrip.h"
++
++#include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
++#endif
+ 
+ #include <optional>
+ 
+@@ -121,7 +126,40 @@
+ 
+   ConfigureTabGroupForNavigation(&params);
+ 
++#if BUILDFLAG(IS_OHOS)
++  // A phone hides its tabs behind a grid, so a page opening another page
++  // opens it where the reader cannot see it, and back does not return to
++  // where they came from. Keeping the two together is what Chrome and Brave
++  // do on Android, and the shell draws the pair as a strip of favicons
++  // beside the dock.
++  //
++  // ConfigureTabGroupForNavigation() above already puts the new page into the
++  // group the old one is in. What it does not do is start a group when the
++  // old one is on its own, which on a phone is the usual case -- so that is
++  // what this adds, with the opener first, so the reader can get back to the
++  // page they were on from inside the group.
++  //
++  // Only for a new tab. A window.open() carrying window features is a popup
++  // and arrives here as NEW_POPUP; it keeps its own window, because a page
++  // that asked for one is usually a login or a payment that is watching it.
++  if (!params.group &&
++      (disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB ||
++       disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB)) {
++    params.group = chrome::ohos::GroupForPageOpenedFrom(
++        browser->GetTabStripModel(), source_contents);
++  }
++#endif  // BUILDFLAG(IS_OHOS)
++
+   Navigate(&params);
++
++#if BUILDFLAG(IS_OHOS)
++  // Who opened whom, kept beside TabStripModel's own answer rather than in
++  // it: the model keeps one chain at a time and forgets the rest whenever an
++  // active tab is inserted, and the shell draws every link.
++  chrome::ohos::RecordPageOpener(params.navigated_or_inserted_contents,
++                                 source_contents);
++#endif
++
+   return params.navigated_or_inserted_contents;
+ }
+ 
+diff --git a/chrome/browser/sessions/session_restore.cc b/chrome/browser/sessions/session_restore.cc
+--- a/chrome/browser/sessions/session_restore.cc
++++ b/chrome/browser/sessions/session_restore.cc
+@@ -3,6 +3,11 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/sessions/session_restore.h"
++
++#include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
++#endif
+ 
+ #include <stddef.h>
+ 
+@@ -1128,6 +1133,18 @@
+         tab.extra_data, true /* from_session_restore */, is_active_browser);
+     DCHECK(web_contents);
+ 
++#if BUILDFLAG(IS_OHOS)
++    // Chromium does not write down who opened whom -- nothing in the session
++    // service persists an opener -- and on a phone that relation is drawn on
++    // screen and is what the back gesture follows, so the shell would lose it
++    // every time the browser was closed. It is written into the tab's extra
++    // data, and this is where it comes back: the ids in the file are the ones
++    // tabs had before the shutdown, so they are handed over with the tab that
++    // now carries each one and translated on the other side.
++    chrome::ohos::NoteRestoredPageOpener(web_contents, tab.tab_id,
++                                         tab.extra_data);
++#endif
++
+     RestoredTab restored_tab(web_contents, is_selected_tab,
+                              tab.extension_app_id.empty(), tab.pinned,
+                              new_group, tab.split_id);
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -1719,6 +1719,8 @@
+       "ui/ohos/shell_password_cleanup_ohos.h",
+       "ui/ohos/shell_permission_prompt_ohos.cc",
+       "ui/ohos/shell_permission_prompt_ohos.h",
++      "ui/ohos/shell_tab_groups_ohos.cc",
++      "ui/ohos/shell_tab_groups_ohos.h",
+     ]
+     # HUKS keeps the OSCrypt key, and the common-event subscription ends the
+     # re-authentication window when the screen locks.

@@ -67,6 +67,12 @@ void GetAboutInfo(const ShellCommandContext& context,
   // A shell reads it once at startup instead of probing each new command with
   // a timeout.
   event.Set("bookmarkApiVersion", 3);
+  // What the browsing commands understand. 1 was the set the browsing-UI
+  // round added -- permissions, load progress, tab ids, thumbnails, recently
+  // closed, desktop site, reader mode; 2 adds tab groups, which is groupId
+  // and openerId on each tab, newTab's groupId and background, activateTabById
+  // and closeTabById, and the openedInGroup event.
+  event.Set("browsingApiVersion", 2);
   ReplyToShell(context, std::move(event));
 }
 

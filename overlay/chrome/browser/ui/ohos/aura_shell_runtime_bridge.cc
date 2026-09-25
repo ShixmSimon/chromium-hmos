@@ -6,6 +6,10 @@
 #include "chrome/browser/ui/ohos/device_authenticator_ohos.h"
 #include "chrome/browser/ui/ohos/screen_orientation_delegate_ohos.h"
 #include "chrome/browser/ui/ohos/shell_permission_prompt_ohos.h"
+#include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
+#include "chrome/browser/ui/navigator/browser_navigator.h"
+#include "chrome/browser/ui/navigator/browser_navigator_params.h"
+#include "chrome/browser/ui/tabs/tab_group_model.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1486,6 +1490,76 @@ void SendTabThumbnails(gfx::AcceleratedWidget widget,
   }
 }
 
+// --- Tab groups. ----------------------------------------------------------
+
+// Defined further down, beside the rest of the navigation helpers.
+void NavigateOnUiThread(gfx::AcceleratedWidget widget, GURL url, int attempt);
+
+// Dissolves this window's one-tab groups, if it is still open. Takes a widget
+// rather than a TabStripModel because it runs after the snapshot that asked
+// for it, by which time the window may have gone.
+void DissolveSingleTabGroupsForWidget(gfx::AcceleratedWidget widget) {
+  if (BrowserWindowInterface* browser = FindBrowserForWidget(widget)) {
+    chrome::ohos::DissolveSingleTabGroups(browser->GetTabStripModel());
+  }
+}
+
+// The group the shell named, or nullopt when it named none or named one this
+// window does not have -- a group the reader closed while the command was in
+// flight, or one belonging to another window.
+std::optional<tab_groups::TabGroupId> FindGroupById(TabStripModel* tabs,
+                                                    const std::string* id) {
+  if (!tabs || !id || id->empty() || !tabs->SupportsTabGroups() ||
+      !tabs->group_model()) {
+    return std::nullopt;
+  }
+  for (const tab_groups::TabGroupId& group :
+       tabs->group_model()->ListTabGroups()) {
+    if (group.ToString() == *id) {
+      return group;
+    }
+  }
+  return std::nullopt;
+}
+
+// Close a tab the shell named, and afterwards go where it asked.
+void CloseTabById(gfx::AcceleratedWidget widget,
+                  BrowserWindowInterface* browser,
+                  TabStripModel* tabs,
+                  const base::DictValue& command) {
+  content::WebContents* target = FindTabById(tabs, command.FindString("id"));
+  if (!target) {
+    return;
+  }
+  const std::optional<int> index = tabs->GetIndexOfWebContents(target);
+  if (!index) {
+    return;
+  }
+  // Read before the close: the tab is gone by the time it returns, and with
+  // it the entry saying who opened it.
+  content::WebContents* opener =
+      command.FindBool("returnToOpener").value_or(false)
+          ? chrome::ohos::PageOpenerOf(target)
+          : nullptr;
+  if (tabs->count() <= 1) {
+    // The last tab closing would close the window. The shell expects a
+    // browser to still be there, so the tab empties instead, which is what
+    // closeTab has always done.
+    NavigateOnUiThread(widget, GURL("chrome://newtab/"), 0);
+    return;
+  }
+  tabs->CloseWebContentsAt(*index, TabCloseTypes::CLOSE_USER_GESTURE);
+  if (!opener) {
+    // Whatever Chromium picked. Its rule -- the tab to the right, or the one
+    // that opened this one if it knows -- is the same rule every browser
+    // uses and there is no reason to have a different one.
+    return;
+  }
+  if (const std::optional<int> back = tabs->GetIndexOfWebContents(opener)) {
+    tabs->ActivateTabAt(*back);
+  }
+}
+
 // --- Reader mode. ---------------------------------------------------------
 
 // Whether this tab is showing a distilled page rather than the original.
@@ -1707,6 +1781,17 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   state.Set("sidePanelEntryId", target.side_panel_entry_id);
   state.Set("focusedTarget", target.focused_target);
   state.Set("activationEpoch", target.activation_epoch);
+  // A group with one tab left is not a group. Checked here rather than on
+  // every close, because a tab leaves a group in more ways than the shell
+  // asking it to -- the page can close itself, a crash can take it, a drag
+  // can move it out -- and this runs after all of them. The change is made
+  // after this snapshot rather than during it, so the strip is not edited
+  // while it is being read; the next snapshot carries the result.
+  if (tabs->SupportsTabGroups()) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&DissolveSingleTabGroupsForWidget, widget));
+  }
+
   base::ListValue tab_values;
   for (int index = 0; index < tabs->count(); ++index) {
     content::WebContents* contents = tabs->GetWebContentsAt(index);
@@ -1720,6 +1805,15 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
     // neighbour closes or moves, so anything asynchronous -- a thumbnail
     // arriving, a drag finishing -- has to name the tab by this instead.
     tab.Set("id", ShellTabId(contents));
+    // Which group this tab is in, and which tab opened it. Both empty for a
+    // tab that stands on its own, which is every tab until a page opens
+    // another one. The engine decides membership so that one answer serves
+    // every window and survives a restart; the shell decides how to draw it.
+    const std::optional<tab_groups::TabGroupId> group =
+        tabs->SupportsTabGroups() ? tabs->GetTabGroupForTab(index)
+                                  : std::nullopt;
+    tab.Set("groupId", group ? group->ToString() : std::string());
+    tab.Set("openerId", chrome::ohos::PageOpenerIdOf(contents));
     if (contents) {
       const GURL url = contents->GetVisibleURL();
       tab.Set("url", ShellVisibleUrl(url));
@@ -2512,11 +2606,46 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
       }
     }
   } else if (*name == "newTab") {
-    content::OpenURLParams params(GURL("chrome://newtab/"), content::Referrer(),
-                                  WindowOpenDisposition::NEW_FOREGROUND_TAB,
-                                  ui::PAGE_TRANSITION_TYPED,
-                                  /*is_renderer_initiated=*/false);
-    browser->OpenURL(params, {});
+    const std::string* url_string = command.FindString("url");
+    GURL url = url_string && !url_string->empty() ? GURL(*url_string)
+                                                  : GURL("chrome://newtab/");
+    if (!url.is_valid()) {
+      url = GURL("chrome://newtab/");
+    }
+    const bool background = command.FindBool("background").value_or(false);
+    const std::optional<tab_groups::TabGroupId> group =
+        FindGroupById(tabs, command.FindString("groupId"));
+    const WindowOpenDisposition disposition =
+        background ? WindowOpenDisposition::NEW_BACKGROUND_TAB
+                   : WindowOpenDisposition::NEW_FOREGROUND_TAB;
+    if (group) {
+      // Into the named group, at its end. PAGE_TRANSITION_LINK rather than
+      // TYPED: this came from a link in a page, and the transition is what
+      // history and the back button read afterwards.
+      NavigateParams params(browser, url, ui::PAGE_TRANSITION_LINK);
+      params.disposition = disposition;
+      params.group = group;
+      params.source_contents = active;
+      Navigate(&params);
+      content::WebContents* opened = params.navigated_or_inserted_contents;
+      chrome::ohos::RecordPageOpener(opened, active);
+      chrome::ohos::AnnouncePageOpenedInGroup(opened);
+    } else {
+      content::OpenURLParams params(url, content::Referrer(), disposition,
+                                    ui::PAGE_TRANSITION_TYPED,
+                                    /*is_renderer_initiated=*/false);
+      browser->OpenURL(params, {});
+    }
+  } else if (*name == "activateTabById") {
+    if (content::WebContents* target =
+            FindTabById(tabs, command.FindString("id"))) {
+      if (const std::optional<int> index =
+              tabs->GetIndexOfWebContents(target)) {
+        tabs->ActivateTabAt(*index);
+      }
+    }
+  } else if (*name == "closeTabById") {
+    CloseTabById(widget, browser, tabs, command);
   } else if (*name == "activateTab") {
     if (const std::optional<int> index = ReadTabIndex(tabs, command)) {
       tabs->ActivateTabAt(*index);
@@ -2938,7 +3067,9 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "newTab",
       "newIncognitoWindow",
       "activateTab",
+      "activateTabById",
       "closeTab",
+      "closeTabById",
       "moveTab",
       "moveTabToNewWindow",
       "setRequestDesktopSite",

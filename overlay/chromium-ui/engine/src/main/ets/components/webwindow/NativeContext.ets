@@ -80,6 +80,15 @@ export interface BrowserTabState {
   audible?: boolean;
   // Silenced by the user.
   muted?: boolean;
+  // The group this tab belongs to, or '' when it belongs to none. A group is
+  // a page and the pages it opened; on a phone the engine makes one whenever
+  // a page opens another, and on a tablet or a PC it never does. Tabs in a
+  // group are always next to each other and in the order they were opened.
+  // Empty on an engine older than browsingApiVersion 2.
+  groupId?: string;
+  // The `id` of the tab that opened this one, or '' when nothing did or when
+  // that tab has since closed. Survives a restart.
+  openerId?: string;
 }
 
 export type PwaMenuItemType = 'command' | 'check' | 'radio' | 'separator' |
@@ -274,6 +283,14 @@ export interface BrowserCommandPayload {
   muted?: boolean;
   // setZoom: the page zoom to apply, 25 to 500. Omitted means back to 100.
   percent?: number;
+  // newTab: open into this group, at its end, opened by the current tab.
+  // Omitted opens an ordinary tab outside any group.
+  groupId?: string;
+  // newTab: leave the reader where they are. Default false.
+  background?: boolean;
+  // closeTabById: after closing, go back to the tab that opened it, if that
+  // tab is still open. Omitted leaves the choice to Chromium's own rule.
+  returnToOpener?: boolean;
   // getTabThumbnails: how wide the grid's cards are, so the capture is not
   // bigger than it needs to be.
   widthVp?: number;

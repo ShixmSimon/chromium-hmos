@@ -487,3 +487,11 @@ export interface FaviconsEvent extends ShellServiceEvent {
 export function shellEvent<T>(event: Object): T {
   return event as T;
 }
+
+// A page was opened into a group from Chromium's long-press menu. The reader
+// was left on the page they were on, so the shell marks the group's button to
+// say something arrived. `id` is the new tab's `id`.
+export interface OpenedInGroupEvent {
+  event: 'openedInGroup';
+  id: string;
+}
