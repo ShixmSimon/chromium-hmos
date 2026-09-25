@@ -271,6 +271,7 @@ shellAccelerator { action }
 | 命令 | 参数 | 说明 |
 |---|---|---|
 | `moveTab` | `id`, `toIndex` | 按 id 重排标签 |
+| `passwordAuthReset` | `reason?` | 让上一次身份验证立即失效。外壳在进入后台、以及在普通/无痕窗口之间切换时发。锁屏由内核自己监听,不用发 |
 | `moveTabToNewWindow` | `id` | 把标签拖出成为独立窗口。新窗口和无痕窗口同一形状:`windowRole: "browser"` 事件 + `aura_win_<widget>` 表面。同 Profile,不受单进程限制 |
 | `setTabMuted` | `id?`, `muted` | 不传 `id` 时作用于当前标签 |
 | `setZoom` | `percent?` | 25–500,不传表示回到 100 |
@@ -549,10 +550,27 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 
 `types`：`history`、`cookies`、`cache`、`siteSettings`、`formData`、`passwords`、`downloads`。`timeRange`：`lastHour`、`lastDay`、`lastWeek`、`last4Weeks`、`all`。
 
-偏好键（只接受这些）：`blockThirdPartyCookies`、`doNotTrack`、`safeBrowsing`（`'off' | 'standard' | 'enhanced'`）、`preloadPages`、`popupsBlocked`、`javascriptEnabled`、`textScale`、`autofillAddresses`、`autofillCards`、`downloadAskWhereToSave`。
+偏好键（只接受这些）：`blockThirdPartyCookies`、`doNotTrack`、`safeBrowsing`（`'off' | 'standard' | 'enhanced'`）、`preloadPages`、`popupsBlocked`、`javascriptEnabled`、`textScale`、`autofillAddresses`、`autofillCards`、`downloadAskWhereToSave`、`passwordFillRequiresAuth`。
 
 - `textScale` 是 50–200 的百分比。桌面版 Chromium 没有只放大文字的设置，所以这里改的是网页的默认缩放比例，整页一起放大。
 - 这个版本没有配置 Google API 密钥，`safeBrowsing` 开关能保存，但实际上很可能不起作用，设置页不要承诺有安全浏览保护。
+- `passwordFillRequiresAuth` 默认开。关掉只影响"把已保存的密码填进网页"这一件事；查看、复制、编辑、导出密码永远要验证身份，没有开关。设备上没有锁屏也没有录入生物特征时，这个开关不起作用——没有东西可以拿来验证。
+
+**密码**
+
+密码管理器是开的。存起来的密码用 HUKS 里的密钥加密，那把密钥出不了安全世界，所以 `Login Data` 文件被单独拷走也读不出来。
+
+| 什么时候验证身份 | 能不能关 |
+|---|---|
+| 把密码填进网页 | 能，`passwordFillRequiresAuth` |
+| 查看、复制、编辑、导出密码 | 不能 |
+
+- 验证界面是鸿蒙自己的，走 `userAuth` 系统服务：外壳要实现 `verify`（参数 `title`，返回 `{ ok }`）、`available`（返回 `{ available }`）和 `cancel`。内核不自己画密码输入框。
+- 验证成功后 60 秒内不再问。这 60 秒用单调时钟计时，改系统时间没用。
+- 以下几件事会让这 60 秒立刻作废：锁屏或息屏（内核自己监听公共事件，外壳不用管）；应用进入后台；在普通窗口和无痕窗口之间切换。后两件外壳发 `passwordAuthReset` 告诉内核。
+- 设备上什么都没录入时，"查看密码"这类明确要求一律拒绝，不会放行。
+- **升级会清空已存的密码。** 这个版本之前的密码是用每个 Chromium 构建都一样的固定密钥存的，等于没加密，所以第一次启动这个版本时会全部删掉，不迁移。换机、克隆、恢复备份或卸载重装之后解不开包裹密钥时也一样：密码库当作空的。这两种情况 hilog 里都有一行 `OHOS passwords: cleared stored credentials`。设置页可以提一句"因安全升级，此前保存的密码已清除"。
+- 无痕窗口不保存密码，行为和之前一致。
 
 权限类型：`location`、`camera`、`microphone`、`notifications`、`javascript`、`popups`、`sound`、`clipboard`、`storageAccess`。没有 `autoplay`：桌面版 Chromium 实际上不执行这项设置，要控制声音请用 `sound`。
 

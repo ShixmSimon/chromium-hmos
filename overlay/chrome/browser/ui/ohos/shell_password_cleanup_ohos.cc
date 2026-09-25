@@ -9,6 +9,7 @@
 #include "base/time/time.h"
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/ohos/huks_key_provider_ohos.h"
 #include "components/password_manager/core/browser/password_store/password_store_interface.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
@@ -17,32 +18,36 @@ namespace chrome::ohos {
 
 namespace {
 
-// Set once the sweep has run, so a user who saves nothing afterwards is not
-// asked about it again and a later restart does not repeat the deletion.
-constexpr char kSweptPref[] = "ohos.passwords_saved_without_protection_cleared";
-
-// Whether Login Data's passwords are protected by anything worth the name.
-// False while OSCrypt has only PosixKeyProvider, whose key is the same
-// constant in every Chromium build ever shipped.
+// Set once the sweep has run. That pref is the whole condition: what is being
+// cleared is whatever the shared key wrote, and the first start of a build
+// carrying this code is exactly the moment to do it.
 //
-// This is the switch to flip when the HUKS key provider lands: after that the
-// sweep stops happening and migration takes over.
-bool PasswordsAreEncrypted() {
-  return false;
-}
+// Not conditioned on whether HUKS is now providing the key -- it is, in the
+// same build -- because that would mean the sweep never ran and the old
+// credentials stayed, readable by the key every Chromium build shares.
+constexpr char kSweptPref[] = "ohos.passwords_saved_without_protection_cleared";
 
 }  // namespace
 
 void RegisterPasswordCleanupPrefs(PrefRegistrySimple* registry) {
   registry->RegisterBooleanPref(kSweptPref, false);
+  // On by default: a saved password should not go into a page until the
+  // person holding the phone has shown they are the person who saved it.
+  registry->RegisterBooleanPref("ohos.password_fill_requires_auth", true);
 }
 
 void ClearPasswordsSavedWithoutProtection(Profile* profile) {
-  if (!profile || profile->IsOffTheRecord() || PasswordsAreEncrypted()) {
+  if (!profile || profile->IsOffTheRecord()) {
     return;
   }
   PrefService* prefs = profile->GetPrefs();
-  if (!prefs || prefs->GetBoolean(kSweptPref)) {
+  if (!prefs) {
+    return;
+  }
+  // Swept once -- unless the wrapping key was lost, in which case what is
+  // stored cannot be decrypted by anything and has to go however many times
+  // it happens.
+  if (prefs->GetBoolean(kSweptPref) && !WrappedKeyWasReplaced()) {
     return;
   }
 
@@ -58,11 +63,15 @@ void ClearPasswordsSavedWithoutProtection(Profile* profile) {
   // Everything, not a window: the whole file was written with the shared key.
   store->RemoveLoginsCreatedBetween(
       FROM_HERE, base::Time(), base::Time::Max(),
-      base::BindOnce([](bool success) {
-        LOG(WARNING) << "OHOS passwords: cleared credentials saved before "
-                        "this platform could protect them, success="
-                     << success;
-      }));
+      base::BindOnce(
+          [](bool replaced, bool success) {
+            LOG(WARNING) << "OHOS passwords: cleared stored credentials -- "
+                         << (replaced ? "the key that protected them is gone "
+                                        "(new device, restore or reinstall)"
+                                      : "they predate any real protection")
+                         << ", success=" << success;
+          },
+          WrappedKeyWasReplaced()));
   prefs->SetBoolean(kSweptPref, true);
 }
 

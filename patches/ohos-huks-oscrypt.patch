@@ -1,0 +1,87 @@
+Keep the OSCrypt key in HUKS.
+
+PosixKeyProvider was the only provider here, and its key is a constant
+compiled into every Chromium build, so Login Data was obfuscated rather than
+encrypted: anyone holding the file could read it offline, without the device.
+
+HUKS keys cannot be exported and OSCrypt's KeyProvider has to hand its key
+over for in-process use, so the two do not meet directly. Chromium's key is
+generated here and stored wrapped -- HUKS holds a key that never leaves the
+secure world, and that key encrypts ours. What lands on disk is useless
+without this device and this app, which is the bargain Keychain and DPAPI
+strike on macOS and Windows.
+
+It does not keep the key out of process memory. Doing that means encrypting
+every value through HUKS, which is a change to OSCrypt's interface rather than
+an implementation of it. That trade was agreed before this was written.
+
+PosixKeyProvider stays registered underneath so values written before this can
+still be read; new values are written with the HUKS-wrapped key, under its own
+tag. Failure to reach HUKS reports kTemporarilyUnavailable rather than
+kPermanentlyUnavailable, because the latter invites callers to treat existing
+data as lost.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -1711,6 +1711,10 @@
+       "icon_loader_ohos.cc",
+       "memory_details_linux.cc",
+       "platform_util_ohos.cc",
++      "ui/ohos/device_authenticator_ohos.cc",
++      "ui/ohos/device_authenticator_ohos.h",
++      "ui/ohos/huks_key_provider_ohos.cc",
++      "ui/ohos/huks_key_provider_ohos.h",
+       "ui/ohos/shell_password_cleanup_ohos.cc",
+       "ui/ohos/shell_password_cleanup_ohos.h",
+       "ui/ohos/shell_permission_prompt_ohos.cc",
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -1720,6 +1720,12 @@
+       "ui/ohos/shell_permission_prompt_ohos.cc",
+       "ui/ohos/shell_permission_prompt_ohos.h",
+     ]
++    # HUKS keeps the OSCrypt key, and the common-event subscription ends the
++    # re-authentication window when the screen locks.
++    libs = [
++      "huks_ndk.z",
++      "ohcommonevent",
++    ]
+     deps += [
+       "//chrome/browser/printing",
+       # Importing a bookmarks file. The parser normally runs behind a mojo
+diff --git a/chrome/browser/browser_process_impl.cc b/chrome/browser/browser_process_impl.cc
+--- a/chrome/browser/browser_process_impl.cc
++++ b/chrome/browser/browser_process_impl.cc
+@@ -1661,6 +1661,15 @@
+       /*precedence=*/5u, std::make_unique<os_crypt_async::PosixKeyProvider>());
+ #endif  // BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_LINUX)
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Above PosixKeyProvider, whose key is a constant every Chromium build
++  // shares. That one stays registered underneath so values written before this
++  // existed can still be read; new values take the key HUKS wraps.
++  if (auto provider = chrome::ohos::MakeHuksKeyProvider()) {
++    providers.emplace_back(/*precedence=*/10u, std::move(provider));
++  }
++#endif  // BUILDFLAG(IS_OHOS)
++
+ #if BUILDFLAG(IS_MAC)
+   if (base::FeatureList::IsEnabled(features::kUseKeychainKeyProvider)) {
+     providers.emplace_back(std::make_pair(
+diff --git a/chrome/browser/browser_process_impl.cc b/chrome/browser/browser_process_impl.cc
+--- a/chrome/browser/browser_process_impl.cc
++++ b/chrome/browser/browser_process_impl.cc
+@@ -280,6 +280,9 @@
+ 
+ #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
+ #include "components/os_crypt/async/browser/posix_key_provider.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/huks_key_provider_ohos.h"
++#endif
+ #endif
+ 
+ #if BUILDFLAG(IS_MAC)

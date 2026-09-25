@@ -55,6 +55,10 @@ namespace chrome::ohos::settings_internal {
 
 namespace {
 
+// Registered in shell_password_cleanup_ohos.cc alongside the other OHOS
+// password prefs, since that is where this platform's password state lives.
+constexpr char kPasswordFillRequiresAuth[] = "ohos.password_fill_requires_auth";
+
 // --- Plain boolean prefs: one line each. ----------------------------------
 
 struct BoolPref {
@@ -67,6 +71,11 @@ constexpr BoolPref kBoolPrefs[] = {
     {"autofillAddresses", autofill::prefs::kAutofillProfileEnabled},
     {"autofillCards", autofill::prefs::kAutofillCreditCardEnabled},
     {"downloadAskWhereToSave", prefs::kPromptForDownload},
+    // Whether filling a saved password into a page asks the user to prove who
+    // they are first. Showing, copying, editing and exporting always ask and
+    // have no setting; this covers filling alone, which is the one the
+    // product wanted to be able to turn off.
+    {"passwordFillRequiresAuth", kPasswordFillRequiresAuth},
 };
 
 // --- Settings that need translating. --------------------------------------

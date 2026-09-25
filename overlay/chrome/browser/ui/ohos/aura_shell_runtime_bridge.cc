@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+#include "chrome/browser/ui/ohos/device_authenticator_ohos.h"
 #include "chrome/browser/ui/ohos/screen_orientation_delegate_ohos.h"
 #include "chrome/browser/ui/ohos/shell_permission_prompt_ohos.h"
 
@@ -2232,6 +2233,15 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     return;
   }
 
+  if (*name == "passwordAuthReset") {
+    // The shell saw something that should end the reuse window early: it went
+    // to the background, or moved between an ordinary and an incognito
+    // window. Screen lock the engine watches for itself.
+    const std::string* why = command.FindString("reason");
+    ForgetRecentAuthentication(why ? why->c_str() : "the shell asked");
+    return;
+  }
+
   if (*name == "setBrowserChrome") {
     if (const std::string* mode = command.FindString("mode")) {
       SetAuraShellBrowserChrome(*mode);
@@ -2334,32 +2344,43 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     return;
   }
   if (*name == "measureViewport" && active) {
-    // TEMPORARY, a second time. chrome://version reads correctly now, but
-    // chrome://password-manager lays out wider than the window and its right
-    // edge is cut off. Whether that is the page's own minimum width or the
-    // viewport is a question only the renderer can answer.
+    // TEMPORARY. The document says it fits -- clientWidth, scrollWidth and
+    // innerWidth all 377, scale 1 -- and the right side is still cut off, so
+    // whatever is too wide is inside a shadow root where none of those
+    // numbers look. Walk the tree, open shadow roots as they come, and report
+    // the elements that overflow their own box.
     active->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
-        uR"(JSON.stringify({
-             url: location.href,
-             clientWidth: document.documentElement.clientWidth,
-             scrollWidth: document.documentElement.scrollWidth,
-             bodyScrollWidth: document.body && document.body.scrollWidth,
-             innerWidth: innerWidth,
-             vvWidth: visualViewport && visualViewport.width,
-             vvScale: visualViewport && visualViewport.scale,
-             mainWidth: (() => {
-               const m = document.querySelector('#main, main, [role=main]') ||
-                         document.body;
-               if (!m) return null;
-               const cs = getComputedStyle(m);
-               return {
-                 tag: m.tagName + (m.id ? '#' + m.id : ''),
-                 rect: Math.round(m.getBoundingClientRect().width),
-                 minWidth: cs.minWidth,
-                 width: cs.width
-               };
-             })()
-           }))",
+        uR"(JSON.stringify((() => {
+          const over = [];
+          const seen = new Set();
+          const walk = (root, depth) => {
+            if (!root || depth > 12) return;
+            for (const el of root.querySelectorAll('*')) {
+              if (seen.has(el)) continue;
+              seen.add(el);
+              if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0) {
+                const cs = getComputedStyle(el);
+                over.push({
+                  tag: el.tagName + (el.id ? '#' + el.id : '') +
+                       (el.className && typeof el.className === 'string'
+                        ? '.' + el.className.trim().split(/\s+/)[0] : ''),
+                  clientWidth: el.clientWidth,
+                  scrollWidth: el.scrollWidth,
+                  minWidth: cs.minWidth,
+                  width: cs.width,
+                  overflowX: cs.overflowX
+                });
+              }
+              if (el.shadowRoot) walk(el.shadowRoot, depth + 1);
+            }
+          };
+          walk(document, 0);
+          return {
+            url: location.href,
+            clientWidth: document.documentElement.clientWidth,
+            overflowing: over.slice(0, 12)
+          };
+        })()))",
         base::BindOnce([](base::Value result) {
           LOG(WARNING) << "OHOS viewport probe: "
                        << (result.is_string() ? result.GetString()
@@ -2978,6 +2999,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "sitePermissionDecision",
       "setAnchorRects",
       "setBrowserChrome",
+      "passwordAuthReset",
       "requestState",
       "filePickerResult",
       "permissionResult",

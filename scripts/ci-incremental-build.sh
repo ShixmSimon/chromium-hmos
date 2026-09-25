@@ -159,7 +159,6 @@ apply_incremental_patch "${repo_root}/patches/ohos-autocomplete-hints.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-shell-context-menu.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-shell-services.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-bookmark-html-parsing.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-password-manager-off.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-phone-viewport.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-shell-permission-prompt.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-browser-chrome-shell.patch"
@@ -168,9 +167,16 @@ apply_incremental_patch "${repo_root}/patches/ohos-shell-link-hover.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-hide-side-panel.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-links-in-current-tab.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-clear-unprotected-passwords.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-huks-oscrypt.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-password-reauth.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-ua-chrome-android.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-save-as-no-prompt.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-single-process-discardable.patch"
+# The manager is trustworthy now -- HUKS holds the key and the user is asked
+# before a saved password is handed back -- so the patch that switched it off
+# comes out. The tree is persistent, so deleting the file is not enough.
+retire_incremental_patch "${repo_root}/patches/ohos-password-manager-off.patch"
+
 # The chooser takes touch now, so the probes that found out why come out.
 retire_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
 

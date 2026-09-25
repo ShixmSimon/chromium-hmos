@@ -385,6 +385,12 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   arguments.push_back(
       "--enable-blink-features=BarcodeDetector,FaceDetector,TextDetector");
 
+  // Reader mode needs the renderer to say whether a page is an article, and
+  // the agent that answers is only created when this switch is present --
+  // ShouldStartDistillabilityService() reads nothing else. Without it the
+  // browser side waits forever and reader mode is offered on no page at all.
+  arguments.push_back("--enable-distillability-service");
+
   const bool supports_native_child_process =
       SupportsNativeChildProcess(config.device_class);
   if (supports_native_child_process) {
