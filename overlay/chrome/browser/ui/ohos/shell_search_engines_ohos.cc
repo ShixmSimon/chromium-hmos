@@ -33,6 +33,9 @@
 #include "chrome/browser/ui/ohos/shell_settings_ohos_internal.h"
 #include "base/strings/utf_string_conversions.h"
 #include "components/search_engines/template_url.h"
+#include "components/search_engines/template_url_data_util.h"
+#include "components/search_engines/template_url_prepopulate_data.h"
+#include "third_party/search_engines_data/resources/definitions/prepopulated_engines.h"
 #include "components/search_engines/template_url_service.h"
 
 namespace chrome::ohos::settings_internal {
@@ -49,9 +52,38 @@ base::DictValue EngineToShell(const TemplateURL& engine, bool is_default) {
   return item;
 }
 
+// Chromium's prepopulated list comes from the country, and this platform has
+// no country to give it: country_codes reads setlocale(LC_MESSAGES) on POSIX,
+// Chromium never sets the C locale from the system, so the answer is "C" with
+// no territory in it and the country is invalid. That lands on the generic
+// fallback set -- DuckDuckGo, Brave, Bing, Ecosia -- which carries no Google.
+// The list for CN would not carry one either.
+//
+// So Google is added rather than uncovered: a search engine the user can pick
+// is a product decision, not a regional one. Added once, as an ordinary
+// prepopulated entry, so it behaves like the rest -- it can be made default,
+// and it survives a restart because the service persists it.
+void EnsureGoogleIsOffered(TemplateURLService* service) {
+  if (!service || !service->loaded()) {
+    return;
+  }
+  for (const TemplateURL* engine : service->GetTemplateURLs()) {
+    if (engine->prepopulate_id() ==
+        TemplateURLPrepopulateData::google.id) {
+      return;
+    }
+  }
+  std::unique_ptr<TemplateURLData> data =
+      TemplateURLDataFromPrepopulatedEngine(TemplateURLPrepopulateData::google);
+  if (data) {
+    service->Add(std::make_unique<TemplateURL>(*data));
+  }
+}
+
 void ReplyEngines(const ShellCommandContext& context,
                   int request_id,
                   TemplateURLService* service) {
+  EnsureGoogleIsOffered(service);
   base::ListValue items;
   if (service && service->loaded()) {
     const TemplateURL* default_engine = service->GetDefaultSearchProvider();
