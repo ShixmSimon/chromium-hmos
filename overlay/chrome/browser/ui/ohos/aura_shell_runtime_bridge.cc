@@ -1543,7 +1543,17 @@ void ToggleReaderMode(content::WebContents* contents) {
     }
     return;
   }
-  DistillCurrentPage(contents);
+  // DistillCurrentPage() alone distils and stops: nothing navigates, so the
+  // menu item did nothing visible even when it did not crash. This is the
+  // entry point that shows the result, and it says whether there was one --
+  // an article that distils to nothing leaves the reader on the page they
+  // were on, with no explanation unless the log gives one.
+  LOG(WARNING) << "OHOS reader mode: asked to distil "
+               << contents->GetLastCommittedURL().possibly_invalid_spec();
+  DistillCurrentPageAndViewIfSuccessful(
+      contents, base::BindOnce([](bool success) {
+        LOG(WARNING) << "OHOS reader mode: distilled=" << success;
+      }));
 }
 
 // --- Recently closed tabs. ------------------------------------------------

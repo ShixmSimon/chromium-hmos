@@ -1,30 +1,60 @@
-Present HarmonyOS as Chrome on Android (desktop Linux on 2in1).
+Stop telling tablets and PCs that they are Android.
 
-The User-Agent mixed OpenHarmony, Android and ArkWeb tokens, UA-CH said
-platform HarmonyOS 0.0.0, navigator.platform said 'HarmonyOS arm64' and
-navigator.plugins listed desktop PDF viewers behind a Mobile UA. Bot
-checks read that as a spoofed browser: Cloudflare Turnstile failed with
-600010. Report what Chrome itself reports on those devices.
+Every HarmonyOS form factor sent an Android token. Sites read "Android
+without Mobile" as an Android tablet, and Baidu, Taobao, JD, Bilibili and
+Weibo answered a tablet or a 2in1 with the phone page. Ten large sites were
+compared at 1280x800 with and without the token: nine switch to the desktop
+page once it goes, and the tenth, qq.com, gives tablets the phone page
+whatever the UA says.
+
+So off the phone the User-Agent is HarmonyOS's own shape, which is what
+ArkWeb sends on those devices -- the OpenHarmony and ArkWeb tokens carry the
+platform rather than decorating an Android one:
+
+  Mozilla/5.0 (Tablet; OpenHarmony 7.0) AppleWebKit/537.36 (KHTML, like Gecko)
+      Chrome/154.0.0.0 Safari/537.36 ArkWeb/7.0.0.105
+
+The phone keeps the Chrome-on-Android string, and everything that has to agree
+with it keeps agreeing: UA-CH platform Android 10.0.0, navigator.platform
+Linux armv81, no PDF plugin. Those were not decoration either -- a UA mixing
+OpenHarmony, Android and ArkWeb tokens with a platform matching none of them
+read as a spoofed browser and Cloudflare Turnstile refused it with 600010.
+Off the phone the same rule gives the opposite answers, so UA-CH says platform
+HarmonyOS with HarmonyOS's own version, mobile ?0, and the desktop PDF viewer
+is listed.
+
+Phone or not is read from --use-mobile-user-agent rather than from the device
+class, because the shell sets it from the UI family: an unfolded foldable is
+not a phone, and a phone with "desktop site" turned on is not one either.
+Both then get the tablet string, which is what those two settings are asking
+for. A foldable's hardware class is "phone", so it would otherwise be labelled
+Phone in a UA with no Mobile token -- Tablet is the honest label for a
+tablet-sized window.
 
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 
 diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedder_support/user_agent_utils.cc
-index dd84e74..b9d703d 100644
 --- a/components/embedder_support/user_agent_utils.cc
 +++ b/components/embedder_support/user_agent_utils.cc
-@@ -222,6 +222,11 @@ const blink::UserAgentBrandList GetUserAgentBrandFullVersionListInternal(
+@@ -222,6 +222,17 @@
  // Internal function to handle return the full or "reduced" user agent string,
  // depending on the Reduce User-Agent reduction phase features.
  #if BUILDFLAG(IS_OHOS)
-+bool IsOhosDesktopDeviceClass() {
-+  return base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
-+             "ohos-device-class") == "2in1";
++// Whether this browser is presenting itself as a phone.
++//
++// The switch is set when the shell starts in the phone UI family, so an
++// unfolded foldable is not a phone here even though its hardware class says
++// phone, and a phone with "desktop site" turned on is not one either. That is
++// what those two settings are asking for.
++bool OhosUserAgentIsPhone() {
++  return base::CommandLine::ForCurrentProcess()->HasSwitch(
++      kUseMobileUserAgent);
 +}
 +
  // Follows ArkWeb's default User-Agent. Sites such as Baidu recognize
  // HarmonyOS phones by the ArkWeb token and serve desktop pages otherwise.
  std::string BuildOhosUserAgent(const std::string& product, bool mobile) {
-@@ -249,16 +254,22 @@ std::string BuildOhosUserAgent(const std::string& product, bool mobile) {
+@@ -249,16 +260,43 @@
      device_type = "PC";
    }
  
@@ -38,67 +68,99 @@ index dd84e74..b9d703d 100644
 -      {"Mozilla/5.0 (", device_type, "; OpenHarmony ", major_minor,
 -       "; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) ", product,
 -       " Safari/537.36 ArkWeb/", version, mobile ? " Mobile" : ""});
-+  // Chrome's own reduced User-Agent: Chrome on Android for phones and
-+  // tablets, desktop Linux for 2in1. A UA mixing OpenHarmony, Android and
-+  // ArkWeb tokens, with a UA-CH platform and navigator.platform that matched
-+  // none of them, read as a spoofed browser to bot checks (Cloudflare
-+  // Turnstile failed with 600010). The platform, platform version and
-+  // navigator.platform follow this UA (see GetOhosUAPlatform()).
-+  (void)device_type;
-+  (void)major_minor;
-+  if (device_class == "2in1") {
-+    return base::StrCat({"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-+                         "(KHTML, like Gecko) ",
-+                         product, " Safari/537.36"});
++  if (!mobile) {
++    // A tablet, a 2in1, an unfolded foldable, or a phone asked for the desktop
++    // site. No Android token and no Mobile token: with them, Baidu, Taobao,
++    // JD, Bilibili and Weibo read the UA as an Android tablet and send the
++    // phone page. Measured across ten large sites at 1280x800; nine switch to
++    // the desktop page once the token goes, and the tenth (qq.com) serves
++    // tablets the phone page whatever the UA says.
++    //
++    // This is also the shape HarmonyOS's own ArkWeb sends on these devices,
++    // which is the point: the OpenHarmony and ArkWeb tokens are how Chinese
++    // sites recognise the platform, and they are the whole UA here rather
++    // than decoration on an Android one.
++    //
++    // An unfolded foldable reports device_class "phone", so it would be
++    // labelled Phone in a UA with no Mobile token, which reads as a phone
++    // asking for the desktop site rather than as the tablet-sized window it
++    // is. Tablet is the honest label for both.
++    if (device_type == "Phone") {
++      device_type = "Tablet";
++    }
++    return base::StrCat({"Mozilla/5.0 (", device_type, "; OpenHarmony ",
++                         major_minor,
++                         ") AppleWebKit/537.36 (KHTML, like Gecko) ", product,
++                         " Safari/537.36 ArkWeb/", version});
 +  }
++
++  // A phone. Chrome's own reduced User-Agent, because a UA naming no OS that
++  // anyone knows gets treated as unclassifiable -- google.com serves its
++  // no-JavaScript basic page against the token order above -- and because a
++  // UA mixing OpenHarmony, Android and ArkWeb tokens, with a UA-CH platform
++  // and navigator.platform matching none of them, read as a spoofed browser
++  // to bot checks (Cloudflare Turnstile failed with 600010). The platform,
++  // platform version, navigator.platform and navigator.plugins all follow
++  // this string; see GetPlatformForUAMetadata() below.
 +  return base::StrCat({"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
 +                       "(KHTML, like Gecko) ",
-+                       product, mobile ? " Mobile" : "", " Safari/537.36"});
++                       product, " Mobile Safari/537.36"});
  }
  #endif  // BUILDFLAG(IS_OHOS)
  
-@@ -708,6 +719,9 @@ std::string GetPlatformVersion() {
+@@ -708,6 +746,18 @@
    return GetWindowsPlatformVersion();
  #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA)
    return std::string();
 +#elif BUILDFLAG(IS_OHOS)
-+  // The Android version BuildOhosUserAgent() names; desktop Linux sends none.
-+  return IsOhosDesktopDeviceClass() ? std::string() : "10.0.0";
++  // On a phone the UA says Android 10 and this has to agree with it. Off the
++  // phone the platform is HarmonyOS and the version is HarmonyOS's own.
++  if (OhosUserAgentIsPhone()) {
++    return "10.0.0";
++  }
++  const char* os_full_name = OH_GetOSFullName();
++  std::string_view os_name = os_full_name ? os_full_name : "";
++  const size_t separator = os_name.find('-');
++  return separator == std::string_view::npos
++             ? std::string()
++             : std::string(os_name.substr(separator + 1));
  #else
  
    int32_t major, minor, bugfix = 0;
-@@ -743,6 +757,9 @@ std::string GetPlatformForUAMetadata() {
+@@ -743,6 +793,11 @@
  #else
    return "Chromium OS";
  #endif
 +#elif BUILDFLAG(IS_OHOS)
-+  // Matches BuildOhosUserAgent(): Android, or Linux on 2in1.
-+  return IsOhosDesktopDeviceClass() ? "Linux" : "Android";
++  // Matches BuildOhosUserAgent(): a phone claims to be Chrome on Android and
++  // has to say so here too, or the mismatch is itself a bot-check signal.
++  // Everything else says what it is.
++  return OhosUserAgentIsPhone() ? "Android" : "HarmonyOS";
  #else
    return std::string(version_info::GetOSType());
  #endif
 diff --git a/third_party/blink/renderer/core/execution_context/navigator_base.cc b/third_party/blink/renderer/core/execution_context/navigator_base.cc
-index 6234f22..d3a3339 100644
 --- a/third_party/blink/renderer/core/execution_context/navigator_base.cc
 +++ b/third_party/blink/renderer/core/execution_context/navigator_base.cc
-@@ -34,7 +34,9 @@ String GetReducedNavigatorPlatform() {
+@@ -34,7 +34,10 @@
  #elif BUILDFLAG(IS_FUCHSIA)
    return "";
  #elif BUILDFLAG(IS_OHOS)
 -  return "HarmonyOS arm64";
-+  // 2in1 presents as desktop Linux; phones and tablets are handled in
++  // Tablets and 2in1s present as HarmonyOS in UA-CH and carry no Android
++  // token, so the desktop answer is the consistent one. Phones are handled in
 +  // NavigatorBase::platform(), which can see the User-Agent.
 +  return "Linux x86_64";
  #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
    return "Linux x86_64";
  #elif BUILDFLAG(IS_IOS)
-@@ -55,6 +57,13 @@ String NavigatorBase::userAgent() const {
+@@ -55,6 +58,13 @@
  }
  
  String NavigatorBase::platform() const {
 +#if BUILDFLAG(IS_OHOS)
-+  // Follow the User-Agent the browser sends: Chrome on Android on phones and
-+  // tablets. The device class is only on the browser's command line.
++  // Follow the User-Agent the browser sends: a phone claims to be Chrome on
++  // Android, so it has to look like one here as well.
 +  if (userAgent().contains("Android")) {
 +    return "Linux armv81";
 +  }
@@ -107,18 +169,18 @@ index 6234f22..d3a3339 100644
    // We need to check the ReduceUserAgentMinorVersion feature flag for
    // Android WebView, which does not currently ship a reduced User-Agent.
 diff --git a/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc b/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
-index 3608837..db110a6 100644
 --- a/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
 +++ b/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
-@@ -136,6 +136,15 @@ HeapVector<Member<DOMMimeType>> DOMPluginArray::GetFixedMimeTypeArray() {
+@@ -136,6 +136,16 @@
  }
  
  bool DOMPluginArray::IsPdfViewerAvailable() {
 +#if BUILDFLAG(IS_OHOS)
 +  // Chrome on Android lists no plugins and reports pdfViewerEnabled false; a
 +  // browser claiming to be it (see BuildOhosUserAgent()) must too, or bot
-+  // checks see a desktop fingerprint behind a mobile User-Agent. Viewing PDFs
-+  // is unaffected: this only shapes navigator.plugins.
++  // checks see a desktop fingerprint behind a mobile User-Agent. Tablets and
++  // 2in1s send a desktop User-Agent and answer as desktop. Viewing PDFs is
++  // unaffected either way: this only shapes navigator.plugins.
 +  if (window_ && window_->UserAgent().contains("Android")) {
 +    return false;
 +  }

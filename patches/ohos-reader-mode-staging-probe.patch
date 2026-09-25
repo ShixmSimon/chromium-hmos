@@ -1,0 +1,116 @@
+Say which step of distillation the browser died on.
+
+Tapping reader mode on an article killed the browser process with
+SIGTRAP(TRAP_BRKPT) on CrBrowserMain. The dump could not be symbolised: the
+library ships without symbols, so the report is addresses and a note that the
+unwinder gave up and guessed the rest of the stack by scanning it.
+
+The trap instruction itself can be read out of the disassembly. It is one of a
+pair -- one for "argument <= 0", one for "argument >= 12" -- guarding a call,
+which is the shape a compiler gives a two-sided bounds check on an enum with
+twelve values. That says what went wrong in the abstract and nothing about
+where, and the stack below the trap is not trustworthy enough to say more.
+
+So the path announces itself: every call MaybeStartDistillation and
+StartNavigationToDistillerViewer make is preceded by a line naming it. The last
+line before the process dies is the call that trapped. The macro is a no-op off
+HarmonyOS and comes out once the answer is in.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/dom_distiller/tab_utils.cc b/chrome/browser/dom_distiller/tab_utils.cc
+--- a/chrome/browser/dom_distiller/tab_utils.cc
++++ b/chrome/browser/dom_distiller/tab_utils.cc
+@@ -8,6 +8,8 @@
+ #include <utility>
+ 
+ #include "base/functional/bind.h"
++#include "base/logging.h"
++#include "build/build_config.h"
+ #include "base/functional/callback.h"
+ #include "base/location.h"
+ #include "base/strings/utf_string_conversions.h"
+@@ -40,6 +42,22 @@
+ 
+ namespace {
+ 
++#if BUILDFLAG(IS_OHOS)
++// TEMPORARY. Tapping reader mode killed the browser process with SIGTRAP and
++// the crash dump could not be symbolised -- the library is built without
++// symbols, so the report gave addresses and nothing else. What could be read
++// out of the disassembly is that the trap is a two-sided bounds check on a
++// small integer argument, valid range 1..11, which is the shape of an enum
++// with twelve values arriving as zero. That narrows it very little on its own,
++// so each step of the path says it is about to happen. The last line in the
++// log before the process dies is the call that did it.
++#define OHOS_DISTILL_STEP(what) LOG(WARNING) << "OHOS reader mode: " << (what)
++#else
++#define OHOS_DISTILL_STEP(what) \
++  do {                          \
++  } while (false)
++#endif
++
+ using dom_distiller::ArticleDistillationUpdate;
+ using dom_distiller::DistilledArticleProto;
+ using dom_distiller::DistillerPage;
+@@ -159,13 +177,16 @@
+ // Start loading the viewer URL of the current page in |web_contents|.
+ void StartNavigationToDistillerViewer(content::WebContents* web_contents,
+                                       const GURL& url) {
++  OHOS_DISTILL_STEP("building the viewer URL");
+   GURL viewer_url = dom_distiller::url_utils::GetDistillerViewUrlFromUrl(
+       dom_distiller::kDomDistillerScheme, url,
+       base::UTF16ToUTF8(web_contents->GetTitle()),
+       (base::TimeTicks::Now() - base::TimeTicks()).InMilliseconds());
+   content::NavigationController::LoadURLParams params(viewer_url);
+   params.transition_type = ui::PAGE_TRANSITION_AUTO_BOOKMARK;
++  OHOS_DISTILL_STEP("navigating to the viewer");
+   web_contents->GetController().LoadURLWithParams(params);
++  OHOS_DISTILL_STEP("navigation to the viewer started");
+ }
+ 
+ void MaybeStartDistillation(
+@@ -173,9 +194,12 @@
+     SelfDeletingRequestDelegate* view_request_delegate) {
+   const GURL& last_committed_url =
+       source_page_handle->web_contents()->GetLastCommittedURL();
++  OHOS_DISTILL_STEP("entered MaybeStartDistillation");
+   // For non-distillable URLs, return an empty article so the request is
+   // fulfilled and the delegate is deleted.
++  OHOS_DISTILL_STEP("checking whether the URL is distillable");
+   if (!dom_distiller::url_utils::IsUrlDistillable(last_committed_url)) {
++    OHOS_DISTILL_STEP("URL is not distillable, stopping");
+     view_request_delegate->OnArticleReady(nullptr);
+     return;
+   }
+@@ -183,6 +207,7 @@
+   // Disable back-forward cache when the distillation is in progress as it would
+   // be cancelled and would not be restarted when the page is restored from the
+   // cache.
++  OHOS_DISTILL_STEP("disabling the back-forward cache");
+   content::BackForwardCache::DisableForRenderFrameHost(
+       source_page_handle->web_contents()->GetPrimaryMainFrame(),
+       back_forward_cache::DisabledReason(
+@@ -191,16 +216,22 @@
+ 
+   // Start distillation using |source_page_handle|, and ensure ViewerHandle
+   // stays around until the viewer requests distillation.
++  OHOS_DISTILL_STEP("asking for the DomDistillerService");
+   DomDistillerService* dom_distiller_service =
+       DomDistillerServiceFactory::GetForBrowserContext(
+           source_page_handle->web_contents()->GetBrowserContext());
++  OHOS_DISTILL_STEP(dom_distiller_service ? "got the service"
++                                          : "the service is null");
++  OHOS_DISTILL_STEP("creating the distiller page");
+   std::unique_ptr<DistillerPage> distiller_page =
+       dom_distiller_service->CreateDefaultDistillerPageWithHandle(
+           std::move(source_page_handle));
+ 
++  OHOS_DISTILL_STEP("starting the distillation");
+   std::unique_ptr<ViewerHandle> viewer_handle = dom_distiller_service->ViewUrl(
+       view_request_delegate, std::move(distiller_page), last_committed_url);
+   view_request_delegate->TakeViewerHandle(std::move(viewer_handle));
++  OHOS_DISTILL_STEP("distillation started");
+ }
+ 
+ void OnReadabilityHeuristicResult(base::OnceCallback<void(bool)> callback,

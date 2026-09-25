@@ -16,11 +16,13 @@ commoner.
 
 So the model stops deciding on this platform and the question becomes the one
 the product is asking: is there an article's worth of paragraph text? That is
-mozScoreAllLinear, in characters, over <p> and <pre> outside list items. Six
-hundred is roughly two Chinese paragraphs or one English one -- enough that an
-index page or a search result does not qualify, low enough that a short news
-piece does. The number is logged next to what the model would have said, so it
-can be moved on evidence rather than argued about.
+mozScoreAllLinear, in characters, over <p> and <pre> outside list items. Three
+hundred and fifty is roughly one Chinese paragraph and a half -- enough that an
+index page or a search result does not qualify, since their text lives in links
+and headings rather than paragraphs, and low enough for mobile Wikipedia, which
+folds every section but the first and so measures 448 for a whole article. The
+number is logged next to what the model would have said, so it can be moved on
+evidence rather than argued about.
 
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 
@@ -37,7 +39,7 @@ diff --git a/components/dom_distiller/content/renderer/distillability_agent.cc b
  #include "components/dom_distiller/content/common/mojom/distillability_service.mojom.h"
  #include "components/dom_distiller/core/distillable_page_detector.h"
  #include "components/dom_distiller/core/experiments.h"
-@@ -173,6 +175,39 @@
+@@ -173,6 +175,44 @@
    bool filtered = IsFiltered(parsed_url);
  
    bool is_distillable = distillable && is_long_article;
@@ -64,7 +66,12 @@ diff --git a/components/dom_distiller/content/renderer/distillability_agent.cc b
 +  // <p> and <pre> outside list items and saturating at 6000. An index or a
 +  // search result has almost none; a short news piece clears the threshold in
 +  // either language.
-+  constexpr double kEnoughParagraphText = 600;
++  //
++  // Three hundred and fifty, not six hundred: mobile Wikipedia folds every
++  // section but the first, folded text is display:none and display:none text
++  // is not counted, so a full article measured 448. An index page still does
++  // not come close -- its text lives in links and headings, not paragraphs.
++  constexpr double kEnoughParagraphText = 350;
 +  const bool has_article_text =
 +      features.moz_score_all_linear >= kEnoughParagraphText;
 +  LOG(WARNING) << "OHOS reader mode: paragraphText="

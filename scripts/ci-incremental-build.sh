@@ -165,8 +165,14 @@ apply_incremental_patch "${repo_root}/patches/ohos-browser-chrome-shell.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-shell-accelerators.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-shell-link-hover.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-hide-side-panel.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-links-in-current-tab.patch"
+# Phones opening target=_blank links in the current tab is on hold: the
+# probe showed such a link never reaches OpenURLFromTab, it goes through
+# CreateNewWindow -> AddNewContents, so the rewrite never ran. The product
+# is redeciding the behaviour, so the rewrite and both probes come out
+# rather than sit in the tree half-live.
+retire_incremental_patch "${repo_root}/patches/ohos-links-in-current-tab.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-text-length.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-staging-probe.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-password-manager-narrow.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-clear-unprotected-passwords.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-huks-oscrypt.patch"
