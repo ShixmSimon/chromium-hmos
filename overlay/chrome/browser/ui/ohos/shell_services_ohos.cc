@@ -102,7 +102,14 @@ bool HandleShellServiceCommand(const ShellCommandContext& context,
                                std::string_view name,
                                const base::DictValue& command) {
   const ShellServiceCommand* entry = FindCommand(name);
-  if (!entry || !context.profile) {
+  if (!entry) {
+    return false;
+  }
+  if (!context.profile) {
+    // Returning false here drops the command with no reply, and a shell
+    // waiting on a requestId cannot tell that from a slow answer. Say so.
+    LOG(ERROR) << "OHOS shell services: dropping '" << name
+               << "' -- the command arrived with no profile";
     return false;
   }
   EnsureShellServices(context.profile);

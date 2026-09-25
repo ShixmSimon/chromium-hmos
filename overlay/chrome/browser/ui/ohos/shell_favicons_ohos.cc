@@ -17,7 +17,6 @@
 #include <utility>
 #include <vector>
 
-#include "base/barrier_callback.h"
 #include "base/base64.h"
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
@@ -37,6 +36,9 @@
 #include "components/keyed_service/core/service_access_type.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
+#include "base/memory/ref_counted.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
 #include "url/gurl.h"
 
 namespace chrome::ohos {
@@ -56,6 +58,11 @@ constexpr double kMinSizeVp = 1;
 constexpr double kMaxSizeVp = 256;
 
 constexpr float kFallbackScale = 1.0f;
+
+// How long a batch waits for the favicon database before answering with
+// whatever it has. The shell gives up at five seconds and draws letter tiles;
+// answering just before that at least fills in the icons that did arrive.
+constexpr base::TimeDelta kBatchDeadline = base::Seconds(3);
 
 // A URL as the shell sent it, which is what the answer must echo: the parsed
 // spec can differ (a trailing slash, say) and the shell matches by string.
@@ -181,10 +188,64 @@ void SendFavicons(const ShellCommandContext& context,
   ReplyToShell(context, std::move(event));
 }
 
+// One request's answers, and the promise that exactly one event goes back.
+//
+// A BarrierCallback was simpler but had no floor: it answers only when every
+// lookup has, so a single lookup that never calls back leaves the shell
+// waiting forever and its list permanently empty. A row with no icon is a far
+// better outcome than a list that never arrives, so the batch also answers on
+// a deadline with whatever it has.
+class FaviconBatch : public base::RefCounted<FaviconBatch> {
+ public:
+  FaviconBatch(const ShellCommandContext& context,
+               int request_id,
+               size_t expected)
+      : context_(context), request_id_(request_id), remaining_(expected) {}
+
+  FaviconBatch(const FaviconBatch&) = delete;
+  FaviconBatch& operator=(const FaviconBatch&) = delete;
+
+  void Add(FaviconAnswer answer) {
+    if (sent_) {
+      return;
+    }
+    answers_.push_back(std::move(answer));
+    if (remaining_ > 0 && --remaining_ == 0) {
+      Send(/*on_deadline=*/false);
+    }
+  }
+
+  void SendWhatArrived() { Send(/*on_deadline=*/true); }
+
+ private:
+  friend class base::RefCounted<FaviconBatch>;
+  ~FaviconBatch() = default;
+
+  void Send(bool on_deadline) {
+    if (std::exchange(sent_, true)) {
+      return;
+    }
+    if (on_deadline) {
+      // Worth a line: it means a lookup never came back, which is the engine's
+      // problem and not the shell's.
+      LOG(WARNING) << "OHOS shell favicons: request " << request_id_
+                   << " timed out with " << remaining_
+                   << " of its lookups unanswered";
+    }
+    SendFavicons(context_, request_id_, std::move(answers_));
+  }
+
+  const ShellCommandContext context_;
+  const int request_id_;
+  size_t remaining_;
+  bool sent_ = false;
+  std::vector<FaviconAnswer> answers_;
+};
+
 void OnRawFavicon(std::string page_url,
-                  base::RepeatingCallback<void(FaviconAnswer)> collect,
+                  scoped_refptr<FaviconBatch> batch,
                   const favicon_base::FaviconRawBitmapResult& result) {
-  collect.Run(FaviconAnswer{std::move(page_url), EncodePng(result)});
+  batch->Add(FaviconAnswer{std::move(page_url), EncodePng(result)});
 }
 
 void GetFavicons(const ShellCommandContext& context,
@@ -200,16 +261,20 @@ void GetFavicons(const ShellCommandContext& context,
   }
   const std::vector<PageUrl> urls = ReadPageUrls(command);
   const int size_px = ReadSizePx(command);
-  // One event for the whole batch, sent when the last lookup answers; with
-  // no URLs it is sent right away.
-  base::RepeatingCallback<void(FaviconAnswer)> collect =
-      base::BarrierCallback<FaviconAnswer>(
-          urls.size(), base::BindOnce(&SendFavicons, context, request_id));
+  if (urls.empty()) {
+    SendFavicons(context, request_id, {});
+    return;
+  }
+  auto batch =
+      base::MakeRefCounted<FaviconBatch>(context, request_id, urls.size());
   for (const PageUrl& page : urls) {
     RequestRawFavicon(service, page.url, size_px,
-                      base::BindOnce(&OnRawFavicon, page.requested, collect),
+                      base::BindOnce(&OnRawFavicon, page.requested, batch),
                       tracker);
   }
+  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE, base::BindOnce(&FaviconBatch::SendWhatArrived, batch),
+      kBatchDeadline);
 }
 
 }  // namespace
