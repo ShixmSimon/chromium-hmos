@@ -1,0 +1,60 @@
+Open a phone's new-tab links in the tab the user is already on.
+
+Tabs live behind a grid on a phone, so a link with target=_blank opens one the
+user never sees, and back does not return to where they came from because the
+new tab has no history. Navigating in place keeps both.
+
+Only link navigations are affected, and deliberately so. A target=_blank link
+comes through OpenURLFromTab, and since Chrome 88 such a link implies noopener
+-- nothing on the page holds a handle to the window that would have appeared,
+so nothing breaks by not creating it. window.open() takes another path
+entirely: it needs a browsing context and arrives through AddNewContents, so
+an OAuth or payment popup that reads the window it opened is untouched. Where
+it cannot be known, the new tab stays, which is what was asked for.
+
+Renderer-initiated only, so the shell's "open in new tab", the newTab command
+and restoring a closed tab all still open one.
+
+Phones only, read from ui_family at the moment of the click, so unfolding a
+foldable changes the behaviour with it and no preference is involved.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+@@ -571,6 +571,34 @@
+   DCHECK(params.Valid());
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++  // On a phone, a link that asks for a new tab gets the current one instead.
++  // Tabs live behind a grid there, so the new one arrives unannounced, and
++  // back does not return to the page the user came from because the new tab
++  // has no history. Navigating in place keeps both.
++  //
++  // Deliberately only here. A link with target=_blank is routed through this
++  // function, and since Chrome 88 such a link implies noopener, so nothing on
++  // the page is holding a handle to the window that would have appeared.
++  // window.open() takes another path entirely -- it needs a browsing context
++  // and goes through AddNewContents -- so a login or payment popup that reads
++  // the window it opened is untouched. That was the instruction: where it
++  // cannot be known, keep the new tab.
++  //
++  // Renderer-initiated only, so the shell's own "open in new tab", the newTab
++  // command and restoring a closed tab all still open one.
++  content::OpenURLParams phone_params = params;
++  if (chrome::ohos::IsAuraShellMobilePhoneUi() && params.is_renderer_initiated &&
++      (params.disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB ||
++       params.disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB)) {
++    phone_params.disposition = WindowOpenDisposition::CURRENT_TAB;
++    // Straight back in with the disposition changed. The guard above is false
++    // the second time, so this goes once and no further.
++    return OpenURLFromTab(source, phone_params,
++                          std::move(navigation_handle_callback));
++  }
++#endif
++
+   if ((browser_->GetType() == BrowserWindowInterface::Type::TYPE_DEVTOOLS)) {
+     DevToolsWindow* window = DevToolsWindow::AsDevToolsWindow(source);
+     DCHECK(window);

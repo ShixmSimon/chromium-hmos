@@ -65,6 +65,7 @@
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_live_tab_context.h"
 #include "components/viz/common/frame_sinks/copy_output_result.h"
+#include "base/strings/stringprintf.h"
 #include "components/dom_distiller/content/browser/distillability_driver.h"
 #include "components/dom_distiller/content/browser/distillable_page_utils.h"
 #include "components/dom_distiller/core/url_constants.h"
@@ -1499,13 +1500,28 @@ bool IsReaderModeAvailable(content::WebContents* contents) {
   if (!contents || IsInReaderMode(contents)) {
     return false;
   }
-  dom_distiller::DistillabilityDriver* driver =
-      dom_distiller::DistillabilityDriver::FromWebContents(contents);
-  if (!driver) {
-    return false;
-  }
+  // Through the helper rather than DistillabilityDriver::FromWebContents:
+  // the helper creates the driver, and nothing else here ever did. Without
+  // it BindDistillabilityService returns early, the renderer's service is
+  // never bound, Blink never reports anything, and reader mode was offered
+  // on no page at all.
   const std::optional<dom_distiller::DistillabilityResult> result =
-      driver->GetLatestResult();
+      dom_distiller::GetLatestResult(contents);
+
+  // Said once per answer rather than at the 200ms poll rate, so a page that
+  // will not distil can be told apart from one that was never asked.
+  static base::NoDestructor<std::string> last_line;
+  const std::string line = base::StringPrintf(
+      "%s distillable=%d last=%d longArticle=%d mobileFriendly=%d",
+      contents->GetLastCommittedURL().possibly_invalid_spec().c_str(),
+      result ? result->is_distillable : -1, result ? result->is_last : -1,
+      result ? result->is_long_article : -1,
+      result ? result->is_mobile_friendly : -1);
+  if (*last_line != line) {
+    *last_line = line;
+    LOG(WARNING) << "OHOS reader mode: " << line
+                 << (result ? "" : " (no answer yet)");
+  }
   return result && result->is_distillable;
 }
 
@@ -2317,6 +2333,41 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     }
     return;
   }
+  if (*name == "measureViewport" && active) {
+    // TEMPORARY, a second time. chrome://version reads correctly now, but
+    // chrome://password-manager lays out wider than the window and its right
+    // edge is cut off. Whether that is the page's own minimum width or the
+    // viewport is a question only the renderer can answer.
+    active->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
+        uR"(JSON.stringify({
+             url: location.href,
+             clientWidth: document.documentElement.clientWidth,
+             scrollWidth: document.documentElement.scrollWidth,
+             bodyScrollWidth: document.body && document.body.scrollWidth,
+             innerWidth: innerWidth,
+             vvWidth: visualViewport && visualViewport.width,
+             vvScale: visualViewport && visualViewport.scale,
+             mainWidth: (() => {
+               const m = document.querySelector('#main, main, [role=main]') ||
+                         document.body;
+               if (!m) return null;
+               const cs = getComputedStyle(m);
+               return {
+                 tag: m.tagName + (m.id ? '#' + m.id : ''),
+                 rect: Math.round(m.getBoundingClientRect().width),
+                 minWidth: cs.minWidth,
+                 width: cs.width
+               };
+             })()
+           }))",
+        base::BindOnce([](base::Value result) {
+          LOG(WARNING) << "OHOS viewport probe: "
+                       << (result.is_string() ? result.GetString()
+                                              : std::string("<no answer>"));
+        }),
+        ISOLATED_WORLD_ID_CHROME_INTERNAL);
+    return;
+  }
   if (*name == "getPageText" && active) {
     // The shell's summarizer reads the page's text. An isolated world keeps
     // the page's own scripts from seeing, or tampering with, the read.
@@ -2937,6 +2988,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "findInPage",
       "stopFind",
       "getPageText",
+      "measureViewport",
       "contextMenuAction",
       "contextMenuDismissed",
   };
