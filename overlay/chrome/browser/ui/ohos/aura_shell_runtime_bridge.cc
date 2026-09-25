@@ -32,6 +32,7 @@
 #include "base/memory/ref_counted_memory.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/no_destructor.h"
+#include "base/strings/string_split.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/lock.h"
@@ -2405,6 +2406,33 @@ std::string& BrowserChromeMode() {
 
 void UpdateAuraShellBrowserChrome(const std::string& browser_chrome) {
   BrowserChromeMode() = browser_chrome;
+}
+
+// The surfaces a phone's shell has always drawn. Hiding the frame on a tablet
+// does not imply these, because that shell may not have them yet.
+constexpr std::string_view kPhoneDefaultSurfaces[] = {
+    "contextMenu", "downloadUi", "permissionPrompt"};
+
+bool ShellDrawsSurface(std::string_view name) {
+  static const base::NoDestructor<std::set<std::string>> listed([] {
+    std::set<std::string> names;
+    const std::string value =
+        base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+            "ohos-shell-surfaces");
+    for (std::string_view piece : base::SplitStringPiece(
+             value, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY)) {
+      names.emplace(piece);
+    }
+    return names;
+  }());
+  if (listed->contains(std::string(name))) {
+    return true;
+  }
+  // A phone drew these before there was a list, and still does when the list
+  // says nothing about them.
+  return std::ranges::find(kPhoneDefaultSurfaces, name) !=
+             std::ranges::end(kPhoneDefaultSurfaces) &&
+         IsAuraShellMobilePhoneUi();
 }
 
 bool IsAuraShellChromeHiddenByShell() {

@@ -16,6 +16,7 @@
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/no_destructor.h"
+#include "base/strings/string_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/values.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
@@ -1132,6 +1133,22 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
                     &config.additional_switches);
   ReadUiOwnerSwitch(dict, "downloadUi", "ohos-download-ui",
                     &config.additional_switches);
+  // The surfaces the shell has taken over, as a comma-separated list. Hiding
+  // the frame says nothing about these: a shell adopts them one at a time and
+  // Chromium keeps drawing the rest.
+  if (const base::ListValue* surfaces = dict.FindList("shellSurfaces")) {
+    std::vector<std::string> names;
+    for (const base::Value& value : *surfaces) {
+      if (const std::string* name = value.GetIfString();
+          name && !name->empty()) {
+        names.push_back(*name);
+      }
+    }
+    if (!names.empty()) {
+      config.additional_switches.push_back(
+          {"ohos-shell-surfaces", base::JoinString(names, ",")});
+    }
+  }
   // Where downloads go: the shell's Download/<bundle> directory, as the URI
   // DocumentViewPicker returned. The engine turns it into a path.
   if (const std::string* directory = dict.FindString("downloadDirectoryUri");

@@ -182,9 +182,10 @@ class ShellPermissionPrompt : public permissions::PermissionPrompt {
 }  // namespace
 
 bool ShellDrawsPermissionPrompts() {
-  // Follows whoever draws the browser UI: where Chromium shows no location
-  // bar there is nothing for its bubble to hang off.
-  return IsAuraShellChromeHiddenByShell();
+  // Not implied by hiding the frame: a shell that has not written the sheet
+  // yet is better served by Chromium's bubble in an odd place than by no
+  // question at all.
+  return ShellDrawsSurface("permissionPrompt");
 }
 
 std::unique_ptr<permissions::PermissionPrompt> CreateShellPermissionPrompt(

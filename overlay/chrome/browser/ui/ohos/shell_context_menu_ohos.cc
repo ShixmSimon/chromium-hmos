@@ -23,6 +23,7 @@
 #include "third_party/blink/public/common/context_menu_data/context_menu_data.h"
 #include "third_party/blink/public/mojom/context_menu/context_menu.mojom-shared.h"
 #include "ui/aura/window.h"
+#include "ui/base/mojom/menu_source_type.mojom-shared.h"
 #include "ui/gfx/geometry/point.h"
 
 namespace chrome::ohos {
@@ -107,6 +108,31 @@ base::DictValue MediaFlags(int flags) {
 }
 
 // Where the finger was, in the window's coordinates. On OHOS a DIP is a vp.
+// How the menu was asked for. The shell puts a touch menu above the finger
+// and a pointer menu at the pointer, and a keyboard menu wants neither.
+std::string_view MenuSourceName(ui::mojom::MenuSourceType source) {
+  switch (source) {
+    case ui::mojom::MenuSourceType::kMouse:
+      return "mouse";
+    case ui::mojom::MenuSourceType::kKeyboard:
+      return "keyboard";
+    case ui::mojom::MenuSourceType::kTouch:
+    case ui::mojom::MenuSourceType::kTouchEditMenu:
+    case ui::mojom::MenuSourceType::kLongPress:
+    case ui::mojom::MenuSourceType::kLongTap:
+    case ui::mojom::MenuSourceType::kTouchHandle:
+    case ui::mojom::MenuSourceType::kStylus:
+    case ui::mojom::MenuSourceType::kAdjustSelection:
+    case ui::mojom::MenuSourceType::kAdjustSelectionReset:
+      return "touch";
+    case ui::mojom::MenuSourceType::kNone:
+      break;
+  }
+  // Unrecorded. Guess from the device rather than report something the shell
+  // would place wrongly: a phone has no pointer to put a menu at.
+  return IsAuraShellMobilePhoneUi() ? "touch" : "mouse";
+}
+
 gfx::Point PointInWindow(content::WebContents* web_contents,
                          const content::ContextMenuParams& params) {
   gfx::Point point(params.x, params.y);
@@ -183,8 +209,10 @@ base::DictValue BuildRequestEvent(int request_id,
   base::DictValue event;
   event.Set("event", "contextMenuRequested");
   event.Set("requestId", request_id);
+  // Root-window coordinates, which Aura keeps in DIP and HarmonyOS calls vp.
   event.Set("x", point.x());
   event.Set("y", point.y());
+  event.Set("source", MenuSourceName(params.source_type));
   event.Set("linkUrl", params.link_url.is_valid() ? params.link_url.spec()
                                                   : std::string());
   event.Set("linkText", base::UTF16ToUTF8(params.link_text));
@@ -215,7 +243,7 @@ bool ShouldShellDrawContextMenu() {
   if (mode == "native") {
     return false;
   }
-  return IsAuraShellChromeHiddenByShell();
+  return ShellDrawsSurface("contextMenu");
 }
 
 bool HandOffContextMenuToShell(

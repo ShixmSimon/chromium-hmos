@@ -78,6 +78,13 @@ bool IsAuraShellMobilePhoneUi();
 // Distinct from IsAuraShellMobilePhoneUi(), which still decides the things
 // that do follow the screen: user agent, scrollbars, pointer and touch.
 bool IsAuraShellChromeHiddenByShell();
+// Whether the shell draws one particular surface rather than Chromium.
+//
+// Hiding the browser frame is not the same as taking over everything inside
+// it: a shell adopts dialogs and bubbles one at a time, and until it has,
+// Chromium's own must still appear or the feature simply vanishes. `name` is
+// one of the values the shellSurfaces startup option accepts.
+bool ShellDrawsSurface(std::string_view name);
 void UpdateAuraShellBrowserChrome(const std::string& browser_chrome);
 bool IsAuraShellDesktopUi();
 bool RequestAuraShellSystemPrint(content::WebContents* contents);
