@@ -2637,20 +2637,33 @@ index 033f22b414..7e3c228713 100644
  #if !BUILDFLAG(IS_ANDROID)
    pid_t pid;
    if (crash_reporter::GetHandlerSocket(nullptr, &pid)) {
-@@ -4856,6 +4858,33 @@ void ChromeContentBrowserClient::OverrideWebPreferences(
+@@ -4856,6 +4858,47 @@ void ChromeContentBrowserClient::OverrideWebPreferences(
        base::FeatureList::IsEnabled(features::kTouchDragAndDrop);
  #endif
  
 +#if BUILDFLAG(IS_OHOS)
 +  if (chrome::ohos::IsAuraShellMobilePhoneUi()) {
-+    // Phones follow Chrome for Android: honor <meta viewport> and scale
-+    // desktop-width pages to the screen instead of overflowing it.
-+    web_prefs->viewport_enabled = true;
-+    web_prefs->viewport_meta_enabled = true;
-+    web_prefs->viewport_style = blink::mojom::ViewportStyle::kMobile;
-+    web_prefs->shrinks_viewport_contents_to_fit = true;
-+    web_prefs->main_frame_resizes_are_orientation_changes = true;
-+    web_prefs->double_tap_to_zoom_enabled = true;
++    // WebUI is written for a desktop window and almost none of it declares a
++    // <meta viewport>. Under the mobile rules below, a page without that tag
++    // is laid out at 980px and shrunk to fit the screen -- right for a legacy
++    // website, and the reason chrome:// pages come out too small to read. Lay
++    // WebUI out at the window's own width instead, the way desktop does.
++    const bool is_web_ui =
++        main_frame_site.GetSecurityPrincipal().SchemeIs(
++            content::kChromeUIScheme) ||
++        main_frame_site.GetSecurityPrincipal().SchemeIs(
++            content::kChromeUIUntrustedScheme);
++
++    // Phones otherwise follow Chrome for Android: honor <meta viewport> and
++    // scale desktop-width pages to the screen instead of overflowing it.
++    web_prefs->viewport_enabled = !is_web_ui;
++    web_prefs->viewport_meta_enabled = !is_web_ui;
++    web_prefs->viewport_style = is_web_ui
++                                    ? blink::mojom::ViewportStyle::kDefault
++                                    : blink::mojom::ViewportStyle::kMobile;
++    web_prefs->shrinks_viewport_contents_to_fit = !is_web_ui;
++    web_prefs->main_frame_resizes_are_orientation_changes = !is_web_ui;
++    web_prefs->double_tap_to_zoom_enabled = !is_web_ui;
 +    web_prefs->default_minimum_page_scale_factor = 0.25f;
 +    web_prefs->default_maximum_page_scale_factor = 5.0f;
 +
