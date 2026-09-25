@@ -2316,35 +2316,6 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     }
     return;
   }
-  if (*name == "measureViewport" && active) {
-    // TEMPORARY. chrome:// pages render at about a third size while every
-    // number the browser holds is right: the view is 377x715 DIP at scale
-    // 3.5, the viewport meta is enabled and the page declares
-    // width=device-width. So the disagreement is inside the renderer, and
-    // only the renderer can say what it thinks the viewport is.
-    //
-    // Run it from here rather than asking the shell to: a javascript: URL in
-    // the address bar is treated as a search, and this needs no shell change
-    // at all.
-    active->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
-        uR"(JSON.stringify({
-             url: location.href,
-             innerWidth: innerWidth,
-             clientWidth: document.documentElement.clientWidth,
-             outerWidth: outerWidth,
-             dpr: devicePixelRatio,
-             vvWidth: visualViewport && visualViewport.width,
-             vvScale: visualViewport && visualViewport.scale,
-             screenW: screen.width
-           }))",
-        base::BindOnce([](base::Value result) {
-          LOG(WARNING) << "OHOS viewport probe: "
-                       << (result.is_string() ? result.GetString()
-                                              : std::string("<no answer>"));
-        }),
-        ISOLATED_WORLD_ID_CHROME_INTERNAL);
-    return;
-  }
   if (*name == "getPageText" && active) {
     // The shell's summarizer reads the page's text. An isolated world keeps
     // the page's own scripts from seeing, or tampering with, the read.
@@ -2949,7 +2920,6 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "findInPage",
       "stopFind",
       "getPageText",
-      "measureViewport",
       "contextMenuAction",
       "contextMenuDismissed",
   };

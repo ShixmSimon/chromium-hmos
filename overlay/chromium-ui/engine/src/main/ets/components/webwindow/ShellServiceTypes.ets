@@ -99,7 +99,14 @@ export interface SearchEngine {
   id: string;
   name: string;
   keyword: string;
+  // Chromium's raw template, {google:baseURL} and all. Nothing outside
+  // Chromium can resolve those, so use searchUrl unless you want the
+  // template itself.
   url: string;
+  // The same URL with everything resolved except the query: substitute
+  // {searchTerms} with the encoded search terms and navigate. Empty when the
+  // engine has no search URL.
+  searchUrl?: string;
   isDefault: boolean;
 }
 

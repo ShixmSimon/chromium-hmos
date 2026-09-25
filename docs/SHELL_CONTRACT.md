@@ -535,7 +535,7 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 |---|---|---|
 | `clearBrowsingData` | `requestId`, `types`, `timeRange` | `clearBrowsingDataDone { requestId, ok }`，`ok` 为 false 表示请求无效或有数据没清掉。已安装网页应用的数据不清。`passwords` 只清 Chromium 自己存的密码，不影响系统密码保险箱 |
 | `getBrowsingDataCounts` | `requestId`, `timeRange` | `browsingDataCounts { requestId, historyCount, cacheBytes, siteCount }`。`historyCount` 按每个网址每天计一条；10 秒内算不出的项为 -1 |
-| `getSearchEngines` | `requestId` | `searchEngines { requestId, items: { id, name, keyword, url, isDefault }[] }`，只列出能设为默认的搜索引擎 |
+| `getSearchEngines` | `requestId` | `searchEngines { requestId, items: { id, name, keyword, url, searchUrl, isDefault }[] }`，只列出能设为默认的搜索引擎。**用 `searchUrl`**:`url` 是 Chromium 的原始模板,带 `{google:baseURL}` 这类外壳解析不了的占位符;`searchUrl` 已全部解析,只留 `{searchTerms}` 一处待替换 |
 | `setDefaultSearchEngine` | `id` | 策略或扩展控制默认搜索引擎时不生效 |
 | `getPrefs` | `requestId`, `keys?` | `prefs { requestId, values: { key, value }[] }`。不传 `keys` 返回全部；本版本不支持的键不返回 |
 | `setPref` | `key`, `value` | 写入成功后推送 `prefsChanged { keys }`。被策略锁定的项写不进去 |

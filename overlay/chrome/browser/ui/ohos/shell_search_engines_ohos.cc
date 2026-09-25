@@ -32,6 +32,7 @@
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "chrome/browser/ui/ohos/shell_settings_ohos_internal.h"
 #include "base/strings/utf_string_conversions.h"
+#include "components/search_engines/search_terms_data.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_data_util.h"
 #include "components/search_engines/template_url_prepopulate_data.h"
@@ -42,12 +43,41 @@ namespace chrome::ohos::settings_internal {
 
 namespace {
 
-base::DictValue EngineToShell(const TemplateURL& engine, bool is_default) {
+// A search URL the shell can use without knowing Chromium's template
+// language. `url` is the raw template and keeps its {google:baseURL},
+// {google:RLZ} and the rest -- nothing outside Chromium can resolve those --
+// so this resolves them and leaves exactly one thing to substitute.
+//
+// The search terms go in as a sentinel and come back out as {searchTerms}:
+// asking ReplaceSearchTerms for the literal would escape the braces.
+std::string ResolvedSearchUrl(const TemplateURL& engine,
+                              const SearchTermsData& search_terms_data) {
+  static constexpr char16_t kSentinel[] = u"c4ohosSearchTermsc4";
+  if (!engine.url_ref().SupportsReplacement(search_terms_data)) {
+    return std::string();
+  }
+  std::string url = engine.url_ref().ReplaceSearchTerms(
+      TemplateURLRef::SearchTermsArgs(kSentinel), search_terms_data);
+  const std::string needle = base::UTF16ToUTF8(kSentinel);
+  const size_t at = url.find(needle);
+  if (at == std::string::npos) {
+    return std::string();
+  }
+  url.replace(at, needle.size(), "{searchTerms}");
+  return url;
+}
+
+base::DictValue EngineToShell(const TemplateURL& engine,
+                              bool is_default,
+                              const SearchTermsData& search_terms_data) {
   base::DictValue item;
   item.Set("id", ToShellId(engine.id()));
   item.Set("name", engine.short_name());
   item.Set("keyword", engine.keyword());
   item.Set("url", engine.url());
+  // Ready to use: everything resolved but the query itself. Empty when the
+  // engine has no search URL at all.
+  item.Set("searchUrl", ResolvedSearchUrl(engine, search_terms_data));
   item.Set("isDefault", is_default);
   return item;
 }
@@ -102,7 +132,8 @@ void ReplyEngines(const ShellCommandContext& context,
                    << " isDefault=" << (engine == default_engine)
                    << " shown=" << shown;
       if (shown) {
-        items.Append(EngineToShell(*engine, engine == default_engine));
+        items.Append(EngineToShell(*engine, engine == default_engine,
+                                   service->search_terms_data()));
       }
     }
   }

@@ -37,7 +37,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  #include "content/public/browser/network_service_instance.h"
  #include "content/public/browser/permission_controller.h"
  #include "content/public/browser/permission_descriptor_util.h"
-@@ -4524,6 +4528,138 @@
+@@ -4524,6 +4528,150 @@
  #endif
  }
  
@@ -73,7 +73,6 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
 +  web_prefs->available_hover_types =
 +      static_cast<int>(blink::mojom::HoverType::kHoverNone);
 +  web_prefs->primary_hover_type = blink::mojom::HoverType::kHoverNone;
-+  web_prefs->default_minimum_page_scale_factor = 0.25f;
 +  web_prefs->default_maximum_page_scale_factor = 5.0f;
 +
 +  // WebUI is written for a desktop window and almost none of it declares a
@@ -144,6 +143,19 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
 +  web_prefs->main_frame_resizes_are_orientation_changes = !is_web_ui;
 +  web_prefs->double_tap_to_zoom_enabled = !is_web_ui;
 +
++  // A WebUI page may not be zoomed out to fit its own contents. The layout
++  // width is already right -- the renderer reports clientWidth 377 -- but
++  // something inside chrome://version is 980 wide, and the page was scaled to
++  // 0.385 to bring that into view, which is why every glyph on it measured a
++  // third of its size.
++  //
++  // Which mechanism asked for that is not worth chasing: turning
++  // shrinks_viewport_contents_to_fit off did not stop it, and a floor of 1
++  // takes the ability away from all of them. Wide content then overflows and
++  // scrolls sideways, which is the ordinary way to read a wide table and what
++  // the shell asked for.
++  web_prefs->default_minimum_page_scale_factor = is_web_ui ? 1.0f : 0.25f;
++
 +  // TEMPORARY. chrome:// still comes out at about a third size, and the
 +  // numbers from the device say the page is laid out at the screen's width in
 +  // *physical* pixels with no device scale applied. Two guesses have already
@@ -176,7 +188,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  void ChromeContentBrowserClient::OverrideWebPreferences(
      WebContents* web_contents,
      content::SiteInstance& main_frame_site,
-@@ -4859,43 +4995,7 @@
+@@ -4859,43 +5007,7 @@
  #endif
  
  #if BUILDFLAG(IS_OHOS)
@@ -221,7 +233,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  #endif
  
    for (auto& parts : extra_parts_) {
-@@ -4928,6 +5028,14 @@
+@@ -4928,6 +5040,14 @@
      content::SiteInstance& main_frame_site,
      WebPreferences* web_prefs) {
    bool prefs_changed = false;
