@@ -1,0 +1,188 @@
+Decide a phone's viewport from where the tab actually is.
+
+Two bugs with one cause. Web preferences are computed once per SiteInstance,
+and after a navigation content only calls OverrideWebPreferencesAfterNavigation
+-- so anything decided from the current URL is decided once, when the tab's
+renderer is created, and never revisited.
+
+chrome:// pages therefore stayed on the mobile rules that 8dc604d was supposed
+to lift them out of. A tab that starts on a website and then opens
+chrome://version was still laid out at 980px and shrunk to fit: 980 into about
+345vp of screen is roughly a third, which is why its text measured about 5vp.
+
+Asking for the desktop site had the same shape of problem from the other side.
+content turns the page's <meta viewport> off when the navigation entry
+overrides the user agent, a few lines before it calls the embedder -- and then
+this code ran and turned it back on. Swapping only the user agent leaves a
+responsive site reading the phone's width and laying out for a phone, which is
+exactly what it is designed to do.
+
+The rules now live in one function that both hooks call, and it reports
+whether it changed anything so the after-navigation hook can send the result.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
+--- a/chrome/browser/chrome_content_browser_client.cc
++++ b/chrome/browser/chrome_content_browser_client.cc
+@@ -367,6 +367,7 @@
+ #include "content/public/browser/internal_webui_config.h"
+ #include "content/public/browser/isolated_web_apps_policy.h"
+ #include "content/public/browser/legacy_tech_cookie_issue_details.h"
++#include "content/public/browser/navigation_entry.h"
+ #include "content/public/browser/navigation_handle.h"
+ #include "content/public/browser/network_service_instance.h"
+ #include "content/public/browser/permission_controller.h"
+@@ -4524,6 +4525,92 @@
+ #endif
+ }
+ 
++#if BUILDFLAG(IS_OHOS)
++// The viewport rules for a phone, in one place because two hooks need them.
++//
++// Web preferences are computed once per SiteInstance, and after a navigation
++// content only calls OverrideWebPreferencesAfterNavigation -- so anything
++// decided from the current URL has to be decided again there. Both of the
++// choices below change as the user browses: a tab that starts on a website
++// and then opens chrome://version, or one that switches to the desktop site.
++// Deciding them only in OverrideWebPreferences left both stuck at whatever
++// the tab was doing when its renderer was created.
++//
++// Returns true when it changed something, which is what the after-navigation
++// hook has to report so the new preferences are actually sent.
++bool ApplyOhosPhoneWebPreferences(WebContents* web_contents,
++                                  content::SiteInstance& main_frame_site,
++                                  WebPreferences* web_prefs) {
++  if (!chrome::ohos::IsAuraShellMobilePhoneUi()) {
++    return false;
++  }
++
++  // Ozone OHOS registers no touchscreen device; report the phone's touch
++  // input so pages see touch events and (pointer: coarse). Not URL-dependent,
++  // so it never needs revisiting.
++  web_prefs->touch_event_feature_detection_enabled = true;
++  web_prefs->pointer_events_max_touch_points = 10;
++  web_prefs->available_pointer_types =
++      static_cast<int>(blink::mojom::PointerType::kPointerCoarseType);
++  web_prefs->primary_pointer_type =
++      blink::mojom::PointerType::kPointerCoarseType;
++  web_prefs->available_hover_types =
++      static_cast<int>(blink::mojom::HoverType::kHoverNone);
++  web_prefs->primary_hover_type = blink::mojom::HoverType::kHoverNone;
++  web_prefs->default_minimum_page_scale_factor = 0.25f;
++  web_prefs->default_maximum_page_scale_factor = 5.0f;
++
++  // WebUI is written for a desktop window and almost none of it declares a
++  // <meta viewport>: 29 files in all of chrome/browser/resources do, and
++  // password_manager.html is not one. Under the mobile rules it would be laid
++  // out at 980px and shrunk to fit, which is right for an old website and
++  // leaves chrome:// pages at about a third size. Give it the window's own
++  // width, the way desktop does.
++  //
++  // Read from the committed URL rather than the SiteInstance: the site of the
++  // initial about:blank entry says nothing about where the tab went next.
++  const GURL url = web_contents ? web_contents->GetLastCommittedURL() : GURL();
++  const bool is_web_ui =
++      url.SchemeIs(content::kChromeUIScheme) ||
++      url.SchemeIs(content::kChromeUIUntrustedScheme) ||
++      main_frame_site.GetSecurityPrincipal().SchemeIs(
++          content::kChromeUIScheme) ||
++      main_frame_site.GetSecurityPrincipal().SchemeIs(
++          content::kChromeUIUntrustedScheme);
++
++  // Asking for the desktop site has to ignore the page's own <meta viewport>
++  // as well as swap the user agent, or a responsive site reads the phone's
++  // width and lays out for a phone anyway -- the site was never the problem.
++  // content does this for us a few lines before it calls this, and then this
++  // runs and would put it back, so decide it here instead.
++  content::NavigationEntry* entry =
++      web_contents ? web_contents->GetController().GetVisibleEntry() : nullptr;
++  const bool desktop_site = entry && entry->GetIsOverridingUserAgent();
++
++  const bool viewport_enabled = !is_web_ui;
++  const bool viewport_meta_enabled = !is_web_ui && !desktop_site;
++  const blink::mojom::ViewportStyle viewport_style =
++      is_web_ui ? blink::mojom::ViewportStyle::kDefault
++                : blink::mojom::ViewportStyle::kMobile;
++
++  const bool changed =
++      web_prefs->viewport_enabled != viewport_enabled ||
++      web_prefs->viewport_meta_enabled != viewport_meta_enabled ||
++      web_prefs->viewport_style != viewport_style ||
++      web_prefs->shrinks_viewport_contents_to_fit == is_web_ui ||
++      web_prefs->main_frame_resizes_are_orientation_changes == is_web_ui ||
++      web_prefs->double_tap_to_zoom_enabled == is_web_ui;
++
++  web_prefs->viewport_enabled = viewport_enabled;
++  web_prefs->viewport_meta_enabled = viewport_meta_enabled;
++  web_prefs->viewport_style = viewport_style;
++  web_prefs->shrinks_viewport_contents_to_fit = !is_web_ui;
++  web_prefs->main_frame_resizes_are_orientation_changes = !is_web_ui;
++  web_prefs->double_tap_to_zoom_enabled = !is_web_ui;
++  return changed;
++}
++#endif  // BUILDFLAG(IS_OHOS)
++
+ void ChromeContentBrowserClient::OverrideWebPreferences(
+     WebContents* web_contents,
+     content::SiteInstance& main_frame_site,
+@@ -4859,43 +4946,7 @@
+ #endif
+ 
+ #if BUILDFLAG(IS_OHOS)
+-  if (chrome::ohos::IsAuraShellMobilePhoneUi()) {
+-    // WebUI is written for a desktop window and almost none of it declares a
+-    // <meta viewport>. Under the mobile rules below, a page without that tag
+-    // is laid out at 980px and shrunk to fit the screen -- right for a legacy
+-    // website, and the reason chrome:// pages come out too small to read. Lay
+-    // WebUI out at the window own width instead, the way desktop does.
+-    const bool is_web_ui =
+-        main_frame_site.GetSecurityPrincipal().SchemeIs(
+-            content::kChromeUIScheme) ||
+-        main_frame_site.GetSecurityPrincipal().SchemeIs(
+-            content::kChromeUIUntrustedScheme);
+-
+-    // Phones otherwise follow Chrome for Android: honor <meta viewport> and
+-    // scale desktop-width pages to the screen instead of overflowing it.
+-    web_prefs->viewport_enabled = !is_web_ui;
+-    web_prefs->viewport_meta_enabled = !is_web_ui;
+-    web_prefs->viewport_style = is_web_ui
+-                                    ? blink::mojom::ViewportStyle::kDefault
+-                                    : blink::mojom::ViewportStyle::kMobile;
+-    web_prefs->shrinks_viewport_contents_to_fit = !is_web_ui;
+-    web_prefs->main_frame_resizes_are_orientation_changes = !is_web_ui;
+-    web_prefs->double_tap_to_zoom_enabled = !is_web_ui;
+-    web_prefs->default_minimum_page_scale_factor = 0.25f;
+-    web_prefs->default_maximum_page_scale_factor = 5.0f;
+-
+-    // Ozone OHOS registers no touchscreen device; report the phone's touch
+-    // input so pages see touch events and (pointer: coarse).
+-    web_prefs->touch_event_feature_detection_enabled = true;
+-    web_prefs->pointer_events_max_touch_points = 10;
+-    web_prefs->available_pointer_types =
+-        static_cast<int>(blink::mojom::PointerType::kPointerCoarseType);
+-    web_prefs->primary_pointer_type =
+-        blink::mojom::PointerType::kPointerCoarseType;
+-    web_prefs->available_hover_types =
+-        static_cast<int>(blink::mojom::HoverType::kHoverNone);
+-    web_prefs->primary_hover_type = blink::mojom::HoverType::kHoverNone;
+-  }
++  ApplyOhosPhoneWebPreferences(web_contents, main_frame_site, web_prefs);
+ #endif
+ 
+   for (auto& parts : extra_parts_) {
+@@ -4928,6 +4979,14 @@
+     content::SiteInstance& main_frame_site,
+     WebPreferences* web_prefs) {
+   bool prefs_changed = false;
++
++#if BUILDFLAG(IS_OHOS)
++  // Where a tab has navigated decides its viewport, so this is the hook that
++  // matters: the full recomputation only happens when the SiteInstance
++  // changes, which opening chrome://version in the same tab need not do.
++  prefs_changed |=
++      ApplyOhosPhoneWebPreferences(web_contents, main_frame_site, web_prefs);
++#endif
+ 
+   const auto autoplay_policy = GetAutoplayPolicyForWebContents(web_contents);
+   prefs_changed |= (web_prefs->autoplay_policy != autoplay_policy);
