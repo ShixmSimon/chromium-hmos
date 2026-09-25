@@ -174,9 +174,45 @@ struct Browser {
 | `loading`、`canGoBack`、`canGoForward` | 用于驱动地址栏和前进后退按钮。 |
 | `tabs`、`tabCount`、`activeTabIndex` | 标签列表。每个标签有 `index`、`active`、`url`、`title`、`loading`。 |
 | `mobileUi`、`uiFamily` | 引擎当前使用的 UI 形态。 |
+| `loadProgress` | 0–1,不在加载时为 1。地址栏进度条用它。 |
+| `requestDesktopSite` | 当前标签是否在请求桌面版网站。 |
 | `isPwaWindow`、`pwaAppId`、`pwaStartUrl` | 当前窗口是否是 PWA。 |
 | `bookmarked` | 当前标签页的网址是否已加入书签。菜单里的书签开关用它。 |
 | `version` | 协议版本。 |
+
+---
+
+## 4.5 谁画浏览器界面(`browserChrome`)
+
+启动配置里的 `browserChrome` 决定 Chromium 画不画浏览器界面:
+
+```
+browserChrome?: 'shell' | 'native'
+```
+
+不传时跟随 `uiFamily`,也就是一直以来的行为:`mobile_phone` 为 `shell`,其余
+为 `native`。**传了就固定不变**——展开折叠屏、2in1 切平板模式会改变
+`uiFamily`,但不会把 Chromium 的标签栏画回来。平板和 PC 要的组合是"外壳画界
+面、但用平板的 UA",这两件事原本绑在一起,所以要单独说。
+
+为 `shell` 时**不画**:
+
+| 界面 | 落点 |
+|---|---|
+| 标签栏 | `BrowserView::ShouldDrawTabStrip()` |
+| 工具栏 | `BrowserView::IsToolbarVisible()` |
+| 地址栏 | `BrowserView::IsLocationBarVisible()` |
+| 工具栏子控件、书签栏 | `BrowserView` / `ToolbarView::OnOhosUiFamilyChanged()`,会记住隐藏了什么,切回时恢复 |
+| 右键 / 长按菜单 | `shell_context_menu_ohos.cc` |
+| 下载气泡 / 下载栏 | `shell_downloads_prefs_ohos.cc` |
+| 权限气泡 | `shell_permission_prompt_ohos.cc` |
+
+**不受影响**(仍按 `uiFamily`):UA、滚动条样式、触控 / 指针 UI、viewport 规
+则、状态里的 `mobileUi` 字段。
+
+应用菜单、查找栏、状态气泡、标签悬停卡片、侧边栏**没有单独关闭**:手机上它们
+不出现,是因为没有工具栏按钮能触发。平板上如果发现某个仍会弹出(例如通过快捷
+键),告诉内核单独处理。
 
 ---
 

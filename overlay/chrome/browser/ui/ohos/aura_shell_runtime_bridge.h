@@ -71,6 +71,14 @@ void UpdateAuraShellUiFamily(const std::string& ui_family);
 void UpdateAuraShellColorScheme(const std::string& color_scheme);
 void UpdateAuraShellPrintOutputDirectory(const std::string& output_directory);
 bool IsAuraShellMobilePhoneUi();
+// Whether the shell draws the browser and Chromium draws only the page. Set
+// once at startup and unchanged afterwards, so unfolding a foldable or
+// docking a 2-in-1 does not put Chromium's tab strip back on screen.
+//
+// Distinct from IsAuraShellMobilePhoneUi(), which still decides the things
+// that do follow the screen: user agent, scrollbars, pointer and touch.
+bool IsAuraShellChromeHiddenByShell();
+void UpdateAuraShellBrowserChrome(const std::string& browser_chrome);
 bool IsAuraShellDesktopUi();
 bool RequestAuraShellSystemPrint(content::WebContents* contents);
 // Sends `event` to the shell window hosting `widget`.

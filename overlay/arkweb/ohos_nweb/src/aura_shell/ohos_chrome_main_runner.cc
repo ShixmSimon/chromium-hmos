@@ -225,6 +225,7 @@ OhosChromeMainRunner::~OhosChromeMainRunner() = default;
 
 bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
   chrome::ohos::UpdateAuraShellUiFamily(config.ui_family);
+  chrome::ohos::UpdateAuraShellBrowserChrome(config.browser_chrome);
   chrome::ohos::UpdateAuraShellColorScheme(config.color_scheme);
   chrome::ohos::UpdateAuraShellPrintOutputDirectory(config.print_output_dir);
 

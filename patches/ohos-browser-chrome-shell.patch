@@ -1,0 +1,78 @@
+Let a tablet hide Chromium's browser UI without pretending to be a phone.
+
+"Who draws the browser" and "what kind of screen is this" were the same
+question here: IsAuraShellMobilePhoneUi() decided both, so a tablet could have
+Chromium's tab strip and toolbar with a tablet's user agent, or a phone's
+everything, and nothing in between. The shell's wide-screen UI needs the third
+combination -- its own tab strip and toolbar, with a tablet's user agent,
+scrollbars and pointer behaviour.
+
+The drawing half moves to IsAuraShellChromeHiddenByShell(), set from the
+browserChrome startup option and fixed for the run: unfolding a foldable or
+docking a 2-in-1 changes ui_family, and must not put Chromium's tab strip back
+on screen mid-session. Unset, it still means what it meant before -- the shell
+draws on a phone and Chromium draws everywhere else -- so an app that passes
+nothing sees no change.
+
+What stops being drawn when it is on, all of it already conditioned on the old
+predicate: the tab strip (ShouldDrawTabStrip), the toolbar (IsToolbarVisible),
+the location bar (IsLocationBarVisible), the toolbar's children and the
+bookmark bar (BrowserView::OnOhosUiFamilyChanged and
+ToolbarView::OnOhosUiFamilyChanged, which also remember what they hid so
+switching back restores it). Elsewhere and already converted: the context menu
+(shell_context_menu_ohos.cc), the download UI (shell_downloads_prefs_ohos.cc)
+and permission prompts (shell_permission_prompt_ohos.cc).
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/ui/views/frame/browser_view.cc b/chrome/browser/ui/views/frame/browser_view.cc
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -1408,7 +1408,7 @@
+ 
+ bool BrowserView::ShouldDrawTabStrip() const {
+ #if BUILDFLAG(IS_OHOS)
+-  if (chrome::ohos::IsAuraShellMobilePhoneUi()) {
++  if (chrome::ohos::IsAuraShellChromeHiddenByShell()) {
+     return false;
+   }
+ #endif
+@@ -1450,7 +1450,7 @@
+     return;
+   }
+ 
+-  const bool mobile = chrome::ohos::IsAuraShellMobilePhoneUi();
++  const bool mobile = chrome::ohos::IsAuraShellChromeHiddenByShell();
+   const bool was_mobile = ohos_mobile_ui_active_;
+   if (mobile && !was_mobile) {
+     ohos_saved_bookmark_bar_visible_ =
+@@ -3111,7 +3111,7 @@
+ 
+ bool BrowserView::IsToolbarVisible() const {
+ #if BUILDFLAG(IS_OHOS)
+-  if (chrome::ohos::IsAuraShellMobilePhoneUi()) {
++  if (chrome::ohos::IsAuraShellChromeHiddenByShell()) {
+     return false;
+   }
+ #endif
+@@ -3143,7 +3143,7 @@
+ 
+ bool BrowserView::IsLocationBarVisible() const {
+ #if BUILDFLAG(IS_OHOS)
+-  if (chrome::ohos::IsAuraShellMobilePhoneUi()) {
++  if (chrome::ohos::IsAuraShellChromeHiddenByShell()) {
+     return false;
+   }
+ #endif
+diff --git a/chrome/browser/ui/views/toolbar/toolbar_view.cc b/chrome/browser/ui/views/toolbar/toolbar_view.cc
+--- a/chrome/browser/ui/views/toolbar/toolbar_view.cc
++++ b/chrome/browser/ui/views/toolbar/toolbar_view.cc
+@@ -1223,7 +1223,7 @@
+ #if BUILDFLAG(IS_OHOS)
+ void ToolbarView::OnOhosUiFamilyChanged() {
+   const bool should_use_mobile_phone_ui =
+-      chrome::ohos::IsAuraShellMobilePhoneUi();
++      chrome::ohos::IsAuraShellChromeHiddenByShell();
+   if (!should_use_mobile_phone_ui) {
+     RestoreOhosDesktopToolbar();
+     return;

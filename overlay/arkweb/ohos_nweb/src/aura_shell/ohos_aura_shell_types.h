@@ -25,6 +25,12 @@ struct AuraStartupConfig {
   std::string start_url = kChromiumHomeUrl;
   std::string ui_profile = kDefaultUiProfile;
   std::string ui_family = kDefaultUiFamily;
+  // Who draws the browser: "shell" for the app's own ArkUI, "native" for
+  // Chromium's tab strip and toolbar. Empty means the old behaviour, where
+  // this followed ui_family: a phone got the shell, everything else Chromium.
+  // A tablet wants the shell's UI with a tablet's user agent, and those two
+  // decisions have to come apart to say so.
+  std::string browser_chrome;
   std::string window_mode = "fullscreen";
   std::string device_class = "phone";
   std::string market_name;

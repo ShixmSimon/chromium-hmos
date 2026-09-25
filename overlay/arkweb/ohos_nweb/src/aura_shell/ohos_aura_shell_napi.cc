@@ -1081,6 +1081,7 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
   ReadStringField(dict, "startUrl", &config.start_url);
   ReadStringField(dict, "uiProfile", &config.ui_profile);
   ReadStringField(dict, "uiFamily", &config.ui_family);
+  ReadStringField(dict, "browserChrome", &config.browser_chrome);
   ReadStringField(dict, "windowMode", &config.window_mode);
   ReadStringField(dict, "deviceClass", &config.device_class);
   ReadStringField(dict, "marketName", &config.market_name);

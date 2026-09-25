@@ -2396,6 +2396,29 @@ std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(
   return metadata;
 }
 
+// "shell", "native", or empty for the old rule. Read far more often than it
+// is written, and written once before the browser starts.
+std::string& BrowserChromeMode() {
+  static base::NoDestructor<std::string> mode;
+  return *mode;
+}
+
+void UpdateAuraShellBrowserChrome(const std::string& browser_chrome) {
+  BrowserChromeMode() = browser_chrome;
+}
+
+bool IsAuraShellChromeHiddenByShell() {
+  const std::string& mode = BrowserChromeMode();
+  if (mode == "shell") {
+    return true;
+  }
+  if (mode == "native") {
+    return false;
+  }
+  // Unset: what this meant before there was a setting.
+  return IsAuraShellMobilePhoneUi();
+}
+
 void UpdateAuraShellUiFamily(const std::string& ui_family) {
   const std::string resolved_family =
       ui_family.empty() ? "mobile_phone" : ui_family;

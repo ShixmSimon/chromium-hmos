@@ -91,7 +91,7 @@ bool ShouldShellDrawDownloadUi() {
   if (mode == "native") {
     return false;
   }
-  return IsAuraShellMobilePhoneUi();
+  return IsAuraShellChromeHiddenByShell();
 }
 
 // The directory the shell asked for most recently, and the one last applied.

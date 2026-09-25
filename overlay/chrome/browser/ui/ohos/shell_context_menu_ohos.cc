@@ -215,7 +215,7 @@ bool ShouldShellDrawContextMenu() {
   if (mode == "native") {
     return false;
   }
-  return IsAuraShellMobilePhoneUi();
+  return IsAuraShellChromeHiddenByShell();
 }
 
 bool HandOffContextMenuToShell(

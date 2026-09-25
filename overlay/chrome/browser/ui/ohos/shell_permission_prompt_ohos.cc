@@ -184,7 +184,7 @@ class ShellPermissionPrompt : public permissions::PermissionPrompt {
 bool ShellDrawsPermissionPrompts() {
   // Follows whoever draws the browser UI: where Chromium shows no location
   // bar there is nothing for its bubble to hang off.
-  return IsAuraShellMobilePhoneUi();
+  return IsAuraShellChromeHiddenByShell();
 }
 
 std::unique_ptr<permissions::PermissionPrompt> CreateShellPermissionPrompt(

@@ -87,6 +87,18 @@ export interface AuraStartupConfig {
   startUrl: string;
   uiProfile: 'phone' | 'tablet' | 'pc';
   uiFamily: 'aura_pc' | 'aura_tablet' | 'mobile_phone' | 'mobile_large';
+  // Who draws the browser. 'shell' means this app does, and Chromium draws
+  // only the page: no tab strip, toolbar, location bar, bookmark bar, app
+  // menu, download or permission UI. 'native' means Chromium draws them.
+  //
+  // Omitted, it follows uiFamily the way it always did -- 'shell' on
+  // mobile_phone, 'native' elsewhere. A tablet that wants its own UI with a
+  // tablet's user agent has to say so, because those two things are
+  // otherwise decided together.
+  //
+  // Read once at startup and fixed for the run: unfolding a foldable changes
+  // uiFamily and must not put Chromium's tab strip back on screen.
+  browserChrome?: 'shell' | 'native';
   windowMode: 'fullscreen' | 'windowed';
   deviceClass: 'phone' | 'foldable' | 'tablet' | '2in1' | 'tv' | 'car';
   marketName: string;
