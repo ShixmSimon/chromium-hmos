@@ -521,3 +521,14 @@ export interface PageContinuationEvent {
   pageWidth: number;
   pageHeight: number;
 }
+
+// Where the long-pressed image was written, in answer to the imageToFile
+// action. `path` is empty when the image could not be had -- never decoded,
+// gone from the cache, or the write failed -- and the shell should say so
+// rather than wait. The file lives until the next start.
+export interface ContextMenuImageFileEvent {
+  event: 'contextMenuImageFile';
+  requestId: number;
+  path: string;
+  mimeType: string;
+}

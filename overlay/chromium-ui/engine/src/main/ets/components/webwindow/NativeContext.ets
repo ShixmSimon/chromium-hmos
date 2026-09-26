@@ -181,6 +181,7 @@ export interface BrowserRuntimeEvent {
     'permissionsRequested' | 'sitePermissionRequested' |
     'shellAccelerator' | 'linkHovered' | 'tabThumbnails' |
     'openedInGroup' | 'pageScrollSettled' | 'pageContinuation' |
+    'contextMenuImageFile' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |
     'extensionActionsChanged' |
@@ -211,6 +212,10 @@ export interface BrowserRuntimeEvent {
   // openedInGroup: the `id` of the tab that was just opened into the group.
   // The reader was left on the page they were on.
   id?: string;
+  // contextMenuImageFile: where the long-pressed image was written, and what
+  // it is. Both empty when there was no image to write.
+  path?: string;
+  mimeType?: string;
   // pageScrollSettled and pageContinuation: where the reader is in the page,
   // in CSS pixels, and how big the document is. Divide to get a fraction that
   // still means something on a screen of another width.
@@ -283,6 +288,11 @@ export interface BrowserCommandPayload {
   // moveBookmarks and removeBookmarks: the bookmarks to act on, in order.
   // groupTabs: the tabs to put in one group, in order.
   ids?: string[];
+  // groupTabs: for each tab in `ids`, the tab that opened it, or '' for none.
+  // Same length as `ids` or it is ignored. Only needed after a restart, when
+  // the engine cannot know: it tracks openers by session id and these tabs
+  // are new.
+  openerIds?: string[];
   // importBookmarks and exportBookmarks: an absolute path inside the app
   // sandbox. The shell owns the system file picker and the copy in or out;
   // the engine only reads and writes this path.

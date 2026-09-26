@@ -280,7 +280,7 @@ shellAccelerator { action }
 |---|---|---|
 | `moveTab` | `id`, `toIndex` | 按 id 重排标签 |
 | `activateTabById` | `id` | 按 id 切换标签 |
-| `groupTabs` | `ids` | 把这些标签编成一个组。自己保存网址列表、启动后逐个 `newTab` 重开的外壳用这个把组重新建起来。少于两个不建组;已经在别的组里的会退出来加入新组 |
+| `groupTabs` | `ids`, `openerIds?` | 把这些标签编成一个组。`openerIds` 与 `ids` 等长、`''` 表示没有,用来在重启后把"谁打开了谁"一起交回来(内核按 session id 记 opener,重开的标签是全新的,自己推不出来);长度对不上就整个忽略。自己保存网址列表、启动后逐个 `newTab` 重开的外壳用这个把组重新建起来。少于两个不建组;已经在别的组里的会退出来加入新组 |
 | `getPageContinuation` | `requestId` | `pageContinuation { requestId, url, title, scrollX, scrollY, pageWidth, pageHeight }`。当前窗口的当前标签 |
 | `closeTabById` | `id`, `returnToOpener?` | 按 id 关闭标签。`returnToOpener: true` 时关掉后切回打开它的那个标签(它还在的话);不传时用 Chromium 自己的规则挑下一个 |
 | `passwordAuthReset` | `reason?` | 让上一次身份验证立即失效。外壳在进入后台、以及在普通/无痕窗口之间切换时发。锁屏由内核自己监听,不用发 |

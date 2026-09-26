@@ -23,6 +23,7 @@
 #include "third_party/blink/public/common/context_menu_data/context_menu_data.h"
 #include "third_party/blink/public/mojom/context_menu/context_menu.mojom-shared.h"
 #include "ui/aura/window.h"
+#include "chrome/browser/ui/ohos/shell_context_menu_image_ohos.h"
 #include "ui/base/mojom/menu_source_type.mojom-shared.h"
 #include "ui/gfx/geometry/point.h"
 
@@ -79,6 +80,14 @@ ui::SimpleMenuModel* ModelOf(RenderViewContextMenuBase& menu) {
 // it: Chromium's own sharing entry is a desktop submenu that this build never
 // puts in the menu, so keying off it would mean the action never appeared.
 constexpr char kShareLinkAction[] = "shareLink";
+
+// Put the long-pressed image in a file and say where. Not in kShellActions
+// either: there is no Chromium command for it, the file is this platform's
+// answer to a share sheet and an image-recognition service that both take a
+// path and neither takes a URL. Offered whenever the renderer has the image
+// decoded, and the shell does not show it as a menu entry -- it is what the
+// shell's own "share image" and "look up image" run first.
+constexpr char kImageToFileAction[] = "imageToFile";
 
 bool IsOffered(RenderViewContextMenuBase& menu, int command_id) {
   return menu.menu_model().GetIndexOfCommandId(command_id).has_value() &&
@@ -158,9 +167,11 @@ class ShellContextMenuSession : public content::WebContentsObserver {
  public:
   ShellContextMenuSession(int request_id,
                           content::WebContents* web_contents,
+                          const GURL& image_url,
                           std::unique_ptr<RenderViewContextMenuBase> menu)
       : content::WebContentsObserver(web_contents),
         request_id_(request_id),
+        image_url_(image_url),
         menu_(std::move(menu)) {
     menu_->OnMenuWillShow(ModelOf(*menu_));
   }
@@ -178,6 +189,8 @@ class ShellContextMenuSession : public content::WebContentsObserver {
 
   int request_id() const { return request_id_; }
   RenderViewContextMenuBase* menu() { return menu_.get(); }
+  content::WebContents* web_contents_for_action() { return web_contents(); }
+  const GURL& image_url() const { return image_url_; }
 
   // content::WebContentsObserver:
   void WebContentsDestroyed() override {
@@ -187,6 +200,9 @@ class ShellContextMenuSession : public content::WebContentsObserver {
 
  private:
   const int request_id_;
+  // Remembered rather than read back off the menu: the file is written after
+  // the menu has been dismissed and its params are gone.
+  const GURL image_url_;
   std::unique_ptr<RenderViewContextMenuBase> menu_;
 };
 
@@ -214,6 +230,12 @@ base::DictValue BuildRequestEvent(int request_id,
   }
   if (params.link_url.is_valid()) {
     supported.Append(std::string(kShareLinkAction));
+  }
+  // Only when the renderer actually has the picture. Without this the shell
+  // would offer "share image" on an image that failed to load and get an
+  // empty path back.
+  if (params.has_image_contents && params.src_url.is_valid()) {
+    supported.Append(std::string(kImageToFileAction));
   }
 
   base::DictValue event;
@@ -266,7 +288,7 @@ bool HandOffContextMenuToShell(
   base::DictValue event = BuildRequestEvent(request_id, web_contents, *menu);
   // Replacing the session closes the menu the shell was still showing.
   CurrentSession() = std::make_unique<ShellContextMenuSession>(
-      request_id, web_contents, std::move(menu));
+      request_id, web_contents, menu->params().src_url, std::move(menu));
   if (!DispatchAuraShellRuntimeEvent(web_contents, std::move(event))) {
     LOG(WARNING) << "OHOS shell context menu has no window to go to";
     CurrentSession().reset();
@@ -284,6 +306,14 @@ void RunShellContextMenuAction(int request_id, const std::string& action) {
   if (action == kShareLinkAction) {
     // Nothing for Chromium to run; the shell has already opened the sheet.
     // Falling through to the loop would log this as unknown.
+    return;
+  }
+  if (action == kImageToFileAction) {
+    // Answers separately, with contextMenuImageFile: writing the file means
+    // asking the renderer for the bitmap and then touching the disk, neither
+    // of which the shell should be kept waiting on with a menu still up.
+    WriteContextMenuImageToFile(session->web_contents_for_action(),
+                                session->image_url(), request_id);
     return;
   }
   for (const ShellAction& entry : kShellActions) {

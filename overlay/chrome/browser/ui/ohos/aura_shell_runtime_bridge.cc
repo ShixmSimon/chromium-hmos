@@ -6,6 +6,7 @@
 #include "chrome/browser/ui/ohos/device_authenticator_ohos.h"
 #include "chrome/browser/ui/ohos/screen_orientation_delegate_ohos.h"
 #include "chrome/browser/ui/ohos/shell_permission_prompt_ohos.h"
+#include "chrome/browser/ui/ohos/shell_context_menu_image_ohos.h"
 #include "chrome/browser/ui/ohos/shell_page_position_ohos.h"
 #include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
@@ -1541,18 +1542,42 @@ void GroupTabsById(TabStripModel* tabs, const base::DictValue& command) {
   if (!tabs || !ids || !tabs->SupportsTabGroups()) {
     return;
   }
+  // Optional, and as long as `ids` when it is there: the tab that opened each
+  // one, or an empty string for the pages the reader opened themselves. The
+  // engine cannot work these out after a restart -- it tracks openers by
+  // session id, and every one of these tabs is new -- so the shell, which
+  // wrote down the relation before the shutdown, hands it back.
+  const base::ListValue* opener_ids = command.FindList("openerIds");
+  if (opener_ids && opener_ids->size() != ids->size()) {
+    LOG(WARNING) << "OHOS tab groups: openerIds has " << opener_ids->size()
+                 << " entries for " << ids->size() << " tabs, ignoring them";
+    opener_ids = nullptr;
+  }
   std::vector<int> indices;
-  for (const base::Value& id : *ids) {
+  for (size_t at = 0; at < ids->size(); ++at) {
+    const base::Value& id = (*ids)[at];
     if (!id.is_string()) {
       continue;
     }
     const std::string value = id.GetString();
-    if (content::WebContents* contents = FindTabById(tabs, &value)) {
-      if (const std::optional<int> index =
-              tabs->GetIndexOfWebContents(contents)) {
-        indices.push_back(*index);
-      }
+    content::WebContents* contents = FindTabById(tabs, &value);
+    if (!contents) {
+      continue;
     }
+    if (const std::optional<int> index =
+            tabs->GetIndexOfWebContents(contents)) {
+      indices.push_back(*index);
+    }
+    if (!opener_ids) {
+      continue;
+    }
+    const base::Value& opener_id = (*opener_ids)[at];
+    if (!opener_id.is_string() || opener_id.GetString().empty()) {
+      continue;
+    }
+    const std::string opener_value = opener_id.GetString();
+    chrome::ohos::RecordPageOpener(contents,
+                                   FindTabById(tabs, &opener_value));
   }
   if (indices.size() < 2) {
     return;
@@ -1832,6 +1857,14 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   // it here rather than on tab creation covers tabs that existed before this
   // build and costs a map lookup.
   chrome::ohos::WatchPageScroll(tabs->GetActiveWebContents());
+
+  // Images written for a share that never happened do not outlive the run
+  // that wrote them. Once, on the first snapshot of the first window.
+  static bool cleared_shared_images = false;
+  if (!cleared_shared_images) {
+    cleared_shared_images = true;
+    chrome::ohos::ClearSharedImageDirectory();
+  }
 
   base::ListValue tab_values;
   for (int index = 0; index < tabs->count(); ++index) {
