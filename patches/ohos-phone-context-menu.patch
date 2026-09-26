@@ -128,6 +128,25 @@ diff --git a/chrome/browser/renderer_context_menu/render_view_context_menu.cc b/
  }
  
  Profile* RenderViewContextMenu::GetProfile() const {
+@@ -2162,6 +2241,18 @@
+   }
+ 
+   AppendCopyLinkLocationItem();
++#if BUILDFLAG(IS_OHOS)
++  // "Copy link text" is offered on a touch menu only, and the long press that
++  // opens this one does not arrive labelled as touch -- the shell delivers it
++  // through the pointer channel, so Blink reports kNone. On a phone every
++  // menu is a touch menu, so ask the question that was meant.
++  if (chrome::ohos::IsAuraShellMobilePhoneUi() &&
++      params_.media_type != ContextMenuDataMediaType::kImage &&
++      !params_.link_text.empty()) {
++    menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_COPYLINKTEXT,
++                                    IDS_CONTENT_CONTEXT_COPYLINKTEXT);
++  } else  // NOLINT(readability/braces)
++#endif
+   if (params_.source_type == ui::mojom::MenuSourceType::kTouch &&
+       params_.media_type != ContextMenuDataMediaType::kImage &&
+       !params_.link_text.empty()) {
 diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 --- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 +++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc

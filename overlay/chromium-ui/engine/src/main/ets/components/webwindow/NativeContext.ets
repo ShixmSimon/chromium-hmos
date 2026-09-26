@@ -281,6 +281,7 @@ export interface BrowserCommandPayload {
   setting?: SiteSettingValue;
   urls?: string[];
   // moveBookmarks and removeBookmarks: the bookmarks to act on, in order.
+  // groupTabs: the tabs to put in one group, in order.
   ids?: string[];
   // importBookmarks and exportBookmarks: an absolute path inside the app
   // sandbox. The shell owns the system file picker and the copy in or out;

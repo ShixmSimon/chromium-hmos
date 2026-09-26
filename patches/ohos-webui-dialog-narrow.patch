@@ -1,0 +1,36 @@
+Stop WebUI dialogs hanging off the left of a phone.
+
+cr-dialog is 512px wide with max-width: initial. On a 377px window a
+centred box wider than the screen runs off both sides, and the left side
+runs off where nothing can scroll it back -- so the first character of every
+label in the add-password dialog was cut off.
+
+Adding a password is where it showed, but 512px is the shared default for
+every WebUI dialog there is, so the rule goes with the default rather than
+with that one dialog. Below 600px the width becomes whichever is smaller,
+the dialog's own or the window less a 16px gutter each side.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/ui/webui/resources/cr_elements/cr_dialog/cr_dialog.css b/ui/webui/resources/cr_elements/cr_dialog/cr_dialog.css
+--- a/ui/webui/resources/cr_elements/cr_dialog/cr_dialog.css
++++ b/ui/webui/resources/cr_elements/cr_dialog/cr_dialog.css
+@@ -28,6 +28,18 @@
+   position: absolute;
+   top: 50%;
+   width: var(--cr-dialog-width, 512px);
++}
++
++/* A phone. Every WebUI dialog is 512px wide with max-width: initial, which
++ * on a 377px window centres a box wider than the screen: the right side runs
++ * off, and the left side runs off where nothing can scroll it back, taking
++ * the first character of every label with it. Adding a password was the one
++ * that showed it, but the width is the shared default, so this is the shared
++ * rule rather than a fix for that dialog. */
++@media (max-width: 600px) {
++  dialog {
++    width: min(var(--cr-dialog-width, 512px), calc(100vw - 32px));
++  }
+ }
+ 
+ @media (prefers-color-scheme: dark) {

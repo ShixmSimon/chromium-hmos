@@ -390,6 +390,13 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   // ShouldStartDistillabilityService() reads nothing else. Without it the
   // browser side waits forever and reader mode is offered on no page at all.
   arguments.push_back("--enable-distillability-service");
+  // And this one, or tapping reader mode kills the browser process.
+  // RegisterViewerSource() returns early without it, so the distiller's
+  // isolated-world id is never set and keeps its "unset" value of -1;
+  // ExecuteJavaScriptInIsolatedWorld then CHECKs that the id is above zero
+  // and traps. It also registers the chrome-distiller:// data source, so
+  // without it there would be nothing to show even if it survived.
+  arguments.push_back("--enable-dom-distiller");
 
   const bool supports_native_child_process =
       SupportsNativeChildProcess(config.device_class);

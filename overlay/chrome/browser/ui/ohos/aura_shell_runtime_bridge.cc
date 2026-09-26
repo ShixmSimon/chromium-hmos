@@ -11,6 +11,7 @@
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
+#include "components/tabs/public/tab_group.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1493,6 +1494,12 @@ void SendTabThumbnails(gfx::AcceleratedWidget widget,
 
 // --- Tab groups. ----------------------------------------------------------
 
+// How the shell closes a tab. CLOSE_USER_GESTURE alone closes it and forgets
+// it: nothing reaches TabRestoreService, so the tab is missing from recently
+// closed and cannot be restored, which is what the group's undo depends on.
+constexpr uint32_t kCloseAndRemember =
+    TabCloseTypes::CLOSE_USER_GESTURE | TabCloseTypes::CLOSE_CREATE_HISTORICAL_TAB;
+
 // Defined further down, beside the rest of the navigation helpers.
 void NavigateOnUiThread(gfx::AcceleratedWidget widget, GURL url, int attempt);
 
@@ -1523,6 +1530,42 @@ std::optional<tab_groups::TabGroupId> FindGroupById(TabStripModel* tabs,
   return std::nullopt;
 }
 
+// Puts tabs the shell names into one group, in the order it names them.
+//
+// For a shell that keeps its own list of pages and reopens them one by one on
+// startup: Chromium's session has the groups, but nothing restored through it,
+// so they have to be made again. Tabs already in a group leave it for this
+// one. Fewer than two tabs is not a group and does nothing.
+void GroupTabsById(TabStripModel* tabs, const base::DictValue& command) {
+  const base::ListValue* ids = command.FindList("ids");
+  if (!tabs || !ids || !tabs->SupportsTabGroups()) {
+    return;
+  }
+  std::vector<int> indices;
+  for (const base::Value& id : *ids) {
+    if (!id.is_string()) {
+      continue;
+    }
+    const std::string value = id.GetString();
+    if (content::WebContents* contents = FindTabById(tabs, &value)) {
+      if (const std::optional<int> index =
+              tabs->GetIndexOfWebContents(contents)) {
+        indices.push_back(*index);
+      }
+    }
+  }
+  if (indices.size() < 2) {
+    return;
+  }
+  // AddToNewGroup wants them in ascending order and moves them together
+  // afterwards, so the group ends up in tab-strip order rather than in the
+  // order the shell listed them. That is the same order the shell restored
+  // them in, so the two agree.
+  std::ranges::sort(indices);
+  indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+  tabs->AddToNewGroup(indices);
+}
+
 // Close a tab the shell named, and afterwards go where it asked.
 void CloseTabById(gfx::AcceleratedWidget widget,
                   BrowserWindowInterface* browser,
@@ -1549,7 +1592,7 @@ void CloseTabById(gfx::AcceleratedWidget widget,
     NavigateOnUiThread(widget, GURL("chrome://newtab/"), 0);
     return;
   }
-  tabs->CloseWebContentsAt(*index, TabCloseTypes::CLOSE_USER_GESTURE);
+  tabs->CloseWebContentsAt(*index, kCloseAndRemember);
   if (!opener) {
     // Whatever Chromium picked. Its rule -- the tab to the right, or the one
     // that opened this one if it knows -- is the same rule every browser
@@ -1584,20 +1627,11 @@ bool IsReaderModeAvailable(content::WebContents* contents) {
   const std::optional<dom_distiller::DistillabilityResult> result =
       dom_distiller::GetLatestResult(contents);
 
-  // Said once per answer rather than at the 200ms poll rate, so a page that
-  // will not distil can be told apart from one that was never asked.
-  static base::NoDestructor<std::string> last_line;
-  const std::string line = base::StringPrintf(
-      "%s distillable=%d last=%d longArticle=%d mobileFriendly=%d",
-      contents->GetLastCommittedURL().possibly_invalid_spec().c_str(),
-      result ? result->is_distillable : -1, result ? result->is_last : -1,
-      result ? result->is_long_article : -1,
-      result ? result->is_mobile_friendly : -1);
-  if (*last_line != line) {
-    *last_line = line;
-    LOG(WARNING) << "OHOS reader mode: " << line
-                 << (result ? "" : " (no answer yet)");
-  }
+  // Nothing is logged here. This runs at the shell's poll rate, and the
+  // deduplication that was supposed to keep it quiet did not: the answer
+  // arrives in two stages and flips between them. The renderer says the same
+  // thing once per page, with the numbers it decided on, which is the line
+  // worth having.
   return result && result->is_distillable;
 }
 
@@ -2633,6 +2667,16 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
       params.disposition = disposition;
       params.group = group;
       params.source_contents = active;
+      // The end of the group, not beside the tab that asked. Left to itself
+      // TabStripModel puts a new tab next to its opener, which is right for a
+      // strip and wrong for a row of favicons the reader reads left to right:
+      // pages should arrive at the end in the order they were opened.
+      if (TabGroup* model = tabs->group_model()->GetTabGroup(*group)) {
+        const gfx::Range range = model->ListTabs();
+        if (!range.is_empty()) {
+          params.tabstrip_index = static_cast<int>(range.end());
+        }
+      }
       Navigate(&params);
       content::WebContents* opened = params.navigated_or_inserted_contents;
       chrome::ohos::RecordPageOpener(opened, active);
@@ -2650,6 +2694,8 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
         chrome::ohos::RestoreScrollRatioOnce(opened, *ratio);
       }
     }
+  } else if (*name == "groupTabs") {
+    GroupTabsById(tabs, command);
   } else if (*name == "getPageContinuation") {
     chrome::ohos::ReadPageContinuation(
         active, command.FindInt("requestId").value_or(0));
@@ -2671,7 +2717,7 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     const int index =
         ReadTabIndex(tabs, command).value_or(tabs->active_index());
     if (tabs->ContainsIndex(index) && tabs->count() > 1) {
-      tabs->CloseWebContentsAt(index, TabCloseTypes::CLOSE_USER_GESTURE);
+      tabs->CloseWebContentsAt(index, kCloseAndRemember);
     } else if (active) {
       NavigateOnUiThread(widget, GURL("chrome://newtab/"), 0);
     }
@@ -3086,6 +3132,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "activateTab",
       "activateTabById",
       "getPageContinuation",
+      "groupTabs",
       "closeTab",
       "closeTabById",
       "moveTab",

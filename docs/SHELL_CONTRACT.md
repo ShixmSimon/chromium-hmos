@@ -280,6 +280,7 @@ shellAccelerator { action }
 |---|---|---|
 | `moveTab` | `id`, `toIndex` | 按 id 重排标签 |
 | `activateTabById` | `id` | 按 id 切换标签 |
+| `groupTabs` | `ids` | 把这些标签编成一个组。自己保存网址列表、启动后逐个 `newTab` 重开的外壳用这个把组重新建起来。少于两个不建组;已经在别的组里的会退出来加入新组 |
 | `getPageContinuation` | `requestId` | `pageContinuation { requestId, url, title, scrollX, scrollY, pageWidth, pageHeight }`。当前窗口的当前标签 |
 | `closeTabById` | `id`, `returnToOpener?` | 按 id 关闭标签。`returnToOpener: true` 时关掉后切回打开它的那个标签(它还在的话);不传时用 Chromium 自己的规则挑下一个 |
 | `passwordAuthReset` | `reason?` | 让上一次身份验证立即失效。外壳在进入后台、以及在普通/无痕窗口之间切换时发。锁屏由内核自己监听,不用发 |
@@ -616,8 +617,11 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
   一次标签变动之后自己做,外壳不用管。
 - 折叠屏运行中改变布局:已有的组和 opener 不动,之后新开的按当前布局的规则走。
 
-`newTab` 加了两个参数:`groupId` 非空时新页插到这个组的末尾、`openerId` 设为当
-前标签;`background: true` 时不切过去。
+`newTab` 加了两个参数:`groupId` 非空时新页插到这个组的**末尾**(不是当前页旁边)、
+`openerId` 设为当前标签;`background: true` 时不切过去。
+
+关闭标签(`closeTab` / `closeTabById`)会写进"最近关闭",`restoreRecentlyClosed`
+能把它恢复回来 —— 组的撤销靠这个。
 
 组成员变化不另发事件,照常在 `tabs` 里读。
 
