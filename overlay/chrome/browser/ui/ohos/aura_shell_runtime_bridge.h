@@ -67,6 +67,13 @@ bool IsAuraShellHuaweiWalletAvailable();
 // source picker is, the "sharing your screen" bar is not. The shell uses it
 // to decide which auxiliary windows may block the page. nullopt when it
 // cannot be told -- off the UI thread, or before the widget has a host.
+// Whether this window is Chromium's picture-in-picture overlay. The shell
+// needs to tell it from a page's own popup: both float over the page without
+// a close button of their own, but back should close the popup and leave the
+// video alone, and the video wants a corner rather than the middle.
+std::optional<bool> IsAuraShellPictureInPictureWindow(
+    gfx::AcceleratedWidget widget);
+
 std::optional<bool> IsAuraShellWindowModal(gfx::AcceleratedWidget widget);
 std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(
     gfx::AcceleratedWidget widget);

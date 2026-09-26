@@ -3432,6 +3432,45 @@ std::optional<bool> IsAuraShellWindowModal(gfx::AcceleratedWidget widget) {
   return std::nullopt;
 }
 
+std::optional<bool> IsAuraShellPictureInPictureWindow(
+    gfx::AcceleratedWidget widget) {
+  // Same thread rule as IsAuraShellWindowModal(): Views is the UI thread's.
+  scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner;
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    ui_task_runner = state.ui_task_runner;
+  }
+  if (!ui_task_runner || !ui_task_runner->BelongsToCurrentThread()) {
+    return std::nullopt;
+  }
+  aura::WindowTreeHost* host =
+      aura::WindowTreeHost::GetForAcceleratedWidget(widget);
+  if (!host || !host->window()) {
+    return std::nullopt;
+  }
+  for (views::Widget* candidate :
+       views::Widget::GetAllChildWidgets(host->window())) {
+    if (candidate != candidate->GetTopLevelWidget()) {
+      continue;
+    }
+    // The name VideoOverlayWindowViews gives its widget. Asking the window
+    // what it is beats asking PictureInPictureWindowManager which window it
+    // owns: the manager answers for the tab, and this runs for a widget.
+    const bool is_overlay = candidate->GetName() == "PictureInPictureWindow";
+    if (is_overlay) {
+      // Said once per report for the one window that is one, which is rare.
+      // A shell that leaves picture-in-picture in the middle of the screen,
+      // or closes it with back, can be told apart from an engine that never
+      // marked it.
+      LOG(WARNING) << "OHOS auxiliary window " << widget
+                   << " is picture-in-picture";
+    }
+    return is_overlay;
+  }
+  return std::nullopt;
+}
+
 std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(
     gfx::AcceleratedWidget widget) {
   BrowserWindowInterface* browser = FindBrowserForWidget(widget);

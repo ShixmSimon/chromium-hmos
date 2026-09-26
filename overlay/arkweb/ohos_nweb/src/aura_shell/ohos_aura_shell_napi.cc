@@ -508,6 +508,11 @@ void DispatchAuxiliaryWindowEvent(const ui::OhosLogicalWindowState& state) {
     event.Set("modal", *modal);
   }
   event.Set("windowRole", "auxiliary");
+  if (std::optional<bool> picture_in_picture =
+          chrome::ohos::IsAuraShellPictureInPictureWindow(state.widget);
+      picture_in_picture.value_or(false)) {
+    event.Set("pictureInPicture", true);
+  }
   const std::optional<chrome::ohos::AuraShellWindowMetadata> metadata =
       chrome::ohos::GetAuraShellWindowMetadata(state.widget);
   if (metadata) {
