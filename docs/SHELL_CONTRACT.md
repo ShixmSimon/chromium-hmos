@@ -631,6 +631,37 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 
 组成员变化不另发事件,照常在 `tabs` 里读。
 
+**拖放(尚未实现,形状已定)**
+
+下面这几条**引擎还没有实现**,写在这里是为了让外壳能照着写、不用等。实现之后会把这
+一行删掉。进度看 `docs/engine-requests/2026-09-27-drag-and-drop.md`。
+
+拖进网页:
+
+```
+dropNotHandled {
+  windowId?: number,
+  urls: string[],
+  text: string,
+  files: [{ path, name, mimeType, size }][]
+}
+```
+
+网页自己处理掉的落下**不会**发这条 —— 只有渲染器回了 operation none、或者页面没有
+`preventDefault` 时才发,让外壳按产品规则接手。文件在发这条之前已经复制到
+`<cacheDir>/dropped/<随机目录>/<原文件名>`,`path` 就是它;那个目录每次启动清空,无痕
+窗口拖进来的在窗口关闭时删。
+
+从网页拖出:
+
+```
+pageDragStarted { windowId?: number }
+pageDragEnded   { windowId?: number, dropped: boolean }
+```
+
+手机上长按不动照常出 `contextMenuRequested`;手指开始移动才发 `pageDragStarted`,外壳
+收到就把已经弹出的长按菜单收掉。平板 / PC 用鼠标拖也发这两条。
+
 **画中画**
 
 长按视频的菜单里有 `pictureInPicture`,用的是 Chromium 自己的画中画。它出来的是一个
