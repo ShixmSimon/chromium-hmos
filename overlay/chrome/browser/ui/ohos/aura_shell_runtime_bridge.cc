@@ -1496,6 +1496,11 @@ void SendTabThumbnails(gfx::AcceleratedWidget widget,
 
 // --- Tab groups. ----------------------------------------------------------
 
+// Both defined further down, with the recently-closed helpers.
+sessions::TabRestoreService* RestoreServiceFor(BrowserWindowInterface* browser);
+void RememberOpenerOfClosedTab(sessions::TabRestoreService* service,
+                               content::WebContents* opener);
+
 // How the shell closes a tab. CLOSE_USER_GESTURE alone closes it and forgets
 // it: nothing reaches TabRestoreService, so the tab is missing from recently
 // closed and cannot be restored, which is what the group's undo depends on.
@@ -1618,7 +1623,11 @@ void CloseTabById(gfx::AcceleratedWidget widget,
     NavigateOnUiThread(widget, GURL("chrome://newtab/"), 0);
     return;
   }
+  // Read before the close, and paired with the entry it produces, so undoing
+  // the close can put the reader back where they were.
+  content::WebContents* had_opener = chrome::ohos::PageOpenerOf(target);
   tabs->CloseWebContentsAt(*index, kCloseAndRemember);
+  RememberOpenerOfClosedTab(RestoreServiceFor(browser), had_opener);
   if (!opener) {
     // Whatever Chromium picked. Its rule -- the tab to the right, or the one
     // that opened this one if it knows -- is the same rule every browser
@@ -1695,6 +1704,35 @@ void ToggleReaderMode(content::WebContents* contents) {
 //
 // Windows are left out on purpose: the shell has one window per browser and
 // nothing to restore a window into.
+
+// Who opened the tab behind each recently-closed entry.
+//
+// The opener does not travel with the entry. TabRestoreService builds it from
+// the live tab through PopulateTab(), which copies navigations, the user
+// agent and a few other things but not the tab's session extra data -- that
+// is only filled in when an entry is read back from the session file, which
+// is the restart case rather than this one. So the pair is kept here, keyed
+// by the entry the close produced, for as long as that entry exists.
+//
+// Only closes the engine performs are recorded. A page closing itself with
+// window.close() is not, which is the honest limit: the shell's undo is what
+// this is for, and that always comes through here.
+std::map<int, base::WeakPtr<content::WebContents>>& OpenersByClosedEntry() {
+  static base::NoDestructor<std::map<int, base::WeakPtr<content::WebContents>>>
+      map;
+  return *map;
+}
+
+// Call with the opener read before the close; pairs it with whatever entry
+// the close just produced.
+void RememberOpenerOfClosedTab(sessions::TabRestoreService* service,
+                               content::WebContents* opener) {
+  if (!service || !opener || service->entries().empty()) {
+    return;
+  }
+  OpenersByClosedEntry()[service->entries().front()->id.id()] =
+      opener->GetWeakPtr();
+}
 
 sessions::TabRestoreService* RestoreServiceFor(
     BrowserWindowInterface* browser) {
@@ -1783,8 +1821,22 @@ void RestoreRecentlyClosed(BrowserWindowInterface* browser,
   if (!entry.is_valid()) {
     return;
   }
+  auto remembered = OpenersByClosedEntry().find(entry.id());
+  content::WebContents* opener =
+      remembered != OpenersByClosedEntry().end() ? remembered->second.get()
+                                                 : nullptr;
+  if (remembered != OpenersByClosedEntry().end()) {
+    OpenersByClosedEntry().erase(remembered);
+  }
   service->RestoreEntryById(context, entry,
                             WindowOpenDisposition::NEW_FOREGROUND_TAB);
+  // The restored tab is the active one, and it is a new tab with a new id, so
+  // the relation has to be made again rather than found. Skipped when the
+  // opener has itself been closed in the meantime.
+  if (opener) {
+    chrome::ohos::RecordPageOpener(
+        browser->GetTabStripModel()->GetActiveWebContents(), opener);
+  }
 }
 
 // What the zoom menu shows, and what Ctrl+0 returns to. 100 when the tab has
@@ -2795,7 +2847,10 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     const int index =
         ReadTabIndex(tabs, command).value_or(tabs->active_index());
     if (tabs->ContainsIndex(index) && tabs->count() > 1) {
+      content::WebContents* had_opener =
+          chrome::ohos::PageOpenerOf(tabs->GetWebContentsAt(index));
       tabs->CloseWebContentsAt(index, kCloseAndRemember);
+      RememberOpenerOfClosedTab(RestoreServiceFor(browser), had_opener);
     } else if (active) {
       NavigateOnUiThread(widget, GURL("chrome://newtab/"), 0);
     }
