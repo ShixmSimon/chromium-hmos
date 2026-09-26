@@ -19,6 +19,7 @@ const ACTION_LABELS: Record<ContextMenuAction, string> = {
   'saveMediaAs': '保存',
   'copyMediaAddress': '复制地址',
   'copyVideoFrame': '复制视频帧',
+  'pictureInPicture': '画中画',
   'copy': '复制',
   'cut': '剪切',
   'paste': '粘贴',

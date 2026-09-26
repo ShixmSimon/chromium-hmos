@@ -61,6 +61,15 @@ constexpr ShellAction kShellActions[] = {
     {"saveMediaAs", IDC_CONTENT_CONTEXT_SAVEAVAS},
     {"copyMediaAddress", IDC_CONTENT_CONTEXT_COPYAVLOCATION},
     {"copyVideoFrame", IDC_CONTENT_CONTEXT_COPYVIDEOFRAME},
+    // Chromium's own picture-in-picture, which this build already has: the
+    // controller and the Views overlay window are both compiled in, and on
+    // this platform that window arrives at the shell the same way an
+    // incognito window does -- an auxiliary window with a surface of its
+    // own. It is a window inside the app rather than a HarmonyOS system
+    // small window, so it goes away when the app does; a system one needs
+    // the video's viz surface embedded in a window the shell owns, which is
+    // a different and much larger piece of work.
+    {"pictureInPicture", IDC_CONTENT_CONTEXT_PICTUREINPICTURE},
     // Text.
     {"copy", IDC_CONTENT_CONTEXT_COPY},
     {"cut", IDC_CONTENT_CONTEXT_CUT},

@@ -158,7 +158,7 @@ export type ContextMenuAction =
   'copyLinkText' | 'saveLinkAs' | 'copyLinkToHighlight' |
   'openImageInNewTab' | 'saveImageAs' | 'copyImage' | 'copyImageAddress' |
   'toggleLoop' | 'toggleControls' | 'openMediaInNewTab' | 'saveMediaAs' |
-  'copyMediaAddress' | 'copyVideoFrame' |
+  'copyMediaAddress' | 'copyVideoFrame' | 'pictureInPicture' |
   'copy' | 'cut' | 'paste' | 'pasteAsPlainText' | 'selectAll' | 'delete' |
   'undo' | 'redo' | 'searchSelection' |
   // Passwords. suggestPassword offers a generated one on a new-password
