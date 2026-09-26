@@ -184,6 +184,16 @@ struct AuraShell {
           MobileBrowserOverlay({
             browserState: this.browserState,
             onCommand: (command: BrowserCommandPayload): void => {
+              // Back is asked of the page before it is asked of the tab. A
+              // <dialog>, a popover, fullscreen or a page with a CloseWatcher
+              // of its own expects back to close that rather than leave the
+              // page, which is what back does in every other browser. The
+              // engine answers backHandled; only a no goes on to the tab.
+              if (command.command === 'back') {
+                this.executeBrowserCommand({
+                  command: 'handleBack', requestId: ++this.backRequestId });
+                return;
+              }
               this.executeBrowserCommand(command);
             }
           })
@@ -347,7 +357,21 @@ struct AuraShell {
     this.commandChannel.send(command);
   }
 
+  // Counts handleBack requests, so a late answer to an earlier one is not
+  // acted on twice.
+  private backRequestId: number = 0;
+
   private handleRuntimeEvent(event: BrowserRuntimeEvent): void {
+    // The page had first refusal on the back gesture and did not take it, so
+    // the tab goes back after all. An answer to an older request is ignored:
+    // the reader may have pressed back twice before the first one came.
+    if (event.event === 'backHandled') {
+      if ((event.requestId ?? 0) === this.backRequestId &&
+        !(event.handled ?? false)) {
+        this.executeBrowserCommand({ command: 'back' });
+      }
+      return;
+    }
     if (event.event === 'pwaInstalled' && this.isDesktopAuraUi()) {
       AlertDialog.show({
         title: '\u5b89\u88c5\u5b8c\u6210',
