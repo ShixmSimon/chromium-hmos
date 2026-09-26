@@ -20,6 +20,7 @@
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/path_service.h"
+#include "chrome/common/chrome_paths.h"
 #include "base/files/file_util.h"
 #include "base/rand_util.h"
 #include "base/task/task_traits.h"
@@ -43,11 +44,18 @@ constexpr size_t kKeyBytes = 32;    // AES-256, matching Encryptor::Key.
 constexpr size_t kNonceBytes = 12;  // GCM.
 constexpr size_t kAeTagBytes = 16;
 
-// Where the wrapped key lives. Beside the profile data rather than inside it:
-// it is per-installation, not per-profile.
+// Where the wrapped key lives.
+//
+// The user data directory, which is the one the shell passes on the command
+// line and the one the app can write to. DIR_HOME was the first choice --
+// per-installation rather than per-profile, which is what this key is -- but
+// on a device it is not a directory this app may write to, so every start
+// made a new wrapping key, failed to store what it wrapped, and lost every
+// password saved in the run before.
 base::FilePath WrappedKeyPath() {
   base::FilePath dir;
-  if (!base::PathService::Get(base::DIR_HOME, &dir)) {
+  if (!base::PathService::Get(chrome::DIR_USER_DATA, &dir) &&
+      !base::PathService::Get(base::DIR_HOME, &dir)) {
     return base::FilePath();
   }
   return dir.AppendASCII("oscrypt_key.huks");
@@ -242,7 +250,8 @@ std::optional<std::vector<uint8_t>> LoadOrCreateKey() {
   if (!WriteKeyToDisk(key)) {
     // Better no provider than one whose key is forgotten on restart: OSCrypt
     // would encrypt with it and nothing could read the result again.
-    LOG(ERROR) << "OHOS HUKS: could not store the wrapped key";
+    LOG(ERROR) << "OHOS HUKS: could not store the wrapped key at "
+               << WrappedKeyPath();
     return std::nullopt;
   }
   LOG(WARNING) << "OHOS HUKS: created and wrapped a new OSCrypt key";

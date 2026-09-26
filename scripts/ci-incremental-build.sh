@@ -395,7 +395,10 @@ export PATH="${deveco}/jbr/bin:/mnt/c/Windows/System32:/mnt/c/Windows:${PATH}"
 # config and is excluded from the sync -- so a module added to the repository's
 # copy does not reach it. hvigor would then fail on the dependency with an
 # error that does not say this. Say it instead.
-if ! grep -Eq '"srcPath"[[:space:]]*:[[:space:]]*"\./engine"' "${ui_wsl}/build-profile.json5"; then
+# JSON5, so the key may be bare and the string may use either quote: DevEco's
+# own tooling rewrites this file in its own style whenever it regenerates the
+# signing config, and the check should not fail over the spelling.
+if ! grep -Eq '"?srcPath"?[[:space:]]*:[[:space:]]*["'"'"']\./engine["'"'"']'     "${ui_wsl}/build-profile.json5"; then
   {
     printf '\n## packaging failed\n'
     printf '%s/build-profile.json5 does not register the engine module.\n' "$ui_win"
