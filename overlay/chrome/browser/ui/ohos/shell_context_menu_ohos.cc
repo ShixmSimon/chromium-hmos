@@ -360,6 +360,14 @@ bool HandOffContextMenuToShell(
   }
   const int request_id = NextRequestId();
   base::DictValue event = BuildRequestEvent(request_id, web_contents, *menu);
+  // One line per long press. Cheap, and it answers the question that comes
+  // up every time a menu does not appear: whether the engine offered
+  // nothing, or the shell was never told.
+  const base::ListValue* offered = event.FindList("supportedActions");
+  LOG(WARNING) << "OHOS context menu: editable="
+               << menu->params().is_editable << " selection="
+               << !menu->params().selection_text.empty()
+               << " actions=" << (offered ? offered->size() : 0u);
   // Replacing the session closes the menu the shell was still showing.
   CurrentSession() = std::make_unique<ShellContextMenuSession>(
       request_id, web_contents, menu->params().src_url, std::move(menu));
