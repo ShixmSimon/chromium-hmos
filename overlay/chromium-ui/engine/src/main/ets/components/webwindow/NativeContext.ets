@@ -180,6 +180,7 @@ export interface BrowserRuntimeEvent {
     'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
     'permissionsRequested' | 'sitePermissionRequested' |
     'shellAccelerator' | 'linkHovered' | 'tabThumbnails' |
+    'openedInGroup' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |
     'extensionActionsChanged' |
@@ -207,6 +208,9 @@ export interface BrowserRuntimeEvent {
   pageUrl?: string;
   incognito?: boolean;
   supportedActions?: ContextMenuAction[];
+  // openedInGroup: the `id` of the tab that was just opened into the group.
+  // The reader was left on the page they were on.
+  id?: string;
   // browserControlsRatio: how much of the shell's top bar the page shows, 0-1.
   ratio?: number;
   // findResult: the match count, the active match (1-based; 0 for none) and
