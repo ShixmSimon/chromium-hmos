@@ -196,7 +196,8 @@ export interface BrowserRuntimeEvent {
     'permissionsRequested' | 'sitePermissionRequested' |
     'shellAccelerator' | 'linkHovered' | 'tabThumbnails' |
     'openedInGroup' | 'pageScrollSettled' | 'pageContinuation' |
-    'contextMenuImageFile' |
+    'contextMenuImageFile' | 'contextMenuActionsChanged' |
+    'backHandled' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |
     'extensionActionsChanged' |
@@ -234,6 +235,9 @@ export interface BrowserRuntimeEvent {
   // openedInGroup: the `id` of the tab that was just opened into the group.
   // The reader was left on the page they were on.
   id?: string;
+  // backHandled: whether the page took the back gesture -- closed a dialog,
+  // left fullscreen. True means the shell should not also go back.
+  handled?: boolean;
   // contextMenuImageFile: where the long-pressed image was written, and what
   // it is. Both empty when there was no image to write.
   path?: string;
@@ -364,6 +368,10 @@ export interface BrowserCommandPayload {
   // setBrowserControlsState: whether the transition animates.
   animate?: boolean;
   // findInPage: the text to find, and the direction to step in.
+  // insertText: what to put where the reader is typing. The shell reads the
+  // system pasteboard with a paste control and sends it here, because
+  // Chromium cannot read it -- that needs READ_PASTEBOARD, a restricted
+  // permission this app does not declare.
   text?: string;
   forward?: boolean;
   index?: number;

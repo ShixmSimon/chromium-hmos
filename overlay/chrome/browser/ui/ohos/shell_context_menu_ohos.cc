@@ -323,6 +323,26 @@ bool ShouldShellDrawContextMenu() {
   return ShellDrawsSurface("contextMenu");
 }
 
+void NotifyShellContextMenuChanged(const RenderViewContextMenuBase* menu) {
+  ShellContextMenuSession* session = CurrentSession().get();
+  if (!session || !menu || session->menu() != menu ||
+      !session->web_contents_for_action()) {
+    return;
+  }
+  base::ListValue supported;
+  for (const ShellAction& action : kShellActions) {
+    if (IsOffered(*session->menu(), action.command_id)) {
+      supported.Append(std::string(action.name));
+    }
+  }
+  base::DictValue event;
+  event.Set("event", "contextMenuActionsChanged");
+  event.Set("requestId", session->request_id());
+  event.Set("supportedActions", std::move(supported));
+  DispatchAuraShellRuntimeEvent(session->web_contents_for_action(),
+                                std::move(event));
+}
+
 bool HandOffContextMenuToShell(
     content::WebContents* web_contents,
     std::unique_ptr<RenderViewContextMenuBase>& menu) {

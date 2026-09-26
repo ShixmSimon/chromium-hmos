@@ -532,3 +532,23 @@ export interface ContextMenuImageFileEvent {
   path: string;
   mimeType: string;
 }
+
+// A context-menu item became available after the menu was already open, so
+// the list is sent again. Only "copy link to highlighted text" does this
+// today: Chromium adds it disabled and enables it once the renderer has
+// generated the text fragment. Replace the list you have; the requestId is
+// the same one contextMenuRequested carried.
+export interface ContextMenuActionsChangedEvent {
+  event: 'contextMenuActionsChanged';
+  requestId: number;
+  supportedActions: string[];
+}
+
+// The answer to handleBack. `handled` true means the page dealt with it --
+// it closed a dialog, left fullscreen, ran its own CloseWatcher -- and the
+// shell should leave the tab where it is.
+export interface BackHandledEvent {
+  event: 'backHandled';
+  requestId: number;
+  handled: boolean;
+}

@@ -253,6 +253,10 @@ pageScrollSettled { url, scrollX, scrollY, pageWidth, pageHeight }
 
 滚动停下 300ms 后推一次,一次滚动只推一次。单位是 CSS 像素。
 
+contextMenuActionsChanged { requestId, supportedActions }
+
+菜单已经打开之后才可用的项。目前只有"复制指向所选文字的链接"会这样——Chromium 先把它加成灰的,等渲染器生成文字片段(一次往返)之后才点亮。收到就整份替换掉手里那份;`requestId` 和 `contextMenuRequested` 的是同一个。
+
 openedInGroup { id }
 
 从 Chromium 的长按菜单在组内打开了一页。当前页没有变,`id` 是新标签的 `id`。
@@ -280,6 +284,8 @@ shellAccelerator { action }
 |---|---|---|
 | `moveTab` | `id`, `toIndex` | 按 id 重排标签 |
 | `activateTabById` | `id` | 按 id 切换标签 |
+| `handleBack` | `requestId` | `backHandled { requestId, handled }`。系统返回手势**先问网页**:页面开着 `<dialog>`、全屏、或自己注册了 CloseWatcher 时 `handled` 为 true,外壳就不要再后退 |
+| `insertText` | `text` | 把文字插到当前输入位置。Chromium 读不了系统剪贴板(要 `READ_PASTEBOARD` 受限权限),外壳用系统粘贴安全控件读出来后发这条 |
 | `groupTabs` | `ids`, `openerIds?` | 把这些标签编成一个组。`openerIds` 与 `ids` 等长、`''` 表示没有,用来在重启后把"谁打开了谁"一起交回来(内核按 session id 记 opener,重开的标签是全新的,自己推不出来);长度对不上就整个忽略。自己保存网址列表、启动后逐个 `newTab` 重开的外壳用这个把组重新建起来。少于两个不建组;已经在别的组里的会退出来加入新组 |
 | `getPageContinuation` | `requestId` | `pageContinuation { requestId, url, title, scrollX, scrollY, pageWidth, pageHeight }`。当前窗口的当前标签 |
 | `closeTabById` | `id`, `returnToOpener?` | 按 id 关闭标签。`returnToOpener: true` 时关掉后切回打开它的那个标签(它还在的话);不传时用 Chromium 自己的规则挑下一个 |

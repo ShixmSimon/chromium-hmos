@@ -29,6 +29,12 @@ bool ShouldShellDrawContextMenu();
 // Called with a menu Chromium has built and is about to show. Takes it and
 // asks the shell to draw it when the shell draws menus; otherwise leaves
 // `menu` alone and returns false.
+// A menu item changed after the shell was told what the menu holds. Sends
+// the list again so an item that arrives late is not missed; does nothing
+// when this is not the menu the shell is showing. `menu` is compared by
+// address, never dereferenced beyond that when it is not the current one.
+void NotifyShellContextMenuChanged(const RenderViewContextMenuBase* menu);
+
 bool HandOffContextMenuToShell(content::WebContents* web_contents,
                                std::unique_ptr<RenderViewContextMenuBase>& menu);
 

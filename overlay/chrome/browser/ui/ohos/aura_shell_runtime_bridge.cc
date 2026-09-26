@@ -138,6 +138,7 @@
 #include "ui/aura/window.h"
 #include "ui/aura/window_tree_host.h"
 #include "ui/base/base_window.h"
+#include "ui/base/clipboard/scoped_clipboard_writer.h"
 #include "ui/base/models/button_menu_item_model.h"
 #include "ui/base/models/menu_model.h"
 #include "ui/base/page_transition_types.h"
@@ -1760,16 +1761,29 @@ void RestoreRecentlyClosed(BrowserWindowInterface* browser,
       BrowserLiveTabContext::FindContextForWebContents(
           browser->GetTabStripModel()->GetActiveWebContents());
   const std::string* id = command.FindString("id");
+  SessionID entry = SessionID::InvalidValue();
   if (!id || id->empty()) {
-    // No id: the most recent one, which is what a single "reopen" button does.
-    service->RestoreMostRecentEntry(context);
+    // The most recent one, which is what a single "reopen" button does.
+    //
+    // Not RestoreMostRecentEntry(): it restores with disposition UNKNOWN, and
+    // UNKNOWN means "put it back where it came from" -- TabRestoreServiceHelper
+    // throws away the context it was given and looks the tab's original window
+    // up by id instead. That window is this one, but it is not registered under
+    // the id the closed tab remembers, so the lookup fails, and a failed lookup
+    // means a brand new browser window is created to hold the tab. On a phone
+    // that window is nowhere the reader can see, so the reopen looked like it
+    // did nothing.
+    if (service->entries().empty()) {
+      return;
+    }
+    entry = service->entries().front()->id;
+  } else if (const std::optional<int64_t> value = FromShellId(id)) {
+    entry = SessionID::FromSerializedValue(*value);
+  }
+  if (!entry.is_valid()) {
     return;
   }
-  const std::optional<int64_t> value = FromShellId(id);
-  if (!value) {
-    return;
-  }
-  service->RestoreEntryById(context, SessionID::FromSerializedValue(*value),
+  service->RestoreEntryById(context, entry,
                             WindowOpenDisposition::NEW_FOREGROUND_TAB);
 }
 
@@ -2727,6 +2741,37 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
         chrome::ohos::RestoreScrollRatioOnce(opened, *ratio);
       }
     }
+  } else if (*name == "handleBack") {
+    // The system's back gesture, offered to the page before the tab acts on
+    // it. A page with a <dialog> open, in fullscreen, or with a CloseWatcher
+    // of its own expects back to close that first -- which is what it does
+    // in every other browser -- and the shell cannot know that from outside.
+    base::DictValue event;
+    event.Set("event", "backHandled");
+    event.Set("requestId", command.FindInt("requestId").value_or(0));
+    event.Set("handled", active && active->SignalCloseWatcherIfActive());
+    DispatchRuntimeEvent(widget, std::move(event));
+  } else if (*name == "insertText" && active) {
+    // The shell read the system pasteboard for us. Chromium cannot: reading
+    // it needs READ_PASTEBOARD, a restricted permission this app does not
+    // declare, so ui::Clipboard only ever serves back what the browser itself
+    // copied. A paste control in the shell is the way the platform intends an
+    // app to get at it without that permission, and this puts what it read
+    // into whatever the reader has focused.
+    const std::string* text = command.FindString("text");
+    if (text && !text->empty()) {
+      // Put it in the browser's own clipboard and then paste, rather than
+      // inject it: paste is the editing path, so the page sees the input
+      // events it expects, undo works, and a contenteditable behaves the
+      // same as an <input>. Writing the clipboard on the way through is not
+      // a side effect to apologise for -- the reader just pasted, and the
+      // browser's idea of the clipboard should agree with the system's.
+      {
+        ui::ScopedClipboardWriter writer(ui::ClipboardBuffer::kCopyPaste);
+        writer.WriteText(base::UTF8ToUTF16(*text));
+      }
+      active->Paste();
+    }
   } else if (*name == "groupTabs") {
     GroupTabsById(tabs, command);
   } else if (*name == "getPageContinuation") {
@@ -3166,6 +3211,8 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "activateTabById",
       "getPageContinuation",
       "groupTabs",
+      "insertText",
+      "handleBack",
       "closeTab",
       "closeTabById",
       "moveTab",
