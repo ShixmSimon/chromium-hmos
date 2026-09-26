@@ -249,6 +249,10 @@ setAnchorRects { anchors: { id, x, y, width, height }[] }
 网页没有消费的按键,Chromium 解析成命令之后,属于外壳界面的那些改发事件:
 
 ```
+pageScrollSettled { url, scrollX, scrollY, pageWidth, pageHeight }
+
+滚动停下 300ms 后推一次,一次滚动只推一次。单位是 CSS 像素。
+
 openedInGroup { id }
 
 从 Chromium 的长按菜单在组内打开了一页。当前页没有变,`id` 是新标签的 `id`。
@@ -276,6 +280,7 @@ shellAccelerator { action }
 |---|---|---|
 | `moveTab` | `id`, `toIndex` | 按 id 重排标签 |
 | `activateTabById` | `id` | 按 id 切换标签 |
+| `getPageContinuation` | `requestId` | `pageContinuation { requestId, url, title, scrollX, scrollY, pageWidth, pageHeight }`。当前窗口的当前标签 |
 | `closeTabById` | `id`, `returnToOpener?` | 按 id 关闭标签。`returnToOpener: true` 时关掉后切回打开它的那个标签(它还在的话);不传时用 Chromium 自己的规则挑下一个 |
 | `passwordAuthReset` | `reason?` | 让上一次身份验证立即失效。外壳在进入后台、以及在普通/无痕窗口之间切换时发。锁屏由内核自己监听,不用发 |
 | `moveTabToNewWindow` | `id` | 把标签拖出成为独立窗口。新窗口和无痕窗口同一形状:`windowRole: "browser"` 事件 + `aura_win_<widget>` 表面。同 Profile,不受单进程限制 |
@@ -615,6 +620,21 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 前标签;`background: true` 时不切过去。
 
 组成员变化不另发事件,照常在 `tabs` 里读。
+
+**应用接续:读取和恢复网页位置**
+
+`browsingApiVersion` 3 起。
+
+- **优先用 `pageScrollSettled`**。滚动停下 300ms 后内核主动推一次,外壳存着就行,
+  `onContinue` 里直接拿,不用等回复。
+- 拿不准的时候再用 `getPageContinuation`,它要问渲染进程,答案晚一两帧才到 ——
+  `onContinue` 是同步回调,等不起。
+- 位置一律是 **CSS 像素**;`pageWidth` / `pageHeight` 是文档总宽高。目标设备宽度
+  不同、排版会变,所以按 `scrollY / pageHeight` 这个比例换算,不要直接搬像素。
+- 恢复:`newTab { url, scrollRatio }`,`scrollRatio` 是 0–1。页面**加载完成**后
+  滚一次(`load` 事件;4 秒还没 load 完就按当时的高度滚),**只滚这一次**。用户在
+  这之前自己滚过、或者用了手势/滚轮,就不滚了 —— 到了地方又被拽走比停在顶部更糟。
+- 无痕窗口不接续,内核这边没有特别处理,外壳不发就行。
 
 **网站图标**
 

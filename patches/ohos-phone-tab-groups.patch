@@ -127,10 +127,12 @@ diff --git a/chrome/browser/sessions/session_restore.cc b/chrome/browser/session
 diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
 --- a/chrome/browser/BUILD.gn
 +++ b/chrome/browser/BUILD.gn
-@@ -1719,6 +1719,8 @@
+@@ -1719,6 +1719,10 @@
        "ui/ohos/shell_password_cleanup_ohos.h",
        "ui/ohos/shell_permission_prompt_ohos.cc",
        "ui/ohos/shell_permission_prompt_ohos.h",
++      "ui/ohos/shell_page_position_ohos.cc",
++      "ui/ohos/shell_page_position_ohos.h",
 +      "ui/ohos/shell_tab_groups_ohos.cc",
 +      "ui/ohos/shell_tab_groups_ohos.h",
      ]

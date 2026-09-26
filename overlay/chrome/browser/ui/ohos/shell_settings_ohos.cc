@@ -71,8 +71,9 @@ void GetAboutInfo(const ShellCommandContext& context,
   // round added -- permissions, load progress, tab ids, thumbnails, recently
   // closed, desktop site, reader mode; 2 adds tab groups, which is groupId
   // and openerId on each tab, newTab's groupId and background, activateTabById
-  // and closeTabById, and the openedInGroup event.
-  event.Set("browsingApiVersion", 2);
+  // and closeTabById, and the openedInGroup event; 3 adds reading and
+  // restoring where the reader is in a page, for app continuation.
+  event.Set("browsingApiVersion", 3);
   ReplyToShell(context, std::move(event));
 }
 

@@ -6,6 +6,7 @@
 #include "chrome/browser/ui/ohos/device_authenticator_ohos.h"
 #include "chrome/browser/ui/ohos/screen_orientation_delegate_ohos.h"
 #include "chrome/browser/ui/ohos/shell_permission_prompt_ohos.h"
+#include "chrome/browser/ui/ohos/shell_page_position_ohos.h"
 #include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
@@ -1792,6 +1793,12 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
         FROM_HERE, base::BindOnce(&DissolveSingleTabGroupsForWidget, widget));
   }
 
+  // Where the reader is in the page, for app continuation. Attached to the
+  // tab in front of them, which is the one the system will ask about; doing
+  // it here rather than on tab creation covers tabs that existed before this
+  // build and costs a map lookup.
+  chrome::ohos::WatchPageScroll(tabs->GetActiveWebContents());
+
   base::ListValue tab_values;
   for (int index = 0; index < tabs->count(); ++index) {
     content::WebContents* contents = tabs->GetWebContentsAt(index);
@@ -2634,8 +2641,18 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
       content::OpenURLParams params(url, content::Referrer(), disposition,
                                     ui::PAGE_TRANSITION_TYPED,
                                     /*is_renderer_initiated=*/false);
-      browser->OpenURL(params, {});
+      content::WebContents* opened = browser->OpenURL(params, {});
+      // Continuing a page from another device: the same article, in the same
+      // place, in a window of a different width -- so a fraction of the
+      // document rather than a pixel offset.
+      if (const std::optional<double> ratio =
+              command.FindDouble("scrollRatio")) {
+        chrome::ohos::RestoreScrollRatioOnce(opened, *ratio);
+      }
     }
+  } else if (*name == "getPageContinuation") {
+    chrome::ohos::ReadPageContinuation(
+        active, command.FindInt("requestId").value_or(0));
   } else if (*name == "activateTabById") {
     if (content::WebContents* target =
             FindTabById(tabs, command.FindString("id"))) {
@@ -3068,6 +3085,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "newIncognitoWindow",
       "activateTab",
       "activateTabById",
+      "getPageContinuation",
       "closeTab",
       "closeTabById",
       "moveTab",

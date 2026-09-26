@@ -495,3 +495,29 @@ export interface OpenedInGroupEvent {
   event: 'openedInGroup';
   id: string;
 }
+
+// Where the reader is in the page, pushed once each time scrolling stops.
+// For HarmonyOS app continuation: onContinue is synchronous and wants an
+// answer at once, so the shell keeps the last of these rather than asking.
+export interface PageScrollSettledEvent {
+  event: 'pageScrollSettled';
+  url: string;
+  scrollX: number;
+  scrollY: number;
+  pageWidth: number;
+  pageHeight: number;
+}
+
+// The answer to getPageContinuation, for when the pushed value is too old to
+// use. Reading the position means asking the renderer, so it arrives a frame
+// or two after the request.
+export interface PageContinuationEvent {
+  event: 'pageContinuation';
+  requestId: number;
+  url: string;
+  title: string;
+  scrollX: number;
+  scrollY: number;
+  pageWidth: number;
+  pageHeight: number;
+}

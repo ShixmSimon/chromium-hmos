@@ -180,7 +180,7 @@ export interface BrowserRuntimeEvent {
     'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
     'permissionsRequested' | 'sitePermissionRequested' |
     'shellAccelerator' | 'linkHovered' | 'tabThumbnails' |
-    'openedInGroup' |
+    'openedInGroup' | 'pageScrollSettled' | 'pageContinuation' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |
     'extensionActionsChanged' |
@@ -211,6 +211,13 @@ export interface BrowserRuntimeEvent {
   // openedInGroup: the `id` of the tab that was just opened into the group.
   // The reader was left on the page they were on.
   id?: string;
+  // pageScrollSettled and pageContinuation: where the reader is in the page,
+  // in CSS pixels, and how big the document is. Divide to get a fraction that
+  // still means something on a screen of another width.
+  scrollX?: number;
+  scrollY?: number;
+  pageWidth?: number;
+  pageHeight?: number;
   // browserControlsRatio: how much of the shell's top bar the page shows, 0-1.
   ratio?: number;
   // findResult: the match count, the active match (1-based; 0 for none) and
@@ -292,6 +299,10 @@ export interface BrowserCommandPayload {
   groupId?: string;
   // newTab: leave the reader where they are. Default false.
   background?: boolean;
+  // newTab: how far down the document the reader was on the device they came
+  // from, 0 to 1. Applied once, when the page has finished loading, and not at
+  // all if they scroll first.
+  scrollRatio?: number;
   // closeTabById: after closing, go back to the tab that opened it, if that
   // tab is still open. Omitted leaves the choice to Chromium's own rule.
   returnToOpener?: boolean;
