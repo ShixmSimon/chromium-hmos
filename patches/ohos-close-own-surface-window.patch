@@ -1,0 +1,87 @@
+Let the shell close a window it was given a surface for.
+
+auxiliaryDismissWidget reached RequestCloseLogicalWindow, which refused any
+window that was not `auxiliary`. A window stops being auxiliary the moment the
+shell hosts it in a surface of its own -- which is what happens to an incognito
+window and to a tab dragged out into its own window, both of which arrive as
+windowRole "browser" with an aura_win_<widget> surface. So exactly the windows
+the shell draws a close button on were the ones it could not close, and the
+call returned false with nothing happening.
+
+The same check guarded the other end: a promoted window was erased without the
+shell being told, so no destroyed event either.
+
+Both now turn on whether the shell has ever been told the window exists, which
+is true for an auxiliary window and stays true after it is promoted. The first
+window is still left out -- the shell has always had it and is never told about
+it, so it cannot ask to close it by accident.
+
+The close itself was already right and is unchanged: the request reaches
+OnCloseRequest on the platform window, the same path a title bar's close button
+takes, so the tabs close in order, the session records them and the window is
+torn down properly. The destroyed event follows from UnregisterLogicalWindow
+once it has.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/ui/ozone/platform/ohos/ohos_native_window_registry.cc b/ui/ozone/platform/ohos/ohos_native_window_registry.cc
+--- a/ui/ozone/platform/ohos/ohos_native_window_registry.cc
++++ b/ui/ozone/platform/ohos/ohos_native_window_registry.cc
+@@ -65,6 +65,18 @@
+   bool auxiliary = false;
+   bool anchored = false;
+   uint64_t stacking_order = 0;
++  // Whether the shell has ever been told this window exists. True for every
++  // auxiliary window, and it stays true after one is promoted to a surface of
++  // its own -- a tab dragged out into its own window, or an incognito window
++  // the shell hosts itself. False for the first window, which the shell has
++  // always had and is never told about.
++  //
++  // What it decides: whether the shell may ask to close the window, and
++  // whether it hears that the window has gone. Both used to be decided by
++  // `auxiliary`, which stops being true the moment the shell gives the window
++  // a surface -- so exactly the windows the shell draws a close button on were
++  // the ones it could not close.
++  bool announced = false;
+ };
+ 
+ OhosLogicalWindowState MakeLogicalWindowState(gfx::AcceleratedWidget widget,
+@@ -131,6 +143,7 @@
+               promoted_state =
+                   MakeLogicalWindowState(record.widget, logical->second, true);
+               logical->second.auxiliary = false;
++              logical->second.announced = true;
+               callback = logical_window_state_callback_;
+             }
+           }
+@@ -356,6 +369,7 @@
+         .auxiliary = !widget_bindings_.contains(widget),
+         .anchored = anchored,
+         .stacking_order = ++next_stacking_order_,
++        .announced = !widget_bindings_.contains(widget),
+     };
+   }
+ 
+@@ -365,7 +379,7 @@
+     {
+       base::AutoLock lock(lock_);
+       auto it = logical_windows_.find(widget);
+-      if (it != logical_windows_.end() && it->second.auxiliary) {
++      if (it != logical_windows_.end() && it->second.announced) {
+         state = MakeLogicalWindowState(widget, it->second, true);
+         callback = logical_window_state_callback_;
+       }
+@@ -685,7 +699,12 @@
+       base::AutoLock lock(lock_);
+       auto logical = logical_windows_.find(widget);
+       auto close_callback = logical_window_close_callbacks_.find(widget);
+-      if (logical == logical_windows_.end() || !logical->second.auxiliary ||
++      // Any window the shell knows about, not only one it has not been given a
++      // surface for. The close itself is Chromium's: the request reaches
++      // OnCloseRequest on the platform window, which is the same path a title
++      // bar's close button takes, so the tabs close in order, the session
++      // records them and the window is torn down properly.
++      if (logical == logical_windows_.end() || !logical->second.announced ||
+           close_callback == logical_window_close_callbacks_.end()) {
+         return false;
+       }

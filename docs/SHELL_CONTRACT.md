@@ -151,7 +151,7 @@ struct Browser {
 | `url` | string | 初始网址,默认 `chrome://newtab/`。启动后改它会触发导航。 |
 | `profileId` | string | 用户配置目录的 ID,默认 `'local'`。 |
 | `browserCommandText` / `browserCommandRevision` | string / number | 命令通道。**只能通过 `BrowserCommandChannel` 写入**,见第 6 节。 |
-| `auxiliaryDismissWidget` / `auxiliaryDismissRevision` | number / number | 关闭一个辅助窗口,见第 7 节。 |
+| `auxiliaryDismissWidget` / `auxiliaryDismissRevision` | number / number | 关闭一个窗口,见第 7 节。对 `windowRole: "browser"` 的独立浏览器窗口(无痕、拖出来的标签)同样有效:标签会按顺序关掉、写进最近关闭,窗口拆完之后回一个 `destroyed: true` 的窗口状态。第一个主窗口不在其列,外壳从来没被告知过它,也就关不掉它。 |
 | `themeFontId` / `themeFontRevision` | string / number | 系统字体变化时传入。 |
 | `xComponentId` | string | 默认 `'aura_shell'`。一个进程里只能有一个浏览器 `WebWindow`,不要改。 |
 | `manageWindowDecor` | boolean | 默认 true。PWA 窗口模式下由引擎控制窗口装饰。 |
