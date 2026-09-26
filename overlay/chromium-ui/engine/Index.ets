@@ -58,6 +58,19 @@ export { SystemPrintAdapter } from './src/main/ets/utils/SystemPrintAdapter';
 export { ChromiumSystemAction, SystemIntegrationAdapter } from './src/main/ets/utils/SystemIntegrationAdapter';
 export { HuaweiKnockShareSession, HuaweiShareAdapter } from './src/main/ets/utils/HuaweiShareAdapter';
 
+// Services the shell answers on Chromium's behalf. Register before the first
+// WebWindow is created; the engine puts them on every window's bridge. The
+// engine's own names -- tts, notification, orientation, shape, userauth,
+// backgroundaudio -- cannot be taken over.
+export {
+  registerShellSystemService
+} from './src/main/ets/utils/SystemServices';
+export {
+  SystemServiceEmitter,
+  SystemServiceHandler,
+  SystemServiceHandlerFactory
+} from './src/main/ets/utils/SystemServiceBridge';
+
 // A tap on a web notification relaunches the app with this want; the shell's
 // EntryAbility passes every want here (onCreate and onNewWant).
 export { handleNotificationWant } from './src/main/ets/utils/NotificationService';
