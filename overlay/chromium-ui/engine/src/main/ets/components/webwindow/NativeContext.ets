@@ -154,11 +154,26 @@ export interface BrowserStateSnapshot {
 // What a long-press menu can offer. contextMenuRequested lists the ones that
 // apply in supportedActions; the shell sends one back in contextMenuAction.
 export type ContextMenuAction =
-  'openLinkInNewTab' | 'copyLinkAddress' | 'copyLinkText' | 'saveLinkAs' |
+  'openLinkInNewTab' | 'openLinkInIncognito' | 'copyLinkAddress' |
+  'copyLinkText' | 'saveLinkAs' | 'copyLinkToHighlight' |
   'openImageInNewTab' | 'saveImageAs' | 'copyImage' | 'copyImageAddress' |
   'toggleLoop' | 'toggleControls' | 'openMediaInNewTab' | 'saveMediaAs' |
   'copyMediaAddress' | 'copyVideoFrame' |
-  'copy' | 'cut' | 'paste' | 'selectAll' | 'searchSelection';
+  'copy' | 'cut' | 'paste' | 'pasteAsPlainText' | 'selectAll' | 'delete' |
+  'undo' | 'redo' | 'searchSelection' |
+  // Passwords. suggestPassword offers a generated one on a new-password
+  // field; selectSavedPassword opens the saved list through the ordinary
+  // autofill popup, which asks for the reader's identity first when
+  // passwordFillRequiresAuth is on.
+  'suggestPassword' | 'selectSavedPassword' | 'managePasswords' |
+  // Spelling. The numbered ones line up with spellSuggestions, and there are
+  // never more than five.
+  'spellSuggestion:0' | 'spellSuggestion:1' | 'spellSuggestion:2' |
+  'spellSuggestion:3' | 'spellSuggestion:4' | 'addToDictionary' |
+  // No Chromium command behind these two: the shell does the sharing itself,
+  // and imageToFile answers with contextMenuImageFile rather than doing
+  // anything to the page.
+  'shareLink' | 'imageToFile';
 
 // The long-pressed video or audio element's state.
 export interface ContextMenuMediaFlags {
@@ -209,6 +224,13 @@ export interface BrowserRuntimeEvent {
   pageUrl?: string;
   incognito?: boolean;
   supportedActions?: ContextMenuAction[];
+  // contextMenuRequested, spelling: the word the spellchecker objected to and
+  // what it suggests instead, at most five. Both absent unless the renderer
+  // found something -- the spellchecker here is Hunspell and there is no
+  // Hunspell dictionary for Chinese in any Chromium build, so on a zh-CN
+  // device they never appear.
+  misspelledWord?: string;
+  spellSuggestions?: string[];
   // openedInGroup: the `id` of the tab that was just opened into the group.
   // The reader was left on the page they were on.
   id?: string;

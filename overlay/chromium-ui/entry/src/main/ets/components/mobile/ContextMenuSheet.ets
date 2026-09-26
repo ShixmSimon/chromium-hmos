@@ -23,11 +23,37 @@ const ACTION_LABELS: Record<ContextMenuAction, string> = {
   'cut': '剪切',
   'paste': '粘贴',
   'selectAll': '全选',
-  'searchSelection': '搜索'
+  'searchSelection': '搜索',
+  'openLinkInIncognito': '在无痕窗口中打开',
+  'copyLinkToHighlight': '复制指向所选文字的链接',
+  'pasteAsPlainText': '粘贴为纯文本',
+  'delete': '删除',
+  'undo': '撤销',
+  'redo': '重做',
+  'suggestPassword': '建议强密码',
+  'selectSavedPassword': '选择已保存的密码',
+  'managePasswords': '管理密码',
+  'spellSuggestion:0': '',
+  'spellSuggestion:1': '',
+  'spellSuggestion:2': '',
+  'spellSuggestion:3': '',
+  'spellSuggestion:4': '',
+  'addToDictionary': '添加到词典',
+  'shareLink': '分享链接',
+  // Never shown: the shell's own "share image" and "look up image" run it.
+  'imageToFile': ''
 };
 
 function labelFor(event: BrowserRuntimeEvent, action: ContextMenuAction): string {
   const flags = event.mediaFlags;
+  // A spelling suggestion is labelled with the word it suggests, which only
+  // the event knows.
+  if (action.startsWith('spellSuggestion:')) {
+    const index = Number.parseInt(action.substring('spellSuggestion:'.length), 10);
+    const suggestions = event.spellSuggestions;
+    return suggestions && index >= 0 && index < suggestions.length
+      ? suggestions[index] : '';
+  }
   if (action === 'toggleLoop' && flags?.loop) {
     return '取消循环播放';
   }
@@ -65,7 +91,16 @@ export function showContextMenuSheet(uiContext: UIContext, event: BrowserRuntime
     send({ command: 'contextMenuDismissed', requestId: requestId });
     return;
   }
-  const sheets: SheetInfo[] = actions.map((action: ContextMenuAction): SheetInfo => ({
+  // Spelling suggestions carry the word rather than a fixed label, and
+  // imageToFile is something this shell runs itself rather than shows. An
+  // entry with no label would be a blank row.
+  const shown: ContextMenuAction[] = actions.filter(
+    (action: ContextMenuAction): boolean => labelFor(event, action).length > 0);
+  if (shown.length === 0) {
+    send({ command: 'contextMenuDismissed', requestId: requestId });
+    return;
+  }
+  const sheets: SheetInfo[] = shown.map((action: ContextMenuAction): SheetInfo => ({
     title: labelFor(event, action),
     action: (): void => {
       send({ command: 'contextMenuAction', requestId: requestId, action: action });

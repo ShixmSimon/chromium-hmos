@@ -10,6 +10,7 @@
 #include "base/command_line.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "chrome/app/chrome_command_ids.h"
@@ -66,7 +67,33 @@ constexpr ShellAction kShellActions[] = {
     {"paste", IDC_CONTENT_CONTEXT_PASTE},
     {"selectAll", IDC_CONTENT_CONTEXT_SELECTALL},
     {"searchSelection", IDC_CONTENT_CONTEXT_SEARCHWEBFOR},
+    {"pasteAsPlainText", IDC_CONTENT_CONTEXT_PASTE_AND_MATCH_STYLE},
+    {"undo", IDC_CONTENT_CONTEXT_UNDO},
+    {"redo", IDC_CONTENT_CONTEXT_REDO},
+    {"delete", IDC_CONTENT_CONTEXT_DELETE},
+    {"copyLinkToHighlight", IDC_CONTENT_CONTEXT_COPYLINKTOTEXT},
+    // Passwords. suggestPassword is the offer on a new-password field;
+    // selectSavedPassword is the manual fallback that opens the list of saved
+    // ones, which fills through the ordinary autofill popup and so asks for
+    // the reader's identity first if the setting says to.
+    {"suggestPassword", IDC_CONTENT_CONTEXT_GENERATEPASSWORD},
+    {"selectSavedPassword",
+     IDC_CONTENT_CONTEXT_AUTOFILL_FALLBACK_PASSWORDS_SELECT_PASSWORD},
+    {"managePasswords", IDC_CONTENT_CONTEXT_SHOWALLSAVEDPASSWORDS},
+    // Spelling. The numbered suggestions are not here -- their commands are
+    // consecutive and chosen by index, which a fixed table cannot express --
+    // but adding a word to the dictionary is an ordinary one.
+    {"addToDictionary", IDC_SPELLCHECK_ADD_TO_DICTIONARY},
 };
+
+// One of the numbered spelling suggestions: "spellSuggestion:0" runs
+// IDC_SPELLCHECK_SUGGESTION_0, and so on. Separate from the table above
+// because the command is worked out from the number rather than looked up.
+constexpr char kSpellSuggestionPrefix[] = "spellSuggestion:";
+
+// Chromium offers at most five and the shell shows at most five; keeping the
+// same number here means an index that arrives can always be checked.
+constexpr size_t kMaxSpellSuggestions = 5;
 
 // The menu model is only handed out const, but MenuClosed and OnMenuWillShow
 // match the notification against it by address.
@@ -259,6 +286,24 @@ base::DictValue BuildRequestEvent(int request_id,
   event.Set("pageUrl", params.page_url.is_valid() ? params.page_url.spec()
                                                   : std::string());
   event.Set("incognito", web_contents->GetBrowserContext()->IsOffTheRecord());
+  // Spelling. Only when the renderer actually found something: Chromium's
+  // spellchecker here is Hunspell, which needs a dictionary file, and there
+  // is no Hunspell dictionary for Chinese in any Chromium build. So on a
+  // zh-CN phone these are always absent and the shell shows nothing, which
+  // is the honest outcome rather than an empty menu section.
+  if (!params.misspelled_word.empty() &&
+      !params.dictionary_suggestions.empty()) {
+    base::ListValue suggestions;
+    for (const std::u16string& word : params.dictionary_suggestions) {
+      if (suggestions.size() >= kMaxSpellSuggestions) {
+        break;
+      }
+      suggestions.Append(base::UTF16ToUTF8(word));
+    }
+    event.Set("misspelledWord", base::UTF16ToUTF8(params.misspelled_word));
+    event.Set("spellSuggestions", std::move(suggestions));
+  }
+
   event.Set("supportedActions", std::move(supported));
   return event;
 }
@@ -314,6 +359,22 @@ void RunShellContextMenuAction(int request_id, const std::string& action) {
     // of which the shell should be kept waiting on with a menu still up.
     WriteContextMenuImageToFile(session->web_contents_for_action(),
                                 session->image_url(), request_id);
+    return;
+  }
+  if (action.starts_with(kSpellSuggestionPrefix)) {
+    size_t index = 0;
+    if (!base::StringToSizeT(
+            std::string_view(action).substr(strlen(kSpellSuggestionPrefix)),
+            &index) ||
+        index >= kMaxSpellSuggestions) {
+      LOG(WARNING) << "OHOS context menu: no such spelling suggestion "
+                   << action;
+      return;
+    }
+    const int command = IDC_SPELLCHECK_SUGGESTION_0 + static_cast<int>(index);
+    if (IsOffered(*session->menu(), command)) {
+      session->menu()->ExecuteCommand(command, /*event_flags=*/0);
+    }
     return;
   }
   for (const ShellAction& entry : kShellActions) {
