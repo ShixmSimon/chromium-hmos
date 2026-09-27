@@ -138,12 +138,18 @@ retire_incremental_patch() {
 # arrived.
 if [[ -n "${PACKAGE_ONLY:-}" ]]; then
   say 'PACKAGE_ONLY set; packaging the engine already staged'
-  steps=0
-  elapsed=0
+  # Whoever staged the engine did the compiling and knows these numbers.
+  # Passed in, they let the status file describe the whole build: zero
+  # steps from the half that only packages reads as a build that did
+  # nothing, and was taken for one.
+  steps="${STEPS_ELSEWHERE:-0}"
+  elapsed="${ELAPSED_ELSEWHERE:-0}"
+  compiled_here=false
   # Adopted below from the staged engine, which is the only one there is.
   build_id=''
   readonly readelf="${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf"
 else
+  compiled_here=true
   apply_incremental_patch "${repo_root}/patches/ohos-audio-input.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vibration.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-battery.patch"
@@ -213,6 +219,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-save-as-no-prompt.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-single-process-discardable.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-pdf-single-process.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-extension-context-diagnostics.patch"
   # The manager is trustworthy now -- HUKS holds the key and the user is asked
   # before a saved password is handed back -- so the patch that switched it off
   # comes out. The tree is persistent, so deleting the file is not enough.
@@ -309,8 +316,8 @@ fi
 
 # ---- stage + package -------------------------------------------------------
 if [[ -n "${SKIP_PACKAGE:-}" ]]; then
-  printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":false}\n' \
-    "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
+  printf '{"status":"ok","steps":%s,"elapsed":%s,"compiled_here":%s,"build_id":"%s","packaged":false}\n' \
+    "$steps" "$elapsed" "$compiled_here" "$build_id" >"${status_dir}/latest.json"
   exit 0
 fi
 
@@ -415,8 +422,8 @@ elif [[ -x "${DEVECO_CLT_HOME:-/root/harmonyos-clt}/tool/node/bin/node" ]]; then
   clt="${DEVECO_CLT_HOME:-/root/harmonyos-clt}"
 else
   say 'no packaging toolchain (DevEco or CLT); skipping packaging'
-  printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":false}\n' \
-    "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
+  printf '{"status":"ok","steps":%s,"elapsed":%s,"compiled_here":%s,"build_id":"%s","packaged":false}\n' \
+    "$steps" "$elapsed" "$compiled_here" "$build_id" >"${status_dir}/latest.json"
   exit 0
 fi
 
@@ -447,8 +454,8 @@ else
   deveco_win='D:\Applications\DevEco Studio'
   if [[ ! -d "$ui_wsl" ]]; then
     say 'no Windows-side checkout for packaging; skipping'
-    printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":false}\n' \
-      "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
+    printf '{"status":"ok","steps":%s,"elapsed":%s,"compiled_here":%s,"build_id":"%s","packaged":false}\n' \
+      "$steps" "$elapsed" "$compiled_here" "$build_id" >"${status_dir}/latest.json"
     exit 0
   fi
   ui_dir="$ui_wsl"
@@ -564,7 +571,12 @@ fi
 # package that was already good.
 har=''
 har_size=0
-if [[ -z "${SKIP_HAR:-}" ]]; then
+if [[ -n "${SKIP_HAR:-}" ]]; then
+  # Nothing distinguishes a HAR this run did not build from one it did.
+  # A stale one left in the output directory was picked up and tested as
+  # though it carried the change, which cost a round trip to find out.
+  rm -f "${stage_target}"/engine/build/*/outputs/*/*.har
+else
   say 'packaging engine HAR'
   if ( cd "$ui_dir" \
        && "$node_bin" "$hvigor_arg" \
@@ -598,8 +610,13 @@ if [[ -z "${SKIP_HAR:-}" ]]; then
   printf '%s\n' "$har" >"${status_dir}/har-path.txt"
 fi
 
-printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":%s,"hap":"%s","hap_bytes":%s,"har":"%s","har_bytes":%s}\n' \
-  "$steps" "$elapsed" "$build_id" "${hap:+true}${hap:-false}" \
+# packaged was not a boolean: ${hap:-false} yields the path whenever hap
+# is set, so a successful build wrote invalid JSON.
+packaged=false
+[[ -n "$hap" ]] && packaged=true
+
+printf '{"status":"ok","steps":%s,"elapsed":%s,"compiled_here":%s,"build_id":"%s","packaged":%s,"hap":"%s","hap_bytes":%s,"har":"%s","har_bytes":%s}\n' \
+  "$steps" "$elapsed" "$compiled_here" "$build_id" "$packaged" \
   "${hap:+$(basename "$hap")}" "$size" \
   "${har:+$(basename "$har")}" "$har_size" >"${status_dir}/latest.json"
 if [[ -n "$hap" ]]; then
