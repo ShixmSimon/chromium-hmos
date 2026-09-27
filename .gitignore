@@ -43,3 +43,7 @@ build-status/hap-path.txt
 # branch. Keeping it out of the working branch stops the runner and whoever is
 # developing from racing on the same files.
 build-status/
+
+# Screenshots pulled off a device while debugging. Written over on every
+# capture, never worth keeping.
+/shot.jpeg
