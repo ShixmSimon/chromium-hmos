@@ -1,5 +1,12 @@
 #include "ui/ozone/platform/ohos/ohos_platform_window.h"
 
+#include "base/run_loop.h"
+#include "base/strings/utf_string_conversions.h"
+#include "ui/base/cursor/cursor.h"
+#include "ui/base/dragdrop/drag_drop_types.h"
+#include "ui/base/dragdrop/os_exchange_data.h"
+#include "ui/platform_window/wm/wm_drop_handler.h"
+
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/task/single_thread_task_runner.h"
@@ -48,6 +55,20 @@ OhosPlatformWindow::OhosPlatformWindow(PlatformWindowDelegate* delegate,
           },
           base::SingleThreadTaskRunner::GetCurrentDefault(),
           weak_factory_.GetWeakPtr()));
+  // Registered here rather than by the window tree host: the host reads it
+  // back in CreateDragDropClient, which runs right after this constructor.
+  SetWmDragHandler(this, this);
+  SetOhosDragCallback(
+      adapter_.GetAcceleratedWidget(),
+      base::BindRepeating(
+          [](base::WeakPtr<OhosPlatformWindow> window,
+             OhosDragEvent event) -> int {
+            // Straight through rather than posted: the caller wants the
+            // operation back so it can show the right badge, and it is
+            // already on the UI thread.
+            return window ? window->OnDragEvent(std::move(event)) : 0;
+          },
+          weak_factory_.GetWeakPtr()));
   if (PlatformEventSource* event_source = PlatformEventSource::GetInstance()) {
     event_source->AddPlatformEventDispatcher(this);
   }
@@ -55,6 +76,8 @@ OhosPlatformWindow::OhosPlatformWindow(PlatformWindowDelegate* delegate,
 
 OhosPlatformWindow::~OhosPlatformWindow() {
   SetWmMoveLoopHandler(this, nullptr);
+  SetWmDragHandler(this, nullptr);
+  SetOhosDragCallback(adapter_.GetAcceleratedWidget(), {});
   SetOhosLogicalWindowCloseCallback(adapter_.GetAcceleratedWidget(), {});
   SetOhosNativeSurfaceBoundsCallback(adapter_.GetAcceleratedWidget(), {});
   if (PlatformEventSource* event_source = PlatformEventSource::GetInstance()) {
@@ -88,6 +111,62 @@ void OhosPlatformWindow::Close() {
 
 void OhosPlatformWindow::OnLogicalWindowCloseRequest() {
   delegate()->OnCloseRequest();
+}
+
+int OhosPlatformWindow::OnDragEvent(OhosDragEvent event) {
+  // DesktopDragDropClientOzone is registered as this window's drop handler
+  // when the window tree host creates its drag-and-drop client, so from here
+  // the path is the one every ozone platform takes: find the aura window
+  // under the point, build a DropTargetEvent, ask WebContentsViewAura, which
+  // asks the page.
+  if (event.stage == OhosDragStage::kSourceFinished) {
+    // Our own drag ending, not the system dragging over us. Handled before
+    // the drop handler is looked up: there is nothing to hand it, and a
+    // window without one must still be able to stop waiting.
+    source_drag_operation_ = event.operations;
+    if (end_source_drag_) {
+      std::move(end_source_drag_).Run();
+    }
+    return event.operations;
+  }
+
+  WmDropHandler* handler = GetWmDropHandler(*this);
+  if (!handler) {
+    return 0;
+  }
+  switch (event.stage) {
+    case OhosDragStage::kEnter:
+      handler->OnDragEnter(event.location, event.operations, /*modifiers=*/0);
+      if (event.data) {
+        handler->OnDragDataAvailable(std::move(event.data));
+      }
+      return handler->OnDragMotion(event.location, event.operations,
+                                   /*modifiers=*/0);
+    case OhosDragStage::kMove:
+      return handler->OnDragMotion(event.location, event.operations,
+                                   /*modifiers=*/0);
+    case OhosDragStage::kLeave:
+      handler->OnDragLeave();
+      return 0;
+    case OhosDragStage::kSourceFinished:
+      return 0;  // Answered above.
+    case OhosDragStage::kDrop: {
+      if (event.data) {
+        // Replaces the summary sent on enter. Legal to send twice, and it has
+        // to be: until now the file paths were not known.
+        handler->OnDragDataAvailable(std::move(event.data));
+      }
+      // What the page will take, asked one last time now that the real data
+      // is here. Zero means nothing under the finger wanted it, and the
+      // shell is told so it can decide what dropping on a browser means.
+      const int accepted =
+          handler->OnDragMotion(event.location, event.operations,
+                                /*modifiers=*/0);
+      handler->OnDragDrop(/*modifiers=*/0);
+      return accepted;
+    }
+  }
+  return 0;
 }
 
 bool OhosPlatformWindow::IsVisible() const {
@@ -196,6 +275,84 @@ uint32_t OhosPlatformWindow::DispatchEvent(const PlatformEvent& event) {
   }
   delegate()->DispatchEvent(event);
   return POST_DISPATCH_STOP_PROPAGATION;
+}
+
+bool OhosPlatformWindow::StartDrag(const OSExchangeData& data,
+                                   int operations,
+                                   mojom::DragEventSource source,
+                                   gfx::NativeCursor cursor,
+                                   bool can_grab_pointer,
+                                   base::OnceClosure drag_started_callback,
+                                   DragFinishedCallback drag_finished_callback,
+                                   LocationDelegate* location_delegate) {
+  (void)source;
+  (void)cursor;
+  (void)can_grab_pointer;
+  // No location delegate work: HarmonyOS draws the drag preview and moves it
+  // itself, so Chromium is not asked to follow the finger.
+  (void)location_delegate;
+  if (end_source_drag_) {
+    // Already dragging. One at a time is all the system offers.
+    return false;
+  }
+
+  OhosDragOutRequest request;
+  request.widget = adapter_.GetAcceleratedWidget();
+  request.operations = operations;
+  if (std::optional<std::u16string> text = data.GetString()) {
+    request.text = base::UTF16ToUTF8(*text);
+  }
+  const std::vector<ClipboardUrlInfo> urls =
+      data.GetURLs(FilenameToURLPolicy::DO_NOT_CONVERT_FILENAMES);
+  if (!urls.empty()) {
+    // The one the reader put their finger on, which is the first.
+    request.url = urls.front().url.spec();
+  }
+  if (std::optional<OSExchangeData::HtmlInfo> html = data.GetHtml()) {
+    request.html = base::UTF16ToUTF8(html->html);
+  }
+  if (request.text.empty() && request.url.empty() && request.html.empty()) {
+    // Nothing the system can carry. Dragging an image out of a page would
+    // land here: it needs the bytes written somewhere first, which is not
+    // done yet.
+    return false;
+  }
+
+  if (!StartOhosDragOut(std::move(request))) {
+    return false;
+  }
+  std::move(drag_started_callback).Run();
+
+  source_drag_operation_ = 0;
+  base::RunLoop loop(base::RunLoop::Type::kNestableTasksAllowed);
+  end_source_drag_ = loop.QuitClosure();
+  // Blocks until the app side reports the drag finished, the way StartDrag is
+  // specified to. The browser's UI thread is its own thread here, so the app
+  // keeps drawing and can still deliver the answer.
+  base::WeakPtr<OhosPlatformWindow> alive = weak_factory_.GetWeakPtr();
+  loop.Run();
+  if (!alive) {
+    return false;
+  }
+  end_source_drag_.Reset();
+
+  const int operation = source_drag_operation_;
+  std::move(drag_finished_callback).Run(PreferredDragOperation(operation));
+  return operation != DragDropTypes::DRAG_NONE;
+}
+
+void OhosPlatformWindow::CancelDrag() {
+  if (end_source_drag_) {
+    source_drag_operation_ = DragDropTypes::DRAG_NONE;
+    std::move(end_source_drag_).Run();
+  }
+}
+
+void OhosPlatformWindow::UpdateDragImage(const gfx::ImageSkia& image,
+                                         const gfx::Vector2d& offset) {
+  // HarmonyOS owns the drag preview; Chromium's is never shown.
+  (void)image;
+  (void)offset;
 }
 
 bool OhosPlatformWindow::RunMoveLoop(const gfx::Vector2d& drag_offset) {

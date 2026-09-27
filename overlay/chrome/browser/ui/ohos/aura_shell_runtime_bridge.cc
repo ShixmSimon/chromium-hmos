@@ -7,6 +7,7 @@
 #include "chrome/browser/ui/ohos/screen_orientation_delegate_ohos.h"
 #include "chrome/browser/ui/ohos/shell_permission_prompt_ohos.h"
 #include "chrome/browser/ui/ohos/shell_context_menu_image_ohos.h"
+#include "chrome/browser/ui/ohos/shell_drag_drop_ohos.h"
 #include "chrome/browser/ui/ohos/shell_page_position_ohos.h"
 #include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
@@ -1930,6 +1931,8 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   if (!cleared_shared_images) {
     cleared_shared_images = true;
     chrome::ohos::ClearSharedImageDirectory();
+    chrome::ohos::ClearDroppedFileDirectory();
+    chrome::ohos::WatchPageDragsOut();
   }
 
   base::ListValue tab_values;
@@ -2793,6 +2796,34 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
         chrome::ohos::RestoreScrollRatioOnce(opened, *ratio);
       }
     }
+  } else if (*name == "pageDragFinished") {
+    // The drag the page started has ended. Whatever it landed on -- another
+    // app, another window of ours, nothing -- the answer comes back the same
+    // way, and StartDrag stops waiting.
+    chrome::ohos::FinishPageDragOut(widget, command.FindString("operation"));
+  } else if (*name == "dragEvent") {
+    // The system is dragging something over the page, or has just dropped it.
+    const std::string operation =
+        chrome::ohos::HandleShellDragEvent(widget, command);
+    const std::string* stage = command.FindString("stage");
+    if (stage && *stage == "drop" && operation == "none") {
+      // The page would not take it -- no drop target under the finger, or a
+      // page that never called preventDefault. Hand it back so the shell can
+      // do whatever dropping on a browser means for it: open the link, search
+      // the text, show the file in a tab.
+      base::DictValue event;
+      event.Set("event", "dropNotHandled");
+      if (const base::ListValue* urls = command.FindList("urls")) {
+        event.Set("urls", urls->Clone());
+      }
+      if (const std::string* text = command.FindString("text")) {
+        event.Set("text", *text);
+      }
+      if (const base::ListValue* files = command.FindList("files")) {
+        event.Set("files", files->Clone());
+      }
+      DispatchRuntimeEvent(widget, std::move(event));
+    }
   } else if (*name == "handleBack") {
     // The system's back gesture, offered to the page before the tab acts on
     // it. A page with a <dialog> open, in fullscreen, or with a CloseWatcher
@@ -3268,6 +3299,8 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "groupTabs",
       "insertText",
       "handleBack",
+      "dragEvent",
+      "pageDragFinished",
       "closeTab",
       "closeTabById",
       "moveTab",

@@ -32,6 +32,7 @@ source_set("native_window_registry") {
 
   deps = [
     "//base",
+    "//ui/base",
     "//ui/gfx/geometry",
   ]
 }

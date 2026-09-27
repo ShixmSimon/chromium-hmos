@@ -197,7 +197,8 @@ export interface BrowserRuntimeEvent {
     'shellAccelerator' | 'linkHovered' | 'tabThumbnails' |
     'openedInGroup' | 'pageScrollSettled' | 'pageContinuation' |
     'contextMenuImageFile' | 'contextMenuActionsChanged' |
-    'backHandled' |
+    'backHandled' | 'dropNotHandled' |
+    'pageDragStarted' | 'pageDragEnded' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |
     'extensionActionsChanged' |
@@ -257,7 +258,18 @@ export interface BrowserRuntimeEvent {
   activeMatch?: number;
   finalUpdate?: boolean;
   // pageText: the page's visible text, at most 20000 characters.
+  // dropNotHandled: the dragged text, empty when none was dragged.
   text?: string;
+  // pageDragStarted: what the page is dragging out. The engine's own
+  // window turns these into a system drag; a shell drawing its own page area
+  // would have to do the same.
+  html?: string;
+  operation?: 'copy' | 'move' | 'link' | 'none';
+  // dropNotHandled: what was dropped and the page would not take.
+  urls?: string[];
+  files?: DroppedFileRef[];
+  // pageDragEnded: whether the drag ended on something that accepted it.
+  dropped?: boolean;
   action?: 'huaweiAccount' | 'huaweiWallet' | 'defaultBrowser' | 'checkForUpdates';
   filePath?: string;
   appId?: string;
@@ -281,6 +293,21 @@ export interface BrowserRuntimeEvent {
   known?: boolean;
   isDefault?: boolean;
   huaweiWalletAvailable?: boolean;
+}
+
+// A file that was dragged into the app. The engine has already copied it out
+// of the sending app -- the permission on the sender's URI lasts only as long
+// as the drop -- so `path` is an ordinary path this app can read.
+export interface DroppedFileRef {
+  path: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+  // A JPEG of the same picture, for showing it. Present only for a format
+  // Chromium cannot decode but HarmonyOS can -- HEIC, which is what a photo
+  // dragged out of the gallery is. Upload uses `path`, the original: a page
+  // asking for the photo should get the photo, not our re-encoding of it.
+  viewPath?: string;
 }
 
 export interface BrowserCommandPayload {
@@ -376,6 +403,20 @@ export interface BrowserCommandPayload {
   forward?: boolean;
   index?: number;
   requestId?: number;
+  // dragEvent: which part of the system drag this is.
+  stage?: 'enter' | 'move' | 'leave' | 'drop';
+  // dragEvent: where the finger is, in vp inside the page's own box -- not
+  // the window: the shell's bars are not part of the page.
+  x?: number;
+  y?: number;
+  // dragEvent: the dragged HTML, when the source offered any.
+  // pageDragFinished: nothing; the drag's ending is in `operation`.
+  html?: string;
+  // pageDragFinished: what the thing it landed on took.
+  operation?: 'copy' | 'move' | 'link' | 'none';
+  // dragEvent: the dragged files. Sent on `drop` only; while the finger is
+  // still down HarmonyOS says how many there are and nothing else.
+  files?: DroppedFileRef[];
   paths?: string[];
   fileTypeIndex?: number;
   canceled?: boolean;

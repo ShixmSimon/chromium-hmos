@@ -679,6 +679,45 @@ class NativeWindowRegistry {
     }
   }
 
+  void SetDragCallback(gfx::AcceleratedWidget widget,
+                       OhosDragCallback callback) {
+    base::AutoLock lock(lock_);
+    if (callback) {
+      drag_callbacks_[widget] = std::move(callback);
+    } else {
+      drag_callbacks_.erase(widget);
+    }
+  }
+
+  int DispatchDragEvent(gfx::AcceleratedWidget widget, OhosDragEvent event) {
+    OhosDragCallback callback;
+    {
+      base::AutoLock lock(lock_);
+      auto found = drag_callbacks_.find(widget);
+      if (found == drag_callbacks_.end()) {
+        return 0;
+      }
+      callback = found->second;
+    }
+    // Run outside the lock: it ends in the drop target, which reaches into
+    // the page and can take a while.
+    return callback.Run(std::move(event));
+  }
+
+  void SetDragOutCallback(OhosDragOutCallback callback) {
+    base::AutoLock lock(lock_);
+    drag_out_callback_ = std::move(callback);
+  }
+
+  bool StartDragOut(OhosDragOutRequest request) {
+    OhosDragOutCallback callback;
+    {
+      base::AutoLock lock(lock_);
+      callback = drag_out_callback_;
+    }
+    return callback ? callback.Run(std::move(request)) : false;
+  }
+
   bool RequestCloseLogicalWindow(gfx::AcceleratedWidget widget) {
     OhosLogicalWindowCloseCallback callback;
     {
@@ -704,6 +743,11 @@ class NativeWindowRegistry {
   std::vector<gfx::AcceleratedWidget> pending_widgets_ GUARDED_BY(lock_);
   std::set<gfx::AcceleratedWidget> expected_native_surfaces_
       GUARDED_BY(lock_);
+  std::map<gfx::AcceleratedWidget, OhosDragCallback> drag_callbacks_
+      GUARDED_BY(lock_);
+  // One for the whole process: the app side that starts a system drag is the
+  // same one whatever window asked for it.
+  OhosDragOutCallback drag_out_callback_ GUARDED_BY(lock_);
   std::map<gfx::AcceleratedWidget, OhosNativeSurfaceBoundsCallback>
       bounds_callbacks_ GUARDED_BY(lock_);
   std::map<gfx::AcceleratedWidget, LogicalWindowRecord> logical_windows_
@@ -909,6 +953,28 @@ void SetOhosLogicalWindowCloseCallback(
 
 bool RequestCloseOhosLogicalWindow(gfx::AcceleratedWidget widget) {
   return GetRegistry().RequestCloseLogicalWindow(widget);
+}
+
+OhosDragEvent::OhosDragEvent() = default;
+OhosDragEvent::OhosDragEvent(OhosDragEvent&&) = default;
+OhosDragEvent& OhosDragEvent::operator=(OhosDragEvent&&) = default;
+OhosDragEvent::~OhosDragEvent() = default;
+
+void SetOhosDragCallback(gfx::AcceleratedWidget widget,
+                         OhosDragCallback callback) {
+  GetRegistry().SetDragCallback(widget, std::move(callback));
+}
+
+int DispatchOhosDragEvent(gfx::AcceleratedWidget widget, OhosDragEvent event) {
+  return GetRegistry().DispatchDragEvent(widget, std::move(event));
+}
+
+void SetOhosDragOutCallback(OhosDragOutCallback callback) {
+  GetRegistry().SetDragOutCallback(std::move(callback));
+}
+
+bool StartOhosDragOut(OhosDragOutRequest request) {
+  return GetRegistry().StartDragOut(std::move(request));
 }
 
 }  // namespace ui

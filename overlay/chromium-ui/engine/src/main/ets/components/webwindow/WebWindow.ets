@@ -15,8 +15,10 @@
 
 import display from '@ohos.display';
 import { common } from '@kit.AbilityKit';
-import { promptAction, window } from '@kit.ArkUI';
-import { fileIo } from '@kit.CoreFileKit';
+import { dragController, promptAction, window } from '@kit.ArkUI';
+import { unifiedDataChannel, uniformTypeDescriptor } from '@kit.ArkData';
+import { fileIo, fileUri } from '@kit.CoreFileKit';
+import { image } from '@kit.ImageKit';
 import { i18n } from '@kit.LocalizationKit';
 import { AuraStartupConfig, CHROMIUM_HOME_URL } from '../../utils/DeviceType';
 import { UIManager } from '../../utils/UIManager';
@@ -26,11 +28,17 @@ import {
   BrowserCommandPayload,
   BrowserRuntimeEvent,
   BrowserStateSnapshot,
+  DroppedFileRef,
   KeyEventPayload,
   NativeContext,
   PointerEventPayload,
   WindowRect
 } from './NativeContext';
+
+interface PointInPage {
+  x: number;
+  y: number;
+}
 
 export interface WebWindowOptions {
   xComponentId?: string;
@@ -123,6 +131,15 @@ export struct WebWindow {
   private lastActivationEpoch: number = 0;
   private lastFocusedTarget: 'webContents' | 'sidePanel' = 'webContents';
   private lastSidePanelEntryId: string = '';
+  // Where a file dragged into a page is copied to. The sending app's URI is
+  // readable only while the drop is being handled, so the file has to be
+  // taken now; what the page and the shell get afterwards is an ordinary
+  // path of ours. Emptied on every launch by the engine.
+  private droppedFileDir: string = '';
+  private droppedFileSequence: number = 0;
+  // What the drag preview says while the page's own drag is out. HarmonyOS
+  // draws the preview from this component, so it has to be a real one.
+  @Local dragOutLabel: string = '';
 
   aboutToAppear() {
     this.currentUrl = this.url && this.url.trim().length > 0 ? this.url : CHROMIUM_HOME_URL;
@@ -187,6 +204,18 @@ export struct WebWindow {
     this.executePendingAuxiliaryDismiss();
   }
 
+  @Builder
+  dragOutPreview() {
+    Text(this.dragOutLabel)
+      .fontSize(14)
+      .maxLines(1)
+      .textOverflow({ overflow: TextOverflow.Ellipsis })
+      .constraintSize({ maxWidth: 240 })
+      .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+      .backgroundColor('#F0FFFFFF')
+      .borderRadius(8)
+  }
+
   build() {
     Column() {
       XComponent({
@@ -223,6 +252,32 @@ export struct WebWindow {
         .onAxisEvent((event: AxisEvent) => {
           this.dispatchAxisEvent(event);
         })
+        // Without allowDrop the system shows a no-entry badge and onDrop
+        // never fires. These are the types a page can do something with; a
+        // drag of anything else is refused by the system before it gets here.
+        .allowDrop([
+          uniformTypeDescriptor.UniformDataType.PLAIN_TEXT,
+          uniformTypeDescriptor.UniformDataType.HYPERLINK,
+          uniformTypeDescriptor.UniformDataType.HTML,
+          uniformTypeDescriptor.UniformDataType.FILE,
+          uniformTypeDescriptor.UniformDataType.FOLDER,
+          uniformTypeDescriptor.UniformDataType.IMAGE,
+          uniformTypeDescriptor.UniformDataType.VIDEO,
+          uniformTypeDescriptor.UniformDataType.AUDIO,
+          uniformTypeDescriptor.UniformDataType.PDF
+        ])
+        .onDragEnter((event: DragEvent) => {
+          this.dispatchDragStage('enter', event);
+        })
+        .onDragMove((event: DragEvent) => {
+          this.dispatchDragStage('move', event);
+        })
+        .onDragLeave((event: DragEvent) => {
+          this.dispatchDragStage('leave', event);
+        })
+        .onDrop((event: DragEvent) => {
+          this.dispatchDrop(event);
+        })
         .onKeyEventDispatch((event: KeyEvent): boolean => {
           return this.dispatchKeyEvent(event);
         })
@@ -243,6 +298,8 @@ export struct WebWindow {
       this.updateXComponentMode(startupConfig);
       this.applyDisplayMetrics(startupConfig);
       this.attachUserDataDirectory(startupConfig);
+      this.droppedFileDir =
+        startupConfig.userDataDir ? `${startupConfig.userDataDir}/dropped` : '';
       this.prepareRuntimeAssets(startupConfig);
       this.attachIcuDataDescriptor(startupConfig);
       this.surfaceReady = false;
@@ -867,6 +924,336 @@ export struct WebWindow {
     }
   }
 
+  // The page's box inside the window, in vp. A shell with its own top bar
+  // gives this component less than the window, and the engine lays the page
+  // out in this box, so a drag position has to be measured from its corner.
+  private dragPointInPage(event: DragEvent): PointInPage {
+    const ui = this.getUIContext();
+    const offsetX = this.hasComponentArea ? ui.px2vp(this.componentOffsetXPx) : 0;
+    const offsetY = this.hasComponentArea ? ui.px2vp(this.componentOffsetYPx) : 0;
+    const point: PointInPage = {
+      x: Number(event.getWindowX()) - offsetX,
+      y: Number(event.getWindowY()) - offsetY
+    };
+    return point;
+  }
+
+  private dispatchDragStage(stage: 'enter' | 'move' | 'leave', event: DragEvent): void {
+    if (!this.nativeContext) {
+      return;
+    }
+
+    const point = this.dragPointInPage(event);
+    const payload: BrowserCommandPayload = {
+      command: 'dragEvent',
+      stage: stage,
+      x: point.x,
+      y: point.y
+    };
+    if (stage === 'enter') {
+      // While the finger is down HarmonyOS says only which types are coming,
+      // and Blink shows the page only the type list too -- a drag's names and
+      // bytes stay hidden until it is dropped. So a placeholder of each type
+      // is exactly as much as anyone is allowed to see, and it is what makes
+      // the page's dragenter fire with the right `types`.
+      this.describeDragTypes(event, payload);
+    }
+    this.nativeContext.ExecuteBrowserCommand(JSON.stringify(payload));
+  }
+
+  private describeDragTypes(event: DragEvent, payload: BrowserCommandPayload): void {
+    try {
+      const summary: Record<string, number> = event.getSummary().summary;
+      const types: string[] = Object.keys(summary);
+      for (const type of types) {
+        if (type === uniformTypeDescriptor.UniformDataType.PLAIN_TEXT) {
+          payload.text = ' ';
+        } else if (type === uniformTypeDescriptor.UniformDataType.HYPERLINK) {
+          payload.urls = ['about:blank'];
+        } else if (type === uniformTypeDescriptor.UniformDataType.HTML) {
+          payload.html = ' ';
+        } else if (!payload.files) {
+          const placeholder: DroppedFileRef = {
+            path: `${this.droppedFileDir}/pending/file`
+          };
+          payload.files = [placeholder];
+        }
+      }
+    } catch (error) {
+      // A summary the system would not give us is not worth failing over:
+      // the drop still carries the real thing.
+      console.warn(`WebWindow: no drag summary: ${this.normalizeError(error).message}`);
+    }
+  }
+
+  private dispatchDrop(event: DragEvent): void {
+    if (!this.nativeContext) {
+      event.setResult(DragResult.DRAG_FAILED);
+      return;
+    }
+
+    const point = this.dragPointInPage(event);
+    const payload: BrowserCommandPayload = {
+      command: 'dragEvent',
+      stage: 'drop',
+      x: point.x,
+      y: point.y
+    };
+    const urls: string[] = [];
+    const files: DroppedFileRef[] = [];
+    try {
+      const records: unifiedDataChannel.UnifiedRecord[] = event.getData().getRecords();
+      let targetDir: string = '';
+      for (const record of records) {
+        if (record instanceof unifiedDataChannel.PlainText) {
+          payload.text = record.textContent;
+        } else if (record instanceof unifiedDataChannel.Hyperlink) {
+          urls.push(record.url);
+        } else if (record instanceof unifiedDataChannel.HTML) {
+          payload.html = record.htmlContent;
+          if (!payload.text && record.plainContent) {
+            payload.text = record.plainContent;
+          }
+        } else if (record instanceof unifiedDataChannel.File) {
+          // Image, Video, Audio and Folder are all Files, so this covers them.
+          if (!targetDir) {
+            targetDir = this.prepareDropDirectory();
+          }
+          const copied = this.copyDroppedFile(record.uri, targetDir);
+          if (copied) {
+            files.push(copied);
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`WebWindow: reading the drop failed: ${this.normalizeError(error).message}`);
+    }
+    if (urls.length > 0) {
+      payload.urls = urls;
+    }
+    if (files.length > 0) {
+      payload.files = files;
+    }
+    // A HEIC has to be turned into something Chromium can draw before the
+    // drop is announced, because the announcement is what makes the shell
+    // open it. Only then, and only for those files, is the drop delayed.
+    if (files.some((file: DroppedFileRef) => this.needsTranscoding(file))) {
+      this.transcodeForViewing(files)
+        .then(() => {
+          this.nativeContext?.ExecuteBrowserCommand(JSON.stringify(payload));
+        });
+    } else {
+      this.nativeContext.ExecuteBrowserCommand(JSON.stringify(payload));
+    }
+    // The engine took delivery. Whether the page itself wanted it is a
+    // separate question, answered by the dropNotHandled event -- telling the
+    // system it failed here would only play the snap-back animation at a
+    // reader whose file we did in fact accept.
+    event.setResult(DragResult.DROP_ENABLED);
+  }
+
+  // Chromium has no HEIC decoder in any build -- the format is patented and
+  // Chrome leans on the platform for it, which on Android means Android's
+  // decoder and here means HarmonyOS's. A photo dragged out of the gallery is
+  // a HEIC, so without this it arrives as a broken image.
+  private needsTranscoding(file: DroppedFileRef): boolean {
+    return file.mimeType === 'image/heic' || file.mimeType === 'image/heif';
+  }
+
+  private async transcodeForViewing(files: DroppedFileRef[]): Promise<void> {
+    for (const file of files) {
+      if (!this.needsTranscoding(file)) {
+        continue;
+      }
+      const target = `${file.path}.jpg`;
+      let source: image.ImageSource | null = null;
+      let packer: image.ImagePacker | null = null;
+      let handle: fileIo.File | null = null;
+      try {
+        source = image.createImageSource(file.path);
+        packer = image.createImagePacker();
+        handle = fileIo.openSync(target,
+          fileIo.OpenMode.CREATE | fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.TRUNC);
+        await packer.packToFile(source, handle.fd, { format: 'image/jpeg', quality: 92 });
+        file.viewPath = target;
+      } catch (error) {
+        // Leave viewPath unset: the shell then has the original, and a
+        // picture it cannot show is better than no drop at all.
+        console.error(`WebWindow: could not transcode ${file.name}: ${this.normalizeError(error).message}`);
+      } finally {
+        if (handle) {
+          try {
+            fileIo.closeSync(handle);
+          } catch (error) {
+          }
+        }
+        packer?.release();
+        source?.release();
+      }
+    }
+  }
+
+  // One directory per drop, so two files of the same name from two drops do
+  // not collide and a page cannot be handed a path it saw before.
+  private prepareDropDirectory(): string {
+    if (!this.droppedFileDir) {
+      throw new Error('No directory to copy dropped files into');
+    }
+    this.droppedFileSequence += 1;
+    const dir = `${this.droppedFileDir}/${Date.now().toString(36)}-${this.droppedFileSequence}`;
+    fileIo.mkdirSync(dir, true);
+    return dir;
+  }
+
+  private copyDroppedFile(uri: string, targetDir: string): DroppedFileRef | null {
+    let source: fileIo.File | null = null;
+    try {
+      const name = this.safeDroppedFileName(new fileUri.FileUri(uri).name);
+      const target = `${targetDir}/${name}`;
+      source = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
+      fileIo.copyFileSync(source.fd, target);
+      const copied: DroppedFileRef = {
+        path: target,
+        name: name,
+        mimeType: this.mimeTypeForName(name),
+        size: fileIo.statSync(target).size
+      };
+      return copied;
+    } catch (error) {
+      console.error(`WebWindow: could not copy a dropped file: ${this.normalizeError(error).message}`);
+      return null;
+    } finally {
+      if (source) {
+        try {
+          fileIo.closeSync(source);
+        } catch (error) {
+        }
+      }
+    }
+  }
+
+  // The name comes from another app. It becomes a path component here and a
+  // file name the page is shown, so it keeps only what a name may contain.
+  private safeDroppedFileName(name: string): string {
+    const trimmed = (name ?? '').replace(/[\/\\:*?"<>|\u0000]/g, '_').trim();
+    if (!trimmed || trimmed === '.' || trimmed === '..') {
+      return 'file';
+    }
+    return trimmed.substring(0, 120);
+  }
+
+  private mimeTypeForName(name: string): string {
+    const dot = name.lastIndexOf('.');
+    const extension = dot >= 0 ? name.substring(dot + 1).toLowerCase() : '';
+    const known: Record<string, string> = {
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      'bmp': 'image/bmp',
+      'svg': 'image/svg+xml',
+      'heic': 'image/heic',
+      'heif': 'image/heif',
+      'pdf': 'application/pdf',
+      'txt': 'text/plain',
+      'md': 'text/plain',
+      'csv': 'text/csv',
+      'html': 'text/html',
+      'htm': 'text/html',
+      'json': 'application/json',
+      'xml': 'text/xml',
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+      'm4a': 'audio/mp4',
+      'ogg': 'audio/ogg',
+      'mp4': 'video/mp4',
+      'webm': 'video/webm',
+      'mkv': 'video/x-matroska',
+      'mov': 'video/quicktime'
+    };
+    return known[extension] ?? 'application/octet-stream';
+  }
+
+  // The page started dragging something. Chromium cannot ask HarmonyOS for
+  // a drag itself -- that has to come from the UI thread, with a component to
+  // draw the preview from -- so it asked us, and is now blocked waiting for
+  // the answer. Every path out of here ends in finishPageDragOut.
+  private startPageDragOut(event: BrowserRuntimeEvent): void {
+    const text: string = event.text ?? '';
+    const url: string = event.url ?? '';
+    const html: string = event.html ?? '';
+    const data = new unifiedDataChannel.UnifiedData();
+    let carried = false;
+    if (url.length > 0) {
+      const link = new unifiedDataChannel.Hyperlink();
+      link.url = url;
+      link.description = text;
+      data.addRecord(link);
+      carried = true;
+    }
+    if (html.length > 0) {
+      const markup = new unifiedDataChannel.HTML();
+      markup.htmlContent = html;
+      markup.plainContent = text;
+      data.addRecord(markup);
+      carried = true;
+    }
+    if (text.length > 0) {
+      // Last, so an app that takes the first record it understands gets the
+      // link or the markup rather than the bare text.
+      const plain = new unifiedDataChannel.PlainText();
+      plain.textContent = text;
+      data.addRecord(plain);
+      carried = true;
+    }
+    if (!carried) {
+      this.finishPageDragOut(false);
+      return;
+    }
+
+    this.dragOutLabel = url.length > 0 ? url : text;
+    const info: dragController.DragInfo = {
+      // The first finger: the one that has been held down since the long
+      // press that started this. A mouse reports 0 too.
+      pointerId: 0,
+      data: data
+    };
+    try {
+      this.getUIContext().getDragController()
+        .executeDrag(() => {
+          this.dragOutPreview();
+        }, info)
+        .then((result: dragController.DragEventParam) => {
+          this.finishPageDragOut(result.event.getResult() === DragResult.DRAG_SUCCESSFUL);
+        })
+        .catch((error: Object) => {
+          console.error(`WebWindow: the page's drag failed: ${this.normalizeError(error).message}`);
+          this.finishPageDragOut(false);
+        });
+    } catch (error) {
+      console.error(`WebWindow: could not start the page's drag: ${this.normalizeError(error).message}`);
+      this.finishPageDragOut(false);
+    }
+  }
+
+  private finishPageDragOut(dropped: boolean): void {
+    this.dragOutLabel = '';
+    const payload: BrowserCommandPayload = {
+      command: 'pageDragFinished',
+      // HarmonyOS says whether it was taken, not what was done with it, and
+      // a drag out of a page is a copy in every case we can start.
+      operation: dropped ? 'copy' : 'none'
+    };
+    this.nativeContext?.ExecuteBrowserCommand(JSON.stringify(payload));
+    const ended: BrowserRuntimeEvent = {
+      version: 1,
+      event: 'pageDragEnded',
+      dropped: dropped
+    };
+    this.onRuntimeEvent?.(ended);
+  }
+
   private dispatchAxisEvent(event: AxisEvent): void {
     if (!this.nativeContext) {
       return;
@@ -950,6 +1337,11 @@ export struct WebWindow {
       const runtimeEvent = parsed as BrowserRuntimeEvent;
       if (runtimeEvent.event) {
         this.onRuntimeEvent?.(runtimeEvent);
+        if (runtimeEvent.event === 'pageDragStarted') {
+          // Chromium is waiting inside StartDrag for this to come back, so
+          // it goes out even if the shell ignored the event.
+          this.startPageDragOut(runtimeEvent);
+        }
         if (runtimeEvent.event === 'pwaMenuClosed') {
           this.restoreXComponentFocus();
         }

@@ -631,10 +631,11 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 
 组成员变化不另发事件,照常在 `tabs` 里读。
 
-**拖放(尚未实现,形状已定)**
+**拖放**
 
-下面这几条**引擎还没有实现**,写在这里是为了让外壳能照着写、不用等。实现之后会把这
-一行删掉。进度看 `docs/engine-requests/2026-09-27-drag-and-drop.md`。
+拖进网页已经实现，外壳不用接任何东西：页面那块 XComponent 是引擎自己的，系统拖
+放的进入、移动、离开、落下全由引擎收下来交给 Blink。外壳只在页面自己不要的时候
+收到下面这两类事件。
 
 拖进网页:
 
@@ -643,24 +644,36 @@ dropNotHandled {
   windowId?: number,
   urls: string[],
   text: string,
-  files: [{ path, name, mimeType, size }][]
+  files: [{ path, name, mimeType, size, viewPath? }][]
 }
 ```
 
 网页自己处理掉的落下**不会**发这条 —— 只有渲染器回了 operation none、或者页面没有
 `preventDefault` 时才发,让外壳按产品规则接手。文件在发这条之前已经复制到
-`<cacheDir>/dropped/<随机目录>/<原文件名>`,`path` 就是它;那个目录每次启动清空,无痕
-窗口拖进来的在窗口关闭时删。
+`<userDataDir>/dropped/<随机目录>/<原文件名>`，`path` 就是它。当初写的是
+cacheDir，改成了引擎自己的数据目录 —— Chromium 在鸿蒙上取不到应用的 cacheDir，
+而引擎必须能自己校验这个路径：交给渲染器的文件路径同时就是它获得读权限
+的范围，只收自己放进去的东西。对外壳没区别。那个目录每次启动清空。
 
-从网页拖出:
+`viewPath` 只在 HEIC / HEIF 上出现（相册里拖出来的照片就是）：那是引擎用鸿蒙的
+解码器转出来的 JPEG，因为 Chromium 任何构建都没有 HEIC 解码器。要把图片展示
+出来就用 `viewPath`，有它用它、没它用 `path`。上传永远用 `path`：页面要的是那
+张照片，不是我们重新编的版本。
+
+从网页拖出：
 
 ```
-pageDragStarted { windowId?: number }
+pageDragStarted { windowId?: number, url: string, text: string, html: string }
 pageDragEnded   { windowId?: number, dropped: boolean }
 ```
 
-手机上长按不动照常出 `contextMenuRequested`;手指开始移动才发 `pageDragStarted`,外壳
+手机上长按不动照常出 `contextMenuRequested`；手指开始移动才发 `pageDragStarted`，外壳
 收到就把已经弹出的长按菜单收掉。平板 / PC 用鼠标拖也发这两条。
+
+拖出去的东西本身不用外壳管：引擎自己把链接、文字、HTML 放进 UDMF 并启动
+系统拖放。`pageDragStarted` 里的 `url` / `text` / `html` 只是告诉外壳拖的是什么，
+方便它做自己的事（收菜单、埋点）。图片拖出还没做 —— 它需要先把像素写成文件，
+现在遇到图片拖放会直接不启动。
 
 **画中画**
 

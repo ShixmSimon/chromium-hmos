@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drag and drop</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; }
+  #zone {
+    border: 2px dashed #888; border-radius: 12px; padding: 32px 16px;
+    text-align: center; color: #555; transition: background .15s;
+  }
+  #zone.over { background: #e8f0ff; border-color: #2b6cff; color: #2b6cff; }
+  #log { white-space: pre-wrap; font: 13px/1.4 monospace; margin-top: 16px; }
+  p a { display: inline-block; margin: 8px 0; }
+  img { max-width: 160px; }
+</style>
+
+<h1>Drag and drop</h1>
+
+<div id="zone">Drop a file, a link or some text here</div>
+
+<p>Drag these out: <a href="https://example.com/dragged-link">a link</a>,
+  <img id="pic" src="qr-sample.png" alt="a picture"></p>
+
+<div id="log"></div>
+
+<script>
+  const zone = document.getElementById('zone');
+  const log = document.getElementById('log');
+  const say = (line) => { log.textContent = line + '\n' + log.textContent; };
+
+  for (const type of ['dragenter', 'dragover', 'dragleave', 'drop']) {
+    zone.addEventListener(type, (event) => {
+      event.preventDefault();
+      if (type === 'dragover') { return; }  // Too many to log.
+      zone.classList.toggle('over', type === 'dragenter');
+      const types = [...event.dataTransfer.types].join(', ') || '(none)';
+      let detail = '';
+      if (type === 'drop') {
+        const files = [...event.dataTransfer.files]
+          .map((f) => `${f.name} ${f.size}B ${f.type || '?'}`).join('; ');
+        const text = event.dataTransfer.getData('text/plain');
+        const uri = event.dataTransfer.getData('text/uri-list');
+        detail = `\n    files: ${files || '(none)'}\n    text: ${text || '(none)'}` +
+                 `\n    uri: ${uri || '(none)'}`;
+      }
+      say(`${type} @${Math.round(event.clientX)},${Math.round(event.clientY)} types: ${types}${detail}`);
+    });
+  }
+
+  document.addEventListener('dragstart', (event) => {
+    say(`dragstart on <${event.target.tagName.toLowerCase()}>`);
+  });
+  document.addEventListener('dragend', (event) => {
+    say(`dragend effect: ${event.dataTransfer.dropEffect}`);
+  });
+</script>

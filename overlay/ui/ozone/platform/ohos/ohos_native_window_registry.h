@@ -2,12 +2,15 @@
 #define UI_OZONE_PLATFORM_OHOS_OHOS_NATIVE_WINDOW_REGISTRY_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
 #include "base/functional/callback.h"
 #include "base/time/time.h"
+#include "ui/base/dragdrop/os_exchange_data.h"
 #include "ui/gfx/geometry/point.h"
+#include "ui/gfx/geometry/point_f.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/native_ui_types.h"
@@ -57,6 +60,64 @@ using OhosWindowActionCallback =
 using OhosLogicalWindowStateCallback =
     base::RepeatingCallback<void(const OhosLogicalWindowState& state)>;
 using OhosLogicalWindowCloseCallback = base::RepeatingClosure;
+
+// What the system's drag is doing over one window. The shell sees HarmonyOS's
+// drag events on the XComponent and sends them here; the platform window
+// hands them to Chromium's drop handler, which is the same path Wayland and
+// X11 take.
+enum class OhosDragStage {
+  kEnter,
+  kMove,
+  kLeave,
+  kDrop,
+  // Not the system dragging over us but our own drag, the one the page
+  // started, coming to an end. `operations` carries what the thing it landed
+  // on took, or none when it landed on nothing.
+  kSourceFinished,
+};
+
+struct OhosDragEvent {
+  OhosDragEvent();
+  OhosDragEvent(OhosDragEvent&&);
+  OhosDragEvent& operator=(OhosDragEvent&&);
+  ~OhosDragEvent();
+
+  OhosDragStage stage = OhosDragStage::kMove;
+  // Where the finger or pointer is, in this window's coordinates, in DIP.
+  gfx::PointF location;
+  // What the source will allow, as ui::DragDropTypes bits.
+  int operations = 0;
+  // The data. Present on enter and on drop, null on the rest: HarmonyOS only
+  // says what the types are until the finger lifts, so what arrives on enter
+  // is a summary and what arrives on drop is the real thing.
+  std::unique_ptr<OSExchangeData> data;
+};
+
+// Returns what the window will do with the drag, as a ui::DragDropTypes bit,
+// so the shell can show the right badge before the finger lifts.
+using OhosDragCallback =
+    base::RepeatingCallback<int(OhosDragEvent event)>;
+
+// A drag the page started, on its way out to the system.
+//
+// Chromium cannot start a HarmonyOS drag itself: that wants an ArkUI node on
+// the ArkUI thread, and the browser runs on a thread of its own. So the app
+// side starts it and reports how it ended, and the window's StartDrag blocks
+// on a nested loop in between -- which is what StartDrag does on every other
+// platform too.
+struct OhosDragOutRequest {
+  gfx::AcceleratedWidget widget = gfx::kNullAcceleratedWidget;
+  std::string text;
+  std::string url;
+  std::string html;
+  // What the page will allow, as ui::DragDropTypes bits.
+  int operations = 0;
+};
+
+// Returns false when nobody is listening, and then the drag does not start.
+using OhosDragOutCallback = base::RepeatingCallback<bool(OhosDragOutRequest)>;
+void SetOhosDragOutCallback(OhosDragOutCallback callback);
+bool StartOhosDragOut(OhosDragOutRequest request);
 
 void RegisterOhosNativeSurface(const std::string& component_id,
                                void* window,
@@ -126,6 +187,11 @@ bool RequestOhosWindowAction(gfx::AcceleratedWidget widget,
 void SetOhosLogicalWindowStateCallback(OhosLogicalWindowStateCallback callback);
 void SetOhosLogicalWindowCloseCallback(gfx::AcceleratedWidget widget,
                                        OhosLogicalWindowCloseCallback callback);
+void SetOhosDragCallback(gfx::AcceleratedWidget widget,
+                         OhosDragCallback callback);
+// Nothing happens, and DRAG_NONE comes back, when no window has that widget
+// -- a drag arriving while a window is closing, say.
+int DispatchOhosDragEvent(gfx::AcceleratedWidget widget, OhosDragEvent event);
 bool RequestCloseOhosLogicalWindow(gfx::AcceleratedWidget widget);
 
 }  // namespace ui
