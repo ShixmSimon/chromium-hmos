@@ -185,6 +185,7 @@ apply_incremental_patch "${repo_root}/patches/ohos-password-reauth.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-ua-chrome-android.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-save-as-no-prompt.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-single-process-discardable.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-pdf-single-process.patch"
 # The manager is trustworthy now -- HUKS holds the key and the user is asked
 # before a saved password is handed back -- so the patch that switched it off
 # comes out. The tree is persistent, so deleting the file is not enough.

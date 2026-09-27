@@ -37,7 +37,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  #include "content/public/browser/network_service_instance.h"
  #include "content/public/browser/permission_controller.h"
  #include "content/public/browser/permission_descriptor_util.h"
-@@ -4524,6 +4528,150 @@
+@@ -4524,6 +4528,165 @@
  #endif
  }
  
@@ -85,9 +85,24 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
 +  // Read from the committed URL rather than the SiteInstance: the site of the
 +  // initial about:blank entry says nothing about where the tab went next.
 +  const GURL url = web_contents ? web_contents->GetLastCommittedURL() : GURL();
++  //
++  // The built-in PDF viewer is the same kind of page: Chromium's own UI,
++  // declaring no viewport. Under the mobile rules it was laid out at 980px
++  // and scaled to fit, which on a phone made the plugin 2377x7161 device
++  // pixels inside a 376x809 window, a 70 MB paint buffer per frame, and the
++  // desktop reader with its thumbnail sidebar squeezed into a third of the
++  // screen.
++  //
++  // It is recognised by the MIME type because nothing else here says so:
++  // the tab's URL is the PDF's own, the viewer's extension page is a
++  // subframe, and the wrapper PluginResponseWriter serves is text/html.
++  // GetContentsMimeType() is what browser_commands.cc uses to spot a PDF
++  // tab, and it still reads application/pdf through all of that.
 +  const bool is_web_ui =
 +      url.SchemeIs(content::kChromeUIScheme) ||
 +      url.SchemeIs(content::kChromeUIUntrustedScheme) ||
++      (web_contents &&
++       web_contents->GetContentsMimeType() == "application/pdf") ||
 +      main_frame_site.GetSecurityPrincipal().SchemeIs(
 +          content::kChromeUIScheme) ||
 +      main_frame_site.GetSecurityPrincipal().SchemeIs(
@@ -188,7 +203,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  void ChromeContentBrowserClient::OverrideWebPreferences(
      WebContents* web_contents,
      content::SiteInstance& main_frame_site,
-@@ -4859,43 +5007,7 @@
+@@ -4859,43 +5022,7 @@
  #endif
  
  #if BUILDFLAG(IS_OHOS)
@@ -233,7 +248,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  #endif
  
    for (auto& parts : extra_parts_) {
-@@ -4928,6 +5040,14 @@
+@@ -4928,6 +5055,14 @@
      content::SiteInstance& main_frame_site,
      WebPreferences* web_prefs) {
    bool prefs_changed = false;

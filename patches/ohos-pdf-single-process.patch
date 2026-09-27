@@ -1,0 +1,202 @@
+Let a phone open a PDF without killing the browser.
+
+Opening any PDF on a phone took the whole browser down with it: the viewer's
+own page came up, and a moment later the process was gone. Nothing was
+logged, because an argument-less CHECK in an official build is a bare
+`brk #0` with no message.
+
+pdf::CreateInternalPlugin() asserts three things before it will build the
+plugin, and two of them are about the process layout: that this renderer was
+started with --pdf-renderer, and that the frame embedding the plugin lives in
+another process. Neither holds on a phone, which runs Chromium
+single-process -- the shell has no native child processes to spawn there.
+--pdf-renderer is added in RenderProcessHostImpl::AppendRendererCommandLine
+and nowhere else, and that never runs for an in-process renderer, so
+IsPdfRenderer() was false for every PDF anyone has ever opened on a phone.
+That assertion is the one that fired; the other would have fired next,
+because without out-of-process iframes the embedder frame is local.
+
+So on OHOS both are skipped when the browser is single-process. Nothing is
+given away: what keeps an untrusted page from embedding the internal plugin
+is IsPdfInternalPluginAllowedOrigin() on the parent frame, which runs before
+all of this and is untouched, and so is the assertion that this frame is not
+itself one of those trusted origins -- that one says nothing about processes.
+
+IsPdfRenderer() gates one more thing that matters here: the viewer's page is
+exempt from the extension default CSP, because PluginResponseWriter writes
+inline style and script into it. That exemption also never fired on a phone,
+so the same page is exempted by its origin instead.
+
+The viewer's page also needs the window's own width, which it was not
+getting -- that fix lives in ohos-phone-viewport.patch, where the rule it
+belongs to already is.
+
+Last, the viewer painted on the wrong thread. PaintManager posts its
+paint callback to the process main thread, which in a renderer process
+is that renderer's main thread -- but single-process makes it the
+browser's UI thread, while Blink keeps driving the plugin from the
+renderer thread. The two then raced over the plugin's pixel buffer:
+UpdateGeometry reallocating it while DoPaint was erasing it, which is a
+segfault whenever the timing lines up. It posts to the thread the
+PaintManager was built on instead. SkiaBufferReleaseProc has the same
+assumption but only runs under kPdfBufferedPaintManager, which is off.
+
+Tablets and 2in1s spawn real child processes and were never affected.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/components/pdf/renderer/internal_plugin_renderer_helpers.cc b/components/pdf/renderer/internal_plugin_renderer_helpers.cc
+--- a/components/pdf/renderer/internal_plugin_renderer_helpers.cc
++++ b/components/pdf/renderer/internal_plugin_renderer_helpers.cc
+@@ -9,6 +9,7 @@
+ 
+ #include "base/check.h"
+ #include "base/command_line.h"
++#include "build/build_config.h"
+ #include "components/pdf/common/pdf_util.h"
+ #include "components/pdf/renderer/pdf_view_web_plugin_client.h"
+ #include "content/public/common/content_switches.h"
+@@ -32,6 +33,20 @@
+       base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kPdfRenderer);
+   return has_switch;
+ }
++
++#if BUILDFLAG(IS_OHOS)
++// Whether the whole browser is one process.
++//
++// HarmonyOS phones run that way: the shell has no native child processes to
++// spawn there, so OhosChromeMainRunner passes --single-process. Tablets and
++// 2in1s do spawn them and are ordinary multi-process Chromium.
++bool RunsEverythingInOneProcess() {
++  static const bool one_process =
++      base::CommandLine::ForCurrentProcess()->HasSwitch(
++          switches::kSingleProcess);
++  return one_process;
++}
++#endif  // BUILDFLAG(IS_OHOS)
+ 
+ blink::WebPlugin* CreateInternalPlugin(
+     blink::WebPluginParams params,
+@@ -57,8 +72,30 @@
+     return nullptr;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Two of the three assertions below describe where the PDF plugin lives:
++  // in a renderer process of its own, embedded from a frame in a different
++  // process. A phone has neither -- it runs everything in one process -- so
++  // on a phone both of them fail, and the browser died the moment any PDF
++  // finished loading. The first one is what fired: --pdf-renderer is only
++  // ever added in RenderProcessHostImpl::AppendRendererCommandLine, which a
++  // single-process build never reaches, so IsPdfRenderer() was false for
++  // every PDF anyone has opened. The third would have gone next: with no
++  // out-of-process iframes the embedder frame is local, not remote.
++  //
++  // What they protect is unchanged. These two say the plugin is isolated
++  // from the trusted page that embedded it; the check that says an untrusted
++  // page cannot embed it at all is IsPdfInternalPluginAllowedOrigin() on the
++  // parent, above, and it still runs and still refuses. The middle assertion
++  // -- that this frame is not itself one of those trusted origins -- does not
++  // depend on the process layout either, and is left alone.
++  const bool one_process = RunsEverythingInOneProcess();
++#else
++  const bool one_process = false;
++#endif
++
+   // Only create the in-process plugin within a PDF renderer.
+-  CHECK(IsPdfRenderer());
++  CHECK(IsPdfRenderer() || one_process);
+ 
+   // Origins allowed to embed the internal plugin are trusted (the PDF viewer
+   // and Print Preview), and should never directly create the in-process plugin.
+@@ -67,7 +104,7 @@
+   // See crbug.com/1259635 and crbug.com/1261758 for examples of previous bugs.
+   CHECK(!IsPdfInternalPluginAllowedOrigin(frame->GetSecurityOrigin(),
+                                           additional_allowed_origins));
+-  CHECK(parent_frame->IsWebRemoteFrame());
++  CHECK(parent_frame->IsWebRemoteFrame() || one_process);
+ 
+   mojo::AssociatedRemote<pdf::mojom::PdfHost> pdf_host;
+   render_frame->GetRemoteAssociatedInterfaces()->GetInterface(
+diff --git a/chrome/renderer/chrome_content_renderer_client.cc b/chrome/renderer/chrome_content_renderer_client.cc
+--- a/chrome/renderer/chrome_content_renderer_client.cc
++++ b/chrome/renderer/chrome_content_renderer_client.cc
+@@ -1653,6 +1653,17 @@
+   // better place to define such CSP, or we may continue doing so here.
+   if (pdf::IsPdfRenderer())
+     return;
++#if BUILDFLAG(IS_OHOS)
++  // A phone has no PDF renderer to be -- it runs everything in one process --
++  // so the exemption above never fires there, and the viewer's own page got
++  // the extension's default CSP, which forbids exactly the inline style and
++  // script that PluginResponseWriter writes into it. Ask what the page is
++  // rather than what process it is in; for the viewer's origin that reaches
++  // the same answer upstream reaches by the other route.
++  if (IsPdfExtensionOrigin(url::Origin::Create(GURL(url)))) {
++    return;
++  }
++#endif  // BUILDFLAG(IS_OHOS)
+ #endif  // BUILDFLAG(ENABLE_PDF)
+ 
+   DCHECK(csp);
+diff --git a/pdf/paint_manager.h b/pdf/paint_manager.h
+--- a/pdf/paint_manager.h
++++ b/pdf/paint_manager.h
+@@ -11,6 +11,8 @@
+ #include "base/containers/heap_array.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/weak_ptr.h"
++#include "base/task/single_thread_task_runner.h"
++#include "build/build_config.h"
+ #include "pdf/paint_aggregator.h"
+ #include "third_party/skia/include/core/SkAlphaType.h"
+ #include "third_party/skia/include/core/SkBitmap.h"
+@@ -254,6 +256,21 @@
+   // True when the view size just changed and we're waiting for a paint.
+   bool view_size_changed_waiting_for_paint_ = false;
+ 
++#if BUILDFLAG(IS_OHOS)
++  // The thread the plugin lives on, taken at construction.
++  //
++  // Everything below used to be posted to the process main thread, which in
++  // a renderer process is that renderer's main thread. A phone runs
++  // single-process: the process main thread is the browser's UI thread and
++  // each renderer is a thread of its own. So the paint callback arrived on a
++  // different thread from the one Blink drives the plugin on, and the two
++  // raced over the same pixel buffer -- UpdateGeometry reallocating it while
++  // DoPaint was erasing it. Freeing 70 MB of direct-mapped pixels under a
++  // memset is a segfault, and an intermittent one.
++  const scoped_refptr<base::SingleThreadTaskRunner> plugin_thread_ =
++      base::SingleThreadTaskRunner::GetCurrentDefault();
++#endif  // BUILDFLAG(IS_OHOS)
++
+   base::WeakPtrFactory<PaintManager> weak_factory_{this};
+   // We need a separate WeakPtrFactory which is only invalidated on destruction
+   // rather than semantic callback cancellation.
+diff --git a/pdf/paint_manager.cc b/pdf/paint_manager.cc
+--- a/pdf/paint_manager.cc
++++ b/pdf/paint_manager.cc
+@@ -41,6 +41,7 @@
+ #include "ui/gfx/geometry/rect.h"
+ #include "ui/gfx/geometry/size.h"
+ #include "ui/gfx/geometry/skia_conversions.h"
++#include "build/build_config.h"
+ #include "ui/gfx/geometry/vector2d.h"
+ #include "ui/gfx/geometry/vector2d_f.h"
+ 
+@@ -287,9 +288,15 @@
+     return;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  plugin_thread_->PostTask(
++      FROM_HERE, base::BindOnce(&PaintManager::OnManualCallbackComplete,
++                                weak_factory_.GetWeakPtr()));
++#else
+   base::SingleThreadTaskRunner::GetMainThreadDefault()->PostTask(
+       FROM_HERE, base::BindOnce(&PaintManager::OnManualCallbackComplete,
+                                 weak_factory_.GetWeakPtr()));
++#endif
+   manual_callback_pending_ = true;
+ }
+ 
