@@ -1,0 +1,43 @@
+Put a dragged image's bytes where the platform can reach them.
+
+Dragging an image out of a page did nothing on HarmonyOS, and the reason was
+two lines above the code that would have handled it: the call that copies the
+image's bytes into the OSExchangeData is compiled only for Linux, ChromeOS
+and Windows. IS_OHOS is none of those -- it is its own buildflag, with
+IS_LINUX at zero -- so PrepareDragForFileContents() never ran, the data
+carried no file contents, and by the time the platform was asked to start a
+drag there was nothing in it but a URL.
+
+The same file already reads file contents back out on the drop side without
+that guard, so this only puts the two directions on the same footing.
+
+What it unlocks: GetSafeFilenameForImageFileContents() names the file from
+the page the way a "save image as" would, and keeps the image's own
+extension when it is a real image type, so the bytes go out in the format
+they arrived in rather than re-encoded.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/content/browser/web_contents/web_contents_view_aura.cc b/content/browser/web_contents/web_contents_view_aura.cc
+--- a/content/browser/web_contents/web_contents_view_aura.cc
++++ b/content/browser/web_contents/web_contents_view_aura.cc
+@@ -190,7 +190,8 @@
+   raw_ptr<aura::Window> window_;
+ };
+ 
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_WIN)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_WIN) || \
++    BUILDFLAG(IS_OHOS)
+ // Fill out the OSExchangeData with a file contents, synthesizing a name if
+ // necessary.
+ void PrepareDragForFileContents(const DropData& drop_data,
+@@ -270,7 +271,8 @@
+     PrepareDragForDownload(source_rfh, drop_data, provider);
+   }
+ #endif
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_WIN)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_WIN) || \
++    BUILDFLAG(IS_OHOS)
+   // We set the file contents before the URL because the URL also sets file
+   // contents (to a .URL shortcut).  We want to prefer file content data over
+   // a shortcut so we add it first.

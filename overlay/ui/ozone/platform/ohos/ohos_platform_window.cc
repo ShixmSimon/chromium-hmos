@@ -311,10 +311,18 @@ bool OhosPlatformWindow::StartDrag(const OSExchangeData& data,
   if (std::optional<OSExchangeData::HtmlInfo> html = data.GetHtml()) {
     request.html = base::UTF16ToUTF8(html->html);
   }
-  if (request.text.empty() && request.url.empty() && request.html.empty()) {
-    // Nothing the system can carry. Dragging an image out of a page would
-    // land here: it needs the bytes written somewhere first, which is not
-    // done yet.
+  if (std::optional<OSExchangeData::FileContentsInfo> contents =
+          data.GetFileContents()) {
+    // An image. The bytes are the ones the page loaded, in the format it
+    // loaded them in, and the name is the one a "save image as" would use.
+    // Whoever takes this from here writes them to a file: this layer has no
+    // business choosing a directory in the profile.
+    request.file_name = contents->filename.AsUTF8Unsafe();
+    request.file_contents = std::move(contents->file_contents);
+  }
+  if (request.text.empty() && request.url.empty() && request.html.empty() &&
+      request.file_contents.empty()) {
+    // Nothing the system can carry.
     return false;
   }
 

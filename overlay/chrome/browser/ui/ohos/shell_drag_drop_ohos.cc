@@ -13,6 +13,7 @@
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/path_service.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/thread_pool.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
@@ -196,11 +197,42 @@ void FinishPageDragOut(gfx::AcceleratedWidget widget,
   ui::DispatchOhosDragEvent(widget, std::move(finished));
 }
 
+// Writes a dragged image where the app side can hand it to the system.
+//
+// Next to the files dragged in, under the same rule: emptied at startup, and
+// the only directory the engine will take a file path from. One directory per
+// drag so two drags of the same picture do not collide.
+//
+// Written on this thread on purpose. StartDrag is about to block waiting for
+// the drag to finish, so the file has to exist before it returns -- and a
+// page's image is a few hundred kilobytes, not a download.
+std::string WriteDraggedImage(const std::string& name,
+                              base::span<const uint8_t> contents) {
+  const base::FilePath dir = DroppedFileDirectory();
+  if (dir.empty() || contents.empty()) {
+    return std::string();
+  }
+  static int sequence = 0;
+  const base::FilePath target =
+      dir.AppendASCII(base::StringPrintf("out-%d", ++sequence))
+          .Append(base::FilePath::FromUTF8Unsafe(name).BaseName());
+  if (!base::CreateDirectory(target.DirName()) ||
+      !base::WriteFile(target, contents)) {
+    LOG(WARNING) << "OHOS drag: could not write the dragged image to "
+                 << target;
+    return std::string();
+  }
+  return target.AsUTF8Unsafe();
+}
+
 void WatchPageDragsOut() {
   ui::SetOhosDragOutCallback(
       base::BindRepeating([](ui::OhosDragOutRequest request) -> bool {
         base::DictValue event;
         event.Set("event", "pageDragStarted");
+        // Empty unless an image is being dragged.
+        event.Set("filePath", WriteDraggedImage(request.file_name,
+                                                request.file_contents));
         event.Set("text", request.text);
         event.Set("url", request.url);
         event.Set("html", request.html);

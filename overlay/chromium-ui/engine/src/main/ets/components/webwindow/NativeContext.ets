@@ -271,6 +271,10 @@ export interface BrowserRuntimeEvent {
   // pageDragEnded: whether the drag ended on something that accepted it.
   dropped?: boolean;
   action?: 'huaweiAccount' | 'huaweiWallet' | 'defaultBrowser' | 'checkForUpdates';
+  // systemPrintReady: the PDF that was printed.
+  // pageDragStarted: a picture being dragged out, already written into the
+  // engine's own dropped directory in the format the page loaded it in.
+  // Absent for anything else; `url` carries where the picture came from.
   filePath?: string;
   appId?: string;
   title?: string;

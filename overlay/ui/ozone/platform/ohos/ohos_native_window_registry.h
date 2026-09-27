@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <vector>
 #include <string>
 
 #include "base/functional/callback.h"
@@ -112,6 +113,11 @@ struct OhosDragOutRequest {
   std::string html;
   // What the page will allow, as ui::DragDropTypes bits.
   int operations = 0;
+  // An image dragged out of the page: the bytes the page loaded, and the
+  // name a "save image as" would have given it, extension included. Empty
+  // for everything else.
+  std::string file_name;
+  std::vector<uint8_t> file_contents;
 };
 
 // Returns false when nobody is listening, and then the drag does not start.

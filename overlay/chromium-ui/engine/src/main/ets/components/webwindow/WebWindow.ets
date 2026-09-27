@@ -140,6 +140,9 @@ export struct WebWindow {
   // What the drag preview says while the page's own drag is out. HarmonyOS
   // draws the preview from this component, so it has to be a real one.
   @Local dragOutLabel: string = '';
+  // The picture being dragged out, as a file:// URI, empty when what is
+  // being dragged is not one.
+  @Local dragOutImage: string = '';
 
   aboutToAppear() {
     this.currentUrl = this.url && this.url.trim().length > 0 ? this.url : CHROMIUM_HOME_URL;
@@ -206,7 +209,15 @@ export struct WebWindow {
 
   @Builder
   dragOutPreview() {
-    Text(this.dragOutLabel)
+    if (this.dragOutImage.length > 0) {
+      // Dragging a picture: show the picture. HarmonyOS draws whatever this
+      // builder produces under the finger.
+      Image(this.dragOutImage)
+        .objectFit(ImageFit.Contain)
+        .constraintSize({ maxWidth: 160, maxHeight: 160 })
+        .borderRadius(8)
+    } else {
+      Text(this.dragOutLabel)
       .fontSize(14)
       .maxLines(1)
       .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -214,6 +225,7 @@ export struct WebWindow {
       .padding({ left: 12, right: 12, top: 8, bottom: 8 })
       .backgroundColor('#F0FFFFFF')
       .borderRadius(8)
+    }
   }
 
   build() {
@@ -1183,8 +1195,18 @@ export struct WebWindow {
     const text: string = event.text ?? '';
     const url: string = event.url ?? '';
     const html: string = event.html ?? '';
+    const filePath: string = event.filePath ?? '';
     const data = new unifiedDataChannel.UnifiedData();
     let carried = false;
+    if (filePath.length > 0) {
+      // A picture. First, so an app that takes the first record it
+      // understands gets the image rather than its address -- dragging a
+      // photo into a chat should send the photo.
+      const picture = new unifiedDataChannel.Image();
+      picture.imageUri = fileUri.getUriFromPath(filePath);
+      data.addRecord(picture);
+      carried = true;
+    }
     if (url.length > 0) {
       const link = new unifiedDataChannel.Hyperlink();
       link.url = url;
@@ -1212,6 +1234,8 @@ export struct WebWindow {
       return;
     }
 
+    this.dragOutImage =
+      filePath.length > 0 ? `file://${filePath}` : '';
     this.dragOutLabel = url.length > 0 ? url : text;
     const info: dragController.DragInfo = {
       // The first finger: the one that has been held down since the long
@@ -1239,6 +1263,7 @@ export struct WebWindow {
 
   private finishPageDragOut(dropped: boolean): void {
     this.dragOutLabel = '';
+    this.dragOutImage = '';
     const payload: BrowserCommandPayload = {
       command: 'pageDragFinished',
       // HarmonyOS says whether it was taken, not what was done with it, and

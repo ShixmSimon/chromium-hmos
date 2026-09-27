@@ -663,7 +663,8 @@ cacheDir，改成了引擎自己的数据目录 —— Chromium 在鸿蒙上取�
 从网页拖出：
 
 ```
-pageDragStarted { windowId?: number, url: string, text: string, html: string }
+pageDragStarted { windowId?: number, url: string, text: string, html: string,
+                  filePath?: string }
 pageDragEnded   { windowId?: number, dropped: boolean }
 ```
 
@@ -672,8 +673,16 @@ pageDragEnded   { windowId?: number, dropped: boolean }
 
 拖出去的东西本身不用外壳管：引擎自己把链接、文字、HTML 放进 UDMF 并启动
 系统拖放。`pageDragStarted` 里的 `url` / `text` / `html` 只是告诉外壳拖的是什么，
-方便它做自己的事（收菜单、埋点）。图片拖出还没做 —— 它需要先把像素写成文件，
-现在遇到图片拖放会直接不启动。
+方便它做自己的事（收菜单、埋点）。
+
+图片拖出也做了。图片按**网页加载时的原格式原样**写成临时文件（不重新编码），
+文件名和「图片另存为」取的一样，落在 `<userDataDir>/dropped/` 下，和拖进来的文件
+同一套规矩、启动时清空。UDMF 里 **Image（file-uri）在前、Hyperlink（图片地址）
+在后** —— 顺序是有意的，拖进聊天窗口应该发图片而不是发链接。拖动预览就是
+那张图。
+
+`filePath` 就是那份临时文件，只在拖图片时出现；`url` 是图片的原地址。拖出去
+的东西本身不用外壳管，这两个字段只是告诉你们拖的是什么。
 
 **画中画**
 
