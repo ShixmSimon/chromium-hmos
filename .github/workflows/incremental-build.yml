@@ -50,10 +50,16 @@ jobs:
       - name: Build
         id: build
         env:
-          # 12 rather than 16: at 16 the host ran out of memory mid-link and
-          # the build was killed. Throughput is about the same, since this is
-          # not purely CPU bound.
-          NINJA_JOBS: '12'
+          # 8 rather than 12: this host has 16 GB, and a link peaks well above
+          # what twelve concurrent compiles leave it. Throughput is about the
+          # same either way, since this is not purely CPU bound. Raise it if
+          # the machine's memory is.
+          NINJA_JOBS: '8'
+          # The HAP is signed, and the signing material DevEco issued lives on
+          # the developer's machine, not here. This runner builds the engine
+          # and the engine HAR -- neither of which is signed -- and packaging
+          # the HAP stays where the key is.
+          SKIP_HAP: '1'
           SKIP_PACKAGE: ${{ (github.event_name == 'workflow_dispatch' && !inputs.package) && '1' || '' }}
         run: bash scripts/ci-incremental-build.sh
 

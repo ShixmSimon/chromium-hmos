@@ -129,166 +129,183 @@ retire_incremental_patch() {
   say "incremental patch ${name} is not applied"
 }
 
-apply_incremental_patch "${repo_root}/patches/ohos-audio-input.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-vibration.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-battery.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-wake-lock.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-api.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-web-usb.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-web-hid.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-web-serial.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-display-capture.patch"
-# The press no longer steals focus from an open bubble, so the chooser does
-# not need its own opt-out from close-on-deactivate.
-retire_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-chooser-input.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-device-chooser-width.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-dialog-width-fits-screen.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-dialog-preferred-width.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-bubble-anchor-top-center.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-browser-controls.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-tts.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-notifications.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-media-session.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-screen-orientation.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-orientation-lock-resolve.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-shape-detection.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-webauthn-platform.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-video-codec.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-autocomplete-hints.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-shell-context-menu.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-shell-services.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-bookmark-html-parsing.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-phone-viewport.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-shell-permission-prompt.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-browser-chrome-shell.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-shell-accelerators.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-shell-link-hover.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-hide-side-panel.patch"
-# Phones opening target=_blank links in the current tab is on hold: the
-# probe showed such a link never reaches OpenURLFromTab, it goes through
-# CreateNewWindow -> AddNewContents, so the rewrite never ran. The product
-# is redeciding the behaviour, so the rewrite and both probes come out
-# rather than sit in the tree half-live.
-retire_incremental_patch "${repo_root}/patches/ohos-links-in-current-tab.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-text-length.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-staging-probe.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-password-manager-narrow.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-webui-dialog-narrow.patch"
-# ohos-close-own-surface-window.patch is gone from here on purpose, and is
-# not retired either. Its one file was
-# ui/ozone/platform/ohos/ohos_native_window_registry.cc, an overlay file:
-# patches are applied, then the overlay is rsynced over the tree, so the
-# patch lost every time and was never in the binary. Its changes live in
-# the overlay now. Retiring it would be worse than doing nothing --
-# retire runs before the overlay sync, finds its lines in the tree (put
-# there by the previous build's sync), reverses them out, and the sync
-# puts them back: the file is dirty on every build and 13 steps rebuild
-# for nothing.
-apply_incremental_patch "${repo_root}/patches/ohos-phone-tab-groups.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-phone-context-menu.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-close-watcher-and-menu-updates.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-clear-unprotected-passwords.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-huks-oscrypt.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-password-reauth.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-ua-chrome-android.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-extension-store.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-image-drag-out.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-extension-bubble-anchor.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-save-as-no-prompt.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-single-process-discardable.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-pdf-single-process.patch"
-# The manager is trustworthy now -- HUKS holds the key and the user is asked
-# before a saved password is handed back -- so the patch that switched it off
-# comes out. The tree is persistent, so deleting the file is not enough.
-retire_incremental_patch "${repo_root}/patches/ohos-password-manager-off.patch"
+# Compiling and packaging can live on two machines.
+#
+# PACKAGE_ONLY=1 takes the engine already staged in the app shell -- put
+# there by a build server, which needs no signing key -- and does nothing
+# but package and sign it. Everything the compile would have done is
+# skipped, including staging, so what gets packaged is exactly what
+# arrived.
+if [[ -n "${PACKAGE_ONLY:-}" ]]; then
+  say 'PACKAGE_ONLY set; packaging the engine already staged'
+  steps=0
+  elapsed=0
+  # Adopted below from the staged engine, which is the only one there is.
+  build_id=''
+  readonly readelf="${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf"
+else
+  apply_incremental_patch "${repo_root}/patches/ohos-audio-input.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-vibration.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-battery.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-wake-lock.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-api.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-web-usb.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-web-hid.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-web-serial.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-display-capture.patch"
+  # The press no longer steals focus from an open bubble, so the chooser does
+  # not need its own opt-out from close-on-deactivate.
+  retire_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-chooser-input.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-device-chooser-width.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-dialog-width-fits-screen.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-dialog-preferred-width.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-bubble-anchor-top-center.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-browser-controls.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-tts.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-notifications.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-media-session.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-screen-orientation.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-orientation-lock-resolve.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-shape-detection.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-webauthn-platform.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-video-codec.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-autocomplete-hints.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-shell-context-menu.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-shell-services.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-bookmark-html-parsing.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-phone-viewport.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-shell-permission-prompt.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-browser-chrome-shell.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-shell-accelerators.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-shell-link-hover.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-hide-side-panel.patch"
+  # Phones opening target=_blank links in the current tab is on hold: the
+  # probe showed such a link never reaches OpenURLFromTab, it goes through
+  # CreateNewWindow -> AddNewContents, so the rewrite never ran. The product
+  # is redeciding the behaviour, so the rewrite and both probes come out
+  # rather than sit in the tree half-live.
+  retire_incremental_patch "${repo_root}/patches/ohos-links-in-current-tab.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-text-length.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-staging-probe.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-password-manager-narrow.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-webui-dialog-narrow.patch"
+  # ohos-close-own-surface-window.patch is gone from here on purpose, and is
+  # not retired either. Its one file was
+  # ui/ozone/platform/ohos/ohos_native_window_registry.cc, an overlay file:
+  # patches are applied, then the overlay is rsynced over the tree, so the
+  # patch lost every time and was never in the binary. Its changes live in
+  # the overlay now. Retiring it would be worse than doing nothing --
+  # retire runs before the overlay sync, finds its lines in the tree (put
+  # there by the previous build's sync), reverses them out, and the sync
+  # puts them back: the file is dirty on every build and 13 steps rebuild
+  # for nothing.
+  apply_incremental_patch "${repo_root}/patches/ohos-phone-tab-groups.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-phone-context-menu.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-close-watcher-and-menu-updates.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-clear-unprotected-passwords.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-huks-oscrypt.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-password-reauth.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-ua-chrome-android.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-extension-store.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-image-drag-out.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-extension-bubble-anchor.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-save-as-no-prompt.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-single-process-discardable.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-pdf-single-process.patch"
+  # The manager is trustworthy now -- HUKS holds the key and the user is asked
+  # before a saved password is handed back -- so the patch that switched it off
+  # comes out. The tree is persistent, so deleting the file is not enough.
+  retire_incremental_patch "${repo_root}/patches/ohos-password-manager-off.patch"
 
-# The chooser takes touch now, so the probes that found out why come out.
-retire_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
+  # The chooser takes touch now, so the probes that found out why come out.
+  retire_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
 
-# ---- sync overlay into the tree -------------------------------------------
-# The overlay holds whole files the adapter adds or replaces. Copying by
-# content (not timestamp) keeps ninja from rebuilding files that did not
-# actually change -- a blanket cp -a would touch everything and cost a full
-# rebuild on every run.
-say 'syncing overlay'
-changed=0
-while IFS= read -r -d '' f; do
-  rel="${f#"${repo_root}/overlay/"}"
-  case "$rel" in
-    chromium-ui/*|ohos_arkweb_playground/*) continue ;;  # app side, not Chromium
-    arkweb/ohos_nweb/*) ;;  # Chromium's //ohos_nweb integration
-    arkweb/*) continue ;;
-  esac
-  dst="${src}/${rel}"
-  # The tree has symlinks where the overlay has plain files (ohos_glue,
-  # ohos_nweb are links to real directories; git on Windows checked them out as
-  # text). Writing through the link would land on whatever it points at, so
-  # leave those alone -- they are provided by the tree, not the overlay.
-  if [[ -L "$dst" ]]; then
-    continue
+  # ---- sync overlay into the tree -------------------------------------------
+  # The overlay holds whole files the adapter adds or replaces. Copying by
+  # content (not timestamp) keeps ninja from rebuilding files that did not
+  # actually change -- a blanket cp -a would touch everything and cost a full
+  # rebuild on every run.
+  say 'syncing overlay'
+  changed=0
+  while IFS= read -r -d '' f; do
+    rel="${f#"${repo_root}/overlay/"}"
+    case "$rel" in
+      chromium-ui/*|ohos_arkweb_playground/*) continue ;;  # app side, not Chromium
+      arkweb/ohos_nweb/*) ;;  # Chromium's //ohos_nweb integration
+      arkweb/*) continue ;;
+    esac
+    dst="${src}/${rel}"
+    # The tree has symlinks where the overlay has plain files (ohos_glue,
+    # ohos_nweb are links to real directories; git on Windows checked them out as
+    # text). Writing through the link would land on whatever it points at, so
+    # leave those alone -- they are provided by the tree, not the overlay.
+    if [[ -L "$dst" ]]; then
+      continue
+    fi
+    # Compare with line endings normalised. The repository is checked out on
+    # Windows and carries CRLF; the tree is LF. A byte-wise compare calls every
+    # file different, rewrites all 126 of them, and that alone regenerates ninja
+    # and forces a full rebuild -- the opposite of what this script is for.
+    if [[ ! -f "$dst" ]] || ! diff -q <(tr -d '\r' <"$f") <(tr -d '\r' <"$dst") >/dev/null 2>&1; then
+      mkdir -p "$(dirname "$dst")"
+      tr -d '\r' <"$f" >"$dst"
+      printf '   %s\n' "$rel"
+      changed=$((changed + 1))
+    fi
+  done < <(find "${repo_root}/overlay" -type f -print0)
+  say "$changed overlay file(s) updated"
+
+  # ---- build -----------------------------------------------------------------
+  say "building (-j ${jobs})"
+  start=$(date +%s)
+  ( cd "$src" && third_party/ninja/ninja -C "$out" -j "$jobs" -k 0 gn_all ) >"$log" 2>&1
+  rc=$?
+  elapsed=$(( $(date +%s) - start ))
+
+  steps=$(tr '\r' '\n' <"$log" | grep -cE '^\[[0-9]+/' || true)
+  fails=$(tr '\r' '\n' <"$log" | grep -c '^FAILED:' || true)
+
+  # Distil the log. The raw file runs to tens of megabytes; what a reader needs
+  # is which targets failed and the compiler's own diagnostics, deduplicated.
+  {
+    printf '# build %s\n' "$(date -Is)"
+    printf '# commit %s\n' "$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || echo '?')"
+    printf '# steps=%s failures=%s elapsed=%ss rc=%s\n\n' "$steps" "$fails" "$elapsed" "$rc"
+    if (( fails > 0 )); then
+      printf '## failed targets\n'
+      tr '\r' '\n' <"$log" | grep '^FAILED:' | sed 's/^FAILED: //' | cut -c1-110 | sort -u
+      printf '\n## diagnostics\n'
+      tr '\r' '\n' <"$log" \
+        | grep -E '^\.\./\.\.[^ ]*: *(error|fatal error): |undefined symbol:' \
+        | sed -E 's#^\.\./\.\./##' | sort -u | head -60
+      printf '\n## log tail\n'
+      tr '\r' '\n' <"$log" | tail -120
+    fi
+  } >"${status_dir}/errors.txt"
+
+  if (( rc != 0 )); then
+    say "BUILD FAILED — ${fails} failing target(s); see build-status/errors.txt"
+    cat "${status_dir}/errors.txt"
+    printf '{"status":"failed","steps":%s,"failures":%s,"elapsed":%s}\n' \
+      "$steps" "$fails" "$elapsed" >"${status_dir}/latest.json"
+    exit 1
   fi
-  # Compare with line endings normalised. The repository is checked out on
-  # Windows and carries CRLF; the tree is LF. A byte-wise compare calls every
-  # file different, rewrites all 126 of them, and that alone regenerates ninja
-  # and forces a full rebuild -- the opposite of what this script is for.
-  if [[ ! -f "$dst" ]] || ! diff -q <(tr -d '\r' <"$f") <(tr -d '\r' <"$dst") >/dev/null 2>&1; then
-    mkdir -p "$(dirname "$dst")"
-    tr -d '\r' <"$f" >"$dst"
-    printf '   %s\n' "$rel"
-    changed=$((changed + 1))
-  fi
-done < <(find "${repo_root}/overlay" -type f -print0)
-say "$changed overlay file(s) updated"
 
-# ---- build -----------------------------------------------------------------
-say "building (-j ${jobs})"
-start=$(date +%s)
-( cd "$src" && third_party/ninja/ninja -C "$out" -j "$jobs" -k 0 gn_all ) >"$log" 2>&1
-rc=$?
-elapsed=$(( $(date +%s) - start ))
-
-steps=$(tr '\r' '\n' <"$log" | grep -cE '^\[[0-9]+/' || true)
-fails=$(tr '\r' '\n' <"$log" | grep -c '^FAILED:' || true)
-
-# Distil the log. The raw file runs to tens of megabytes; what a reader needs
-# is which targets failed and the compiler's own diagnostics, deduplicated.
-{
-  printf '# build %s\n' "$(date -Is)"
-  printf '# commit %s\n' "$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || echo '?')"
-  printf '# steps=%s failures=%s elapsed=%ss rc=%s\n\n' "$steps" "$fails" "$elapsed" "$rc"
-  if (( fails > 0 )); then
-    printf '## failed targets\n'
-    tr '\r' '\n' <"$log" | grep '^FAILED:' | sed 's/^FAILED: //' | cut -c1-110 | sort -u
-    printf '\n## diagnostics\n'
-    tr '\r' '\n' <"$log" \
-      | grep -E '^\.\./\.\.[^ ]*: *(error|fatal error): |undefined symbol:' \
-      | sed -E 's#^\.\./\.\./##' | sort -u | head -60
-    printf '\n## log tail\n'
-    tr '\r' '\n' <"$log" | tail -120
-  fi
-} >"${status_dir}/errors.txt"
-
-if (( rc != 0 )); then
-  say "BUILD FAILED — ${fails} failing target(s); see build-status/errors.txt"
-  cat "${status_dir}/errors.txt"
-  printf '{"status":"failed","steps":%s,"failures":%s,"elapsed":%s}\n' \
-    "$steps" "$fails" "$elapsed" >"${status_dir}/latest.json"
-  exit 1
+  so="${src}/${out}/libweb_engine.so"
+  [[ -f "$so" ]] || die 'build reported success but libweb_engine.so is missing'
+  readonly readelf="${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf"
+  "$readelf" --wide --dyn-syms "$so" 2>/dev/null \
+    | grep 'OH_WindowManager_SetWindowKeepScreenOn' >/dev/null \
+    || die 'OHOS screen wake lock symbol is missing from libweb_engine.so'
+  "$readelf" --wide --dynamic "$so" 2>/dev/null \
+    | grep 'libnative_window_manager.so' >/dev/null \
+    || die 'libweb_engine.so is not linked to libnative_window_manager.so'
+  build_id=$("$readelf" -n "$so" 2>/dev/null \
+             | grep -i 'build id' | grep -oE '[0-9a-f]{40}')
+  say "built ${steps} step(s) in ${elapsed}s, build-id ${build_id}"
 fi
 
-so="${src}/${out}/libweb_engine.so"
-[[ -f "$so" ]] || die 'build reported success but libweb_engine.so is missing'
-readonly readelf="${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf"
-"$readelf" --wide --dyn-syms "$so" 2>/dev/null \
-  | grep 'OH_WindowManager_SetWindowKeepScreenOn' >/dev/null \
-  || die 'OHOS screen wake lock symbol is missing from libweb_engine.so'
-"$readelf" --wide --dynamic "$so" 2>/dev/null \
-  | grep 'libnative_window_manager.so' >/dev/null \
-  || die 'libweb_engine.so is not linked to libnative_window_manager.so'
-build_id=$("$readelf" -n "$so" 2>/dev/null \
-           | grep -i 'build id' | grep -oE '[0-9a-f]{40}')
-say "built ${steps} step(s) in ${elapsed}s, build-id ${build_id}"
 
 # ---- stage + package -------------------------------------------------------
 if [[ -n "${SKIP_PACKAGE:-}" ]]; then
@@ -347,12 +364,19 @@ if [[ "$stage_target" == "$ui_wsl" ]]; then
   # the HAP would carry a second, stale libweb_engine.so beside the new one,
   # and the build-id check below -- which reads the staging directory -- would
   # pass while the package shipped the old engine. Idempotent.
-  rm -rf "${ui_wsl}/entry/libs" "${ui_wsl}/entry/src/main/resources/rawfile/chromium"
 fi
 
-say "staging runtime into ${stage_target}"
-bash "${repo_root}/scripts/stage-runtime-assets.sh" "${src}/${out}" "$stage_target" \
-  || die 'staging failed'
+# Same reason, for whichever checkout is about to be packaged: on a Linux
+# server there is no second checkout and the sync above does not run, but a
+# stale engine left in the entry module would still be packaged beside the
+# new one. Idempotent.
+rm -rf "${stage_target}/entry/libs"        "${stage_target}/entry/src/main/resources/rawfile/chromium"
+
+if [[ -z "${PACKAGE_ONLY:-}" ]]; then
+  say "staging runtime into ${stage_target}"
+  bash "${repo_root}/scripts/stage-runtime-assets.sh" "${src}/${out}" "$stage_target" \
+    || die 'staging failed'
+fi
 
 # The engine about to be packaged must be the one just linked. This is the only
 # place the two can be compared before the HAP is built, and getting it wrong is
@@ -360,6 +384,10 @@ bash "${repo_root}/scripts/stage-runtime-assets.sh" "${src}/${out}" "$stage_targ
 staged_engine="${stage_target}/engine/libs/arm64-v8a/libweb_engine.so"
 staged_id=$("${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf" -n \
             "$staged_engine" 2>/dev/null | grep -oE '[0-9a-f]{40}')
+# Nothing was linked here, so the staged engine is the one to believe --
+# and the checks further down still hold the package to it.
+[[ -n "$build_id" ]] || build_id="$staged_id"
+[[ -n "$build_id" ]] || die "no engine staged at ${staged_engine}"
 [[ "$staged_id" == "$build_id" ]] \
   || die "staged engine is ${staged_id:-missing}, expected ${build_id}"
 
@@ -367,43 +395,91 @@ staged_id=$("${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf" -n 
 # reaches back across the boundary. Kept last so a compile failure never gets
 # this far.
 say 'packaging HAP'
+
+# Two toolchains can package, and which one is present decides everything
+# below.
+#
+# The Windows machine has DevEco Studio, reached from WSL across the
+# filesystem boundary: node.exe cannot resolve /mnt/... -- it silently
+# rewrites such a path to \wsl.localhost\..., which points back into WSL and
+# does not exist -- so every argument has to be a native Windows path, and
+# environment variables need WSLENV to cross at all. A Linux build server has
+# the Command Line Tools instead: the same hvigor and ohpm with a Linux node,
+# no boundary, one spelling per path. `clt` being set is what the rest of this
+# section keys off.
+clt=''
 deveco='/mnt/d/Applications/DevEco Studio'
-if [[ ! -x "${deveco}/tools/node/node.exe" ]]; then
-  say 'DevEco not reachable; skipping packaging'
+if [[ -x "${deveco}/tools/node/node.exe" ]]; then
+  :
+elif [[ -x "${DEVECO_CLT_HOME:-/root/harmonyos-clt}/tool/node/bin/node" ]]; then
+  clt="${DEVECO_CLT_HOME:-/root/harmonyos-clt}"
+else
+  say 'no packaging toolchain (DevEco or CLT); skipping packaging'
   printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":false}\n' \
     "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
   exit 0
 fi
-# node.exe is a Windows binary: it cannot resolve /mnt/... and silently
-# rewrites such a path to \\wsl.localhost\..., which points back into WSL
-# and does not exist. Its arguments must be native Windows paths.
-deveco_win='D:\Applications\DevEco Studio'
-if [[ ! -d "$ui_wsl" ]]; then
-  say 'no Windows-side checkout for packaging; skipping'
-  printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":false}\n' \
-    "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
-  exit 0
+
+if [[ -n "$clt" ]]; then
+  ui_dir="$stage_target"
+  ui_arg="$stage_target"
+  node_bin="${clt}/tool/node/bin/node"
+  # Same file DevEco ships, one directory up: the CLT has no tool/ wrapper.
+  ohpm_js="${clt}/ohpm/bin/pm-cli.js"
+  [[ -f "$ohpm_js" ]] || ohpm_js="${clt}/tool/ohpm/bin/pm-cli.js"
+  hvigor_js="${clt}/hvigor/bin/hvigorw.js"
+  ohpm_arg="$ohpm_js"
+  hvigor_arg="$hvigor_js"
+  export DEVECO_SDK_HOME="${DEVECO_SDK_HOME:-${clt}/sdk}"
+  # PackageHap shells out to `java` by name and the CLT ships no JRE.
+  export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
+  export PATH="${JAVA_HOME}/bin:${clt}/tool/node/bin:${PATH}"
+  # CompileResource loads libimage_transcoder_shared.so out of the SDK, and
+  # that library needs two more the SDK ships in two different directories --
+  # plus libGL, which is the distribution's (apt install libgl1). Without
+  # this the task fails as 11201001 "Dependency Error", and the failure
+  # cascades into ProcessLibs reporting 00308018 "Cannot read properties of
+  # undefined (reading 'getName')", which says nothing about the cause.
+  ohos_sdk_libs="${DEVECO_SDK_HOME}/default/hms/toolchains/lib"
+  ohos_sdk_libs="${ohos_sdk_libs}:${DEVECO_SDK_HOME}/default/openharmony/previewer/common/bin"
+  export LD_LIBRARY_PATH="${ohos_sdk_libs}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+else
+  deveco_win='D:\Applications\DevEco Studio'
+  if [[ ! -d "$ui_wsl" ]]; then
+    say 'no Windows-side checkout for packaging; skipping'
+    printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":false}\n' \
+      "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
+    exit 0
+  fi
+  ui_dir="$ui_wsl"
+  ui_arg="$ui_win"
+  node_bin="${deveco}/tools/node/node.exe"
+  ohpm_js="${deveco}/tools/ohpm/bin/pm-cli.js"
+  hvigor_js="${deveco}/tools/hvigor/bin/hvigorw.js"
+  ohpm_arg="${deveco_win}\tools\ohpm\bin\pm-cli.js"
+  hvigor_arg="${deveco_win}\tools\hvigor\bin\hvigorw.js"
+  # WSLENV is the mechanism that carries a variable into a Windows process;
+  # /w means pass the value through unchanged rather than translating it as a
+  # path. Without it node.exe saw DEVECO_SDK_HOME as undefined no matter how
+  # it was set on the command line.
+  export DEVECO_SDK_HOME="${deveco_win}\sdk"
+  export JAVA_HOME="${deveco_win}\jbr"
+  export ComSpec='C:\Windows\System32\cmd.exe'
+  export WSLENV='DEVECO_SDK_HOME/w:JAVA_HOME/w:ComSpec/w:PATH/l'
+  # Two things have to be findable on the translated PATH.
+  #
+  # PackageHap shells out to `java`, which it looks up on PATH rather than
+  # through JAVA_HOME -- without it the task fails as 00308018 "Unknown
+  # Error".
+  #
+  # es2abc, the ArkTS bytecode compiler, spawns `cmd.exe` by bare name, so the
+  # Windows system directories have to be there too. A self-hosted runner's
+  # PATH does not carry them, and /l translates only what it is given. This
+  # stayed hidden while CompileArkTS kept hitting its up-to-date check; the
+  # first build that actually recompiled ArkTS failed with "10310021 ArkTS:
+  # INTERNAL ERROR ... spawn cmd.exe ENOENT".
+  export PATH="${deveco}/jbr/bin:/mnt/c/Windows/System32:/mnt/c/Windows:${PATH}"
 fi
-# Environment variables do not cross into a Windows process on their own --
-# node.exe saw DEVECO_SDK_HOME as undefined no matter how it was set on the
-# command line. WSLENV is the mechanism that carries them over; /w means pass
-# the value through unchanged rather than translating it as a path.
-export DEVECO_SDK_HOME="${deveco_win}\\sdk"
-export JAVA_HOME="${deveco_win}\\jbr"
-export ComSpec='C:\Windows\System32\cmd.exe'
-export WSLENV='DEVECO_SDK_HOME/w:JAVA_HOME/w:ComSpec/w:PATH/l'
-# Two things have to be findable on the translated PATH.
-#
-# PackageHap shells out to `java`, which it looks up on PATH rather than
-# through JAVA_HOME -- without it the task fails as 00308018 "Unknown Error".
-#
-# es2abc, the ArkTS bytecode compiler, spawns `cmd.exe` by bare name, so the
-# Windows system directories have to be there too. A self-hosted runner's PATH
-# does not carry them, and /l translates only what it is given. This stayed
-# hidden while CompileArkTS kept hitting its up-to-date check; the first build
-# that actually recompiled ArkTS failed with "10310021 ArkTS: INTERNAL ERROR
-# ... spawn cmd.exe ENOENT".
-export PATH="${deveco}/jbr/bin:/mnt/c/Windows/System32:/mnt/c/Windows:${PATH}"
 
 # That checkout's build-profile.json5 is its own -- it carries the signing
 # config and is excluded from the sync -- so a module added to the repository's
@@ -412,65 +488,74 @@ export PATH="${deveco}/jbr/bin:/mnt/c/Windows/System32:/mnt/c/Windows:${PATH}"
 # JSON5, so the key may be bare and the string may use either quote: DevEco's
 # own tooling rewrites this file in its own style whenever it regenerates the
 # signing config, and the check should not fail over the spelling.
-if ! grep -Eq '"?srcPath"?[[:space:]]*:[[:space:]]*["'"'"']\./engine["'"'"']'     "${ui_wsl}/build-profile.json5"; then
+if ! grep -Eq '"?srcPath"?[[:space:]]*:[[:space:]]*["'"'"']\./engine["'"'"']'     "${ui_dir}/build-profile.json5"; then
   {
     printf '\n## packaging failed\n'
-    printf '%s/build-profile.json5 does not register the engine module.\n' "$ui_win"
+    printf '%s/build-profile.json5 does not register the engine module.\n' "$ui_arg"
     printf 'Add this to its "modules" array, after the entry module:\n'
     printf '    {\n      "name": "engine",\n      "srcPath": "./engine"\n    }\n'
   } >>"${status_dir}/errors.txt"
   printf '{"status":"package-failed","steps":%s,"elapsed":%s,"build_id":"%s"}\n' \
     "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
-  die "engine module not registered in ${ui_win}\\build-profile.json5"
+  die "engine module not registered in ${ui_arg}/build-profile.json5"
 fi
 
 # entry depends on the engine HAR as a local file dependency; ohpm links it into
 # oh_modules. oh_modules and the lock file are excluded from the sync, so this
 # runs on that checkout every time.
-ohpm_cli="${deveco}/tools/ohpm/bin/pm-cli.js"
-[[ -f "$ohpm_cli" ]] || die "ohpm not found at ${ohpm_cli}"
-( cd "$ui_wsl" \
-  && "${deveco}/tools/node/node.exe" "${deveco_win}\\tools\\ohpm\\bin\\pm-cli.js" install ) \
+[[ -f "$ohpm_js" ]] || die "ohpm not found at ${ohpm_js}"
+( cd "$ui_dir" && "$node_bin" "$ohpm_arg" install ) \
   >>"$log" 2>&1 || die 'ohpm install failed'
 
-if ( cd "$ui_wsl" \
-     && "${deveco}/tools/node/node.exe" "${deveco_win}\\tools\\hvigor\\bin\\hvigorw.js" \
-          --mode module -p product=default -p module=entry@default \
-          assembleHap --no-daemon ) >>"$log" 2>&1
-then
-  :
+# The HAP is signed, and signing needs the debug material DevEco issued.
+# A build server with no business holding a private key builds the engine
+# and its HAR and stops there: SKIP_HAP=1. A HAR is not signed, so it is
+# unaffected.
+hap=''
+size=0
+if [[ -n "${SKIP_HAP:-}" ]]; then
+  say 'SKIP_HAP set; building the engine HAR only'
 else
-  # Packaging failures were invisible to the other machine: only compiler
-  # output reached errors.txt and this step simply died. Carry the log tail
-  # through so a packaging break reads as clearly as a compile break.
-  {
-    printf '\n## packaging failed\n'
-    tail -40 "$log" | grep -viE '^[[:space:]]*$'
-  } >>"${status_dir}/errors.txt"
-  printf '{"status":"package-failed","steps":%s,"elapsed":%s,"build_id":"%s"}\n' \
-    "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
-  die 'hvigor packaging failed (see build-status/errors.txt)'
+  if ( cd "$ui_dir" \
+       && "$node_bin" "$hvigor_arg" \
+            --mode module -p product=default -p module=entry@default \
+            assembleHap --no-daemon ) >>"$log" 2>&1
+  then
+    :
+  else
+    # Packaging failures were invisible to the other machine: only compiler
+    # output reached errors.txt and this step simply died. Carry the log tail
+    # through so a packaging break reads as clearly as a compile break.
+    {
+      printf '\n## packaging failed\n'
+      tail -40 "$log" | grep -viE '^[[:space:]]*$'
+    } >>"${status_dir}/errors.txt"
+    printf '{"status":"package-failed","steps":%s,"elapsed":%s,"build_id":"%s"}\n' \
+      "$steps" "$elapsed" "$build_id" >"${status_dir}/latest.json"
+    die 'hvigor packaging failed (see build-status/errors.txt)'
+  fi
+
+  hap=$(find "${ui_dir}/entry/build" -name '*-signed.hap' 2>/dev/null | head -1)
+  [[ -z "$hap" ]] && hap=$(find "${ui_dir}/entry/build" -name '*.hap' 2>/dev/null | head -1)
+  [[ -n "$hap" ]] || die 'no HAP produced'
+  size=$(stat -c %s "$hap")
+
+  # The check that matters is on the package, not on the staging directory: that
+  # the libweb_engine.so inside the HAP is the one just linked.
+  packaged_engine="$(mktemp)"
+  if command -v unzip >/dev/null; then
+    unzip -p "$hap" libs/arm64-v8a/libweb_engine.so >"$packaged_engine" 2>/dev/null
+  else
+    python3 -c 'import sys,zipfile; sys.stdout.buffer.write(zipfile.ZipFile(sys.argv[1]).read("libs/arm64-v8a/libweb_engine.so"))' \
+      "$hap" >"$packaged_engine" 2>/dev/null
+  fi || die "HAP has no libs/arm64-v8a/libweb_engine.so"
+  packaged_id=$("${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf" -n \
+                "$packaged_engine" 2>/dev/null | grep -oE '[0-9a-f]{40}')
+  rm -f "$packaged_engine"
+  [[ "$packaged_id" == "$build_id" ]] \
+    || die "HAP carries engine ${packaged_id:-with no build-id}, expected ${build_id}"
 fi
 
-hap=$(find "${ui_wsl}/entry/build" -name '*-signed.hap' 2>/dev/null | head -1)
-[[ -z "$hap" ]] && hap=$(find "${ui_wsl}/entry/build" -name '*.hap' 2>/dev/null | head -1)
-[[ -n "$hap" ]] || die 'no HAP produced'
-size=$(stat -c %s "$hap")
-
-# The check that matters is on the package, not on the staging directory: that
-# the libweb_engine.so inside the HAP is the one just linked.
-packaged_engine="$(mktemp)"
-if command -v unzip >/dev/null; then
-  unzip -p "$hap" libs/arm64-v8a/libweb_engine.so >"$packaged_engine" 2>/dev/null
-else
-  python3 -c 'import sys,zipfile; sys.stdout.buffer.write(zipfile.ZipFile(sys.argv[1]).read("libs/arm64-v8a/libweb_engine.so"))' \
-    "$hap" >"$packaged_engine" 2>/dev/null
-fi || die "HAP has no libs/arm64-v8a/libweb_engine.so"
-packaged_id=$("${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf" -n \
-              "$packaged_engine" 2>/dev/null | grep -oE '[0-9a-f]{40}')
-rm -f "$packaged_engine"
-[[ "$packaged_id" == "$build_id" ]] \
-  || die "HAP carries engine ${packaged_id:-with no build-id}, expected ${build_id}"
 
 # The engine HAR is the other deliverable of the split: a shell that draws
 # only UI imports this and gets the engine, its runtime and its ArkTS bridges.
@@ -481,12 +566,12 @@ har=''
 har_size=0
 if [[ -z "${SKIP_HAR:-}" ]]; then
   say 'packaging engine HAR'
-  if ( cd "$ui_wsl" \
-       && "${deveco}/tools/node/node.exe" "${deveco_win}\\tools\\hvigor\\bin\\hvigorw.js" \
+  if ( cd "$ui_dir" \
+       && "$node_bin" "$hvigor_arg" \
             --mode module -p product=default -p module=engine@default \
             assembleHar --no-daemon ) >>"$log" 2>&1
   then
-    har=$(find "${ui_wsl}/engine/build" -name '*.har' 2>/dev/null | head -1)
+    har=$(find "${ui_dir}/engine/build" -name '*.har' 2>/dev/null | head -1)
   fi
   if [[ -z "$har" ]]; then
     {
@@ -513,8 +598,11 @@ if [[ -z "${SKIP_HAR:-}" ]]; then
   printf '%s\n' "$har" >"${status_dir}/har-path.txt"
 fi
 
-printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":true,"hap":"%s","hap_bytes":%s,"har":"%s","har_bytes":%s}\n' \
-  "$steps" "$elapsed" "$build_id" "$(basename "$hap")" "$size" \
+printf '{"status":"ok","steps":%s,"elapsed":%s,"build_id":"%s","packaged":%s,"hap":"%s","hap_bytes":%s,"har":"%s","har_bytes":%s}\n' \
+  "$steps" "$elapsed" "$build_id" "${hap:+true}${hap:-false}" \
+  "${hap:+$(basename "$hap")}" "$size" \
   "${har:+$(basename "$har")}" "$har_size" >"${status_dir}/latest.json"
-say "HAP $(basename "$hap") ($((size / 1048576)) MB)"
-printf '%s\n' "$hap" >"${status_dir}/hap-path.txt"
+if [[ -n "$hap" ]]; then
+  say "HAP $(basename "$hap") ($((size / 1048576)) MB)"
+  printf '%s\n' "$hap" >"${status_dir}/hap-path.txt"
+fi
