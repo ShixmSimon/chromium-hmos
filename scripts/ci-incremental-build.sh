@@ -183,6 +183,7 @@ apply_incremental_patch "${repo_root}/patches/ohos-clear-unprotected-passwords.p
 apply_incremental_patch "${repo_root}/patches/ohos-huks-oscrypt.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-password-reauth.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-ua-chrome-android.patch"
+apply_incremental_patch "${repo_root}/patches/ohos-extension-store.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-save-as-no-prompt.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-single-process-discardable.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-pdf-single-process.patch"

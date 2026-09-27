@@ -9,6 +9,7 @@
 #include "chrome/browser/ui/ohos/shell_context_menu_image_ohos.h"
 #include "chrome/browser/ui/ohos/shell_drag_drop_ohos.h"
 #include "chrome/browser/ui/ohos/shell_page_position_ohos.h"
+#include "chrome/browser/ui/ohos/shell_store_user_agent_ohos.h"
 #include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
@@ -1924,6 +1925,11 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   // it here rather than on tab creation covers tabs that existed before this
   // build and costs a map lookup.
   chrome::ohos::WatchPageScroll(tabs->GetActiveWebContents());
+  // The Chrome Web Store needs a desktop token in the User-Agent or it
+  // serves the mobile site, which cannot install anything. Attached the
+  // same way and for the same reason: it costs a map lookup and covers
+  // tabs that existed before this build.
+  chrome::ohos::WatchChromeWebStoreUserAgent(tabs->GetActiveWebContents());
 
   // Images written for a share that never happened do not outlive the run
   // that wrote them. Once, on the first snapshot of the first window.
