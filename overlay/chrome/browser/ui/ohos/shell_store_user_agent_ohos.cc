@@ -50,18 +50,28 @@ class StoreUserAgentWatcher
     // for it the override in place is theirs, not ours. Tell the two apart
     // by the string rather than by remembering a flag, because they can turn
     // it on and off while the tab sits on the store.
-    const bool ours =
-        !store_ua_.empty() &&
-        web_contents()->GetUserAgentOverride().ua_string_override == store_ua_;
+    const std::string current =
+        web_contents()->GetUserAgentOverride().ua_string_override;
+    const bool ours = !store_ua_.empty() && current == store_ua_;
 
     if (!IsChromeWebStore(handle->GetURL())) {
-      // Leaving the store. Say so explicitly rather than let the entry
-      // inherit: the override string is still installed, and this flag is
-      // the only thing deciding whether it gets used.
       if (ours) {
-        handle->SetIsOverridingUserAgent(false);
+        RestoreUserAgent(handle);
       }
       return;
+    }
+
+    if (!ours) {
+      // A phone gets the store's desktop site only when the reader asked for
+      // desktop sites. The store refuses to install anything to a mobile UA,
+      // so on a tablet or a PC there is nothing to weigh -- but on a phone
+      // the desktop store is a worse page to read, and this is the switch
+      // the reader already has for saying they want it anyway.
+      desktop_site_ =
+          current == embedder_support::GetUserAgentForOhos(/*mobile=*/false);
+      if (IsAuraShellMobilePhoneUi() && !desktop_site_) {
+        return;
+      }
     }
 
     store_ua_ = embedder_support::GetOhosStoreUserAgent();
@@ -80,12 +90,35 @@ class StoreUserAgentWatcher
  private:
   friend class content::WebContentsUserData<StoreUserAgentWatcher>;
 
+  // Hands the tab back the user agent it had before the store took it.
+  //
+  // Clearing the flag alone is not enough any more: on a phone this watcher
+  // only ever takes over from "desktop site", so leaving the store's string
+  // installed and unused would read to everything else as the reader having
+  // switched desktop sites off.
+  void RestoreUserAgent(content::NavigationHandle* handle) {
+    blink::UserAgentOverride restored;
+    if (desktop_site_) {
+      restored.ua_string_override =
+          embedder_support::GetUserAgentForOhos(/*mobile=*/false);
+      restored.ua_metadata_override =
+          embedder_support::GetUserAgentMetadataForOhos(/*mobile=*/false);
+    }
+    web_contents()->SetUserAgentOverride(restored,
+                                         /*override_in_new_tabs=*/false);
+    handle->SetIsOverridingUserAgent(desktop_site_);
+    store_ua_.clear();
+  }
+
   explicit StoreUserAgentWatcher(content::WebContents* contents)
       : content::WebContentsObserver(contents),
         content::WebContentsUserData<StoreUserAgentWatcher>(*contents) {}
 
   // The last override this watcher installed, empty until it installs one.
   std::string store_ua_;
+  // Whether the tab was asking for desktop sites when the store took over,
+  // and so what to hand back when it leaves.
+  bool desktop_site_ = false;
 
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };
@@ -95,9 +128,12 @@ WEB_CONTENTS_USER_DATA_KEY_IMPL(StoreUserAgentWatcher);
 }  // namespace
 
 void WatchChromeWebStoreUserAgent(content::WebContents* contents) {
-  if (!contents || IsAuraShellMobilePhoneUi()) {
+  if (!contents) {
     return;
   }
+  // Phones are watched too now. Whether the store's desktop user agent is
+  // actually sent is decided per navigation, by whether the reader has
+  // asked this tab for desktop sites.
   StoreUserAgentWatcher::CreateForWebContents(contents);
 }
 
