@@ -17,6 +17,8 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/thread_pool.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+#include "content/public/browser/web_contents.h"
+#include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
 #include "chrome/common/chrome_paths.h"
 #include "ui/base/dragdrop/drag_drop_types.h"
 #include "ui/base/clipboard/file_info.h"
@@ -83,7 +85,8 @@ const char* OperationName(int operation) {
 // and bytes stay hidden and only the list of types shows. That is why the
 // summary sent on enter can carry placeholder names without leaking them.
 std::unique_ptr<ui::OSExchangeData> BuildExchangeData(
-    const base::DictValue& event) {
+    const base::DictValue& event,
+    bool even_when_empty) {
   auto data = std::make_unique<ui::OSExchangeData>(
       ui::OSExchangeDataProviderFactory::CreateProvider());
   bool carries_anything = false;
@@ -142,7 +145,7 @@ std::unique_ptr<ui::OSExchangeData> BuildExchangeData(
     carries_anything = true;
   }
 
-  return carries_anything ? std::move(data) : nullptr;
+  return (carries_anything || even_when_empty) ? std::move(data) : nullptr;
 }
 
 }  // namespace
@@ -160,9 +163,14 @@ std::string HandleShellDragEvent(gfx::AcceleratedWidget widget,
   // itself through the operation that comes back.
   drag.operations = ui::DragDropTypes::DRAG_COPY;
 
-  if (drag.stage == ui::OhosDragStage::kEnter ||
-      drag.stage == ui::OhosDragStage::kDrop) {
-    drag.data = BuildExchangeData(event);
+  if (drag.stage == ui::OhosDragStage::kEnter) {
+    drag.data = BuildExchangeData(event, /*even_when_empty=*/false);
+  } else if (drag.stage == ui::OhosDragStage::kDrop) {
+    // Even when the drop turns out to carry nothing. The enter stage sent a
+    // placeholder so the page's dragenter would fire with the right types,
+    // and leaving that placeholder in place is how a drop that came up empty
+    // ended up being read as a real file. An empty drop replaces it.
+    drag.data = BuildExchangeData(event, /*even_when_empty=*/true);
   }
 
   const int accepted = ui::DispatchOhosDragEvent(widget, std::move(drag));
@@ -246,6 +254,18 @@ void WatchPageDragsOut() {
         // the page had already been told it had.
         return true;
       }));
+}
+
+void StopNavigatingOnDrop(content::WebContents* contents) {
+  if (!contents) {
+    return;
+  }
+  blink::RendererPreferences* prefs = contents->GetMutableRendererPrefs();
+  if (!prefs->can_accept_load_drops) {
+    return;
+  }
+  prefs->can_accept_load_drops = false;
+  contents->SyncRendererPrefs();
 }
 
 void ClearDroppedFileDirectory() {

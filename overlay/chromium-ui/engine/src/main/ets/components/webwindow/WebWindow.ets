@@ -1017,21 +1017,35 @@ export struct WebWindow {
       const records: unifiedDataChannel.UnifiedRecord[] = event.getData().getRecords();
       let targetDir: string = '';
       for (const record of records) {
-        if (record instanceof unifiedDataChannel.PlainText) {
-          payload.text = record.textContent;
-        } else if (record instanceof unifiedDataChannel.Hyperlink) {
-          urls.push(record.url);
-        } else if (record instanceof unifiedDataChannel.HTML) {
-          payload.html = record.htmlContent;
-          if (!payload.text && record.plainContent) {
-            payload.text = record.plainContent;
+        // By type, not by instanceof. getRecords() hands back UnifiedRecord
+        // objects and UDMF's own documentation says to read getType() and
+        // cast -- instanceof against the subclasses matched nothing, which
+        // is why no file was ever copied and the drop arrived empty.
+        const type: string = record.getType();
+        if (type === uniformTypeDescriptor.UniformDataType.PLAIN_TEXT) {
+          payload.text = (record as unifiedDataChannel.PlainText).textContent;
+        } else if (type === uniformTypeDescriptor.UniformDataType.HYPERLINK) {
+          urls.push((record as unifiedDataChannel.Hyperlink).url);
+        } else if (type === uniformTypeDescriptor.UniformDataType.HTML) {
+          const markup = record as unifiedDataChannel.HTML;
+          payload.html = markup.htmlContent;
+          if (!payload.text && markup.plainContent) {
+            payload.text = markup.plainContent;
           }
-        } else if (record instanceof unifiedDataChannel.File) {
-          // Image, Video, Audio and Folder are all Files, so this covers them.
+        } else {
+          // Everything else that carries a file: general.file and every type
+          // derived from it -- image, video, audio, folder, and the concrete
+          // formats a file manager sends (general.jpeg, com.adobe.pdf, ...).
+          // Asking for a uri rather than listing types keeps a format nobody
+          // thought of from being dropped on the floor.
+          const uri: string = this.fileUriOfRecord(record);
+          if (uri.length === 0) {
+            continue;
+          }
           if (!targetDir) {
             targetDir = this.prepareDropDirectory();
           }
-          const copied = this.copyDroppedFile(record.uri, targetDir);
+          const copied = this.copyDroppedFile(uri, targetDir);
           if (copied) {
             files.push(copied);
           }
@@ -1103,6 +1117,41 @@ export struct WebWindow {
         source?.release();
       }
     }
+  }
+
+  // The file a record points at, or '' when it points at none.
+  //
+  // A file manager may send general.file, or a concrete type such as
+  // general.jpeg or com.adobe.pdf; all of them carry the uri the same way.
+  // The cast is what UDMF asks for -- the object is the right shape even
+  // when its declared class is the base one.
+  private fileUriOfRecord(record: unifiedDataChannel.UnifiedRecord): string {
+    // Image, Video, Audio and Folder each name their uri after themselves;
+    // general.file and the concrete formats a file manager sends
+    // (general.jpeg, com.adobe.pdf, ...) call it plain `uri`. Anything not
+    // named here is still a File as far as its uri goes, which is what keeps
+    // a format nobody thought of from being dropped on the floor.
+    const type: string = record.getType();
+    if (type === uniformTypeDescriptor.UniformDataType.IMAGE) {
+      return this.asUri((record as unifiedDataChannel.Image).imageUri);
+    }
+    if (type === uniformTypeDescriptor.UniformDataType.VIDEO) {
+      return this.asUri((record as unifiedDataChannel.Video).videoUri);
+    }
+    if (type === uniformTypeDescriptor.UniformDataType.AUDIO) {
+      return this.asUri((record as unifiedDataChannel.Audio).audioUri);
+    }
+    if (type === uniformTypeDescriptor.UniformDataType.FOLDER) {
+      return this.asUri((record as unifiedDataChannel.Folder).folderUri);
+    }
+    return this.asUri((record as unifiedDataChannel.File).uri);
+  }
+
+  // A uri we can actually copy from, or '' -- a record whose type we guessed
+  // wrong about has no uri at all, and that is a record to skip, not a throw
+  // that costs the rest of the drop.
+  private asUri(value: string | undefined): string {
+    return typeof value === 'string' ? value : '';
   }
 
   // One directory per drop, so two files of the same name from two drops do

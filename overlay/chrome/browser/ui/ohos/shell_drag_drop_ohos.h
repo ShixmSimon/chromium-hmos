@@ -8,6 +8,10 @@
 #include "base/values.h"
 #include <string>
 
+namespace content {
+class WebContents;
+}
+
 #include "ui/gfx/native_ui_types.h"
 
 namespace chrome::ohos {
@@ -40,6 +44,17 @@ void WatchPageDragsOut();
 // inside StartDrag stops waiting.
 void FinishPageDragOut(gfx::AcceleratedWidget widget,
                        const std::string* operation);
+
+// Stops a drop the page did not want from navigating the tab to it.
+//
+// Blink's own fallback for an unhandled drop is to load the dropped file or
+// link -- and because that counts as accepting the drop, the operation
+// coming back was never "none" and dropNotHandled never fired. With this
+// off, Blink leaves an unhandled drop alone and reports it as accepted by
+// nobody, which is what the shell is waiting to hear.
+//
+// Idempotent, so it can be called whenever a tab becomes the current one.
+void StopNavigatingOnDrop(content::WebContents* contents);
 
 // Empties the directory dropped files are copied into. Called once at
 // startup: a file dragged in for an upload that never happened should not
