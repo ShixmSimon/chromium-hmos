@@ -926,10 +926,33 @@ blink::UserAgentOverride BuildOhosUserAgentOverride(bool mobile) {
   return ua_override;
 }
 
+// Tabs whose user agent was set on purpose. A WebContents is erased from
+// here when it goes away, so the set cannot outlive its entries.
+class PinnedUserAgent : public content::WebContentsUserData<PinnedUserAgent> {
+ public:
+  ~PinnedUserAgent() override = default;
+
+ private:
+  friend class content::WebContentsUserData<PinnedUserAgent>;
+  explicit PinnedUserAgent(content::WebContents* contents)
+      : content::WebContentsUserData<PinnedUserAgent>(*contents) {}
+  WEB_CONTENTS_USER_DATA_KEY_DECL();
+};
+
+WEB_CONTENTS_USER_DATA_KEY_IMPL(PinnedUserAgent);
+
 bool ApplyUserAgentToWebContents(content::WebContents* contents,
                                  bool mobile,
                                  bool reload) {
   if (!contents) {
+    return false;
+  }
+  // Someone asked for this tab's user agent by name -- "desktop site", or
+  // the web store, which cannot install anything to a mobile one. Following
+  // the device here would undo that, and did: this runs on every state poll,
+  // so both were being reverted about a tenth of a second after they were
+  // set, and the store's own script then sent the tab to /unsupported.
+  if (IsAuraShellUserAgentPinned(contents)) {
     return false;
   }
   const blink::UserAgentOverride desired = BuildOhosUserAgentOverride(mobile);
@@ -1093,6 +1116,7 @@ void SetRequestDesktopSite(content::WebContents* contents, bool enabled) {
         embedder_support::GetUserAgentMetadataForOhos(mobile);
   }
   contents->SetUserAgentOverride(override, /*override_in_new_tabs=*/false);
+  SetAuraShellUserAgentPinned(contents, enabled);
   content::NavigationController& controller = contents->GetController();
   if (content::NavigationEntry* entry = controller.GetLastCommittedEntry()) {
     entry->SetIsOverridingUserAgent(enabled);
@@ -1927,10 +1951,16 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   chrome::ohos::WatchPageScroll(tabs->GetActiveWebContents());
   chrome::ohos::StopNavigatingOnDrop(tabs->GetActiveWebContents());
   // The Chrome Web Store needs a desktop token in the User-Agent or it
-  // serves the mobile site, which cannot install anything. Attached the
-  // same way and for the same reason: it costs a map lookup and covers
-  // tabs that existed before this build.
-  chrome::ohos::WatchChromeWebStoreUserAgent(tabs->GetActiveWebContents());
+  // serves the mobile site, which cannot install anything.
+  //
+  // Every tab, not just the one in front. Attaching only to the active tab
+  // meant a tab created and navigated between two snapshots reached the
+  // store with no watcher on it -- and the tab a reader opens to go to the
+  // store is exactly that tab. Creating the observer twice is a no-op, so
+  // this costs a map lookup per tab.
+  for (int index = 0; index < tabs->count(); ++index) {
+    chrome::ohos::WatchChromeWebStoreUserAgent(tabs->GetWebContentsAt(index));
+  }
 
   // Images written for a share that never happened do not outlive the run
   // that wrote them. Once, on the first snapshot of the first window.
@@ -2721,6 +2751,10 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
   } else if (*name == "navigate") {
     const std::string* url = command.FindString("url");
     if (url && GURL(*url).is_valid()) {
+      // Before the navigation, not after a later snapshot: this is the one
+      // place that knows a navigation is about to start, and a watcher
+      // attached afterwards has already missed the only event it wanted.
+      chrome::ohos::WatchChromeWebStoreUserAgent(active);
       NavigateOnUiThread(widget, GURL(*url), 0);
     }
   } else if (*name == "newIncognitoWindow") {
@@ -3097,6 +3131,22 @@ void ApplyTopControlsOffset(content::WebContents* contents, float ratio) {
 }
 
 }  // namespace
+
+void SetAuraShellUserAgentPinned(content::WebContents* contents,
+                                 bool pinned) {
+  if (!contents) {
+    return;
+  }
+  if (pinned) {
+    PinnedUserAgent::CreateForWebContents(contents);
+  } else {
+    contents->RemoveUserData(PinnedUserAgent::UserDataKey());
+  }
+}
+
+bool IsAuraShellUserAgentPinned(content::WebContents* contents) {
+  return contents && PinnedUserAgent::FromWebContents(contents);
+}
 
 void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
                                       float ratio) {

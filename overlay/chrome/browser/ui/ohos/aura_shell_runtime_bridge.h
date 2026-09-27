@@ -152,6 +152,19 @@ void ShutdownAuraShellBrowser();
 // on to the shell so the bar can follow the page.
 int GetAuraShellTopControlsHeight();
 int GetAuraShellTopControlsMinHeight();
+// Whether this tab's user agent was set deliberately and must be left alone.
+//
+// The shell's state poll re-applies the device's user agent to every tab so
+// a fold or a window change is followed, and it did that by comparing the
+// override against the one it would install -- which cannot tell a
+// deliberate override from a stale one, because "desktop site" installs
+// exactly the string a tablet uses by default. Every poll therefore undid
+// both "desktop site" and the web store's user agent within about a tenth
+// of a second of them being set. Pinning records the intent the string
+// cannot carry.
+void SetAuraShellUserAgentPinned(content::WebContents* contents, bool pinned);
+bool IsAuraShellUserAgentPinned(content::WebContents* contents);
+
 void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
                                       float ratio);
 

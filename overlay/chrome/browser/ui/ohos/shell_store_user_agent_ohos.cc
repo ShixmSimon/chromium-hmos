@@ -6,7 +6,9 @@
 
 #include <string>
 
+#include "base/logging.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+#include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
 #include "components/embedder_support/user_agent_utils.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
@@ -54,7 +56,26 @@ class StoreUserAgentWatcher
         web_contents()->GetUserAgentOverride().ua_string_override;
     const bool ours = !store_ua_.empty() && current == store_ua_;
 
-    if (!IsChromeWebStore(handle->GetURL())) {
+    const bool is_store = IsChromeWebStore(handle->GetURL());
+    const std::string desktop =
+        embedder_support::GetUserAgentForOhos(/*mobile=*/false);
+    bool applied = false;
+    // Logged on the way out, whatever this navigation turns out to be. There
+    // was no way to see from outside which of these decided the outcome, so
+    // a store page that arrived mobile could not be told from one this never
+    // looked at.
+    absl::Cleanup say = [&] {
+      LOG(WARNING) << "OHOS store UA: url=" << handle->GetURL().spec()
+                   << " is_store=" << is_store
+                   << " phone=" << IsAuraShellMobilePhoneUi()
+                   << " ours=" << ours
+                   << " desktop_site=" << desktop_site_
+                   << " applied=" << applied
+                   << " current_override=[" << current << "]"
+                   << " desktop_ua=[" << desktop << "]";
+    };
+
+    if (!is_store) {
       if (ours) {
         RestoreUserAgent(handle);
       }
@@ -67,8 +88,7 @@ class StoreUserAgentWatcher
       // so on a tablet or a PC there is nothing to weigh -- but on a phone
       // the desktop store is a worse page to read, and this is the switch
       // the reader already has for saying they want it anyway.
-      desktop_site_ =
-          current == embedder_support::GetUserAgentForOhos(/*mobile=*/false);
+      desktop_site_ = current == desktop;
       if (IsAuraShellMobilePhoneUi() && !desktop_site_) {
         return;
       }
@@ -84,7 +104,11 @@ class StoreUserAgentWatcher
     store.ua_metadata_override =
         embedder_support::GetUserAgentMetadataForOhos(/*mobile=*/false);
     web_contents()->SetUserAgentOverride(store, /*override_in_new_tabs=*/false);
+    // Or the shell's next state poll follows the device back to a mobile
+    // user agent, and the store's own script sends the tab to /unsupported.
+    SetAuraShellUserAgentPinned(web_contents(), true);
     handle->SetIsOverridingUserAgent(true);
+    applied = true;
   }
 
  private:
@@ -106,6 +130,9 @@ class StoreUserAgentWatcher
     }
     web_contents()->SetUserAgentOverride(restored,
                                          /*override_in_new_tabs=*/false);
+    // Still deliberate if desktop sites are what the reader asked for; back
+    // to following the device if they are not.
+    SetAuraShellUserAgentPinned(web_contents(), desktop_site_);
     handle->SetIsOverridingUserAgent(desktop_site_);
     store_ua_.clear();
   }
