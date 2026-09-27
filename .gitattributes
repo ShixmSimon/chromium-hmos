@@ -8,3 +8,8 @@
 /patches/*.patch text eol=lf
 /scripts/*.sh text eol=lf
 /scripts/*.py text eol=lf
+
+# A PDF is bytes at recorded offsets. This one is hand-written and holds no
+# NUL, so git's own binary sniffing misses it and a CRLF checkout on Windows
+# shifts every offset in its xref table.
+/docs/test-pages/*.pdf binary
