@@ -175,7 +175,16 @@ apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-text-length.patch
 apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-staging-probe.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-password-manager-narrow.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-webui-dialog-narrow.patch"
-apply_incremental_patch "${repo_root}/patches/ohos-close-own-surface-window.patch"
+# ohos-close-own-surface-window.patch is gone from here on purpose, and is
+# not retired either. Its one file was
+# ui/ozone/platform/ohos/ohos_native_window_registry.cc, an overlay file:
+# patches are applied, then the overlay is rsynced over the tree, so the
+# patch lost every time and was never in the binary. Its changes live in
+# the overlay now. Retiring it would be worse than doing nothing --
+# retire runs before the overlay sync, finds its lines in the tree (put
+# there by the previous build's sync), reverses them out, and the sync
+# puts them back: the file is dirty on every build and 13 steps rebuild
+# for nothing.
 apply_incremental_patch "${repo_root}/patches/ohos-phone-tab-groups.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-phone-context-menu.patch"
 apply_incremental_patch "${repo_root}/patches/ohos-close-watcher-and-menu-updates.patch"

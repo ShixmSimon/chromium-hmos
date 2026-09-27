@@ -65,6 +65,18 @@ struct LogicalWindowRecord {
   bool auxiliary = false;
   bool anchored = false;
   uint64_t stacking_order = 0;
+  // Whether the shell has ever been told this window exists. True for every
+  // auxiliary window, and it stays true after one is promoted to a surface of
+  // its own -- a tab dragged out into its own window, or an incognito window
+  // the shell hosts itself. False for the first window, which the shell has
+  // always had and is never told about.
+  //
+  // What it decides: whether the shell may ask to close the window, and
+  // whether it hears that the window has gone. Both used to be decided by
+  // `auxiliary`, which stops being true the moment the shell gives the window
+  // a surface -- so exactly the windows the shell draws a close button on were
+  // the ones it could not close.
+  bool announced = false;
 };
 
 OhosLogicalWindowState MakeLogicalWindowState(gfx::AcceleratedWidget widget,
@@ -131,6 +143,7 @@ class NativeWindowRegistry {
               promoted_state =
                   MakeLogicalWindowState(record.widget, logical->second, true);
               logical->second.auxiliary = false;
+              logical->second.announced = true;
               callback = logical_window_state_callback_;
             }
           }
@@ -356,6 +369,7 @@ class NativeWindowRegistry {
         .auxiliary = !widget_bindings_.contains(widget),
         .anchored = anchored,
         .stacking_order = ++next_stacking_order_,
+        .announced = !widget_bindings_.contains(widget),
     };
   }
 
@@ -365,7 +379,7 @@ class NativeWindowRegistry {
     {
       base::AutoLock lock(lock_);
       auto it = logical_windows_.find(widget);
-      if (it != logical_windows_.end() && it->second.auxiliary) {
+      if (it != logical_windows_.end() && it->second.announced) {
         state = MakeLogicalWindowState(widget, it->second, true);
         callback = logical_window_state_callback_;
       }
@@ -724,7 +738,12 @@ class NativeWindowRegistry {
       base::AutoLock lock(lock_);
       auto logical = logical_windows_.find(widget);
       auto close_callback = logical_window_close_callbacks_.find(widget);
-      if (logical == logical_windows_.end() || !logical->second.auxiliary ||
+      // Any window the shell knows about, not only one it has not been given a
+      // surface for. The close itself is Chromium's: the request reaches
+      // OnCloseRequest on the platform window, which is the same path a title
+      // bar's close button takes, so the tabs close in order, the session
+      // records them and the window is torn down properly.
+      if (logical == logical_windows_.end() || !logical->second.announced ||
           close_callback == logical_window_close_callbacks_.end()) {
         return false;
       }
