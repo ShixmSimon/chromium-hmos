@@ -356,6 +356,18 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
       arguments.push_back("--js-flags=--jitless --wasm-jitless");
     }
 
+    // Unset on purpose almost always: the blocklist already takes
+    // rasterization off a GPU whose fences do not work, which is what the
+    // 2in1 emulator turned out to have. This is for running the comparison
+    // the other way without a rebuild.
+    if (config.gpu_rasterization.has_value()) {
+      arguments.push_back(*config.gpu_rasterization
+                              ? "--enable-gpu-rasterization"
+                              : "--disable-gpu-rasterization");
+      AURA_LOG_I("AuraShell GPU rasterization forced %{public}s by config",
+                 *config.gpu_rasterization ? "on" : "off");
+    }
+
   arguments.push_back("--use-gl=angle");
     // The device Vulkan driver lacks VK_KHR_display required by ANGLE's
     // Linux Vulkan display; use ANGLE on the native HarmonyOS EGL/GLES.

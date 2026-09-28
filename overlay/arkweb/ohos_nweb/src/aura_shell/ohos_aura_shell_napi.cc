@@ -1161,6 +1161,8 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
     config.additional_switches.push_back({"ohos-download-dir", *directory});
   }
 
+  config.gpu_rasterization = dict.FindBool("gpuRasterization");
+
   std::optional<bool> jitless = dict.FindBool("jitless");
   if (jitless.has_value()) {
     config.jitless = *jitless;

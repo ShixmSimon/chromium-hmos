@@ -5,6 +5,7 @@
 #define OHOS_NWEB_SRC_AURA_SHELL_OHOS_AURA_SHELL_TYPES_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -49,6 +50,10 @@ struct AuraStartupConfig {
   int64_t icu_data_offset = 0;
   int64_t icu_data_length = 0;
   // Set by embedders on devices that refuse executable memory.
+  // Unset lets the GPU decide, which is what a device should do. Set only
+  // to take rasterization off the GPU (or force it back on) for a
+  // comparison, without a rebuild.
+  std::optional<bool> gpu_rasterization;
   bool jitless = false;
   bool fullscreen_requested = true;
   // Runs without a window next to another web engine, e.g. for Sync.
