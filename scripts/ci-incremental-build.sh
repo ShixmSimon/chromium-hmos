@@ -269,8 +269,29 @@ else
   # ---- build -----------------------------------------------------------------
   say "building (-j ${jobs})"
   start=$(date +%s)
-  ( cd "$src" && third_party/ninja/ninja -C "$out" -j "$jobs" -k 0 gn_all ) >"$log" 2>&1
-  rc=$?
+  # The whole log goes to the file, as it always did -- tens of thousands of
+  # lines do not belong in a job log, and failures are carried through
+  # errors.txt and the step summary. But sending nothing at all left the job
+  # looking identical whether it was compiling or wedged, for the half hour a
+  # large rebuild takes. The first step, every fiftieth after it, and every
+  # failure also go to stdout -- the first one because that is the one that
+  # says the build started and how much there is to do -- and the last one,
+  # or a build of fewer steps than the spacing would report that it began
+  # and never that it finished. PROGRESS_EVERY changes the spacing. ninja
+  # prints one line per step when it has no terminal, which is the case
+  # here.
+  ( cd "$src" && third_party/ninja/ninja -C "$out" -j "$jobs" -k 0 gn_all ) \
+    2>&1 | tee "$log" \
+    | awk -v every="${PROGRESS_EVERY:-50}" '
+        /^FAILED:/ { print; fflush(); next }
+        /^\[[0-9]+\/[0-9]+\]/ {
+          last = $0
+          if (++n == 1 || n % every == 0) {
+            print; fflush(); last = ""
+          }
+        }
+        END { if (last != "") print last }'
+  rc=${PIPESTATUS[0]}
   elapsed=$(( $(date +%s) - start ))
 
   steps=$(tr '\r' '\n' <"$log" | grep -cE '^\[[0-9]+/' || true)

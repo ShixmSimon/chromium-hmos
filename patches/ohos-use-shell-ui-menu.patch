@@ -46,6 +46,13 @@ diff --git a/chrome/app/generated_resources.grd b/chrome/app/generated_resources
 diff --git a/chrome/browser/ui/toolbar/app_menu_model.cc b/chrome/browser/ui/toolbar/app_menu_model.cc
 --- a/chrome/browser/ui/toolbar/app_menu_model.cc
 +++ b/chrome/browser/ui/toolbar/app_menu_model.cc
+@@ -86,3 +86,6 @@
+ #include "chrome/browser/ui/toolbar/app_menu_icon_controller.h"
+ #include "chrome/browser/ui/toolbar/bookmark_sub_menu_model.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
+ #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
 @@ -2478,6 +2478,14 @@
  #endif
  #endif
@@ -64,6 +71,13 @@ diff --git a/chrome/browser/ui/toolbar/app_menu_model.cc b/chrome/browser/ui/too
 diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
 --- a/chrome/browser/ui/browser_command_controller.cc
 +++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -60,3 +60,6 @@
+ #include "chrome/browser/ui/browser_commands.h"
+ #include "chrome/browser/ui/browser_element_identifiers.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
+ #include "chrome/browser/ui/browser_select_file_dialog_controller.h"
 @@ -1285,7 +1285,14 @@
      case IDC_PERFORMANCE:
        ShowSettingsSubPage(webui::GetBrowserForOpeningWebUi(browser_),
