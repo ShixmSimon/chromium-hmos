@@ -986,6 +986,26 @@ void ApplyUserAgentToAllTabs(bool mobile, bool reload) {
   });
 }
 
+// Whether Chromium's own UI -- the address bar, most often -- holds the
+// focus, rather than a page or the side panel.
+bool FocusIsOnBrowserUi(BrowserView* browser_view) {
+  if (!browser_view) {
+    return false;
+  }
+  views::FocusManager* focus_manager = browser_view->GetFocusManager();
+  views::View* focused =
+      focus_manager ? focus_manager->GetFocusedView() : nullptr;
+  if (!focused) {
+    return false;
+  }
+  views::View* contents = browser_view->contents_container();
+  if (contents && contents->Contains(focused)) {
+    return false;
+  }
+  SidePanel* side_panel = browser_view->side_panel();
+  return !(side_panel && side_panel->Contains(focused));
+}
+
 struct BrowserTargetState {
   bool side_panel_visible = false;
   std::string side_panel_entry_id;
@@ -2712,9 +2732,16 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
                                   browser_view && browser_view->side_panel() &&
                                   side_panel_ui &&
                                   side_panel_ui->IsSidePanelShowing();
+    // recoverInput is the app side getting its component's focus back, not
+    // someone asking for the page. Ctrl+T puts the cursor in the address bar
+    // and the new tab's activation brings this here some 80ms later; taking
+    // the focus into the page then left a new tab nobody could type into.
+    // A focus already on Chromium's own UI stays where it is.
+    const bool keep_browser_ui_focus =
+        !focus_side_panel && FocusIsOnBrowserUi(browser_view);
     if (focus_side_panel) {
       browser_view->side_panel()->RequestFocus();
-    } else if (active) {
+    } else if (active && !keep_browser_ui_focus) {
       active->Focus();
     }
     if (browser_view) {
