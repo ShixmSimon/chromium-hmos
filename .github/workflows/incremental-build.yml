@@ -101,26 +101,33 @@ jobs:
       # The HAP is ~310 MB, far too large for the repository. It goes to a
       # prerelease keyed on the commit, which the other machine downloads with
       # `gh release download`.
-      - name: Upload HAP
-        if: success() && hashFiles('build-status/hap-path.txt') != ''
+      # Whatever this build produced. Gated on the HAP alone, the whole step
+      # -- the HAR and the symbols with it -- stopped running the day a build
+      # legitimately made no HAP, which is every build on a machine that does
+      # not hold the signing key. Two builds went out with nothing to
+      # download before anyone noticed.
+      - name: Upload artifacts
+        if: >-
+          success() && (hashFiles('build-status/hap-path.txt') != ''
+          || hashFiles('build-status/har-path.txt') != '')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          hap=$(cat build-status/hap-path.txt)
-          [ -f "$hap" ] || exit 0
           tag="build-${GITHUB_SHA::8}"
           gh release create "$tag" --prerelease --notes-file build-status/latest.json \
             --title "build ${GITHUB_SHA::8}" 2>/dev/null || true
-          gh release upload "$tag" "$hap" --clobber
 
-          # The engine HAR is what a shell integrates: the engine, its runtime
-          # and its ArkTS bridges, without the UI. It goes up beside the HAP so
-          # a consumer does not have to build one.
-          har_path=build-status/har-path.txt
-          if [ -s "$har_path" ]; then
-            har=$(cat "$har_path")
-            [ -f "$har" ] && gh release upload "$tag" "$har" --clobber
-          fi
+          # The HAP when there is one, the HAR always. Both are named by a
+          # file the build wrote, and a build that made neither never gets
+          # here.
+          uploaded=""
+          for path_file in build-status/hap-path.txt build-status/har-path.txt; do
+            [ -s "$path_file" ] || continue
+            artifact=$(cat "$path_file")
+            [ -f "$artifact" ] || continue
+            gh release upload "$tag" "$artifact" --clobber
+            uploaded="${uploaded} ${artifact}"
+          done
 
           # Ship the unstripped library too. A device crash reports only
           # offsets into libweb_engine.so, and turning those into function
@@ -134,5 +141,21 @@ jobs:
           if [ -f "$sym" ]; then
             gzip -1 -c "$sym" > /tmp/libweb_engine.unstripped.so.gz
             gh release upload "$tag" /tmp/libweb_engine.unstripped.so.gz --clobber
-            rm -f /tmp/libweb_engine.unstripped.so.gz
+            uploaded="${uploaded} /tmp/libweb_engine.unstripped.so.gz"
           fi
+
+          # So the other side can tell a short download from a bad build, and
+          # tell two builds apart without opening them.
+          rm -f /tmp/SHA256SUMS
+          for artifact in ${uploaded}; do
+            ( cd "$(dirname "$artifact")" \
+              && sha256sum "$(basename "$artifact")" ) >> /tmp/SHA256SUMS
+          done
+          gh release upload "$tag" /tmp/SHA256SUMS --clobber
+          {
+            echo '### Artifacts'
+            echo '```'
+            cat /tmp/SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f /tmp/libweb_engine.unstripped.so.gz /tmp/SHA256SUMS
