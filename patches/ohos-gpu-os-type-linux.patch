@@ -1,13 +1,16 @@
-Trial: give OHOS the Linux entries of the GPU lists.
+Give OHOS the Linux entries of the GPU lists.
 
 GpuControlList::GetOsType() has no OHOS arm and falls through to kOsAny,
 so every entry in the software rendering list and the driver bug list that
 names an operating system is inert on this port -- nothing in either list
 applies here except the handful that name none.
 
-This maps OHOS to Linux, to see what that turns on and whether anything
-breaks. It is a test build, asked for on its own so its effect can be told
-apart from anything else.
+This maps OHOS to Linux. It went out first in a build of its own so its
+effect could be told apart from anything else, and on the 2in1 emulator
+(ANGLE on Mali-G77 over Metal) chrome://gpu against the build before it
+showed exactly the two workarounds predicted below and nothing else:
+feature status unchanged item by item, rule 190 still in force, scrolling
+and video playback as before.
 
 What should change, read off the 154 lists: 20 Linux entries in the
 software rendering list and 28 in the driver bug list, but almost all are
@@ -38,11 +41,11 @@ diff --git a/gpu/config/gpu_control_list.cc b/gpu/config/gpu_control_list.cc
  #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OPENBSD)
    return kOsLinux;
 +#elif BUILDFLAG(IS_OHOS)
-+  // Trial: the Linux entries, rather than none. With no arm here OHOS fell
-+  // through to kOsAny, and every entry that names an operating system was
-+  // inert. Of the Linux ones only two can match a Mali device: 283
-+  // (exit_on_context_lost) and 478 (no program caching for transform
-+  // feedback); the rest are keyed to desktop vendors and drivers.
++  // The Linux entries, rather than none. With no arm here OHOS fell through
++  // to kOsAny, and every entry that names an operating system was inert. Of
++  // the Linux ones only two match a Mali device: 283 (exit_on_context_lost)
++  // and 478 (no program caching for transform feedback); the rest are keyed
++  // to desktop vendors and drivers.
 +  return kOsLinux;
  #elif BUILDFLAG(IS_MAC)
    return kOsMacosx;
