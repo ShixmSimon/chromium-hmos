@@ -1,0 +1,263 @@
+Chromium's own Vulkan implementation for HarmonyOS.
+
+The layer under ANGLE: what viz and Skia use when the GPU is driven by
+Vulkan. Modelled on gpu/vulkan/android, which is the nearest relative --
+a windowing system reached through a platform surface extension and a
+loader called libvulkan.so.
+
+Two things had to be said before it could exist at all. features.gni
+offered Vulkan to linux, chromeos, android and fuchsia, and OHOS is none
+of those, so enable_vulkan could not be turned on here even by asking; it
+now can be, and is still off unless asked. And the factory in
+gpu/vulkan/init never reaches its BUILDFLAG(IS_ANDROID) ladder on an
+Ozone platform -- Ozone is asked first -- so the implementation is handed
+back by the OHOS surface factory, where this port's other platform
+choices already are.
+
+Buffer sharing is not implemented. Android does it through
+AHardwareBuffer; HarmonyOS has VK_OHOS_native_buffer and
+VK_OHOS_external_memory for the same purpose and that is its own piece of
+work. CanImportGpuMemoryBuffer answers no rather than half doing it.
+
+diff --git a/gpu/vulkan/features.gni b/gpu/vulkan/features.gni
+index a8eef7f635..89bdbb082e 100644
+--- a/gpu/vulkan/features.gni
++++ b/gpu/vulkan/features.gni
+@@ -8,7 +8,12 @@ import("//build/config/ui.gni")
+ # For details see declare_args() in build/config/BUILDCONFIG.gn.
+ declare_args() {
+   # Enable experimental vulkan backend.
+-  enable_vulkan = is_linux || is_chromeos || is_android || is_fuchsia
++  # OHOS is its own platform here, not one of the above: it has
++  # VK_OHOS_surface and a libvulkan.so, so Vulkan can be built for it. Off
++  # unless asked for, like everywhere else -- this only makes asking
++  # possible.
++  enable_vulkan =
++      is_linux || is_chromeos || is_android || is_fuchsia || is_ohos
+ 
+   # Enable swiftshader vulkan. Disabling it can save build time, however
+   # --use-vulkan=swiftshader and some tests which use swiftshader vulkan will
+diff --git a/gpu/vulkan/ohos/BUILD.gn b/gpu/vulkan/ohos/BUILD.gn
+new file mode 100644
+index 0000000000..b8d27a850a
+--- /dev/null
++++ b/gpu/vulkan/ohos/BUILD.gn
+@@ -0,0 +1,22 @@
++# Copyright 2026 The Chromium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++import("//gpu/vulkan/features.gni")
++
++assert(enable_vulkan)
++
++source_set("ohos") {
++  sources = [
++    "vulkan_implementation_ohos.cc",
++    "vulkan_implementation_ohos.h",
++  ]
++
++  defines = [ "VULKAN_IMPLEMENTATION" ]
++
++  deps = [
++    "//base",
++    "//gpu/vulkan:vulkan",
++    "//ui/gfx",
++  ]
++}
+diff --git a/gpu/vulkan/ohos/vulkan_implementation_ohos.h b/gpu/vulkan/ohos/vulkan_implementation_ohos.h
+new file mode 100644
+index 0000000000..3632c43cc3
+--- /dev/null
++++ b/gpu/vulkan/ohos/vulkan_implementation_ohos.h
+@@ -0,0 +1,59 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef GPU_VULKAN_OHOS_VULKAN_IMPLEMENTATION_OHOS_H_
++#define GPU_VULKAN_OHOS_VULKAN_IMPLEMENTATION_OHOS_H_
++
++#include <memory>
++#include <vector>
++
++#include "gpu/vulkan/vulkan_export.h"
++#include "gpu/vulkan/vulkan_implementation.h"
++#include "gpu/vulkan/vulkan_instance.h"
++
++namespace gpu {
++
++class VULKAN_EXPORT VulkanImplementationOhos : public VulkanImplementation {
++ public:
++  explicit VulkanImplementationOhos(bool force_native = false);
++
++  VulkanImplementationOhos(const VulkanImplementationOhos&) = delete;
++  VulkanImplementationOhos& operator=(const VulkanImplementationOhos&) = delete;
++
++  ~VulkanImplementationOhos() override;
++
++  // VulkanImplementation:
++  bool InitializeVulkanInstance(bool using_surface) override;
++  VulkanInstance* GetVulkanInstance() override;
++  std::unique_ptr<VulkanSurface> CreateViewSurface(
++      gfx::AcceleratedWidget window) override;
++  bool GetPhysicalDevicePresentationSupport(
++      VkPhysicalDevice device,
++      const std::vector<VkQueueFamilyProperties>& queue_family_properties,
++      uint32_t queue_family_index) override;
++  std::vector<const char*> GetRequiredDeviceExtensions() override;
++  std::vector<const char*> GetOptionalDeviceExtensions() override;
++  VkFence CreateVkFenceForGpuFence(VkDevice vk_device) override;
++  std::unique_ptr<gfx::GpuFence> ExportVkFenceToGpuFence(
++      VkDevice vk_device,
++      VkFence vk_fence) override;
++  VkExternalSemaphoreHandleTypeFlagBits GetExternalSemaphoreHandleType()
++      override;
++  bool CanImportGpuMemoryBuffer(
++      VulkanDeviceQueue* device_queue,
++      gfx::GpuMemoryBufferType memory_buffer_type) override;
++  std::unique_ptr<VulkanImage> CreateImageFromGpuMemoryHandle(
++      VulkanDeviceQueue* device_queue,
++      gfx::GpuMemoryBufferHandle gmb_handle,
++      gfx::Size size,
++      VkFormat vk_format,
++      const gfx::ColorSpace& color_space) override;
++
++ private:
++  VulkanInstance vulkan_instance_;
++};
++
++}  // namespace gpu
++
++#endif  // GPU_VULKAN_OHOS_VULKAN_IMPLEMENTATION_OHOS_H_
+diff --git a/gpu/vulkan/ohos/vulkan_implementation_ohos.cc b/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
+new file mode 100644
+index 0000000000..9d94cc2e18
+--- /dev/null
++++ b/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
+@@ -0,0 +1,125 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
++
++#include <vulkan/vulkan_ohos.h>
++
++#include "base/files/file_path.h"
++#include "base/logging.h"
++#include "base/notimplemented.h"
++#include "gpu/vulkan/vulkan_device_queue.h"
++#include "gpu/vulkan/vulkan_function_pointers.h"
++#include "gpu/vulkan/vulkan_image.h"
++#include "gpu/vulkan/vulkan_instance.h"
++#include "gpu/vulkan/vulkan_surface.h"
++#include "gpu/vulkan/vulkan_util.h"
++#include "ui/gfx/gpu_fence.h"
++#include "ui/gfx/gpu_memory_buffer_handle.h"
++
++namespace gpu {
++
++VulkanImplementationOhos::VulkanImplementationOhos(bool force_native)
++    : VulkanImplementation(false, false, force_native),
++      vulkan_instance_(force_native) {}
++
++VulkanImplementationOhos::~VulkanImplementationOhos() = default;
++
++bool VulkanImplementationOhos::InitializeVulkanInstance(bool using_surface) {
++  DCHECK(using_surface);
++  std::vector<const char*> required_extensions = {
++      VK_KHR_SURFACE_EXTENSION_NAME, VK_OHOS_SURFACE_EXTENSION_NAME};
++  return vulkan_instance_.Initialize(base::FilePath("libvulkan.so"),
++                                     required_extensions, {});
++}
++
++VulkanInstance* VulkanImplementationOhos::GetVulkanInstance() {
++  return &vulkan_instance_;
++}
++
++std::unique_ptr<VulkanSurface> VulkanImplementationOhos::CreateViewSurface(
++    gfx::AcceleratedWidget window) {
++  VkSurfaceKHR surface = VK_NULL_HANDLE;
++  VkSurfaceCreateInfoOHOS surface_create_info = {};
++  surface_create_info.sType = VK_STRUCTURE_TYPE_SURFACE_CREATE_INFO_OHOS;
++  surface_create_info.window = reinterpret_cast<OHNativeWindow*>(window);
++  const VkResult result = vkCreateSurfaceOHOS(
++      vulkan_instance_.vk_instance(), &surface_create_info, nullptr, &surface);
++  if (result != VK_SUCCESS) {
++    DLOG(ERROR) << "vkCreateSurfaceOHOS() failed: " << result;
++    return nullptr;
++  }
++
++  return std::make_unique<VulkanSurface>(vulkan_instance_.vk_instance(), window,
++                                         surface);
++}
++
++bool VulkanImplementationOhos::GetPhysicalDevicePresentationSupport(
++    VkPhysicalDevice device,
++    const std::vector<VkQueueFamilyProperties>& queue_family_properties,
++    uint32_t queue_family_index) {
++  // As on Android: a device that can render can present, and there is no
++  // platform query that would say otherwise.
++  return true;
++}
++
++std::vector<const char*>
++VulkanImplementationOhos::GetRequiredDeviceExtensions() {
++  return {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
++}
++
++std::vector<const char*>
++VulkanImplementationOhos::GetOptionalDeviceExtensions() {
++  return {
++      VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
++      VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
++      VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
++      VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,
++      VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
++      VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
++      VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,
++      VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME,
++      VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
++  };
++}
++
++VkFence VulkanImplementationOhos::CreateVkFenceForGpuFence(VkDevice vk_device) {
++  NOTIMPLEMENTED();
++  return VK_NULL_HANDLE;
++}
++
++std::unique_ptr<gfx::GpuFence> VulkanImplementationOhos::ExportVkFenceToGpuFence(
++    VkDevice vk_device,
++    VkFence vk_fence) {
++  NOTIMPLEMENTED();
++  return nullptr;
++}
++
++VkExternalSemaphoreHandleTypeFlagBits
++VulkanImplementationOhos::GetExternalSemaphoreHandleType() {
++  return VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT;
++}
++
++bool VulkanImplementationOhos::CanImportGpuMemoryBuffer(
++    VulkanDeviceQueue* device_queue,
++    gfx::GpuMemoryBufferType memory_buffer_type) {
++  // Not yet. HarmonyOS shares buffers through VK_OHOS_native_buffer, the
++  // counterpart of Android's AHardwareBuffer path, and importing one is a
++  // piece of work of its own. Saying no here keeps the callers on a path
++  // that works rather than one that half does.
++  return false;
++}
++
++std::unique_ptr<VulkanImage>
++VulkanImplementationOhos::CreateImageFromGpuMemoryHandle(
++    VulkanDeviceQueue* device_queue,
++    gfx::GpuMemoryBufferHandle gmb_handle,
++    gfx::Size size,
++    VkFormat vk_format,
++    const gfx::ColorSpace& color_space) {
++  NOTIMPLEMENTED();
++  return nullptr;
++}
++
++}  // namespace gpu

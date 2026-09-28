@@ -89,4 +89,12 @@ source_set("ohos") {
     "//ui/platform_window/stub",
     "//ui/platform_window/wm",
   ]
+
+  if (enable_vulkan) {
+    # The Vulkan implementation this platform hands back. It lives with the
+    # other platforms' under //gpu/vulkan rather than here, so that the
+    # ladder in gpu/vulkan/init and this one stay recognisably the same
+    # shape.
+    deps += [ "//gpu/vulkan/ohos" ]
+  }
 }

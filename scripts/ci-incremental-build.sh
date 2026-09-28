@@ -230,6 +230,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-context-lost-recovery.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-fence-capability.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-backend.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-vulkan-implementation.patch"
   # The manager is trustworthy now -- HUKS holds the key and the user is asked
   # before a saved password is handed back -- so the patch that switched it off
   # comes out. The tree is persistent, so deleting the file is not enough.

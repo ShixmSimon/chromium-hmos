@@ -1,5 +1,9 @@
 #include "ui/ozone/platform/ohos/ohos_surface_factory.h"
 
+#if BUILDFLAG(ENABLE_VULKAN)
+#include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
+#endif
+
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
 #include "base/time/time.h"
@@ -216,5 +220,21 @@ GLOzone* OhosSurfaceFactory::GetGLOzone(
   }
   return nullptr;
 }
+
+#if BUILDFLAG(ENABLE_VULKAN)
+std::unique_ptr<gpu::VulkanImplementation>
+OhosSurfaceFactory::CreateVulkanImplementation(bool use_swiftshader,
+                                               bool allow_protected_memory) {
+  // No SwiftShader in this build: it needs ANGLE's Vulkan backend, which
+  // needs the very thing being created here. Asking for it gets nothing
+  // rather than something that will fail later and less clearly.
+  if (use_swiftshader) {
+    LOG(WARNING) << "OHOS: no SwiftShader Vulkan in this build";
+    return nullptr;
+  }
+  return std::make_unique<gpu::VulkanImplementationOhos>(
+      /*force_native=*/true);
+}
+#endif  // BUILDFLAG(ENABLE_VULKAN)
 
 }  // namespace ui
