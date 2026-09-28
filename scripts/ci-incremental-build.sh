@@ -546,6 +546,11 @@ hap=''
 size=0
 if [[ -n "${SKIP_HAP:-}" ]]; then
   say 'SKIP_HAP set; building the engine HAR only'
+  # And leave no path behind pointing at the last run's package. Whoever
+  # reads this file cannot tell an old HAP from a new one, and a release
+  # went out carrying a HAP from a different engine than the HAR beside it.
+  rm -f "${status_dir}/hap-path.txt"
+  rm -f "${stage_target}"/entry/build/*/outputs/*/*.hap
 else
   if ( cd "$ui_dir" \
        && "$node_bin" "$hvigor_arg" \
