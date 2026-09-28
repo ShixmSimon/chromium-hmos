@@ -198,6 +198,7 @@ export interface BrowserRuntimeEvent {
     'openedInGroup' | 'pageScrollSettled' | 'pageContinuation' |
     'contextMenuImageFile' | 'contextMenuActionsChanged' |
     'backHandled' | 'dropNotHandled' | 'browserChromeRequested' |
+    'gpuContextLost' |
     'pageDragStarted' | 'pageDragEnded' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |
@@ -211,6 +212,9 @@ export interface BrowserRuntimeEvent {
     'downloadUpdated' | 'downloadList' |
     'clearBrowsingDataDone' | 'browsingDataCounts' | 'searchEngines' |
     'prefs' | 'prefsChanged' | 'siteSettings' | 'aboutInfo' | 'favicons';
+  // gpuContextLost: whether the engine could rebuild after the GPU lost
+  // its context. False means the picture will not come back on its own.
+  recovered?: boolean;
   // browserChromeRequested: which UI the reader asked for. The shell saves
   // the setting and calls setBrowserChrome itself; the engine only asks.
   mode?: 'shell' | 'native';

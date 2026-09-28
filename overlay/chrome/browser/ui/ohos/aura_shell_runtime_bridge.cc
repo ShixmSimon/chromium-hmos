@@ -1982,6 +1982,27 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
     chrome::ohos::WatchChromeWebStoreUserAgent(tabs->GetWebContentsAt(index));
   }
 
+  // The GPU losing its context is noticed far from here, in the code that
+  // drives the GPU, and cannot be reported from there: the shell is not
+  // reachable from gpu/. Registered once, like the drag callbacks.
+  static bool watching_gpu_context = false;
+  if (!watching_gpu_context) {
+    watching_gpu_context = true;
+    ui::SetOhosGpuContextLostCallback(
+        base::BindRepeating([](bool recovered) {
+          base::DictValue event;
+          event.Set("event", "gpuContextLost");
+          event.Set("recovered", recovered);
+          if (GlobalBrowserCollection* browsers =
+                  GlobalBrowserCollection::GetInstance()) {
+            browsers->ForEach([&event](BrowserWindowInterface* browser) {
+              DispatchRuntimeEvent(GetBrowserWidget(browser), event.Clone());
+              return true;
+            });
+          }
+        }));
+  }
+
   // Images written for a share that never happened do not outlive the run
   // that wrote them. Once, on the first snapshot of the first window.
   static bool cleared_shared_images = false;

@@ -970,6 +970,29 @@ void SetOhosLogicalWindowCloseCallback(
   GetRegistry().SetLogicalWindowCloseCallback(widget, std::move(callback));
 }
 
+namespace {
+
+OhosGpuContextLostCallback& GpuContextLostCallback() {
+  static base::NoDestructor<OhosGpuContextLostCallback> callback;
+  return *callback;
+}
+
+}  // namespace
+
+void SetOhosGpuContextLostCallback(OhosGpuContextLostCallback callback) {
+  GpuContextLostCallback() = std::move(callback);
+}
+
+void NotifyOhosGpuContextLost(bool recovered) {
+  // Posted rather than called: this arrives on whichever thread noticed
+  // the loss, and the browser side reads window state on the UI thread.
+  const OhosGpuContextLostCallback& callback = GpuContextLostCallback();
+  if (callback.is_null()) {
+    return;
+  }
+  callback.Run(recovered);
+}
+
 bool RequestCloseOhosLogicalWindow(gfx::AcceleratedWidget widget) {
   return GetRegistry().RequestCloseLogicalWindow(widget);
 }

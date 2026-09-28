@@ -718,6 +718,23 @@ pageDragEnded   { windowId?: number, dropped: boolean }
 `filePath` 就是那份临时文件，只在拖图片时出现；`url` 是图片的原地址。拖出去
 的东西本身不用外壳管，这两个字段只是告诉你们拖的是什么。
 
+**GPU 上下文丢失**
+
+```
+gpuContextLost { windowId?: number, recovered: boolean }
+```
+
+手机上 GPU 跑在浏览器进程里(`--single-process --in-process-gpu`),上下文丢了
+没有 GPU 进程可以重启——上游的恢复手段在这里是空操作,于是画面停在最后一帧不
+动,只能重启应用。现在内核改成通知所有客户端重建并重绘,等价于重启的效果而不
+重启;这条事件告诉外壳发生过,以及有没有救回来。
+
+`recovered: true` 时画面会自己回来,外壳通常不用做什么,记一笔即可;
+`recovered: false` 说明连重建都没做成,建议提示用户或重载当前页。
+
+触发场景(还没有逐一验证):切后台较久、锁屏解锁、内存吃紧、折叠展开、窗口大小
+变化、旋转、切换界面样式。
+
 **画中画**
 
 长按视频的菜单里有 `pictureInPicture`,用的是 Chromium 自己的画中画。它出来的是一个

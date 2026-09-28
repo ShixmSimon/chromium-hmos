@@ -1,6 +1,10 @@
 #include "ui/ozone/platform/ohos/ohos_screen.h"
 
+#include <window_manager/oh_display_info.h>
 #include <window_manager/oh_display_manager.h>
+
+#include "components/viz/common/resources/shared_image_format.h"
+#include "ui/gfx/display_color_spaces.h"
 
 #include "base/functional/bind.h"
 #include "base/location.h"
@@ -21,6 +25,61 @@ constexpr gfx::Size kOhosPrimaryDisplaySize(1920, 1080);
 // natural orientation. Passed through as the panel rotation, which is what
 // screen.orientation.angle and the orientation type are computed from; the
 // display's own bounds already follow the rotation.
+// What the panel can show, as Chromium's compositor asks the question.
+//
+// HarmonyOS reports a display's HDR formats and colour spaces on its
+// display info. Chromium wants it the other way round -- a colour space
+// per content type, and how much headroom there is above white -- so this
+// answers the second from the first. Reported wrongly in either direction
+// costs something real: claim HDR on a panel without it and highlights
+// clip, deny it on a panel with it and HDR video is tone-mapped down for
+// no reason.
+gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
+  // The default is sRGB throughout, which is what a panel without HDR
+  // wants and a safe answer when the question cannot be asked.
+  gfx::DisplayColorSpaces color_spaces(gfx::ColorSpace::CreateSRGB());
+
+  NativeDisplayManager_DisplayInfo* info = nullptr;
+  if (OH_NativeDisplayManager_CreateDisplayById(0, &info) !=
+          DISPLAY_MANAGER_OK ||
+      !info) {
+    return color_spaces;
+  }
+
+  bool hdr = false;
+  if (info->hdrFormat && info->hdrFormat->hdrFormats) {
+    for (uint32_t i = 0; i < info->hdrFormat->hdrFormatLength; ++i) {
+      // Any format beyond "none" means the panel can show more than SDR.
+      // Which one it is decides tone mapping, not whether to offer HDR at
+      // all, and the engine does not choose the format anyway.
+      if (info->hdrFormat->hdrFormats[i] != 0) {
+        hdr = true;
+        break;
+      }
+    }
+  }
+  OH_NativeDisplayManager_DestroyDisplay(info);
+
+  if (!hdr) {
+    return color_spaces;
+  }
+
+  // Rec. 2020 with the PQ transfer is what HDR video arrives in and what a
+  // HarmonyOS panel advertising HDR presents. Video gets it; everything
+  // else stays sRGB, so ordinary pages are not re-encoded on their way to
+  // a panel that was showing them correctly already.
+  const gfx::ColorSpace hdr_space = gfx::ColorSpace::CreateHDR10();
+  const viz::SharedImageFormat hdr_format =
+      viz::SinglePlaneFormat::kRGBA_1010102;
+  color_spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR,
+                                            /*needs_alpha=*/false, hdr_space,
+                                            hdr_format);
+  color_spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR,
+                                            /*needs_alpha=*/true, hdr_space,
+                                            hdr_format);
+  return color_spaces;
+}
+
 display::Display::Rotation ReadDisplayRotation() {
   NativeDisplayManager_Rotation rotation = DISPLAY_MANAGER_ROTATION_0;
   if (OH_NativeDisplayManager_GetDefaultDisplayRotation(&rotation) !=
@@ -69,6 +128,7 @@ OhosScreen::OhosScreen() {
   const display::Display::Rotation rotation = ReadDisplayRotation();
   display.set_rotation(rotation);
   display.set_panel_rotation(rotation);
+  display.SetColorSpaces(ReadDisplayColorSpaces());
   uint32_t refresh_rate = 0;
   if (OH_NativeDisplayManager_GetDefaultDisplayRefreshRate(
           &refresh_rate) == DISPLAY_MANAGER_OK &&

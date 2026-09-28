@@ -200,6 +200,16 @@ void SetOhosDragCallback(gfx::AcceleratedWidget widget,
 int DispatchOhosDragEvent(gfx::AcceleratedWidget widget, OhosDragEvent event);
 bool RequestCloseOhosLogicalWindow(gfx::AcceleratedWidget widget);
 
+// The GPU context was lost, and whether anything could be done about it.
+//
+// Noticed in gpu/, where the shell cannot be reached, and wanted in
+// chrome/, which cannot be included from there. Same shape as the drag
+// callbacks above: the GPU side calls Notify, the browser side registers
+// once and forwards.
+using OhosGpuContextLostCallback = base::RepeatingCallback<void(bool)>;
+void SetOhosGpuContextLostCallback(OhosGpuContextLostCallback callback);
+void NotifyOhosGpuContextLost(bool recovered);
+
 }  // namespace ui
 
 #endif  // UI_OZONE_PLATFORM_OHOS_OHOS_NATIVE_WINDOW_REGISTRY_H_
