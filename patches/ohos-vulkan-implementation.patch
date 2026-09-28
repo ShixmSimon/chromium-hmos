@@ -19,6 +19,19 @@ AHardwareBuffer; HarmonyOS has VK_OHOS_native_buffer and
 VK_OHOS_external_memory for the same purpose and that is its own piece of
 work. CanImportGpuMemoryBuffer answers no rather than half doing it.
 
+Two more things only a compiler knew. gpu/vulkan/vulkan_export.h does not
+exist in 154 -- components say COMPONENT_EXPORT(NAME) now -- and
+vkCreateSurfaceOHOS is not among Chromium's Vulkan function pointers,
+which are generated from the Khronos headers and so have never heard of
+this platform either.
+
+That second one is the same thing the ANGLE backend hit, and it will be
+the same again for VK_OHOS_native_buffer and VK_OHOS_external_memory when
+buffer sharing is wired up: an extension the SDK declares and the device's
+loader exports, but the headers this is built against do not carry. It is
+asked for by name, with the structure repeated locally.
+
+
 diff --git a/gpu/vulkan/features.gni b/gpu/vulkan/features.gni
 index a8eef7f635..89bdbb082e 100644
 --- a/gpu/vulkan/features.gni
@@ -39,7 +52,7 @@ index a8eef7f635..89bdbb082e 100644
    # --use-vulkan=swiftshader and some tests which use swiftshader vulkan will
 diff --git a/gpu/vulkan/ohos/BUILD.gn b/gpu/vulkan/ohos/BUILD.gn
 new file mode 100644
-index 0000000000..b8d27a850a
+index 0000000000..755f0bbb47
 --- /dev/null
 +++ b/gpu/vulkan/ohos/BUILD.gn
 @@ -0,0 +1,22 @@
@@ -57,7 +70,7 @@ index 0000000000..b8d27a850a
 +    "vulkan_implementation_ohos.h",
 +  ]
 +
-+  defines = [ "VULKAN_IMPLEMENTATION" ]
++  defines = [ "IS_VULKAN_OHOS_IMPL" ]
 +
 +  deps = [
 +    "//base",
@@ -67,10 +80,10 @@ index 0000000000..b8d27a850a
 +}
 diff --git a/gpu/vulkan/ohos/vulkan_implementation_ohos.h b/gpu/vulkan/ohos/vulkan_implementation_ohos.h
 new file mode 100644
-index 0000000000..3632c43cc3
+index 0000000000..4e36099687
 --- /dev/null
 +++ b/gpu/vulkan/ohos/vulkan_implementation_ohos.h
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,60 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -81,13 +94,14 @@ index 0000000000..3632c43cc3
 +#include <memory>
 +#include <vector>
 +
-+#include "gpu/vulkan/vulkan_export.h"
++#include "base/component_export.h"
 +#include "gpu/vulkan/vulkan_implementation.h"
 +#include "gpu/vulkan/vulkan_instance.h"
 +
 +namespace gpu {
 +
-+class VULKAN_EXPORT VulkanImplementationOhos : public VulkanImplementation {
++class COMPONENT_EXPORT(VULKAN_OHOS) VulkanImplementationOhos
++    : public VulkanImplementation {
 + public:
 +  explicit VulkanImplementationOhos(bool force_native = false);
 +
@@ -132,17 +146,15 @@ index 0000000000..3632c43cc3
 +#endif  // GPU_VULKAN_OHOS_VULKAN_IMPLEMENTATION_OHOS_H_
 diff --git a/gpu/vulkan/ohos/vulkan_implementation_ohos.cc b/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
 new file mode 100644
-index 0000000000..9d94cc2e18
+index 0000000000..65a4c08bc5
 --- /dev/null
 +++ b/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,153 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
 +
 +#include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
-+
-+#include <vulkan/vulkan_ohos.h>
 +
 +#include "base/files/file_path.h"
 +#include "base/logging.h"
@@ -167,7 +179,7 @@ index 0000000000..9d94cc2e18
 +bool VulkanImplementationOhos::InitializeVulkanInstance(bool using_surface) {
 +  DCHECK(using_surface);
 +  std::vector<const char*> required_extensions = {
-+      VK_KHR_SURFACE_EXTENSION_NAME, VK_OHOS_SURFACE_EXTENSION_NAME};
++      VK_KHR_SURFACE_EXTENSION_NAME, "VK_OHOS_surface"};
 +  return vulkan_instance_.Initialize(base::FilePath("libvulkan.so"),
 +                                     required_extensions, {});
 +}
@@ -176,21 +188,51 @@ index 0000000000..9d94cc2e18
 +  return &vulkan_instance_;
 +}
 +
++namespace {
++
++// From <vulkan/vulkan_ohos.h>, repeated rather than included: the headers
++// this is built against are Khronos's and have never heard of this
++// platform, while the loader on the device has the symbol.
++constexpr VkStructureType kStructureTypeSurfaceCreateInfoOHOS =
++    static_cast<VkStructureType>(1000453000);
++
++struct VkSurfaceCreateInfoOHOS {
++  VkStructureType sType;
++  const void* pNext;
++  VkFlags flags;
++  void* window;  // OHNativeWindow*
++};
++
++using PFN_vkCreateSurfaceOHOS = VkResult(VKAPI_PTR*)(
++    VkInstance instance,
++    const VkSurfaceCreateInfoOHOS* create_info,
++    const VkAllocationCallbacks* allocator,
++    VkSurfaceKHR* surface);
++
++}  // namespace
++
 +std::unique_ptr<VulkanSurface> VulkanImplementationOhos::CreateViewSurface(
 +    gfx::AcceleratedWidget window) {
++  const VkInstance instance = vulkan_instance_.vk_instance();
++  static const auto create_surface = reinterpret_cast<PFN_vkCreateSurfaceOHOS>(
++      vkGetInstanceProcAddr(instance, "vkCreateSurfaceOHOS"));
++  if (!create_surface) {
++    DLOG(ERROR) << "vkCreateSurfaceOHOS is missing from the Vulkan loader";
++    return nullptr;
++  }
++
 +  VkSurfaceKHR surface = VK_NULL_HANDLE;
 +  VkSurfaceCreateInfoOHOS surface_create_info = {};
-+  surface_create_info.sType = VK_STRUCTURE_TYPE_SURFACE_CREATE_INFO_OHOS;
-+  surface_create_info.window = reinterpret_cast<OHNativeWindow*>(window);
-+  const VkResult result = vkCreateSurfaceOHOS(
-+      vulkan_instance_.vk_instance(), &surface_create_info, nullptr, &surface);
++  surface_create_info.sType = kStructureTypeSurfaceCreateInfoOHOS;
++  surface_create_info.window = reinterpret_cast<void*>(window);
++  const VkResult result =
++      create_surface(instance, &surface_create_info, nullptr, &surface);
 +  if (result != VK_SUCCESS) {
 +    DLOG(ERROR) << "vkCreateSurfaceOHOS() failed: " << result;
 +    return nullptr;
 +  }
 +
-+  return std::make_unique<VulkanSurface>(vulkan_instance_.vk_instance(), window,
-+                                         surface);
++  return std::make_unique<VulkanSurface>(instance, window, surface);
 +}
 +
 +bool VulkanImplementationOhos::GetPhysicalDevicePresentationSupport(
