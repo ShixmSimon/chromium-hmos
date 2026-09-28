@@ -50,11 +50,12 @@ jobs:
       - name: Build
         id: build
         env:
-          # 8 rather than 12: this host has 16 GB, and a link peaks well above
-          # what twelve concurrent compiles leave it. Throughput is about the
-          # same either way, since this is not purely CPU bound. Raise it if
-          # the machine's memory is.
-          NINJA_JOBS: '8'
+          # The host has 16 cores; at 8 half of them sat idle for hours
+          # (us 47, id 50) while memory stayed at 8 GB free with a 16 GB
+          # swap barely touched. The heaviest single compile measured
+          # 1.6 GB, so twelve fit, and a link that spikes past them has
+          # the swap to land in.
+          NINJA_JOBS: '12'
           # The HAP is signed, and the signing material DevEco issued lives on
           # the developer's machine, not here. This runner builds the engine
           # and the engine HAR -- neither of which is signed -- and packaging
