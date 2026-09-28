@@ -1,0 +1,55 @@
+Say whether a touch became a tap, and where it went.
+
+Touch does not work on Chromium's own UI: the tab strip and the address
+bar ignore a finger, while a mouse click on the same pixel works and a
+hover highlight does appear. The events reach ozone -- they are logged
+there with the right coordinates and the right target -- and Views
+buttons act on gestures rather than on raw touches, so the question is
+whether the recognizer produced a tap at all and, if it did, which
+window it was sent to.
+
+Two lines, at the only place that knows: ProcessGestures, which receives
+what the recognizer made of a touch and hands each one to a target. One
+line per batch saying how many gestures came out and whether there was a
+target, and one per gesture naming its type. A batch of none, or a tap
+with no target, tells two different stories that look the same from
+outside.
+
+Diagnostic only, and it comes out again once it has answered.
+
+diff --git a/ui/aura/window_event_dispatcher.cc b/ui/aura/window_event_dispatcher.cc
+--- a/ui/aura/window_event_dispatcher.cc
++++ b/ui/aura/window_event_dispatcher.cc
+@@ -12,4 +12,6 @@
+ #include "base/functional/bind.h"
++#include "base/logging.h"
+ #include "base/observer_list.h"
++#include "base/strings/number_conversions.h"
+ #include "base/task/single_thread_task_runner.h"
+ #include "base/time/time.h"
+@@ -343,11 +343,25 @@
+ ui::EventDispatchDetails WindowEventDispatcher::ProcessGestures(
+     Window* target,
+     ui::GestureRecognizer::Gestures gestures) {
+   DispatchDetails details;
++#if BUILDFLAG(IS_OHOS)
++  {
++    std::string types;
++    for (const auto& event : gestures) {
++      types += " ";
++      types += base::NumberToString(static_cast<int>(event->type()));
++    }
++    LOG(WARNING) << "OHOS gestures: count=" << gestures.size()
++                 << " target=" << (target ? "yes" : "none")
++                 << " target_name="
++                 << (target ? target->GetName() : std::string("-"))
++                 << " types=[" << types << " ]";
++  }
++#endif
+   if (gestures.empty())
+     return details;
+
+   // If a window has been hidden between the touch event and now, the associated
+   // gestures may not have a valid target.
+   if (!target)
+     return details;
