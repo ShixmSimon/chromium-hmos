@@ -74,18 +74,9 @@ index 56a818c..d13c464 100644
  bool IsVulkanFuchsiaDisplayAvailable();
  DisplayImpl *CreateVulkanFuchsiaDisplay(const egl::DisplayState &state);
 diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni b/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni
-index f29c808..7881675 100644
+index 57fc22c..7881675 100644
 --- a/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni
 +++ b/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni
-@@ -164,7 +164,7 @@ vulkan_backend_dma_buf_sources = [
-   "linux/headless/WindowSurfaceVkHeadless.h",
- ]
- 
--if (is_linux || is_chromeos) {
-+if (is_linux || is_chromeos || is_ohos) {
-   vulkan_backend_sources += vulkan_backend_dma_buf_sources
- }
- 
 @@ -181,6 +181,15 @@ if (is_android) {
    ]
  }

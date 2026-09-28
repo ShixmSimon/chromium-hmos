@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stay awake</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem; }
+  #state { font-size: 1.4rem; font-weight: 600; }
+  .on { color: #0a7; } .off { color: #c33; }
+  button { font-size: 1.1rem; padding: .6rem 1.2rem; margin-top: 1rem; }
+</style>
+<h1>Stay awake</h1>
+<p>Holds a screen wake lock, so a phone left alone during a test run does
+not lock itself and end the run. The engine turns this into
+<code>OH_WindowManager_SetWindowKeepScreenOn</code>, so it also says
+whether that path works.</p>
+<p id="state" class="off">asking&hellip;</p>
+<button id="again">Ask again</button>
+<script>
+  const state = document.getElementById('state');
+  let lock = null;
+
+  function show(text, held) {
+    state.textContent = text;
+    state.className = held ? 'on' : 'off';
+  }
+
+  async function acquire() {
+    if (!('wakeLock' in navigator)) {
+      show('no wake lock in this build', false);
+      return;
+    }
+    try {
+      lock = await navigator.wakeLock.request('screen');
+      show('held — the screen will stay on', true);
+      // The system drops the lock whenever the page is hidden, so take it
+      // back when the page returns; otherwise one tab switch ends the run.
+      lock.addEventListener('release', function () {
+        lock = null;
+        show('released', false);
+      });
+    } catch (error) {
+      show('refused: ' + error.name + ' ' + error.message, false);
+    }
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && lock === null) {
+      acquire();
+    }
+  });
+  document.getElementById('again').addEventListener('click', acquire);
+  acquire();
+</script>

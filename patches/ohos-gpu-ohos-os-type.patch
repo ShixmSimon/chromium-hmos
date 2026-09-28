@@ -37,6 +37,12 @@ Ported by script from the two lists as they stand in 154, so the selection
 can be re-run when the lists move. Verified through the generator: the
 built lists carry 12 and 81 OHOS entries, which is what went in.
 
+Exported against a tree that already has the other patches, not against
+pristine Chromium: git diff shows everything anyone has changed, so the
+first export carried the main patch's two IS_OHOS arms and the emulator's
+rule 190 as well. Applied in order, the duplicate could not find its
+context, which is what a build on a second machine said.
+
 diff --git a/gpu/config/BUILD.gn b/gpu/config/BUILD.gn
 index 09bedb08fc..eec8528cc0 100644
 --- a/gpu/config/BUILD.gn
@@ -53,16 +59,6 @@ index 09bedb08fc..eec8528cc0 100644
    } else {
      args += [ "linux" ]
    }
-@@ -127,6 +132,9 @@ component("config") {
-   if (is_fuchsia) {
-     sources += [ "gpu_info_collector_fuchsia.cc" ]
-   }
-+  if (is_ohos) {
-+    sources += [ "gpu_info_collector_ohos.cc" ]
-+  }
- 
-   sources += process_json_outputs
- 
 diff --git a/gpu/config/gpu_control_list.cc b/gpu/config/gpu_control_list.cc
 index a7c6208cb0..4d15fc3007 100644
 --- a/gpu/config/gpu_control_list.cc
@@ -1338,33 +1334,6 @@ index a572716679..2f32f84eec 100644
      }
    ]
  }
-diff --git a/gpu/config/gpu_finch_features.cc b/gpu/config/gpu_finch_features.cc
-index f9ecd8b586..cf12d3d6e7 100644
---- a/gpu/config/gpu_finch_features.cc
-+++ b/gpu/config/gpu_finch_features.cc
-@@ -206,7 +206,8 @@ BASE_FEATURE(kSharedImageStubHighPriority, base::FEATURE_DISABLED_BY_DEFAULT);
- // Android and Linux.
- BASE_FEATURE(kDefaultEnableGpuRasterization,
- #if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS) || \
--    BUILDFLAG(IS_ANDROID) || BUILDFLAG(USE_WEBGPU_ON_VULKAN_VIA_GL_INTEROP)
-+    BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS) || \
-+    BUILDFLAG(USE_WEBGPU_ON_VULKAN_VIA_GL_INTEROP)
-              base::FEATURE_ENABLED_BY_DEFAULT
- #else
-              base::FEATURE_DISABLED_BY_DEFAULT
-diff --git a/gpu/config/gpu_test_config.cc b/gpu/config/gpu_test_config.cc
-index 51567417cf..c10d688a99 100644
---- a/gpu/config/gpu_test_config.cc
-+++ b/gpu/config/gpu_test_config.cc
-@@ -27,7 +27,7 @@ namespace {
- GPUTestConfig::OS GetCurrentOS() {
- #if BUILDFLAG(IS_CHROMEOS)
-   return GPUTestConfig::kOsChromeOS;
--#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OPENBSD)
-+#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OPENBSD) || BUILDFLAG(IS_OHOS)
-   return GPUTestConfig::kOsLinux;
- #elif BUILDFLAG(IS_WIN)
-   int32_t major_version = 0;
 diff --git a/gpu/config/process_json.py b/gpu/config/process_json.py
 index eeb8fba44f..437bd1dde4 100755
 --- a/gpu/config/process_json.py
@@ -1394,21 +1363,13 @@ index eeb8fba44f..437bd1dde4 100755
        d3d11_feature_level != None or
        in_process_gpu or gl_reset_notification_strategy != None or
 diff --git a/gpu/config/software_rendering_list.json b/gpu/config/software_rendering_list.json
-index a7c3a650d5..f51e6164b1 100644
+index 403145a5f7..f51e6164b1 100644
 --- a/gpu/config/software_rendering_list.json
 +++ b/gpu/config/software_rendering_list.json
-@@ -1549,6 +1549,257 @@
+@@ -1557,6 +1557,249 @@
        "features": [
-         "skia_graphite"
+         "gpu_tile_rasterization"
        ]
-+    },
-+    {
-+      "id": 190,
-+      "description": "Emulator GL translated to Metal has no working fence sync; GPU rasterization reads unfinished tiles",
-+      "gl_version_string": "(?i).*metal.*",
-+      "features": [
-+        "gpu_tile_rasterization"
-+      ]
 +    },
 +    {
 +      "id": 900,

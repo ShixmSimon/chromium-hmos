@@ -20,63 +20,10 @@ Rule 190 stays as a backstop for anything that fails earlier than this
 runs.
 
 diff --git a/gpu/ipc/service/gpu_init.cc b/gpu/ipc/service/gpu_init.cc
-index 1a3ee6b928..55ee452afc 100644
+index 4025b0d90b..55ee452afc 100644
 --- a/gpu/ipc/service/gpu_init.cc
 +++ b/gpu/ipc/service/gpu_init.cc
-@@ -119,8 +119,9 @@ bool CollectGraphicsInfo(GPUInfo* gpu_info) {
-   DCHECK(gpu_info);
-   TRACE_EVENT("gpu,startup", "Collect Graphics Info");
-   bool success = CollectContextGraphicsInfo(gpu_info);
--  if (!success)
-+  if (!success) {
-     LOG(ERROR) << "CollectGraphicsInfo failed.";
-+  }
-   return success;
- }
- 
-@@ -173,8 +174,9 @@ void InitializePlatformOverlaySettings(GPUInfo* gpu_info,
- bool CanAccessDeviceFile(const GPUInfo& gpu_info) {
- #if BUILDFLAG(IS_LINUX)
-   if (gpu_info.gpu.vendor_id != 0x10de ||  // NVIDIA
--      gpu_info.gpu.driver_vendor != "NVIDIA")
-+      gpu_info.gpu.driver_vendor != "NVIDIA") {
-     return true;
-+  }
- 
-   base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
-                                                 base::BlockingType::WILL_BLOCK);
-@@ -193,8 +195,9 @@ class GpuWatchdogInit {
-  public:
-   GpuWatchdogInit() = default;
-   ~GpuWatchdogInit() {
--    if (watchdog_ptr_)
-+    if (watchdog_ptr_) {
-       watchdog_ptr_->OnInitComplete();
-+    }
-   }
- 
-   void SetGpuWatchdogPtr(GpuWatchdogThread* ptr) { watchdog_ptr_ = ptr; }
-@@ -251,8 +254,9 @@ bool MatchGLInfo(const std::string& field, const std::string& patterns) {
-   auto pattern_strings = base::SplitString(patterns, "|", base::TRIM_WHITESPACE,
-                                            base::SPLIT_WANT_ALL);
-   for (const auto& pattern : pattern_strings) {
--    if (base::MatchPattern(field, pattern))
-+    if (base::MatchPattern(field, pattern)) {
-       return true;
-+    }
-   }
-   return false;
- }
-@@ -309,7 +313,7 @@ void SetupGLDisplayManagerEGL(const GPUInfo& gpu_info,
-       gpu_low_power ? CHROME_LUID_to_uint64_t(gpu_low_power->luid) : 0;
-   uint64_t system_device_id_default =
-       CHROME_LUID_to_uint64_t(gpu_default->luid);
--#else  // IS_MAC
-+#else   // IS_MAC
-   const GPUInfo::GPUDevice* gpu_default =
-       gpu_low_power ? gpu_low_power : GetDefaultGPU(gpu_info, gpu_feature_info);
-   uint64_t system_device_id_high_perf =
-@@ -359,6 +363,73 @@ void SetupGLDisplayManagerEGL(const GPUInfo& gpu_info,
+@@ -363,6 +363,73 @@ void SetupGLDisplayManagerEGL(const GPUInfo& gpu_info,
  }
  #endif  // IS_WIN || IS_MAC
  
@@ -150,28 +97,7 @@ index 1a3ee6b928..55ee452afc 100644
  }  // namespace
  
  GpuInit::GpuInit() = default;
-@@ -406,8 +477,9 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
-     device_perf_info_ = device_perf_info;
-   }
- 
--  if (!CanAccessDeviceFile(gpu_info_))
-+  if (!CanAccessDeviceFile(gpu_info_)) {
-     return false;
-+  }
- 
-   // Compute blocklist and driver bug workaround decisions based on basic GPU
-   // info.
-@@ -561,7 +633,8 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
-   // to know whether a bug report is for a session with passthrough enabled.
-   // Remove this logging when passthrough is fully launched on CrOS.
-   if (gpu_preferences_.use_passthrough_cmd_decoder) {
--    LOG(WARNING) << "Using passthrough command decoder. NOTE: This log is "
-+    LOG(WARNING)
-+        << "Using passthrough command decoder. NOTE: This log is "
-         << "to help triage feedback reports and does not by itself mean there "
-         << "is an issue.";
-   }
-@@ -578,6 +651,11 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
+@@ -584,6 +651,11 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
        SetKeysForCrashLogging(gpu_info_);
        gpu_feature_info_ = ComputeGpuFeatureInfo(gpu_info_, gpu_preferences_,
                                                  command_line, nullptr);
@@ -183,12 +109,3 @@ index 1a3ee6b928..55ee452afc 100644
        gl_use_swiftshader_ = EnableSwiftShaderIfNeeded(
            command_line, gpu_feature_info_,
            gpu_preferences_.disable_software_rasterizer, false);
-@@ -980,7 +1058,7 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
-   ui::OzonePlatform::GetInstance()->AfterSandboxEntry();
-   [[maybe_unused]] auto* factory =
-       ui::OzonePlatform::GetInstance()->GetSurfaceFactoryOzone();
--  bool filter_set = false;
-+  [[maybe_unused]] bool filter_set = false;
- #if BUILDFLAG(ENABLE_VULKAN)
-   if (gpu_feature_info_.status_values[GPU_FEATURE_TYPE_VULKAN] ==
-           kGpuFeatureStatusEnabled &&
