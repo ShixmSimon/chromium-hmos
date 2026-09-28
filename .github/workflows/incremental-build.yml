@@ -33,7 +33,7 @@ permissions:
 jobs:
   build:
     runs-on: [self-hosted, harmonyos-chromium]
-    timeout-minutes: 240
+    timeout-minutes: 1440
     strategy:
       max-parallel: 1
       matrix:
