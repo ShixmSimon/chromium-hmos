@@ -225,8 +225,11 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-new-tab-focuses-omnibox.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-touch-gesture-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-focus-diagnostics.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-gpu-os-type-linux.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-drop-data-at-drop.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-gpu-ohos-os-type.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-gpu-context-lost-recovery.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-gpu-fence-capability.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-backend.patch"
   # The manager is trustworthy now -- HUKS holds the key and the user is asked
   # before a saved password is handed back -- so the patch that switched it off
   # comes out. The tree is persistent, so deleting the file is not enough.
@@ -234,6 +237,10 @@ else
 
   # The chooser takes touch now, so the probes that found out why come out.
   retire_incremental_patch "${repo_root}/patches/ohos-bubble-input-diagnostics.patch"
+
+# The independent kOsOhos replaces it; a tree that still has the trial
+# applied must have it backed out or both arms exist and one is dead.
+retire_incremental_patch "${repo_root}/patches/ohos-gpu-os-type-linux.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

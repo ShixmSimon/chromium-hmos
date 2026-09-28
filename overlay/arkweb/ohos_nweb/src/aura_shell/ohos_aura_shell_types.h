@@ -60,6 +60,14 @@ struct AuraStartupConfig {
   // to take rasterization off the GPU (or force it back on) for a
   // comparison, without a rebuild.
   std::optional<bool> gpu_rasterization;
+  // The other half of the same switch. Unset lets the engine decide; set
+  // false to fall back to drawing the page without the GPU at all, which
+  // is the last resort when even compositing is unreliable.
+  std::optional<bool> gpu_compositing;
+  // Draws Chromium's own frame-rate counter over the page and over the
+  // browser's own UI. For checking that a 120Hz panel is actually being
+  // driven at 120, and that a still page stops asking for frames.
+  bool show_frame_rate = false;
   bool jitless = false;
   bool fullscreen_requested = true;
   // Runs without a window next to another web engine, e.g. for Sync.

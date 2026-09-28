@@ -361,6 +361,22 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
     // rasterization off a GPU whose fences do not work, which is what the
     // 2in1 emulator turned out to have. This is for running the comparison
     // the other way without a rebuild.
+    // No switch turns compositing back on -- it is on unless something
+    // took it away -- so only the off case has anything to add.
+    if (config.gpu_compositing.has_value() && !*config.gpu_compositing) {
+      arguments.push_back("--disable-gpu-compositing");
+      AURA_LOG_I("AuraShell GPU compositing off by config");
+    }
+
+    // Chromium's own counter, over the page and over its own UI, rather
+    // than a number invented here: it is what the compositor actually
+    // scheduled, and it is already drawn in a form people know how to read.
+    if (config.show_frame_rate) {
+      arguments.push_back("--show-fps-counter");
+      arguments.push_back("--ui-show-fps-counter");
+      AURA_LOG_I("AuraShell frame rate counter on");
+    }
+
     if (config.gpu_rasterization.has_value()) {
       arguments.push_back(*config.gpu_rasterization
                               ? "--enable-gpu-rasterization"

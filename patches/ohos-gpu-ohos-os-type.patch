@@ -1,0 +1,1657 @@
+Give HarmonyOS its own operating system in the GPU lists.
+
+Four things had to be true before a GPU rule could reach this platform,
+and three of them were silently false.
+
+GetOsType() had no OHOS arm and fell through to kOsAny, so every entry
+naming an operating system was inert. gpu/config/BUILD.gn told the
+generator the target was linux, and the generator drops every entry whose
+os is not the one it was told -- so the Android rules were not merely
+unmatched, they were never compiled in. And process_json.py ties each
+gl_type to the platforms it has seen it on, which stopped the carried-over
+rules at the door because they say gles.
+
+That last one changes what an earlier trial meant. Mapping OHOS to Linux
+turned on exactly two entries, 283 and 478, and we read that as "only two
+Linux rules can match a Mali device". The real reason is that the binary
+held nothing but Linux rules. The 46 others are keyed to Intel, NVIDIA,
+AMD, Mesa, VMware or VirtualBox and cannot match a phone; every rule
+written for the GPUs that are actually in these devices -- Mali, Adreno,
+PowerVR -- says android, and was not there to match.
+
+So: kOsOhos, told to the generator, allowed a gles gl_type, and the
+Android rules that are about hardware carried over to it. A rule may come
+over when what it matches is the GPU, the vendor, the driver or the GL
+strings. A rule that also tests the operating system's version may not,
+because HarmonyOS numbers its releases on its own scale and the comparison
+would still return something. Six stay behind: one in the software list,
+five in the driver bug list.
+
+91 entries carried over, numbered from 900, well clear of upstream's. The
+last ten are left for Maleoon, HUAWEI's own GPU, which upstream has never
+seen and has no rule for at all; entry 990 holds the place with a renderer
+pattern that matches nothing, so it does nothing until someone gives it
+one.
+
+Ported by script from the two lists as they stand in 154, so the selection
+can be re-run when the lists move. Verified through the generator: the
+built lists carry 12 and 81 OHOS entries, which is what went in.
+
+diff --git a/gpu/config/BUILD.gn b/gpu/config/BUILD.gn
+index 09bedb08fc..eec8528cc0 100644
+--- a/gpu/config/BUILD.gn
++++ b/gpu/config/BUILD.gn
+@@ -52,6 +52,11 @@ action("process_json") {
+     args += [ "chromeos" ]
+   } else if (is_fuchsia) {
+     args += [ "fuchsia" ]
++  } else if (is_ohos) {
++    # Without this the generator is told linux, and it drops every entry
++    # whose os is not the one it was told -- so the rules written for this
++    # platform never reached the binary at all.
++    args += [ "ohos" ]
+   } else {
+     args += [ "linux" ]
+   }
+@@ -127,6 +132,9 @@ component("config") {
+   if (is_fuchsia) {
+     sources += [ "gpu_info_collector_fuchsia.cc" ]
+   }
++  if (is_ohos) {
++    sources += [ "gpu_info_collector_ohos.cc" ]
++  }
+ 
+   sources += process_json_outputs
+ 
+diff --git a/gpu/config/gpu_control_list.cc b/gpu/config/gpu_control_list.cc
+index a7c6208cb0..4d15fc3007 100644
+--- a/gpu/config/gpu_control_list.cc
++++ b/gpu/config/gpu_control_list.cc
+@@ -837,6 +837,12 @@ GpuControlList::OsType GpuControlList::GetOsType() {
+   return kOsAndroid;
+ #elif BUILDFLAG(IS_FUCHSIA)
+   return kOsFuchsia;
++#elif BUILDFLAG(IS_OHOS)
++  // Its own, not Linux. Borrowing Linux turns on 48 entries written for
++  // desktop cards and still leaves the phone GPUs unmatched, because those
++  // rules say android. The entries that belong here are carried over and
++  // marked ohos instead.
++  return kOsOhos;
+ #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OPENBSD)
+   return kOsLinux;
+ #elif BUILDFLAG(IS_MAC)
+diff --git a/gpu/config/gpu_control_list.h b/gpu/config/gpu_control_list.h
+index 12a6cfe578..a504ea7ff5 100644
+--- a/gpu/config/gpu_control_list.h
++++ b/gpu/config/gpu_control_list.h
+@@ -33,6 +33,7 @@ class GPU_CONFIG_EXPORT GpuControlList {
+     kOsChromeOS,
+     kOsAndroid,
+     kOsFuchsia,
++    kOsOhos,
+     kOsIOS,
+     kOsAny
+   };
+diff --git a/gpu/config/gpu_driver_bug_list.json b/gpu/config/gpu_driver_bug_list.json
+index a572716679..2f32f84eec 100644
+--- a/gpu/config/gpu_driver_bug_list.json
++++ b/gpu/config/gpu_driver_bug_list.json
+@@ -3927,6 +3927,1241 @@
+       "features": [
+         "disable_accelerated_av1_decode"
+       ]
++    },
++    {
++      "id": 900,
++      "description": "[HarmonyOS, from Android rule 1] Imagination driver doesn't like uploading lots of buffer data constantly",
++      "cr_bugs": [
++        178093
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "gl_type": "gles",
++      "gl_version": {
++        "op": "<",
++        "value": "3.0"
++      },
++      "features": [
++        "use_client_side_arrays_for_stream_buffers"
++      ]
++    },
++    {
++      "id": 901,
++      "description": "[HarmonyOS, from Android rule 2] ARM driver doesn't like uploading lots of buffer data constantly",
++      "cr_bugs": [
++        178093
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "ARM.*",
++      "gl_type": "gles",
++      "gl_version": {
++        "op": "<",
++        "value": "3.0"
++      },
++      "features": [
++        "use_client_side_arrays_for_stream_buffers"
++      ]
++    },
++    {
++      "id": 902,
++      "description": "[HarmonyOS, from Android rule 21] Vivante GPUs are buggy with context switching",
++      "cr_bugs": [
++        179250,
++        235935
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_extensions": ".*GL_VIV_shader_binary.*",
++      "features": [
++        "unbind_fbo_on_context_switch"
++      ]
++    },
++    {
++      "id": 903,
++      "description": "[HarmonyOS, from Android rule 22] Imagination drivers are buggy with context switching",
++      "cr_bugs": [
++        230896
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "unbind_fbo_on_context_switch"
++      ]
++    },
++    {
++      "id": 904,
++      "cr_bugs": [
++        231082
++      ],
++      "description": "[HarmonyOS, from Android rule 24] Mali-4xx drivers throw an error when a buffer object's size is set to 0",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "ARM.*",
++      "gl_renderer": ".*Mali-4.*",
++      "features": [
++        "use_non_zero_size_for_client_side_stream_buffers"
++      ]
++    },
++    {
++      "id": 905,
++      "cr_bugs": [
++        154715,
++        10068,
++        269829,
++        294779,
++        285292,
++        1018528,
++        179815,
++        179250,
++        229643,
++        230896,
++        163464,
++        233612,
++        289461,
++        369316,
++        678508
++      ],
++      "description": "[HarmonyOS, from Android rule 31] Always use virtualized contexts on Android",
++      "os": {
++        "type": "ohos"
++      },
++      "features": [
++        "use_virtualized_gl_contexts"
++      ]
++    },
++    {
++      "id": 906,
++      "cr_bugs": [
++        290876,
++        488463
++      ],
++      "description": "[HarmonyOS, from Android rule 42] Framebuffer discarding causes flickering on older IMG drivers",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "gl_renderer": "PowerVR SGX 5.*",
++      "features": [
++        "disable_discard_framebuffer"
++      ]
++    },
++    {
++      "id": 907,
++      "cr_bugs": [
++        299494
++      ],
++      "description": "[HarmonyOS, from Android rule 43] Framebuffer discarding doesn't accept trivial attachments on Vivante",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_extensions": ".*GL_VIV_shader_binary.*",
++      "features": [
++        "disable_discard_framebuffer"
++      ]
++    },
++    {
++      "id": 908,
++      "cr_bugs": [
++        309734
++      ],
++      "description": "[HarmonyOS, from Android rule 49] The first draw operation from an idle state is slow",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Qualcomm.*",
++      "features": [
++        "wake_up_gpu_before_drawing"
++      ]
++    },
++    {
++      "id": 909,
++      "description": "[HarmonyOS, from Android rule 71] Vivante's support of OES_standard_derivatives is buggy",
++      "cr_bugs": [
++        368005
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_extensions": ".*GL_VIV_shader_binary.*",
++      "disabled_extensions": [
++        "GL_OES_standard_derivatives"
++      ]
++    },
++    {
++      "id": 910,
++      "cr_bugs": [
++        150500,
++        414816
++      ],
++      "description": "[HarmonyOS, from Android rule 91] ETC1 non-power-of-two sized textures crash older IMG drivers",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": ".*Imagination.*",
++      "gl_renderer": ".*PowerVR SGX 5.*",
++      "features": [
++        "etc1_power_of_two_only"
++      ]
++    },
++    {
++      "id": 911,
++      "description": "[HarmonyOS, from Android rule 93] The GL implementation on the Android emulator has problems with PBOs.",
++      "cr_bugs": [
++        340882
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "VMware.*",
++      "gl_renderer": "Gallium.*",
++      "gl_type": "gles",
++      "gl_version": {
++        "op": "=",
++        "value": "3.0"
++      },
++      "features": [
++        "disable_async_readpixels"
++      ]
++    },
++    {
++      "id": 912,
++      "cr_bugs": [
++        421271,
++        471017396
++      ],
++      "description": "[HarmonyOS, from Android rule 95] glClear does not always work on these drivers",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_version": {
++        "op": "<=",
++        "value": "3.0"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "gl_clear_broken"
++      ]
++    },
++    {
++      "id": 913,
++      "description": "[HarmonyOS, from Android rule 97] Multisampling has poor performance in Intel BayTrail",
++      "cr_bugs": [
++        443517
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Intel.*",
++      "gl_renderer": "Intel.*BayTrail",
++      "features": [
++        "disable_chromium_framebuffer_multisample"
++      ]
++    },
++    {
++      "id": 914,
++      "description": "[HarmonyOS, from Android rule 98] PowerVR SGX 540 drivers throw GL_OUT_OF_MEMORY error when a buffer object's size is set to 0",
++      "cr_bugs": [
++        451501
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "gl_renderer": "PowerVR SGX 540",
++      "features": [
++        "use_non_zero_size_for_client_side_stream_buffers"
++      ]
++    },
++    {
++      "id": 915,
++      "description": "[HarmonyOS, from Android rule 102] Adreno 420 driver loses FBO attachment contents on bound FBO deletion",
++      "cr_bugs": [
++        457027
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno \\(TM\\) 4.*",
++      "features": [
++        "unbind_attachments_on_bound_render_fbo_delete"
++      ]
++    },
++    {
++      "id": 916,
++      "description": "[HarmonyOS, from Android rule 103] Adreno 420 driver drops draw calls after FBO invalidation",
++      "cr_bugs": [
++        443060
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno \\(TM\\) 4.*",
++      "features": [
++        "disable_discard_framebuffer"
++      ]
++    },
++    {
++      "id": 917,
++      "cr_bugs": [
++        449488,
++        451230
++      ],
++      "description": "[HarmonyOS, from Android rule 105] Framebuffer discarding causes corruption on Mali-4xx",
++      "gl_renderer": "Mali-4.*",
++      "os": {
++        "type": "ohos"
++      },
++      "features": [
++        "disable_discard_framebuffer"
++      ]
++    },
++    {
++      "id": 918,
++      "description": "[HarmonyOS, from Android rule 106] EXT_occlusion_query_boolean hangs on PowerVR SGX 544 (IMG) drivers",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "gl_renderer": "PowerVR SGX 544",
++      "disabled_extensions": [
++        "GL_EXT_occlusion_query_boolean"
++      ]
++    },
++    {
++      "id": 919,
++      "description": "[HarmonyOS, from Android rule 110] EGL Sync server causes crashes on Adreno 2xx and 3xx drivers",
++      "cr_bugs": [
++        482298
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Qualcomm.*",
++      "gl_renderer": "Adreno \\(TM\\) [23].*",
++      "driver_version": {
++        "op": "<",
++        "value": "95"
++      },
++      "disabled_extensions": [
++        "EGL_KHR_wait_sync"
++      ]
++    },
++    {
++      "id": 920,
++      "cr_bugs": [
++        477514
++      ],
++      "description": "[HarmonyOS, from Android rule 112] EXT_disjoint_timer_query fails after 2 queries on adreno 3xx in lollypop",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Qualcomm.*",
++      "gl_renderer": "Adreno \\(TM\\) 3.*",
++      "features": [
++        "disable_timestamp_queries"
++      ],
++      "disabled_extensions": [
++        "GL_EXT_disjoint_timer_query",
++        "GL_EXT_disjoint_timer_query_webgl2"
++      ]
++    },
++    {
++      "id": 921,
++      "cr_bugs": [
++        477514
++      ],
++      "description": "[HarmonyOS, from Android rule 113] EXT_disjoint_timer_query fails after 256 queries on adreno 4xx",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno \\(TM\\) 4.*",
++      "disabled_extensions": [
++        "GL_EXT_disjoint_timer_query",
++        "GL_EXT_disjoint_timer_query_webgl2"
++      ]
++    },
++    {
++      "id": 922,
++      "cr_bugs": [
++        462553
++      ],
++      "description": "[HarmonyOS, from Android rule 115] glGetIntegerv with GL_GPU_DISJOINT_EXT causes GL_INVALID_ENUM error",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "NVIDIA.*",
++      "gl_version": {
++        "op": ">=",
++        "value": "3.0"
++      },
++      "disabled_extensions": [
++        "GL_EXT_disjoint_timer_query"
++      ]
++    },
++    {
++      "id": 923,
++      "description": "[HarmonyOS, from Android rule 117] GL_KHR_blend_equation_advanced breaks blending on Adreno 4xx",
++      "cr_bugs": [
++        488485
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Qualcomm.*",
++      "gl_renderer": ".*4\\d\\d",
++      "features": [
++        "disable_blend_equation_advanced"
++      ]
++    },
++    {
++      "id": 924,
++      "description": "[HarmonyOS, from Android rule 119] Context lost recovery often fails on Mali-400/450 on Android.",
++      "cr_bugs": [
++        496438
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "ARM.*",
++      "gl_renderer": ".*Mali-4.*",
++      "features": [
++        "exit_on_context_lost"
++      ]
++    },
++    {
++      "id": 925,
++      "description": "[HarmonyOS, from Android rule 125] glFinish doesn't clear caches on Android",
++      "cr_bugs": [
++        509727
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno.*",
++      "features": [
++        "unbind_egl_context_to_flush_driver_caches"
++      ]
++    },
++    {
++      "id": 926,
++      "description": "[HarmonyOS, from Android rule 126] Program binaries contain incorrect bound attribute locations on Adreno 3xx GPUs",
++      "cr_bugs": [
++        510637
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": ".*Adreno \\(TM\\) 3.*",
++      "features": [
++        "disable_program_cache"
++      ]
++    },
++    {
++      "id": 927,
++      "description": "[HarmonyOS, from Android rule 127] Android Adreno crashes on binding incomplete cube map texture to FBO",
++      "cr_bugs": [
++        518889
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno.*",
++      "features": [
++        "force_cube_map_positive_x_allocation"
++      ]
++    },
++    {
++      "id": 928,
++      "description": "[HarmonyOS, from Android rule 137] NVIDIA fails glReadPixels from incomplete cube map texture",
++      "cr_bugs": [
++        518889
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "NVIDIA.*",
++      "features": [
++        "force_cube_complete"
++      ]
++    },
++    {
++      "id": 929,
++      "description": "[HarmonyOS, from Android rule 138] NVIDIA drivers before 346 lack features in NV_path_rendering and related extensions to implement driver level path rendering.",
++      "cr_bugs": [
++        344330
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "NVIDIA.*",
++      "driver_version": {
++        "op": "<",
++        "value": "346"
++      },
++      "disabled_extensions": [
++        "GL_NV_path_rendering"
++      ]
++    },
++    {
++      "id": 930,
++      "description": "[HarmonyOS, from Android rule 140] glReadPixels fails on FBOs with SRGB_ALPHA textures, Nexus 5X",
++      "cr_bugs": [
++        550292,
++        565179
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Qualcomm",
++      "gl_renderer": "Adreno \\(TM\\) 4.*",
++      "comment": "Originally on 418.",
++      "disabled_extensions": [
++        "GL_EXT_sRGB"
++      ]
++    },
++    {
++      "id": 931,
++      "description": "[HarmonyOS, from Android rule 157] Testing fences was broken on Mali ES2 drivers for specific phone models",
++      "cr_bugs": [
++        589814
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "machine_model_name": [
++        "SM-G361H",
++        "SM-G531H"
++      ],
++      "gl_vendor": "ARM.*",
++      "gl_renderer": "Mali.*",
++      "gl_version": {
++        "op": "<",
++        "value": "3.0"
++      },
++      "disabled_extensions": [
++        "EGL_KHR_fence_sync"
++      ]
++    },
++    {
++      "id": 932,
++      "cr_bugs": [
++        601753
++      ],
++      "description": "[HarmonyOS, from Android rule 162] Framebuffer discarding not useful on NVIDIA Kepler architecture and later",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "NVIDIA.*",
++      "gl_version": {
++        "op": ">=",
++        "value": "3.0"
++      },
++      "features": [
++        "disable_discard_framebuffer"
++      ]
++    },
++    {
++      "id": 933,
++      "description": "[HarmonyOS, from Android rule 176] glClear does not work on Acer Predator GT-810",
++      "cr_bugs": [
++        633634
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Intel.*",
++      "gl_renderer": ".*Atom.*x5/x7.*",
++      "features": [
++        "gl_clear_broken"
++      ]
++    },
++    {
++      "id": 934,
++      "cr_bugs": [
++        579060,
++        632461
++      ],
++      "description": "[HarmonyOS, from Android rule 180] eglCreateImageKHR fails for one component textures on PowerVR",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "gl_renderer": "PowerVR .*",
++      "features": [
++        "avoid_one_component_egl_images"
++      ]
++    },
++    {
++      "id": 935,
++      "description": "[HarmonyOS, from Android rule 212] Program binaries don't contain transform feedback varyings on Qualcomm GPUs",
++      "cr_bugs": [
++        658074
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno.*",
++      "features": [
++        "disable_program_caching_for_transform_feedback"
++      ]
++    },
++    {
++      "id": 936,
++      "cr_bugs": [
++        698926
++      ],
++      "description": "[HarmonyOS, from Android rule 216] Pack parameters work incorrectly with pack buffer bound",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "NVIDIA.*",
++      "features": [
++        "pack_parameters_workaround_with_pack_buffer"
++      ]
++    },
++    {
++      "id": 937,
++      "cr_bugs": [
++        698926
++      ],
++      "description": "[HarmonyOS, from Android rule 217] Alignment works incorrectly with unpack buffer bound",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "NVIDIA.*",
++      "features": [
++        "unpack_alignment_workaround_with_unpack_buffer"
++      ]
++    },
++    {
++      "id": 938,
++      "description": "[HarmonyOS, from Android rule 218] Certain Adreno 4xx and 5xx drivers often crash in glProgramBinary.",
++      "cr_bugs": [
++        699122
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "driver_version": {
++        "op": ">=",
++        "value": "103.0"
++      },
++      "gl_renderer": "Adreno \\(TM\\) [45].*",
++      "features": [
++        "disable_program_disk_cache"
++      ]
++    },
++    {
++      "id": 939,
++      "description": "[HarmonyOS, from Android rule 221] Very large instanced draw calls crash on some Adreno 3xx drivers",
++      "cr_bugs": [
++        701682
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno \\(TM\\) 3.*",
++      "features": [
++        "disallow_large_instanced_draw"
++      ]
++    },
++    {
++      "id": 940,
++      "description": "[HarmonyOS, from Android rule 231] Multisampled color renderbuffers can't be resized on Qualcomm 4xx/5xx",
++      "cr_bugs": [
++        696126
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno \\(TM\\) [45].*",
++      "features": [
++        "multisample_renderbuffer_resize_emulation"
++      ]
++    },
++    {
++      "id": 941,
++      "description": "[HarmonyOS, from Android rule 241] On Intel GPUs MSAA performance is not acceptable for GPU rasterization. Duplicate of 132 for Android",
++      "cr_bugs": [
++        759471
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": ".*Intel.*",
++      "features": [
++        "msaa_is_slow"
++      ]
++    },
++    {
++      "id": 942,
++      "description": "[HarmonyOS, from Android rule 246] Code produced by initializing variables using loops can trigger crashes on some Adreno drivers.",
++      "cr_bugs": [
++        784817
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno \\(TM\\) *",
++      "features": [
++        "dont_use_loops_to_initialize_variables"
++      ]
++    },
++    {
++      "id": 943,
++      "description": "[HarmonyOS, from Android rule 247] EXT_disjoint_timer_query is broken on Samsung Galaxy S6",
++      "cr_bugs": [
++        702980
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "machine_model_name": [
++        "SM-G930F"
++      ],
++      "gl_vendor": "ARM.*",
++      "gl_renderer": "Mali-T880",
++      "disabled_extensions": [
++        "GL_EXT_disjoint_timer_query"
++      ]
++    },
++    {
++      "id": 944,
++      "description": "[HarmonyOS, from Android rule 251] Vivante GPUs shader cache breaks rendering",
++      "cr_bugs": [
++        780498
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_extensions": ".*GL_VIV_shader_binary.*",
++      "features": [
++        "disable_program_cache"
++      ]
++    },
++    {
++      "id": 945,
++      "description": "[HarmonyOS, from Android rule 262] Program fails in PowerVR*GX6250 drivers if gl_Position is not set",
++      "cr_bugs": [
++        286468,
++        416670
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "gl_renderer": "PowerVR.*GX6250",
++      "features": [
++        "init_gl_position_in_vertex_shader"
++      ]
++    },
++    {
++      "id": 946,
++      "description": "[HarmonyOS, from Android rule 263] Program fails in PowerVR SGX54x drivers if gl_Position is not set",
++      "cr_bugs": [
++        286468,
++        416670
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "gl_renderer": "PowerVR SGX 54.*",
++      "features": [
++        "init_gl_position_in_vertex_shader"
++      ]
++    },
++    {
++      "id": 947,
++      "description": "[HarmonyOS, from Android rule 264] Program fails in PowerVR G6200 drivers if gl_Position is not set",
++      "cr_bugs": [
++        286468,
++        416670
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "gl_renderer": "PowerVR.*G6200.*",
++      "features": [
++        "init_gl_position_in_vertex_shader"
++      ]
++    },
++    {
++      "id": 948,
++      "cr_bugs": [
++        828721
++      ],
++      "description": "[HarmonyOS, from Android rule 266] Crash in gl::GLApiBase::glGetQueryObjectui64vFn with NetEase devices ",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "NetEase",
++      "gl_renderer": "MuMu GL.*",
++      "features": [
++        "disable_timestamp_queries"
++      ],
++      "disabled_extensions": [
++        "GL_EXT_disjoint_timer_query",
++        "GL_EXT_disjoint_timer_query_webgl2"
++      ]
++    },
++    {
++      "id": 949,
++      "cr_bugs": [
++        797243
++      ],
++      "description": "[HarmonyOS, from Android rule 268] Limit MSAA to 4x on Android devices",
++      "os": {
++        "type": "ohos"
++      },
++      "features": [
++        "max_msaa_sample_count_4"
++      ]
++    },
++    {
++      "id": 950,
++      "cr_bugs": [
++        858879
++      ],
++      "description": "[HarmonyOS, from Android rule 272] A deleted query id for GL_TIMESTAMP cannot be reused for other query targets",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Qualcomm.*",
++      "features": [
++        "disable_timestamp_queries"
++      ]
++    },
++    {
++      "id": 951,
++      "description": "[HarmonyOS, from Android rule 280] ReadPixels is broken with EXT_multisampled_render_to_texture on recent Adreno drivers.",
++      "cr_bugs": [
++        890002
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "driver_version": {
++        "op": ">",
++        "value": "237.0"
++      },
++      "gl_renderer": "Adreno \\(TM\\) .*",
++      "features": [
++        "use_copyteximage2d_instead_of_readpixels_on_multisampled_textures"
++      ]
++    },
++    {
++      "id": 952,
++      "description": "[HarmonyOS, from Android rule 290] Round down glBindBufferRange size to a multiple of 4 on Qualcomm Adreno GPUs for uniform buffers",
++      "cr_bugs": [
++        906743
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno \\(TM\\) .*",
++      "features": [
++        "round_down_uniform_bind_buffer_range_size"
++      ]
++    },
++    {
++      "id": 953,
++      "description": "[HarmonyOS, from Android rule 292] adjust src/dst region if blitting pixels outside framebuffer on Android NVIDIA",
++      "cr_bugs": [
++        830046
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "NVIDIA.*",
++      "features": [
++        "adjust_src_dst_region_for_blitframebuffer"
++      ]
++    },
++    {
++      "id": 954,
++      "description": "[HarmonyOS, from Android rule 299] Context lost recovery often fails on PowerVR Rogue GE8* GPUs on Android.",
++      "cr_bugs": [
++        942106
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "gl_renderer": "PowerVR Rogue GE8.*",
++      "features": [
++        "exit_on_context_lost"
++      ]
++    },
++    {
++      "id": 955,
++      "description": "[HarmonyOS, from Android rule 306] Program binaries don't contain transform feedback varyings on Mali GPUs",
++      "cr_bugs": [
++        961950
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "ARM.*",
++      "gl_renderer": "Mali.*",
++      "features": [
++        "disable_program_caching_for_transform_feedback"
++      ]
++    },
++    {
++      "id": 956,
++      "cr_bugs": [
++        991869
++      ],
++      "description": "[HarmonyOS, from Android rule 312] Crash on Mali-T8x when using glTexImage2D",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": ".*Mali-T8.*",
++      "features": [
++        "prefer_draw_to_copy"
++      ]
++    },
++    {
++      "id": 957,
++      "cr_bugs": [
++        1010338
++      ],
++      "description": "[HarmonyOS, from Android rule 314] Crash on Adreno when using GL_EXT_shader_framebuffer_fetch",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": ".*Adreno.*",
++      "disabled_extensions": [
++        "GL_EXT_shader_framebuffer_fetch"
++      ]
++    },
++    {
++      "id": 958,
++      "cr_bugs": [
++        709351
++      ],
++      "description": "[HarmonyOS, from Android rule 320] Remove dynamic indexing for swizzled vectors on Android",
++      "os": {
++        "type": "ohos"
++      },
++      "features": [
++        "remove_dynamic_indexing_of_swizzled_vector"
++      ]
++    },
++    {
++      "id": 959,
++      "description": "[HarmonyOS, from Android rule 334] Some drivers seem to require as to use original texture whenever possible",
++      "cr_bugs": [
++        1052114,
++        1117370
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "features": [
++        "dont_delete_source_texture_for_egl_image"
++      ]
++    },
++    {
++      "id": 960,
++      "cr_bugs": [
++        1127387
++      ],
++      "description": "[HarmonyOS, from Android rule 358] Always assume float formats are renderable on Android except RGB32F",
++      "os": {
++        "type": "ohos"
++      },
++      "features": [
++        "force_enable_color_buffer_float_except_rgb32f"
++      ]
++    },
++    {
++      "id": 961,
++      "description": "[HarmonyOS, from Android rule 365] Context lost recovery often fails on Adreno with SkiaRenderer GL.",
++      "cr_bugs": [
++        1079161
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno.*",
++      "features": [
++        "exit_on_context_lost"
++      ]
++    },
++    {
++      "id": 962,
++      "cr_bugs": [
++        1180962
++      ],
++      "description": "[HarmonyOS, from Android rule 367] ANGLE cannot recover from context lost",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "ANGLE.*",
++      "features": [
++        "exit_on_context_lost"
++      ]
++    },
++    {
++      "id": 963,
++      "description": "[HarmonyOS, from Android rule 399] On pre-Ice Lake Intel GPUs MSAA performance is not acceptable for GPU rasterization. Duplicate of 398 for Android",
++      "cr_bugs": [
++        759471
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": ".*Intel.*",
++      "intel_gpu_generation": {
++        "op": "<",
++        "value": "11"
++      },
++      "features": [
++        "msaa_is_slow_2"
++      ]
++    },
++    {
++      "id": 964,
++      "cr_bugs": [
++        1512211
++      ],
++      "description": "[HarmonyOS, from Android rule 425] Single component images fail on some embedded Intel GPUs",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": ".*HD Graphics 500.*",
++      "features": [
++        "avoid_one_component_egl_images"
++      ]
++    },
++    {
++      "id": 965,
++      "description": "[HarmonyOS, from Android rule 456] Limit max texure size to 8192 on Android.",
++      "os": {
++        "type": "ohos"
++      },
++      "features": [
++        "webgl_or_caps_max_texture_size_limit_8192"
++      ]
++    },
++    {
++      "id": 966,
++      "description": "[HarmonyOS, from Android rule 466] Program binaries don't contain transform feedback varyings on Imagination GPUs",
++      "cr_bugs": [
++        442879525
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "gl_renderer": "PowerVR.*",
++      "features": [
++        "disable_program_caching_for_transform_feedback"
++      ]
++    },
++    {
++      "id": 967,
++      "description": "[HarmonyOS, from Android rule 471] IMG drivers can sometimes reference previously bound complete framebuffers.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "ensure_previous_framebuffer_not_deleted"
++      ]
++    },
++    {
++      "id": 968,
++      "description": "[HarmonyOS, from Android rule 472] Validate GL_MAX_*_UNIFORM_BLOCKS at compile time instead of link time to work around compiler bugs.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "validate_max_per_stage_uniform_blocks_at_compile_time"
++      ]
++    },
++    {
++      "id": 969,
++      "description": "[HarmonyOS, from Android rule 476] Qualcomm GPUs crash when invalidating incomplete framebuffers",
++      "cr_bugs": [
++        507508103
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Qualcomm.*",
++      "driver_version": {
++        "op": "<",
++        "value": "881"
++      },
++      "features": [
++        "dont_invalidate_incomplete_fbos"
++      ]
++    },
++    {
++      "id": 970,
++      "cr_bugs": [
++        496807874
++      ],
++      "description": "[HarmonyOS, from Android rule 482] Split full-image level 0 PBO uploads via TexSubImage2D into two calls to work around driver bugs.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "split_level_0_pbo_full_sub_image_2d"
++      ]
++    },
++    {
++      "id": 971,
++      "cr_bugs": [
++        528131939
++      ],
++      "description": "[HarmonyOS, from Android rule 483] Reset texture base level before calling glCompressedTexSubImage2D for ASTC textures to work around PowerVR driver bug.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "reset_base_level_for_astc_sub_image"
++      ]
++    },
++    {
++      "id": 972,
++      "cr_bugs": [
++        529991907
++      ],
++      "description": "[HarmonyOS, from Android rule 485] Limit the number of declared varying output components at compile time to work around a PowerVR driver bug.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "limit_output_varyings_at_compile_time"
++      ]
++    },
++    {
++      "id": 973,
++      "cr_bugs": [
++        534903095
++      ],
++      "description": "[HarmonyOS, from Android rule 486] Changing BASE_LEVEL of NPOT immutable texture triggers driver bug on PowerVR GPUs.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "dont_change_base_level_for_npot_immutable_textures"
++      ]
++    },
++    {
++      "id": 974,
++      "cr_bugs": [
++        499602793
++      ],
++      "description": "[HarmonyOS, from Android rule 487] Reattach texture to FBO after layer count increase on PowerVR GPUs.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "reattach_texture_to_fbo_after_layer_increase"
++      ]
++    },
++    {
++      "id": 975,
++      "cr_bugs": [
++        551573368
++      ],
++      "description": "[HarmonyOS, from Android rule 490] Reset texture base level before calling glTexStorage2D to work around PowerVR driver bug.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "reset_tex_storage_base_level"
++      ]
++    },
++    {
++      "id": 976,
++      "cr_bugs": [
++        548085797
++      ],
++      "description": "[HarmonyOS, from Android rule 491] Limit max texture image units to 13 on PowerVR GPUs.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "max_texture_image_units_13"
++      ]
++    },
++    {
++      "id": 977,
++      "cr_bugs": [
++        548127218
++      ],
++      "description": "[HarmonyOS, from Android rule 492] Upload oversized nonzero mip levels via unpack buffer on PowerVR GPUs",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "features": [
++        "upload_oversized_mip_levels_via_unpack_buffer"
++      ]
++    },
++    {
++      "id": 978,
++      "cr_bugs": [
++        546252753
++      ],
++      "description": "[HarmonyOS, from Android rule 493] Issue a glFinish before calling glBlitFramebuffer if the draw framebuffer has multiple color attachments or any color attachment's texture has base_level > 0.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "ARM.*",
++      "gl_renderer": "Mali-G.*",
++      "features": [
++        "finish_before_blit_framebuffer_multi_attachment"
++      ]
++    },
++    {
++      "id": 979,
++      "cr_bugs": [
++        556870863
++      ],
++      "description": "[HarmonyOS, from Android rule 496] Program binary cache entries can collide in Imagination's GLES driver",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_vendor": "Imagination.*",
++      "gl_type": "angle_gles",
++      "features": [
++        "disable_program_cache"
++      ]
++    },
++    {
++      "id": 990,
++      "description": "Reserved for HUAWEI Maleoon. Upstream has no rule for this GPU at all; when one is needed it goes here, 990-999. The renderer pattern matches nothing, so this entry is inert until it is given one.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "(?!)",
++      "features": [
++        "all"
++      ]
+     }
+   ]
+ }
+diff --git a/gpu/config/gpu_finch_features.cc b/gpu/config/gpu_finch_features.cc
+index f9ecd8b586..cf12d3d6e7 100644
+--- a/gpu/config/gpu_finch_features.cc
++++ b/gpu/config/gpu_finch_features.cc
+@@ -206,7 +206,8 @@ BASE_FEATURE(kSharedImageStubHighPriority, base::FEATURE_DISABLED_BY_DEFAULT);
+ // Android and Linux.
+ BASE_FEATURE(kDefaultEnableGpuRasterization,
+ #if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS) || \
+-    BUILDFLAG(IS_ANDROID) || BUILDFLAG(USE_WEBGPU_ON_VULKAN_VIA_GL_INTEROP)
++    BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS) || \
++    BUILDFLAG(USE_WEBGPU_ON_VULKAN_VIA_GL_INTEROP)
+              base::FEATURE_ENABLED_BY_DEFAULT
+ #else
+              base::FEATURE_DISABLED_BY_DEFAULT
+diff --git a/gpu/config/gpu_test_config.cc b/gpu/config/gpu_test_config.cc
+index 51567417cf..c10d688a99 100644
+--- a/gpu/config/gpu_test_config.cc
++++ b/gpu/config/gpu_test_config.cc
+@@ -27,7 +27,7 @@ namespace {
+ GPUTestConfig::OS GetCurrentOS() {
+ #if BUILDFLAG(IS_CHROMEOS)
+   return GPUTestConfig::kOsChromeOS;
+-#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OPENBSD)
++#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OPENBSD) || BUILDFLAG(IS_OHOS)
+   return GPUTestConfig::kOsLinux;
+ #elif BUILDFLAG(IS_WIN)
+   int32_t major_version = 0;
+diff --git a/gpu/config/process_json.py b/gpu/config/process_json.py
+index eeb8fba44f..437bd1dde4 100755
+--- a/gpu/config/process_json.py
++++ b/gpu/config/process_json.py
+@@ -34,6 +34,7 @@ _OS_TYPE_MAP = {
+     'linux': 'kOsLinux',
+     'chromeos': 'kOsChromeOS',
+     'fuchsia': 'kOsFuchsia',
++    'ohos': 'kOsOhos',
+     '': 'kOsAny',
+   }
+ 
+@@ -637,11 +638,13 @@ def write_conditions(entry_id, is_exception, exception_id, entry,
+   # group a bunch of less used conditions
+   if gl_type != '' or gl_version != None:
+     if gl_type == 'gles':
+-      assert os_type == 'android'
++      # OHOS too: a GLES platform, reached through ANGLE, and the rules
++      # carried over from Android bring their gl_type with them.
++      assert os_type in ('android', 'ohos')
+     elif gl_type == 'angle_gl':
+       assert os_type == 'linux'
+     elif gl_type in ('angle_gles', 'angle_vulkan'):
+-      assert os_type in ('android', 'linux', 'chromeos')
++      assert os_type in ('android', 'linux', 'chromeos', 'ohos')
+   if (gl_type != '' or gl_version != None or pixel_shader_version != None or
+       d3d11_feature_level != None or
+       in_process_gpu or gl_reset_notification_strategy != None or
+diff --git a/gpu/config/software_rendering_list.json b/gpu/config/software_rendering_list.json
+index a7c3a650d5..f51e6164b1 100644
+--- a/gpu/config/software_rendering_list.json
++++ b/gpu/config/software_rendering_list.json
+@@ -1549,6 +1549,257 @@
+       "features": [
+         "skia_graphite"
+       ]
++    },
++    {
++      "id": 190,
++      "description": "Emulator GL translated to Metal has no working fence sync; GPU rasterization reads unfinished tiles",
++      "gl_version_string": "(?i).*metal.*",
++      "features": [
++        "gpu_tile_rasterization"
++      ]
++    },
++    {
++      "id": 900,
++      "description": "[HarmonyOS, from Android rule 76] WebGL is disabled on Android unless the GPU runs in a separate process or reset notification is supported",
++      "os": {
++        "type": "ohos"
++      },
++      "in_process_gpu": true,
++      "exceptions": [
++        {
++          "gl_reset_notification_strategy": "33362"
++        },
++        {
++          "gl_renderer": "Mali-4.*",
++          "gl_extensions": ".*EXT_robustness.*"
++        }
++      ],
++      "features": [
++        "accelerated_webgl"
++      ]
++    },
++    {
++      "id": 901,
++      "description": "[HarmonyOS, from Android rule 96] Blocklist GPU raster/canvas on all except known good GPUs and newer Android releases",
++      "cr_bugs": [
++        362779,
++        424970
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "exceptions": [
++        {
++          "os": {
++            "type": "ohos"
++          },
++          "gl_renderer": "Adreno \\(TM\\) 3.*"
++        },
++        {
++          "os": {
++            "type": "ohos"
++          },
++          "gl_renderer": "Mali-4.*"
++        },
++        {
++          "os": {
++            "type": "ohos"
++          },
++          "gl_renderer": "NVIDIA.*"
++        },
++        {
++          "os": {
++            "type": "ohos"
++          },
++          "gl_type": "gles",
++          "gl_version": {
++            "op": ">=",
++            "value": "3.0"
++          }
++        },
++        {
++          "os": {
++            "type": "ohos"
++          },
++          "gl_renderer": ".*Google.*"
++        },
++        {
++          "os": {
++            "type": "ohos"
++          },
++          "gl_type": "angle_gles"
++        },
++        {
++          "os": {
++            "type": "ohos"
++          },
++          "gl_type": "angle_vulkan"
++        }
++      ],
++      "features": [
++        "gpu_tile_rasterization",
++        "accelerated_2d_canvas"
++      ]
++    },
++    {
++      "id": 902,
++      "description": "[HarmonyOS, from Android rule 100] GPU rasterization and canvas is blocklisted on Nexus 10",
++      "cr_bugs": [
++        407144
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": ".*Mali-T604.*",
++      "features": [
++        "gpu_tile_rasterization",
++        "accelerated_2d_canvas"
++      ]
++    },
++    {
++      "id": 903,
++      "description": "[HarmonyOS, from Android rule 102] Accelerated 2D canvas and Ganesh broken on Galaxy Tab 2",
++      "cr_bugs": [
++        416910
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "PowerVR SGX 540",
++      "features": [
++        "accelerated_2d_canvas",
++        "gpu_tile_rasterization"
++      ]
++    },
++    {
++      "id": 904,
++      "description": "[HarmonyOS, from Android rule 104] GPU raster broken on PowerVR Rogue",
++      "cr_bugs": [
++        436331,
++        483574,
++        684586
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "PowerVR Rogue.*",
++      "driver_version": {
++        "op": "<",
++        "value": "1.8"
++      },
++      "features": [
++        "accelerated_2d_canvas",
++        "gpu_tile_rasterization"
++      ]
++    },
++    {
++      "id": 905,
++      "description": "[HarmonyOS, from Android rule 105] GPU raster broken on PowerVR SGX even on Lollipop",
++      "cr_bugs": [
++        461456,
++        1243361
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "PowerVR SGX \\d+",
++      "features": [
++        "accelerated_2d_canvas",
++        "gpu_tile_rasterization"
++      ]
++    },
++    {
++      "id": 906,
++      "description": "[HarmonyOS, from Android rule 106] GPU raster broken on ES2-only Adreno 3xx drivers",
++      "cr_bugs": [
++        480149
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "Adreno \\(TM\\) 3.*",
++      "gl_version": {
++        "op": "<=",
++        "value": "2.0"
++      },
++      "features": [
++        "accelerated_2d_canvas",
++        "gpu_tile_rasterization"
++      ]
++    },
++    {
++      "id": 907,
++      "description": "[HarmonyOS, from Android rule 108] GPU rasterization image color broken on Vivante",
++      "cr_bugs": [
++        560587
++      ],
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": ".*Vivante.*",
++      "features": [
++        "gpu_tile_rasterization",
++        "accelerated_2d_canvas"
++      ]
++    },
++    {
++      "id": 908,
++      "cr_bugs": [
++        1253962
++      ],
++      "description": "[HarmonyOS, from Android rule 179] Older Adreno 4xx drivers drop draws sometimes with oop-c",
++      "os": {
++        "type": "ohos"
++      },
++      "driver_version": {
++        "op": "<",
++        "value": "145"
++      },
++      "gl_renderer": ".*Adreno \\(TM\\) 4.*",
++      "features": [
++        "accelerated_2d_canvas"
++      ]
++    },
++    {
++      "id": 909,
++      "cr_bugs": [
++        1354201,
++        1356906,
++        1362720
++      ],
++      "description": "[HarmonyOS, from Android rule 185] Disable DrDc on multiple gpus.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": ".*PowerVR Rogue.*|Adreno \\(TM\\) 730|Mali-G57 MC2|Mali-G68 MC4|Mali-G77 MC9",
++      "features": [
++        "direct_rendering_display_compositor"
++      ]
++    },
++    {
++      "id": 910,
++      "cr_bugs": [
++        496616828
++      ],
++      "description": "[HarmonyOS, from Android rule 189] Disable Graphite on PowerVR due to rendering glitches",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": ".*PowerVR.*",
++      "features": [
++        "skia_graphite"
++      ]
++    },
++    {
++      "id": 990,
++      "description": "Reserved for HUAWEI Maleoon. Upstream has no rule for this GPU at all; when one is needed it goes here, 990-999. The renderer pattern matches nothing, so this entry is inert until it is given one.",
++      "os": {
++        "type": "ohos"
++      },
++      "gl_renderer": "(?!)",
++      "features": [
++        "all"
++      ]
+     }
+   ]
+ }

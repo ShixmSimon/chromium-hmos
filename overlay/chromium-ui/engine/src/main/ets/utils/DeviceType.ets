@@ -139,6 +139,13 @@ export interface AuraStartupConfig {
   // decide, which is what a device should do; set only to run the
   // comparison the other way without a rebuild.
   gpuRasterization?: boolean;
+  // The last resort: draw the page without the GPU at all. Unset lets the
+  // engine decide, which is what a device should do.
+  gpuCompositing?: boolean;
+  // Chromium's frame-rate counter, drawn over the page and over its own
+  // UI. For checking a 120Hz panel is driven at 120 and that a still page
+  // stops asking for frames.
+  showFrameRate?: boolean;
   // What the app menu's way back to this shell's UI is called. Not sending
   // it is how a shell says it does not want that item -- a phone has no
   // setting to come back to, and a shell drawing the browser itself has

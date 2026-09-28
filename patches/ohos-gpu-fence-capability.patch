@@ -1,0 +1,194 @@
+Ask the GL whether its fences work, rather than recognise its name.
+
+Rule 190 takes GPU rasterization off the 2in1 emulator by matching Metal
+in its GL version string. That catches the emulator we have, on the host
+we have. The next emulator, or the same one on a Windows or Linux host,
+translates through something else, reports a different name, and has the
+same missing fence.
+
+The emulator advertises EGL_KHR_fence_sync, so every check Chromium
+already makes says fences are available -- GLFence::IsSupported reads the
+extension string and nothing more. Then eglCreateSync fails and reports
+EGL_SUCCESS as the error, which is the tell that nothing is implemented
+behind the advertisement. GPU rasterization goes on to read tiles that
+were never finished: stale tiles, tiles in the wrong place, black bands
+down the bottom and the right, and a screenshot that comes back white.
+
+So the call is made, once, while a context is current and just after the
+lists have had their say -- late enough to overrule a list that said yes.
+Rule 190 stays as a backstop for anything that fails earlier than this
+runs.
+
+diff --git a/gpu/ipc/service/gpu_init.cc b/gpu/ipc/service/gpu_init.cc
+index 1a3ee6b928..55ee452afc 100644
+--- a/gpu/ipc/service/gpu_init.cc
++++ b/gpu/ipc/service/gpu_init.cc
+@@ -119,8 +119,9 @@ bool CollectGraphicsInfo(GPUInfo* gpu_info) {
+   DCHECK(gpu_info);
+   TRACE_EVENT("gpu,startup", "Collect Graphics Info");
+   bool success = CollectContextGraphicsInfo(gpu_info);
+-  if (!success)
++  if (!success) {
+     LOG(ERROR) << "CollectGraphicsInfo failed.";
++  }
+   return success;
+ }
+ 
+@@ -173,8 +174,9 @@ void InitializePlatformOverlaySettings(GPUInfo* gpu_info,
+ bool CanAccessDeviceFile(const GPUInfo& gpu_info) {
+ #if BUILDFLAG(IS_LINUX)
+   if (gpu_info.gpu.vendor_id != 0x10de ||  // NVIDIA
+-      gpu_info.gpu.driver_vendor != "NVIDIA")
++      gpu_info.gpu.driver_vendor != "NVIDIA") {
+     return true;
++  }
+ 
+   base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
+                                                 base::BlockingType::WILL_BLOCK);
+@@ -193,8 +195,9 @@ class GpuWatchdogInit {
+  public:
+   GpuWatchdogInit() = default;
+   ~GpuWatchdogInit() {
+-    if (watchdog_ptr_)
++    if (watchdog_ptr_) {
+       watchdog_ptr_->OnInitComplete();
++    }
+   }
+ 
+   void SetGpuWatchdogPtr(GpuWatchdogThread* ptr) { watchdog_ptr_ = ptr; }
+@@ -251,8 +254,9 @@ bool MatchGLInfo(const std::string& field, const std::string& patterns) {
+   auto pattern_strings = base::SplitString(patterns, "|", base::TRIM_WHITESPACE,
+                                            base::SPLIT_WANT_ALL);
+   for (const auto& pattern : pattern_strings) {
+-    if (base::MatchPattern(field, pattern))
++    if (base::MatchPattern(field, pattern)) {
+       return true;
++    }
+   }
+   return false;
+ }
+@@ -309,7 +313,7 @@ void SetupGLDisplayManagerEGL(const GPUInfo& gpu_info,
+       gpu_low_power ? CHROME_LUID_to_uint64_t(gpu_low_power->luid) : 0;
+   uint64_t system_device_id_default =
+       CHROME_LUID_to_uint64_t(gpu_default->luid);
+-#else  // IS_MAC
++#else   // IS_MAC
+   const GPUInfo::GPUDevice* gpu_default =
+       gpu_low_power ? gpu_low_power : GetDefaultGPU(gpu_info, gpu_feature_info);
+   uint64_t system_device_id_high_perf =
+@@ -359,6 +363,73 @@ void SetupGLDisplayManagerEGL(const GPUInfo& gpu_info,
+ }
+ #endif  // IS_WIN || IS_MAC
+ 
++
++#if BUILDFLAG(IS_OHOS)
++// Whether this GL's fences actually work, asked rather than assumed.
++//
++// The 2in1 emulator translates GLES to the host's OpenGL. It advertises
++// EGL_KHR_fence_sync, so every check Chromium already makes says fences are
++// available -- and then eglCreateSync fails, reporting EGL_SUCCESS as the
++// error, which is the tell that nothing is implemented behind it. GPU
++// rasterization goes on to read tiles that were never finished: stale tiles,
++// tiles in the wrong place, black bands down the bottom and the right, and a
++// screenshot that comes back white.
++//
++// A blocklist rule can catch a name -- and one does, for the host we have
++// seen -- but the next emulator, or the same one on a different host, has a
++// different name and the same missing fence. Making the call is the only
++// test that travels.
++bool OhosFenceSyncWorks() {
++  gl::GLDisplayEGL* display = gl::GLDisplayEGL::GetDisplayForCurrentContext();
++  if (!display) {
++    // No context to ask. Say nothing rather than something wrong.
++    return true;
++  }
++  const EGLDisplay egl_display = display->GetDisplay();
++  if (egl_display == EGL_NO_DISPLAY) {
++    return true;
++  }
++  if (!display->ext->b_EGL_KHR_fence_sync) {
++    LOG(WARNING) << "OHOS fence probe: EGL_KHR_fence_sync not advertised";
++    return false;
++  }
++
++  while (eglGetError() != EGL_SUCCESS) {
++    // Drain whatever came before, so what follows is ours.
++  }
++  const EGLSyncKHR sync =
++      eglCreateSyncKHR(egl_display, EGL_SYNC_FENCE_KHR, nullptr);
++  if (sync == EGL_NO_SYNC_KHR) {
++    LOG(WARNING) << "OHOS fence probe: eglCreateSync failed with 0x"
++                 << std::hex << eglGetError();
++    return false;
++  }
++  const EGLint waited = eglClientWaitSyncKHR(
++      egl_display, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 0);
++  const EGLint wait_error = eglGetError();
++  eglDestroySyncKHR(egl_display, sync);
++  if (waited == EGL_FALSE) {
++    LOG(WARNING) << "OHOS fence probe: eglClientWaitSync failed with 0x"
++                 << std::hex << wait_error;
++    return false;
++  }
++  LOG(WARNING) << "OHOS fence probe: fences work";
++  return true;
++}
++
++// Takes rasterization off a GPU whose fences do not, and says so where
++// chrome://gpu will show it.
++void OhosDisableGpuRasterizationWithoutFences(GpuFeatureInfo* info) {
++  if (OhosFenceSyncWorks()) {
++    return;
++  }
++  info->status_values[GPU_FEATURE_TYPE_GPU_TILE_RASTERIZATION] =
++      kGpuFeatureStatusBlocklisted;
++  LOG(WARNING) << "OHOS: GPU rasterization off, this GL has no working fence "
++                  "sync";
++}
++#endif  // BUILDFLAG(IS_OHOS)
++
+ }  // namespace
+ 
+ GpuInit::GpuInit() = default;
+@@ -406,8 +477,9 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
+     device_perf_info_ = device_perf_info;
+   }
+ 
+-  if (!CanAccessDeviceFile(gpu_info_))
++  if (!CanAccessDeviceFile(gpu_info_)) {
+     return false;
++  }
+ 
+   // Compute blocklist and driver bug workaround decisions based on basic GPU
+   // info.
+@@ -561,7 +633,8 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
+   // to know whether a bug report is for a session with passthrough enabled.
+   // Remove this logging when passthrough is fully launched on CrOS.
+   if (gpu_preferences_.use_passthrough_cmd_decoder) {
+-    LOG(WARNING) << "Using passthrough command decoder. NOTE: This log is "
++    LOG(WARNING)
++        << "Using passthrough command decoder. NOTE: This log is "
+         << "to help triage feedback reports and does not by itself mean there "
+         << "is an issue.";
+   }
+@@ -578,6 +651,11 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
+       SetKeysForCrashLogging(gpu_info_);
+       gpu_feature_info_ = ComputeGpuFeatureInfo(gpu_info_, gpu_preferences_,
+                                                 command_line, nullptr);
++#if BUILDFLAG(IS_OHOS)
++      // After the lists, because this is the same decision by another
++      // route and should be able to override a list that said yes.
++      OhosDisableGpuRasterizationWithoutFences(&gpu_feature_info_);
++#endif
+       gl_use_swiftshader_ = EnableSwiftShaderIfNeeded(
+           command_line, gpu_feature_info_,
+           gpu_preferences_.disable_software_rasterizer, false);
+@@ -980,7 +1058,7 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
+   ui::OzonePlatform::GetInstance()->AfterSandboxEntry();
+   [[maybe_unused]] auto* factory =
+       ui::OzonePlatform::GetInstance()->GetSurfaceFactoryOzone();
+-  bool filter_set = false;
++  [[maybe_unused]] bool filter_set = false;
+ #if BUILDFLAG(ENABLE_VULKAN)
+   if (gpu_feature_info_.status_values[GPU_FEATURE_TYPE_VULKAN] ==
+           kGpuFeatureStatusEnabled &&

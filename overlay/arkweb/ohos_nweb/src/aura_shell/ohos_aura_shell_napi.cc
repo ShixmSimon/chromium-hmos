@@ -1163,6 +1163,10 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
   }
 
   config.gpu_rasterization = dict.FindBool("gpuRasterization");
+  config.gpu_compositing = dict.FindBool("gpuCompositing");
+  if (std::optional<bool> show_frame_rate = dict.FindBool("showFrameRate")) {
+    config.show_frame_rate = *show_frame_rate;
+  }
 
   std::optional<bool> jitless = dict.FindBool("jitless");
   if (jitless.has_value()) {
