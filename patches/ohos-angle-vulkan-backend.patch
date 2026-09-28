@@ -23,6 +23,24 @@ This gets --use-angle=vulkan as far as creating a display and a surface.
 Dawn, Graphite and a Vulkan-backed WebGPU all sit on top of this layer and
 are not touched; they come after it works.
 
+Three things only a compiler knew, all of them from copying the Android
+backend without building it:
+
+EGLNativeWindowType is an integer on this platform, not a pointer, so
+comparing it with nullptr does not compile. vkCreateSurfaceOHOS is not in
+the Vulkan headers ANGLE builds against -- those are Khronos's and have
+never heard of this platform -- although the loader on the device has the
+symbol, so the entry point is fetched at runtime the way ANGLE reaches
+any extension it was not compiled with. And GenerateConfigs has no
+overload taking sample counts.
+
+Taking OHOS out of ANGLE_PLATFORM_LINUX is what stops the Vulkan backend
+looking for X11, and it also takes OHOS out of every other ladder that
+only knew Linux. The GL backend was the first: no include, so no GL at
+all. It gets plain EGL, which is what Linux without X11 uses, and desktop
+GL says there is none rather than building a display that cannot work.
+
+
 diff --git a/third_party/angle/src/common/platform.h b/third_party/angle/src/common/platform.h
 index 140101d..8269aee 100644
 --- a/third_party/angle/src/common/platform.h
@@ -41,10 +59,29 @@ index 140101d..8269aee 100644
  #    define ANGLE_PLATFORM_LINUX 1
  #    define ANGLE_PLATFORM_POSIX 1
 diff --git a/third_party/angle/src/libANGLE/Display.cpp b/third_party/angle/src/libANGLE/Display.cpp
-index f4b27db..68e8fed 100644
+index f4b27db..1db7704 100644
 --- a/third_party/angle/src/libANGLE/Display.cpp
 +++ b/third_party/angle/src/libANGLE/Display.cpp
-@@ -732,6 +732,12 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
+@@ -76,6 +76,8 @@
+ #        endif
+ #    elif defined(ANGLE_PLATFORM_ANDROID)
+ #        include "libANGLE/renderer/gl/egl/android/DisplayAndroid.h"
++#    elif defined(ANGLE_PLATFORM_OHOS)
++#        include "libANGLE/renderer/gl/egl/DisplayEGL.h"
+ #    else
+ #        error Unsupported OpenGL platform.
+ #    endif
+@@ -599,6 +601,9 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
+             impl = nullptr;
+             break;
+ 
++#    elif defined(ANGLE_PLATFORM_OHOS)
++            // Desktop GL does not exist on this platform; GLES below does.
++            break;
+ #    else
+ #        error Unsupported OpenGL platform.
+ #    endif
+@@ -732,6 +737,12 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
                  impl = rx::CreateVulkanAndroidDisplay(state);
              }
              break;
@@ -74,7 +111,7 @@ index 56a818c..d13c464 100644
  bool IsVulkanFuchsiaDisplayAvailable();
  DisplayImpl *CreateVulkanFuchsiaDisplay(const egl::DisplayState &state);
 diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni b/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni
-index 57fc22c..7881675 100644
+index f29c808..e9bf906 100644
 --- a/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni
 +++ b/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni
 @@ -181,6 +181,15 @@ if (is_android) {
@@ -136,10 +173,10 @@ index 0000000..bf3a9b6
 +#endif  // LIBANGLE_RENDERER_VULKAN_OHOS_DISPLAYVKOHOS_H_
 diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp
 new file mode 100644
-index 0000000..200f9bb
+index 0000000..67893dc
 --- /dev/null
 +++ b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,73 @@
 +//
 +// Copyright 2026 The ANGLE Project Authors. All rights reserved.
 +// Use of this source code is governed by a BSD-style license that can be
@@ -168,7 +205,7 @@ index 0000000..200f9bb
 +    // call to ask the system whether a given pointer is one, so the check
 +    // that can be made is that there is one -- the same position the Android
 +    // backend is in.
-+    return window != nullptr;
++    return window != 0;
 +}
 +
 +SurfaceImpl *DisplayVkOhos::createWindowSurfaceVk(const egl::SurfaceState &state,
@@ -184,10 +221,9 @@ index 0000000..200f9bb
 +    // whose format the device does not support is dropped by
 +    // checkConfigSupport below rather than advertised and then failed.
 +    constexpr GLenum kColorFormats[] = {GL_RGBA8, GL_RGB8, GL_RGB565};
-+    constexpr EGLint kSampleCounts[] = {0, 4};
 +
 +    return egl_vk::GenerateConfigs(kColorFormats, egl_vk::kConfigDepthStencilFormats,
-+                                   kSampleCounts, this);
++                                   this);
 +}
 +
 +void DisplayVkOhos::checkConfigSupport(egl::Config *config)
@@ -253,10 +289,10 @@ index 0000000..cdf6f7c
 +#endif  // LIBANGLE_RENDERER_VULKAN_OHOS_WINDOWSURFACEVKOHOS_H_
 diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.cpp b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.cpp
 new file mode 100644
-index 0000000..0ff71e5
+index 0000000..605ed15
 --- /dev/null
 +++ b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.cpp
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,78 @@
 +//
 +// Copyright 2026 The ANGLE Project Authors. All rights reserved.
 +// Use of this source code is governed by a BSD-style license that can be
@@ -268,9 +304,30 @@ index 0000000..0ff71e5
 +
 +#include "libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.h"
 +
-+#include <vulkan/vulkan_ohos.h>
-+
 +#include "libANGLE/renderer/vulkan/vk_renderer.h"
++
++namespace
++{
++// From <vulkan/vulkan_ohos.h>, repeated rather than included: the Vulkan
++// headers ANGLE builds against are the Khronos ones and do not carry this
++// platform's extension, while the loader on the device does.
++constexpr VkStructureType kStructureTypeSurfaceCreateInfoOHOS =
++    static_cast<VkStructureType>(1000453000);
++
++struct VkSurfaceCreateInfoOHOS
++{
++    VkStructureType sType;
++    const void *pNext;
++    VkFlags flags;
++    void *window;  // OHNativeWindow*
++};
++
++using PFN_vkCreateSurfaceOHOS = VkResult(VKAPI_PTR *)(
++    VkInstance instance,
++    const VkSurfaceCreateInfoOHOS *pCreateInfo,
++    const VkAllocationCallbacks *pAllocator,
++    VkSurfaceKHR *pSurface);
++}  // namespace
 +
 +namespace rx
 +{
@@ -282,13 +339,18 @@ index 0000000..0ff71e5
 +
 +angle::Result WindowSurfaceVkOhos::createSurfaceVk(vk::ErrorContext *context)
 +{
-+    VkSurfaceCreateInfoOHOS createInfo = {};
++    vk::Renderer *renderer  = context->getRenderer();
++    const VkInstance instance = renderer->getInstance();
 +
-+    createInfo.sType  = VK_STRUCTURE_TYPE_SURFACE_CREATE_INFO_OHOS;
-+    createInfo.flags  = 0;
-+    createInfo.window = reinterpret_cast<OHNativeWindow *>(mNativeWindowType);
-+    ANGLE_VK_TRY(context, VK_CALL(vkCreateSurfaceOHOS, context->getRenderer()->getInstance(),
-+                                  &createInfo, nullptr, &mSurface));
++    static PFN_vkCreateSurfaceOHOS createSurface = reinterpret_cast<
++        PFN_vkCreateSurfaceOHOS>(vkGetInstanceProcAddr(instance, "vkCreateSurfaceOHOS"));
++    ANGLE_VK_CHECK(context, createSurface != nullptr, VK_ERROR_EXTENSION_NOT_PRESENT);
++
++    VkSurfaceCreateInfoOHOS createInfo = {};
++    createInfo.sType                   = kStructureTypeSurfaceCreateInfoOHOS;
++    createInfo.flags                   = 0;
++    createInfo.window                  = reinterpret_cast<void *>(mNativeWindowType);
++    ANGLE_VK_TRY(context, createSurface(instance, &createInfo, nullptr, &mSurface));
 +
 +    return angle::Result::Continue;
 +}

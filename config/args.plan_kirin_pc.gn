@@ -54,11 +54,6 @@ use_fake_screen_ai = false
 dawn_use_swiftshader = false
 enable_swiftshader = false
 angle_libs_suffix = "_angle"
-# Chromium's own Vulkan backend, as distinct from ANGLE's below. Off until
-# the HarmonyOS implementation under gpu/vulkan/ohos has run on a device:
-# gpu/vulkan/features.gni now offers it here, and its default would
-# otherwise turn it on and move the whole GPU path at once.
-enable_vulkan = false
 angle_enable_vulkan = true
 angle_enable_swiftshader = false
 angle_use_custom_libvulkan = false
