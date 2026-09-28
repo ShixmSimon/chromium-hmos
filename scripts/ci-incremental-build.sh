@@ -220,6 +220,9 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-single-process-discardable.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-pdf-single-process.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-extension-context-diagnostics.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-use-shell-ui-menu.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-emulator-gpu-rasterization.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-new-tab-focuses-omnibox.patch"
   # The manager is trustworthy now -- HUKS holds the key and the user is asked
   # before a saved password is handed back -- so the patch that switched it off
   # comes out. The tree is persistent, so deleting the file is not enough.
