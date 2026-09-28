@@ -3962,6 +3962,20 @@ bool IsAuraShellDesktopUi() {
   return state.ui_family == "aura_pc";
 }
 
+// File-local: the header exposes the two accessors, not the storage.
+static std::u16string& UiMenuLabel() {
+  static base::NoDestructor<std::u16string> label;
+  return *label;
+}
+
+void SetAuraShellUiMenuLabel(const std::string& label) {
+  UiMenuLabel() = base::UTF8ToUTF16(label);
+}
+
+std::u16string AuraShellUiMenuLabel() {
+  return UiMenuLabel();
+}
+
 bool IsAuraShellNativeChromeChosen() {
   // Only the explicit setting counts. Unset means a phone, where the native
   // UI is simply what there is and the shell has no setting to come back

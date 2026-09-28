@@ -125,6 +125,13 @@ bool IsAuraShellDesktopUi();
 // only where the choice was made.
 bool IsAuraShellNativeChromeChosen();
 
+// What the app menu's way back to the shell's UI is called, empty when the
+// shell did not ask for the item. The shell owns the word: it is the
+// shell's name, the shell has the translations, and a string compiled into
+// the engine came out in English on a Chinese device.
+void SetAuraShellUiMenuLabel(const std::string& label);
+std::u16string AuraShellUiMenuLabel();
+
 // Asks the shell to change which browser UI is drawn, without changing it
 // here. The shell keeps this setting and writes it back at the next launch,
 // so it has to be the one that changes it, or the two disagree after a

@@ -50,6 +50,12 @@ struct AuraStartupConfig {
   int64_t icu_data_offset = 0;
   int64_t icu_data_length = 0;
   // Set by embedders on devices that refuse executable memory.
+  // What the app menu's way back to the shell's own UI is called, and
+  // empty when the shell does not want that item at all. The shell owns
+  // the word: it is the shell's name and the shell has the translations,
+  // so renaming the product or adding a language does not mean rebuilding
+  // the engine. Read once, at startup.
+  std::string shell_ui_menu_label;
   // Unset lets the GPU decide, which is what a device should do. Set only
   // to take rasterization off the GPU (or force it back on) for a
   // comparison, without a rebuild.

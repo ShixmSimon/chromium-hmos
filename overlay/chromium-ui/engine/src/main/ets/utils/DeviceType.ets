@@ -135,6 +135,15 @@ export interface AuraStartupConfig {
   icuDataOffset?: number;
   icuDataLength?: number;
   jitless: boolean;
+  // Off the GPU when the GPU's fences do not work. Unset lets the engine
+  // decide, which is what a device should do; set only to run the
+  // comparison the other way without a rebuild.
+  gpuRasterization?: boolean;
+  // What the app menu's way back to this shell's UI is called. Not sending
+  // it is how a shell says it does not want that item -- a phone has no
+  // setting to come back to, and a shell drawing the browser itself has
+  // its own settings a tap away. Read once, at startup.
+  shellUiMenuLabel?: string;
   fullscreenRequested: boolean;
   // Who draws long-press menus. 'shell': the engine sends contextMenuRequested
   // and the shell draws the menu. 'native': Chromium's own menu. Unset, phones
