@@ -197,7 +197,7 @@ export interface BrowserRuntimeEvent {
     'shellAccelerator' | 'linkHovered' | 'tabThumbnails' |
     'openedInGroup' | 'pageScrollSettled' | 'pageContinuation' |
     'contextMenuImageFile' | 'contextMenuActionsChanged' |
-    'backHandled' | 'dropNotHandled' |
+    'backHandled' | 'dropNotHandled' | 'browserChromeRequested' |
     'pageDragStarted' | 'pageDragEnded' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |
@@ -211,6 +211,9 @@ export interface BrowserRuntimeEvent {
     'downloadUpdated' | 'downloadList' |
     'clearBrowsingDataDone' | 'browsingDataCounts' | 'searchEngines' |
     'prefs' | 'prefsChanged' | 'siteSettings' | 'aboutInfo' | 'favicons';
+  // browserChromeRequested: which UI the reader asked for. The shell saves
+  // the setting and calls setBrowserChrome itself; the engine only asks.
+  mode?: 'shell' | 'native';
   // contextMenuRequested: where the press was, in vp in the window.
   x?: number;
   y?: number;

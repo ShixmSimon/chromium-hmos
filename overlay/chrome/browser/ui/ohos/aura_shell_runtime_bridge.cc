@@ -3962,6 +3962,28 @@ bool IsAuraShellDesktopUi() {
   return state.ui_family == "aura_pc";
 }
 
+bool IsAuraShellNativeChromeChosen() {
+  // Only the explicit setting counts. Unset means a phone, where the native
+  // UI is simply what there is and the shell has no setting to come back
+  // to, so offering the way back would lead nowhere.
+  return BrowserChromeMode() == "native";
+}
+
+void RequestAuraShellBrowserChrome(const std::string& mode) {
+  base::DictValue event;
+  event.Set("event", "browserChromeRequested");
+  event.Set("mode", mode);
+  // To every window: the setting is the whole browser's, and the window the
+  // menu was opened in is not necessarily the one the shell is watching.
+  if (GlobalBrowserCollection* browsers =
+          GlobalBrowserCollection::GetInstance()) {
+    browsers->ForEach([&event](BrowserWindowInterface* browser) {
+      DispatchRuntimeEvent(GetBrowserWidget(browser), event.Clone());
+      return true;
+    });
+  }
+}
+
 void SetAuraShellBrowserVisible(bool visible) {
   SetAuraShellBrowserVisible(gfx::kNullAcceleratedWidget, visible);
 }

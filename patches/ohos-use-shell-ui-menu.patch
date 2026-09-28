@@ -1,0 +1,90 @@
+Give the native UI a way back to the shell's.
+
+A tablet or a 2in1 can switch from the shell's browser to Chromium's own
+from the shell's settings. Switching back needs that settings page, which
+the shell is no longer drawing -- and the choice is remembered, so a
+restart comes back to the native UI too. The way out has to be inside the
+UI the reader is now looking at.
+
+An item above Settings, in the same group, shown only when the native UI is
+there because someone asked for it: not on a phone, which has no such
+setting and where the native UI is simply what there is, and not while the
+shell draws the browser, where its own settings are a tap away.
+
+Choosing it does not switch anything here. It closes the menu and tells the
+shell, which saves the setting and calls setBrowserChrome itself. The shell
+owns that setting -- it is what writes browserChrome at the next launch --
+so switching here as well would leave the two disagreeing after a restart.
+
+diff --git a/chrome/app/chrome_command_ids.h b/chrome/app/chrome_command_ids.h
+--- a/chrome/app/chrome_command_ids.h
++++ b/chrome/app/chrome_command_ids.h
+@@ -596,5 +596,10 @@
+ // Context Menu submenus
+ #define IDC_SPELLCHECK_MENU 57329
+ #define IDC_WRITING_DIRECTION_MENU 57328
+
++// OHOS: back to the shell's browser from Chromium's own UI. Not in the
++// actions framework: it is reachable only from the app menu, on a platform
++// with no other menu bars to carry it.
++#define IDC_OHOS_USE_SHELL_UI 57344
++
+ // macOS Top-Level Menu Bar containers
+diff --git a/chrome/app/generated_resources.grd b/chrome/app/generated_resources.grd
+--- a/chrome/app/generated_resources.grd
++++ b/chrome/app/generated_resources.grd
+@@ -1898,4 +1898,9 @@
+       <message name="IDS_IMPORT_SETTINGS_MENU_LABEL" desc="The app menu label to import bookmarks and settings.">
+         Import bookmarks and settings...
+       </message>
++      <if expr="is_ohos">
++        <message name="IDS_OHOS_USE_SHELL_UI" desc="The app menu item that returns the browser to the shell's own interface. Shown only when the user has switched to Chromium's native interface.">
++          Use Lumie interface
++        </message>
++      </if>
+       <if expr="not use_titlecase">
+diff --git a/chrome/browser/ui/toolbar/app_menu_model.cc b/chrome/browser/ui/toolbar/app_menu_model.cc
+--- a/chrome/browser/ui/toolbar/app_menu_model.cc
++++ b/chrome/browser/ui/toolbar/app_menu_model.cc
+@@ -2478,6 +2478,14 @@
+ #endif
+ #endif
+
++#if BUILDFLAG(IS_OHOS)
++  // Above Settings and in its group, because it is the same kind of choice
++  // and whoever needs it is looking for where the settings went.
++  if (chrome::ohos::IsAuraShellNativeChromeChosen()) {
++    AddItemWithStringId(IDC_OHOS_USE_SHELL_UI, IDS_OHOS_USE_SHELL_UI);
++  }
++#endif
++
+   AddItemWithStringIdAndVectorIcon(
+       this, IDC_OPTIONS, IDS_SETTINGS,
+       features::IsRoundedIconsEnabled() ? kSettingsIcon : kSettingsMenuOldIcon);
+diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
+--- a/chrome/browser/ui/browser_command_controller.cc
++++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -1285,7 +1285,14 @@
+     case IDC_PERFORMANCE:
+       ShowSettingsSubPage(webui::GetBrowserForOpeningWebUi(browser_),
+                           chrome::kPerformanceSubPage);
+       break;
++#if BUILDFLAG(IS_OHOS)
++    case IDC_OHOS_USE_SHELL_UI:
++      // Asked for, not done here: the shell keeps this setting and writes it
++      // back at the next launch, so it has to be the one that changes it.
++      chrome::ohos::RequestAuraShellBrowserChrome("shell");
++      break;
++#endif
+     case IDC_OPTIONS:
+       ShowSettings(webui::GetBrowserForOpeningWebUi(browser_));
+       break;
+@@ -2090,5 +2097,8 @@
+   command_updater->UpdateCommandEnabled(IDC_IMPORT_SETTINGS,
+                                         !forced_incognito && !is_guest);
++#if BUILDFLAG(IS_OHOS)
++  command_updater->UpdateCommandEnabled(IDC_OHOS_USE_SHELL_UI, true);
++#endif
+   command_updater->UpdateCommandEnabled(IDC_OPTIONS,
+                                         !forced_incognito || is_guest);
+   command_updater->UpdateCommandEnabled(IDC_PERFORMANCE,

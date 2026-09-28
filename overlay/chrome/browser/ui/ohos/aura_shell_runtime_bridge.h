@@ -117,6 +117,19 @@ gfx::Rect GetAuraShellAnchorRect(gfx::AcceleratedWidget widget,
                                  std::string_view anchor_id);
 void UpdateAuraShellBrowserChrome(const std::string& browser_chrome);
 bool IsAuraShellDesktopUi();
+
+// Whether Chromium's own UI is on screen because someone asked for it.
+//
+// Distinct from "the shell is not drawing": a phone gets the native UI by
+// default and has no setting to come back from, so the way back belongs
+// only where the choice was made.
+bool IsAuraShellNativeChromeChosen();
+
+// Asks the shell to change which browser UI is drawn, without changing it
+// here. The shell keeps this setting and writes it back at the next launch,
+// so it has to be the one that changes it, or the two disagree after a
+// restart.
+void RequestAuraShellBrowserChrome(const std::string& mode);
 bool RequestAuraShellSystemPrint(content::WebContents* contents);
 // Sends `event` to the shell window hosting `widget`.
 void DispatchAuraShellRuntimeEventToWidget(gfx::AcceleratedWidget widget,
