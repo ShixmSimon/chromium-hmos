@@ -20,30 +20,28 @@ Diagnostic only, and it comes out again once it has answered.
 diff --git a/ui/aura/window_event_dispatcher.cc b/ui/aura/window_event_dispatcher.cc
 --- a/ui/aura/window_event_dispatcher.cc
 +++ b/ui/aura/window_event_dispatcher.cc
-@@ -12,4 +12,6 @@
+@@ -12,4 +12,5 @@
  #include "base/functional/bind.h"
 +#include "base/logging.h"
  #include "base/observer_list.h"
-+#include "base/strings/number_conversions.h"
  #include "base/task/single_thread_task_runner.h"
  #include "base/time/time.h"
-@@ -343,11 +343,25 @@
+@@ -343,11 +343,24 @@
  ui::EventDispatchDetails WindowEventDispatcher::ProcessGestures(
      Window* target,
      ui::GestureRecognizer::Gestures gestures) {
    DispatchDetails details;
 +#if BUILDFLAG(IS_OHOS)
-+  {
-+    std::string types;
-+    for (const auto& event : gestures) {
-+      types += " ";
-+      types += base::NumberToString(static_cast<int>(event->type()));
-+    }
-+    LOG(WARNING) << "OHOS gestures: count=" << gestures.size()
-+                 << " target=" << (target ? "yes" : "none")
-+                 << " target_name="
-+                 << (target ? target->GetName() : std::string("-"))
-+                 << " types=[" << types << " ]";
++  // One line for the batch and one per gesture, rather than a list built
++  // into a string: base/strings/number_conversions.h is not visible from
++  // this target, and a stream can print an int without help.
++  LOG(WARNING) << "OHOS gestures: count=" << gestures.size()
++               << " target=" << (target ? "yes" : "none")
++               << " target_name="
++               << (target ? target->GetName() : std::string("-"));
++  for (const auto& event : gestures) {
++    LOG(WARNING) << "OHOS gesture: type="
++                 << static_cast<int>(event->type());
 +  }
 +#endif
    if (gestures.empty())
