@@ -15,6 +15,13 @@ presentation was asked for, the context provider, and which output
 device a window gets -- a buffer queue through a GL presenter, or
 SkiaOutputDeviceVulkan, created or not.
 
+The next run stopped after the context provider, and not even the output
+surface's first line appeared -- so the chain before it is logged too: the
+browser asking for a root frame sink and for which widget, the output
+surface being created for which handle and whether it was, and whether
+the output surface found a Skia context for its API before choosing a
+device. A missing one returned with only a DLOG.
+
 Diagnostic; it comes out once Vulkan is understood here.
 
 Generated for Chromium 154.0.8037.51 after
@@ -52,10 +59,47 @@ diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/c
    if (!device_queue_)
      return false;
  
+diff --git a/components/viz/service/display_embedder/output_surface_provider_impl.cc b/components/viz/service/display_embedder/output_surface_provider_impl.cc
+--- a/components/viz/service/display_embedder/output_surface_provider_impl.cc
++++ b/components/viz/service/display_embedder/output_surface_provider_impl.cc
+@@ -109,8 +109,16 @@ std::unique_ptr<OutputSurface> OutputSurfaceProviderImpl::CreateOutputSurface(
+ 
+     {
+       gpu::ScopedAllowScheduleGpuTask allow_schedule_gpu_task;
++#if BUILDFLAG(IS_OHOS)
++      LOG(ERROR) << "OHOS compositor: creating the output surface for handle "
++                 << surface_handle;
++#endif
+       output_surface = SkiaOutputSurfaceImpl::Create(
+           gpu_dependency, renderer_settings, debug_settings);
++#if BUILDFLAG(IS_OHOS)
++      LOG(ERROR) << "OHOS compositor: output surface "
++                 << (output_surface ? "created" : "NOT created");
++#endif
+     }
+ 
+ #if BUILDFLAG(IS_ANDROID)
 diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
 --- a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
 +++ b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
-@@ -2077,6 +2077,14 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForGL() {
+@@ -1950,6 +1950,16 @@ bool SkiaOutputSurfaceImplOnGpu::Initialize() {
+ 
+   context_state_ = dependency_->GetSharedContextState();
+   DCHECK(context_state_);
++#if BUILDFLAG(IS_OHOS)
++  // Before any output device: without a Skia context for the chosen API
++  // there is nothing to draw with, and this returned with only a DLOG.
++  LOG(ERROR) << "OHOS compositor: output surface on the GPU side, "
++             << (is_using_vulkan() ? "Vulkan" : "GL") << ", Skia context "
++             << (context_state_->gr_context() ||
++                         context_state_->graphite_shared_context()
++                     ? "present"
++                     : "MISSING");
++#endif
+   if (!context_state_->gr_context() &&
+       !context_state_->graphite_shared_context()) {
+     DLOG(ERROR) << "Failed to create GrContext or GraphiteContext";
+@@ -2077,6 +2087,14 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForGL() {
  
  #if BUILDFLAG(ENABLE_VULKAN)
  bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
@@ -70,7 +114,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on
    if (dependency_->IsOffscreen()) {
      output_device_ = std::make_unique<SkiaOutputDeviceOffscreen>(
          context_state_, gfx::SurfaceOrigin::kBottomLeft,
-@@ -2109,6 +2117,10 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
+@@ -2109,6 +2127,10 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
    }
  #endif
    if (output_presenter) {
@@ -81,7 +125,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on
      output_device_ = std::make_unique<SkiaOutputDeviceBufferQueue>(
          std::move(output_presenter), dependency_,
          shared_image_representation_factory_.get(),
-@@ -2125,6 +2137,12 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
+@@ -2125,6 +2147,12 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
          shared_gpu_deps_->memory_tracker(),
          GetDidSwapBuffersCompleteCallback());
    }
@@ -111,3 +155,20 @@ diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/serv
    }
  #endif
  
+diff --git a/content/browser/compositor/viz_process_transport_factory.cc b/content/browser/compositor/viz_process_transport_factory.cc
+--- a/content/browser/compositor/viz_process_transport_factory.cc
++++ b/content/browser/compositor/viz_process_transport_factory.cc
+@@ -455,6 +455,13 @@ void VizProcessTransportFactory::OnEstablishedGpuChannel(
+   GetHostFrameSinkManager()->CreateRootCompositorFrameSink(
+       std::move(root_params), !using_direct_composition);
+ #else
++#if BUILDFLAG(IS_OHOS)
++  // Where the display for a window is asked for, and for which window: the
++  // first step of what the GPU process does to draw it.
++  LOG(ERROR) << "OHOS compositor: asking for a root frame sink, widget "
++             << compositor->widget() << ", gpu compositing "
++             << root_params->gpu_compositing;
++#endif
+   GetHostFrameSinkManager()->CreateRootCompositorFrameSink(
+       std::move(root_params));
+ #endif  // BUILDFLAG(IS_WIN)
