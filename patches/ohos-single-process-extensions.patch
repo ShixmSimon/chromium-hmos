@@ -28,6 +28,15 @@ a privileged extension page. In single-process mode a context on an
 http(s) URL is now a content script, whatever Contains() says; the
 extension's own pages are on its own origin and are not affected.
 
+The same one process also hosts every WebUI page, so it always has WebUI
+bindings, and GetMostLikelyContextType, which asks about those first,
+classified every extension context in it -- the service worker too -- as
+WebUI. Every extension event (tabs.onUpdated, webNavigation.*, ...) then
+failed the availability check at dispatch and was dropped silently;
+messaging, which does not go through the event router, still worked. In
+single-process mode a context with an extension is now classified as the
+extension's; WebUI pages, which have none, are still WebUI.
+
 Tablets and 2in1s run renderers in processes of their own and none of
 this applies to them.
 
@@ -90,7 +99,32 @@ diff --git a/extensions/browser/process_map.cc b/extensions/browser/process_map.
    return items_.contains(process_id);
  }
  
-@@ -229,6 +246,18 @@ mojom::ContextType ProcessMap::GetMostLikelyContextType(
+@@ -214,9 +231,24 @@ mojom::ContextType ProcessMap::GetMostLikelyContextType(
+   // TODO(crbug.com/40676105): Move this into the !extension if statement below
+   // or document why we want to return WEBUI_CONTEXT for content scripts in
+   // WebUIs.
++#if BUILDFLAG(IS_OHOS)
++  // With one process for everything, that process also hosts every WebUI
++  // page -- the new tab page, chrome://extensions -- so it always has WebUI
++  // bindings, and every extension context in it, its service worker
++  // included, was classified as WebUI. tabs.*, webNavigation.* and every
++  // other extension event then failed the availability check at dispatch
++  // and were dropped without a word. An extension's contexts are
++  // classified as an extension's; WebUI pages, which have no extension,
++  // still come out as WebUI.
++  if (ProcessHasWebUIBindings(process_id) &&
++      !(content::RenderProcessHost::run_renderer_in_process() && extension)) {
++    return mojom::ContextType::kWebUi;
++  }
++#else
+   if (ProcessHasWebUIBindings(process_id)) {
+     return mojom::ContextType::kWebUi;
+   }
++#endif
+ 
+   if (!extension) {
+     // Note that blob/filesystem schemes associated with an inner URL of
+@@ -229,6 +261,18 @@ mojom::ContextType ProcessMap::GetMostLikelyContextType(
    }
  
    const ExtensionId& extension_id = extension->id();
