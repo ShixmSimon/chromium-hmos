@@ -69,6 +69,14 @@
 #include "extensions/browser/extension_action.h"
 #include "extensions/browser/extension_action_manager.h"
 #include "extensions/browser/extension_registry.h"
+#include "extensions/browser/extension_action_icon_factory.h"
+#include "chrome/browser/extensions/extension_view_host.h"
+#include "chrome/browser/extensions/extension_view_host_factory.h"
+#include "chrome/browser/ui/views/extensions/extension_popup.h"
+#include "chrome/browser/ui/extensions/extension_popup_types.h"
+#include "base/strings/strcat.h"
+#include "ui/views/bubble/bubble_border.h"
+#include "skia/ext/image_operations.h"
 #include "base/containers/lru_cache.h"
 #include "chrome/browser/dom_distiller/tab_utils.h"
 #include "ui/gfx/codec/png_codec.h"
@@ -1187,13 +1195,91 @@ void SetAuraShellAnchorRects(gfx::AcceleratedWidget widget,
 // extension's own page, and it points at wherever the shell said it drew the
 // button (see setAnchorRects).
 
-std::string EncodeExtensionIcon(const gfx::Image& image) {
+std::string EncodeExtensionIcon(const gfx::Image& image, int size_px) {
   if (image.IsEmpty()) {
     return std::string();
   }
-  std::optional<std::vector<uint8_t>> png = gfx::PNGCodec::EncodeBGRASkBitmap(
-      image.AsBitmap(), /*discard_transparency=*/false);
+  SkBitmap bitmap = image.AsBitmap();
+  // The action icon is 16 or 20 dip; the shell draws it at 32vp and would be
+  // scaling up a small bitmap. Resizing here means it scales once, with a
+  // filter, rather than on every frame.
+  if (size_px > 0 && bitmap.width() != size_px) {
+    bitmap = skia::ImageOperations::Resize(
+        bitmap, skia::ImageOperations::RESIZE_LANCZOS3, size_px, size_px);
+  }
+  std::optional<std::vector<uint8_t>> png =
+      gfx::PNGCodec::EncodeBGRASkBitmap(bitmap, /*discard_transparency=*/false);
   return png ? base::Base64Encode(*png) : std::string();
+}
+
+// An extension that never calls setIcon has no explicitly set icon, and
+// GetExplicitlySetIcon() returns nothing for it -- which is why every icon
+// reached the shell empty. The manifest icon is what should be shown, and
+// reaching it means the same factory the toolbar button uses: setIcon first,
+// then action.default_icon, then icons, then the extension's placeholder.
+//
+// That factory loads the manifest icon asynchronously, so the first request
+// after startup legitimately gets a placeholder. It reports the real one
+// through OnIconUpdated, and the shell already refetches the list on
+// extensionActionsChanged, so that is what this sends. The factories live as
+// long as the profile does, one per extension, because the icon has to stay
+// watched for the update to arrive at all.
+class ExtensionIconSource : public extensions::ExtensionActionIconFactory::
+                                Observer {
+ public:
+  ExtensionIconSource(Profile* profile,
+                      const extensions::Extension& extension,
+                      extensions::ExtensionAction* action)
+      : profile_(profile), action_(action), factory_(&extension, action, this) {}
+  ExtensionIconSource(const ExtensionIconSource&) = delete;
+  ExtensionIconSource& operator=(const ExtensionIconSource&) = delete;
+  ~ExtensionIconSource() override = default;
+
+  gfx::Image GetIcon(int tab_id) { return factory_.GetIcon(tab_id); }
+
+  // The action this was built for. Updating or reloading an extension gives
+  // it a new ExtensionAction and destroys the old one, which the factory
+  // still points at.
+  const extensions::ExtensionAction* action() const { return action_; }
+
+  // extensions::ExtensionActionIconFactory::Observer:
+  void OnIconUpdated() override {
+    base::DictValue event;
+    event.Set("event", "extensionActionsChanged");
+    DispatchAuraShellRuntimeEventToProfile(profile_, event);
+  }
+
+ private:
+  const raw_ptr<Profile> profile_;
+  const raw_ptr<const extensions::ExtensionAction> action_;
+  extensions::ExtensionActionIconFactory factory_;
+};
+
+using IconSourceKey = std::pair<Profile*, std::string>;
+
+ExtensionIconSource* IconSourceFor(Profile* profile,
+                                   const extensions::Extension& extension,
+                                   extensions::ExtensionAction* action) {
+  static base::NoDestructor<
+      std::map<IconSourceKey, std::unique_ptr<ExtensionIconSource>>>
+      sources;
+  if (!profile || !action) {
+    return nullptr;
+  }
+  const IconSourceKey key(profile, extension.id());
+  auto it = sources->find(key);
+  if (it != sources->end() && it->second->action() != action) {
+    // Same extension, new action object: the old one is gone, and the
+    // factory built on it with it.
+    sources->erase(it);
+    it = sources->end();
+  }
+  if (it == sources->end()) {
+    it = sources->emplace(key, std::make_unique<ExtensionIconSource>(
+                                   profile, extension, action))
+             .first;
+  }
+  return it->second.get();
 }
 
 // Tells every window of a profile that a list it may be drawing has changed,
@@ -1270,6 +1356,10 @@ void SendExtensionActions(gfx::AcceleratedWidget widget,
   base::ListValue items;
   Profile* profile = browser ? browser->GetProfile() : nullptr;
   EnsureShellListWatcher(profile);
+  // The shell draws these at 32vp and is the only side that knows the
+  // density, so it says how many pixels that is. 32 when it says nothing,
+  // which is right at 1x and merely soft above it.
+  const int icon_size_px = command.FindInt("iconSizePx").value_or(32);
   ToolbarActionsModel* model = profile ? ToolbarActionsModel::Get(profile)
                                        : nullptr;
   if (model) {
@@ -1295,9 +1385,10 @@ void SendExtensionActions(gfx::AcceleratedWidget widget,
       base::DictValue item;
       item.Set("id", id);
       item.Set("name", extension->name());
+      ExtensionIconSource* icons = IconSourceFor(profile, *extension, action);
       item.Set("iconPngBase64",
-               action ? EncodeExtensionIcon(action->GetExplicitlySetIcon(tab_id))
-                      : std::string());
+               icons ? EncodeExtensionIcon(icons->GetIcon(tab_id), icon_size_px)
+                     : std::string());
       item.Set("badgeText",
                action ? action->GetDisplayBadgeText(tab_id) : std::string());
       // #AARRGGBB, which is what the shell's colour parser takes.
@@ -1315,6 +1406,40 @@ void SendExtensionActions(gfx::AcceleratedWidget widget,
   event.Set("requestId", command.FindInt("requestId").value_or(0));
   event.Set("items", std::move(items));
   DispatchRuntimeEvent(widget, std::move(event));
+}
+
+// Where to put the popup, in screen coordinates.
+//
+// The shell draws the toolbar, so it is the only side that knows where the
+// button is, and it reports that under the same two names the install bubble
+// already uses: the extension's own button when it is pinned, the extensions
+// button otherwise.
+//
+// A phone has neither -- there is no toolbar to pin anything to. Until the
+// phone's own extensions page exists and settles what should happen there,
+// anchor to the bottom edge of the window, which is where a sheet would come
+// from and is at least reachable by a thumb.
+gfx::Rect ExtensionPopupAnchorRect(BrowserWindowInterface* browser,
+                                   views::Widget* parent,
+                                   const std::string& extension_id) {
+  const gfx::AcceleratedWidget widget = GetBrowserWidget(browser);
+  const gfx::Rect window = parent->GetWindowBoundsInScreen();
+
+  gfx::Rect rect =
+      GetAuraShellAnchorRect(widget, base::StrCat({"extension:", extension_id}));
+  if (rect.IsEmpty()) {
+    rect = GetAuraShellAnchorRect(widget, "extensions");
+  }
+  if (!rect.IsEmpty()) {
+    // Reported in the shell window's own coordinates; a bubble anchors in
+    // screen ones.
+    rect.Offset(window.OffsetFromOrigin());
+    return rect;
+  }
+
+  // Nothing reported: a zero-height strip along the bottom, so the bubble
+  // opens upward across the width of the window.
+  return gfx::Rect(window.x(), window.bottom(), window.width(), 0);
 }
 
 // The same thing as clicking the button on Chromium's toolbar: the extension
@@ -1335,9 +1460,49 @@ void RunExtensionAction(BrowserWindowInterface* browser,
       registry ? registry->enabled_extensions().GetByID(*id) : nullptr;
   extensions::ExtensionActionRunner* runner =
       extensions::ExtensionActionRunner::GetForWebContents(active);
-  if (extension && runner) {
-    runner->RunAction(extension, /*grant_tab_permissions=*/true);
+  if (!extension || !runner) {
+    return;
   }
+
+  // RunAction says what the click should do. Dropping that answer is why
+  // clicking a pinned button did nothing at all for every extension whose
+  // action is a popup rather than an onClicked listener: the listener case
+  // works because RunAction has already dispatched the event by the time it
+  // returns, and the popup case is left for the caller to open. Upstream
+  // does this in ExtensionActionViewModel::ExecuteUserAction().
+  const extensions::ExtensionAction::ShowAction show_action =
+      runner->RunAction(extension, /*grant_tab_permissions=*/true);
+  if (show_action != extensions::ExtensionAction::ShowAction::kShowPopup) {
+    return;
+  }
+
+  extensions::ExtensionActionManager* actions =
+      extensions::ExtensionActionManager::Get(profile);
+  extensions::ExtensionAction* action =
+      actions ? actions->GetExtensionAction(*extension) : nullptr;
+  const int tab_id = sessions::SessionTabHelper::IdForTab(active).id();
+  if (!action || !action->HasPopup(tab_id)) {
+    return;
+  }
+
+  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
+  views::Widget* parent = browser_view ? browser_view->GetWidget() : nullptr;
+  if (!parent) {
+    return;
+  }
+
+  std::unique_ptr<extensions::ExtensionViewHost> host =
+      extensions::ExtensionViewHostFactory::CreatePopupHost(
+          *extension, action->GetPopupUrl(tab_id), browser);
+  if (!host) {
+    return;
+  }
+
+  ExtensionPopup::ShowPopupAtShellRect(
+      browser, std::move(host), parent,
+      ExtensionPopupAnchorRect(browser, parent, *id),
+      views::BubbleBorder::TOP_RIGHT, PopupShowAction::kShow,
+      ShowPopupCallback());
 }
 
 void SetExtensionPinned(BrowserWindowInterface* browser,

@@ -1,0 +1,143 @@
+Let an extension popup open where the shell drew the button.
+
+Clicking a pinned extension button did nothing. The bridge called
+ExtensionActionRunner::RunAction() and dropped its return value, so the
+kShowPopup answer -- "the caller opens the popup now" -- was never acted
+on. Extensions that only listen for onClicked worked, because RunAction
+has already dispatched that by the time it returns; every extension whose
+action is a popup, which is most of them, did nothing at all.
+
+Opening it needs somewhere to put it. With the shell drawing the toolbar
+there is no button View, and ShowPopup() takes a BubbleAnchor: an anchor
+view always wins over an explicitly set rect, so the rect the shell
+reports cannot be used through that entry point. The constructor also
+CHECKs that an anchor widget exists, and a null anchor has none.
+
+So this adds the entry point that takes the rect instead: no anchor view,
+the parent widget given explicitly for the observation the anchor widget
+was providing, and the rect set before the bubble is created. Everything
+after that is the same popup desktop shows.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/ui/views/extensions/extension_popup.cc b/chrome/browser/ui/views/extensions/extension_popup.cc
+index f720021a30..9a454e8af1 100644
+--- a/chrome/browser/ui/views/extensions/extension_popup.cc
++++ b/chrome/browser/ui/views/extensions/extension_popup.cc
+@@ -103,6 +103,37 @@ void ExtensionPopup::ShowPopup(
+ #endif
+ }
+ 
++#if BUILDFLAG(IS_OHOS)
++void ExtensionPopup::ShowPopupAtShellRect(
++    BrowserWindowInterface* browser,
++    std::unique_ptr<extensions::ExtensionViewHost> host,
++    views::Widget* parent,
++    const gfx::Rect& anchor_rect_in_screen,
++    views::BubbleBorder::Arrow arrow,
++    PopupShowAction show_action,
++    ShowPopupCallback callback) {
++  CHECK(parent);
++  auto* popup =
++      new ExtensionPopup(browser, std::move(host), views::BubbleAnchor(), arrow,
++                         show_action, std::move(callback), parent);
++  popup->set_parent_window(parent->GetNativeView());
++  // Before CreateBubble, so the bubble is laid out where it belongs rather
++  // than being moved there after it is on screen.
++  popup->SetAnchorRect(anchor_rect_in_screen);
++  views::BubbleDialogDelegateView::CreateBubble(popup);
++
++  DCHECK_EQ(popup->GetBubbleFrameView()->GetPreferredArrowAdjustment(),
++            views::BubbleFrameView::PreferredArrowAdjustment::kMirror);
++
++#if defined(USE_AURA)
++  gfx::NativeView native_view = popup->GetWidget()->GetNativeView();
++  wm::SetWindowVisibilityAnimationType(
++      native_view, wm::WINDOW_VISIBILITY_ANIMATION_TYPE_VERTICAL);
++  wm::SetWindowVisibilityAnimationVerticalPosition(native_view, -3.0f);
++#endif
++}
++#endif  // BUILDFLAG(IS_OHOS)
++
+ ExtensionPopup::~ExtensionPopup() {
+   // The ExtensionPopup may close before it was ever shown. If so, indicate such
+   // through the callback.
+@@ -270,7 +301,8 @@ ExtensionPopup::ExtensionPopup(
+     views::BubbleAnchor anchor,
+     views::BubbleBorder::Arrow arrow,
+     PopupShowAction show_action,
+-    ShowPopupCallback callback)
++    ShowPopupCallback callback,
++    views::Widget* shell_parent)
+     : BubbleDialogDelegateView(anchor,
+                                arrow,
+                                views::BubbleBorder::STANDARD_SHADOW,
+@@ -303,8 +335,17 @@ ExtensionPopup::ExtensionPopup(
+       std::make_unique<ScopedDevToolsAgentHostObservation>(this);
+   browser_->GetTabStripModel()->AddObserver(this);
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Anchored at a rect, there is no anchor view and so no anchor widget.
++  // The window to watch is the one the caller named.
++  views::Widget* const watched = anchor_widget() ? anchor_widget()
++                                                 : shell_parent;
++  CHECK(watched);
++  anchor_widget_observation_.Observe(watched->GetPrimaryWindowWidget());
++#else
+   CHECK(anchor_widget());
+   anchor_widget_observation_.Observe(anchor_widget()->GetPrimaryWindowWidget());
++#endif
+ 
+   // Handle the containing view calling window.close();
+   // The base::Unretained() below is safe because this object owns `host_`, so
+diff --git a/chrome/browser/ui/views/extensions/extension_popup.h b/chrome/browser/ui/views/extensions/extension_popup.h
+index 50ca5a225c..05a5d50781 100644
+--- a/chrome/browser/ui/views/extensions/extension_popup.h
++++ b/chrome/browser/ui/views/extensions/extension_popup.h
+@@ -8,6 +8,7 @@
+ #include "base/functional/callback.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/scoped_observation.h"
++#include "build/build_config.h"
+ #include "chrome/browser/ui/extensions/extension_popup_types.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
+@@ -67,6 +68,28 @@ class ExtensionPopup : public views::BubbleDialogDelegateView,
+                         PopupShowAction show_action,
+                         ShowPopupCallback callback);
+ 
++#if BUILDFLAG(IS_OHOS)
++  // The same popup, anchored at a rectangle rather than at a View.
++  //
++  // The shell draws the toolbar, so there is no button to anchor to; it
++  // reports where it drew one instead. An anchor View would take priority
++  // over that rect (see BubbleDialogDelegate::GetAnchorRect), so this path
++  // sets no anchor view at all, and `parent` stands in for the anchor widget
++  // -- which is otherwise where the popup finds the window to watch.
++  //
++  // `anchor_rect_in_screen` is in screen coordinates. An empty-height rect
++  // along the bottom of the window makes the popup open upward from there,
++  // which is what a phone with no toolbar gets.
++  static void ShowPopupAtShellRect(
++      BrowserWindowInterface* browser,
++      std::unique_ptr<extensions::ExtensionViewHost> host,
++      views::Widget* parent,
++      const gfx::Rect& anchor_rect_in_screen,
++      views::BubbleBorder::Arrow arrow,
++      PopupShowAction show_action,
++      ShowPopupCallback callback);
++#endif  // BUILDFLAG(IS_OHOS)
++
+   ExtensionPopup(const ExtensionPopup&) = delete;
+   ExtensionPopup& operator=(const ExtensionPopup&) = delete;
+   ~ExtensionPopup() override;
+@@ -125,7 +148,8 @@ class ExtensionPopup : public views::BubbleDialogDelegateView,
+                  views::BubbleAnchor anchor,
+                  views::BubbleBorder::Arrow arrow,
+                  PopupShowAction show_action,
+-                 ShowPopupCallback callback);
++                 ShowPopupCallback callback,
++                 views::Widget* shell_parent = nullptr);
+ 
+   // Shows the bubble, focuses its content, and registers listeners.
+   void ShowBubble();

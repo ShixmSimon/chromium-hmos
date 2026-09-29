@@ -1,0 +1,147 @@
+Lose the GPU context on request, so recovery can be tested.
+
+The shell cannot check its gpuContextLost handling, or the recovery
+behind it, without a context loss, and there has been no way to cause
+one. Minimising, restoring and switching UI style do not; WebGL's
+lose_context only loses that one WebGL context and never reaches
+GpuChannelManager::OnContextLost, which is where the recovery and the
+report to the shell live. The existing debug URLs do not either:
+chrome://gpuclean drops the channels without losing a context, and
+chrome://gpucrash and chrome://gpuhang, with the GPU inside the browser
+process as it is on every HarmonyOS device, take the browser down.
+
+chrome://gpu-lose-context/ -- typed into the address bar, the same as
+the others -- calls OnContextLost as a driver loss would: next count,
+not synthetic. From there it is the real path, including the recovery in
+ohos-gpu-context-lost-recovery.patch and the gpuContextLost event it
+sends.
+
+The mojom method is on every platform because mojom interfaces are; the
+URL that reaches it exists only on OHOS.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/service/gl/gpu_service_impl.cc
+index 989b160530..39a9e18914 100644
+--- a/components/viz/service/gl/gpu_service_impl.cc
++++ b/components/viz/service/gl/gpu_service_impl.cc
+@@ -1222,6 +1222,21 @@ void GpuServiceImpl::Hang() {
+   main_runner_->PostTask(FROM_HERE, base::BindOnce(&gl::Hang));
+ }
+ 
++void GpuServiceImpl::LoseContextForTesting() {
++  if (!main_runner_->BelongsToCurrentThread()) {
++    main_runner_->PostTask(
++        FROM_HERE,
++        base::BindOnce(&GpuServiceImpl::LoseContextForTesting, weak_ptr_));
++    return;
++  }
++  LOG(WARNING) << "GPU: losing the shared context on request";
++  // A count of -1 means "the next one", and not synthetic: this is meant to
++  // be indistinguishable, from here on, from the driver having lost it.
++  gpu_channel_manager_->OnContextLost(/*context_lost_count=*/-1,
++                                      /*synthetic_loss=*/false,
++                                      gpu::error::kUnknown);
++}
++
+ void GpuServiceImpl::ThrowJavaException() {
+   DCHECK(io_runner_->BelongsToCurrentThread());
+ #if BUILDFLAG(IS_ANDROID)
+diff --git a/components/viz/service/gl/gpu_service_impl.h b/components/viz/service/gl/gpu_service_impl.h
+index 54795e7a6c..3b55358e3b 100644
+--- a/components/viz/service/gl/gpu_service_impl.h
++++ b/components/viz/service/gl/gpu_service_impl.h
+@@ -244,6 +244,7 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
+ #endif
+   void Crash() override;
+   void Hang() override;
++  void LoseContextForTesting() override;
+   void ThrowJavaException() override;
+   // mojom::GpuService implementation:
+   void InduceMemoryInvalidAccess(
+diff --git a/components/viz/test/stub_gpu_service.cc b/components/viz/test/stub_gpu_service.cc
+index b229f75e2b..6ca161697e 100644
+--- a/components/viz/test/stub_gpu_service.cc
++++ b/components/viz/test/stub_gpu_service.cc
+@@ -120,6 +120,8 @@ void StubGpuService::Crash() {}
+ 
+ void StubGpuService::Hang() {}
+ 
++void StubGpuService::LoseContextForTesting() {}
++
+ void StubGpuService::ThrowJavaException() {}
+ 
+ void StubGpuService::InduceMemoryInvalidAccess(
+diff --git a/components/viz/test/stub_gpu_service.h b/components/viz/test/stub_gpu_service.h
+index e879f21164..3228cf2396 100644
+--- a/components/viz/test/stub_gpu_service.h
++++ b/components/viz/test/stub_gpu_service.h
+@@ -99,6 +99,7 @@ class StubGpuService : public mojom::GpuService {
+   void GetDawnInfo(bool collect_metrics, GetDawnInfoCallback callback) override;
+   void Crash() override;
+   void Hang() override;
++  void LoseContextForTesting() override;
+   void ThrowJavaException() override;
+   // mojom::GpuService implementation:
+   void InduceMemoryInvalidAccess(
+diff --git a/content/browser/renderer_host/debug_urls.cc b/content/browser/renderer_host/debug_urls.cc
+index 13a16770cb..1181465d3e 100644
+--- a/content/browser/renderer_host/debug_urls.cc
++++ b/content/browser/renderer_host/debug_urls.cc
+@@ -44,6 +44,13 @@ class ScopedAllowWaitForDebugURL {
+ 
+ namespace {
+ 
++#if BUILDFLAG(IS_OHOS)
++// Loses the GPU context the way a driver would. The GPU runs inside the
++// browser process here, so chrome://gpucrash is not a test of recovery, it
++// is the end of the browser; this is the loss without the crash.
++constexpr char kOhosGpuLoseContextURL[] = "chrome://gpu-lose-context/";
++#endif
++
+ #if BUILDFLAG(IS_WIN)
+ const char kAsanCrashDomain[] = "crash";
+ const char kAsanCorruptHeapBlock[] = "/browser-corrupt-heap-block";
+@@ -194,6 +201,9 @@ bool IsDebugURL(const GURL& url) {
+       url == blink::kChromeUIGpuJavaCrashURL ||
+ #endif
+       url == blink::kChromeUIGpuHangURL ||
++#if BUILDFLAG(IS_OHOS)
++      url == GURL(kOhosGpuLoseContextURL) ||
++#endif
+       url == blink::kChromeUIMemoryPressureCriticalURL ||
+       url == blink::kChromeUIMemoryPressureModerateURL) {
+     return true;
+@@ -273,6 +283,15 @@ void HandleDebugURL(const GURL& url,
+     }
+     return;
+   }
++#endif
++#if BUILDFLAG(IS_OHOS)
++  if (url == GURL(kOhosGpuLoseContextURL)) {
++    auto* host = GpuProcessHost::Get();
++    if (host) {
++      host->gpu_service()->LoseContextForTesting();
++    }
++    return;
++  }
+ #endif
+   if (url == blink::kChromeUIGpuHangURL) {
+     auto* host = GpuProcessHost::Get();
+diff --git a/services/viz/privileged/mojom/gl/gpu_service.mojom b/services/viz/privileged/mojom/gl/gpu_service.mojom
+index f543ed72fd..3517de6915 100644
+--- a/services/viz/privileged/mojom/gl/gpu_service.mojom
++++ b/services/viz/privileged/mojom/gl/gpu_service.mojom
+@@ -228,6 +228,12 @@ interface GpuService {
+ 
+   Hang();
+ 
++  // Takes the shared GPU context down the same path a real loss takes, so
++  // that what happens next -- recovery, and on HarmonyOS the shell being
++  // told -- can be exercised on demand. chrome://gpucrash cannot stand in:
++  // with the GPU in the browser process it takes the whole browser with it.
++  LoseContextForTesting();
++
+   ThrowJavaException();
+ 
+   // Induces invalid memory access of the specified `action` (e.g.

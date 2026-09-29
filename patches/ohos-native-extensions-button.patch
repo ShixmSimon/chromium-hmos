@@ -1,0 +1,34 @@
+Let the extensions button decide for itself when the native UI comes back.
+
+With the shell drawing the browser (browserChrome: shell), ToolbarView
+hides its children and remembers which were visible, so that switching
+back to Chromium's own UI can put them back. It remembers them at the
+moment the shell takes over -- which at startup is before extensions have
+loaded, when ExtensionsToolbarDesktop is hidden because it has nothing to
+show. Switching to the native UI then restored it to hidden, and with it
+the only place in the native UI to run an extension: no puzzle button, no
+pinned icons, and the menu's Extensions submenu has only Manage and the
+store, as upstream.
+
+The container's visibility is not state to restore; it is a function of
+whether there are any extensions, and it has UpdateContainerVisibility()
+to recompute it. So after putting the snapshot back, ask it.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch
+and ohos-browser-chrome-shell.patch.
+
+diff --git a/chrome/browser/ui/views/toolbar/toolbar_view.cc b/chrome/browser/ui/views/toolbar/toolbar_view.cc
+--- a/chrome/browser/ui/views/toolbar/toolbar_view.cc
++++ b/chrome/browser/ui/views/toolbar/toolbar_view.cc
+@@ -1303,4 +1303,11 @@
+   ohos_saved_child_visibility_.clear();
++  // Snapshotted when the shell took over, which at startup is before any
++  // extension has loaded -- so the snapshot says hidden. Whether it shows is
++  // the container's own decision (it shows when there are extensions), made
++  // now rather than recalled from then.
++  if (extensions_container_) {
++    extensions_container_->UpdateContainerVisibility();
++  }
+   if (ohos_mobile_toolbar_spacer_) {
+     ohos_mobile_toolbar_spacer_->SetVisible(false);
+   }

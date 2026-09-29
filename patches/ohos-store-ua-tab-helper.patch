@@ -1,0 +1,48 @@
+Watch every tab for the web store, from the moment it exists.
+
+The store user agent -- the desktop string with X11 in the platform
+section, without which the store will not install anything -- did not
+reach the store page on a 2in1: navigator.userAgent there was the
+ordinary desktop "(PC; OpenHarmony 7.0)".
+
+The watcher that installs it was attached from two places, both driven
+by the shell: the state snapshot the shell polls, and the shell's own
+"navigate" command. A navigation that neither of those saw coming --
+typed into Chromium's own omnibox in the native UI, opened from a link,
+restored, or started in a tab created between two snapshots -- reached
+the store before any watcher was there to see it, and the watcher only
+acts on DidStartNavigation.
+
+TabHelpers::AttachTabHelpers is where Chromium attaches things every tab
+should have, before that tab loads anything, whatever created it. The two
+shell-driven attach points stay: creating the observer again is a no-op.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/ui/tab_helpers.cc b/chrome/browser/ui/tab_helpers.cc
+--- a/chrome/browser/ui/tab_helpers.cc
++++ b/chrome/browser/ui/tab_helpers.cc
+@@ -226,5 +226,9 @@
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/shell_store_user_agent_ohos.h"  // nogncheck
++#endif
++
+ #if BUILDFLAG(ENABLE_EXTENSIONS)
+ #include "chrome/browser/extensions/app_tab_helper.h"
+ #include "chrome/browser/ui/extensions/extension_side_panel_utils.h"
+@@ -338,6 +342,13 @@
+   if (base::FeatureList::IsEnabled(features::kGlicMarketingAutoOpen)) {
+     glic::GlicMarketingPageTabHelper::CreateForWebContents(web_contents);
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Before the tab's first navigation, on every path that makes a tab. The
++  // watcher only acts on DidStartNavigation, so one attached later has
++  // already missed the navigation that mattered.
++  chrome::ohos::WatchChromeWebStoreUserAgent(web_contents);
++#endif
++
+   Profile* profile =
+       Profile::FromBrowserContext(web_contents->GetBrowserContext());
