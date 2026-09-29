@@ -50,6 +50,17 @@ apply_incremental_patch() {
   local patch="$1"
   local name="${patch##*/}"
   local rel="${patch#"${repo_root}/"}"
+  # Already applied, checked with full context before trying to apply it.
+  # A patch whose added lines begin with its own trailing context still
+  # forward-applies after it is in -- the context it looks for is found
+  # again at the start of what it added -- so asking "does it apply?" first
+  # applied ohos-password-manager-narrow.patch once more on every build, one
+  # more copy of its CSS each time, and rebuilt the password manager's
+  # resources for nothing.
+  if git -C "$src" apply --reverse --check "$patch" 2>/dev/null; then
+    say "incremental patch ${name} already applied"
+    return
+  fi
   if git -C "$src" apply --check "$patch" 2>/dev/null; then
     git -C "$src" apply "$patch" || die "failed to apply ${name}"
     say "applied incremental patch ${name}"
@@ -199,6 +210,20 @@ else
   retire_incremental_patch "${repo_root}/patches/ohos-links-in-current-tab.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-text-length.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-staging-probe.patch"
+  # Applied again on every build until the check above: take the extra
+  # copies back out. Counted by a line only this patch adds, so a tree with
+  # one copy is left untouched and nothing rebuilds.
+  pm_html="${src}/chrome/browser/resources/password_manager/password_manager_app.html"
+  pm_copies=$(grep -c 'A phone. #content is a flex item' "$pm_html" 2>/dev/null || true)
+  if (( ${pm_copies:-0} > 1 )); then
+    while git -C "$src" apply --reverse --check \
+        "${repo_root}/patches/ohos-password-manager-narrow.patch" 2>/dev/null; do
+      git -C "$src" apply --reverse \
+        "${repo_root}/patches/ohos-password-manager-narrow.patch" ||
+        die 'failed to remove a duplicate of ohos-password-manager-narrow.patch'
+    done
+    say "removed ${pm_copies} copies of ohos-password-manager-narrow.patch; reapplying one"
+  fi
   apply_incremental_patch "${repo_root}/patches/ohos-password-manager-narrow.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-webui-dialog-narrow.patch"
   # ohos-close-own-surface-window.patch is gone from here on purpose, and is
