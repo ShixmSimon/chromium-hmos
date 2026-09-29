@@ -260,6 +260,35 @@ void OhosInputMethod::CancelComposition(const TextInputClient* client) {
   RefreshTextSnapshot(true);
 }
 
+void OhosInputMethod::SetVirtualKeyboardVisibilityIfEnabled(
+    bool should_show) {
+  InputMethodMinimal::SetVirtualKeyboardVisibilityIfEnabled(should_show);
+  // The page asking for the keyboard: a tap on an editable element that
+  // already has focus, or navigator.virtualKeyboard. Attach() decides once,
+  // from how the element got focus, whether the keyboard comes up -- an
+  // element focused by the page itself (autofocus) does not bring it up,
+  // as on Android -- and a tap on that same element changes no focus, so
+  // nothing attached again and the keyboard never came. Ask for it here.
+  const bool was_attached = input_method_proxy_ != nullptr;
+  if (should_show && !was_attached) {
+    UpdateImeState();
+  }
+  InputMethod_ErrorCode result = IME_ERR_OK;
+  if (input_method_proxy_) {
+    result = should_show ? OH_InputMethodProxy_ShowKeyboard(input_method_proxy_)
+                         : OH_InputMethodProxy_HideKeyboard(input_method_proxy_);
+  }
+  LOG(WARNING) << "OHOS IME: page asks to "
+               << (should_show ? "show" : "hide")
+               << " the keyboard, focused=" << focused_
+               << " type=" << static_cast<int>(GetTextInputType())
+               << " attached="
+               << (was_attached          ? "yes"
+                   : input_method_proxy_ ? "now"
+                                         : "no")
+               << " result=" << result;
+}
+
 void OhosInputMethod::OnDidChangeFocusedClient(TextInputClient* focused_before,
                                                TextInputClient* focused) {
   (void)focused_before;

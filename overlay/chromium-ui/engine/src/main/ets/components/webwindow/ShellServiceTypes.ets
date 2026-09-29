@@ -596,8 +596,18 @@ export interface BackHandledEvent {
   event: 'backHandled';
   requestId: number;
   handled: boolean;
-  // What took it, when handled: 'browserDialog' when one of the browser's
-  // own bubbles or dialogs was open and was closed (an extension's "added"
-  // bubble, a permission prompt), 'page' when the page took it.
-  by?: 'browserDialog' | 'page';
+  // What took it, when handled: 'fullscreen' when the page was fullscreen
+  // and has left it, 'browserDialog' when one of the browser's own bubbles
+  // or dialogs was open and was closed (an extension's "added" bubble, a
+  // permission prompt), 'page' when the page took it.
+  by?: 'fullscreen' | 'browserDialog' | 'page';
+}
+
+// The page made itself fullscreen (requestFullscreen() on a video or any
+// other element), or left it. Chromium fills the page area; the shell hides
+// its own bars and makes the window immersive, and puts them back when
+// `fullscreen` is false. Back leaves fullscreen through handleBack.
+export interface PageFullscreenChangedEvent {
+  event: 'pageFullscreenChanged';
+  fullscreen: boolean;
 }

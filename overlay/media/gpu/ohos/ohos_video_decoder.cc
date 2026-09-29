@@ -24,6 +24,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/task/bind_post_task.h"
 #include "base/time/time.h"
+#include "media/base/video_codecs.h"
 #include "media/base/video_frame.h"
 #include "media/base/video_types.h"
 #include "media/gpu/ohos/ohos_codec_util.h"
@@ -46,6 +47,12 @@ int32_t ReadIntOr(OH_AVFormat* format, const char* key, int32_t fallback) {
     return value;
   }
   return fallback;
+}
+
+// A key's value as reported, zero included; -1 when it was not reported.
+int32_t ReadIntOrMissing(OH_AVFormat* format, const char* key) {
+  int32_t value = 0;
+  return format && OH_AVFormat_GetIntValue(format, key, &value) ? value : -1;
 }
 
 }  // namespace
@@ -466,6 +473,24 @@ bool OhosVideoDecoder::UpdateOutputLayout() {
     return false;
   }
   output_layout_ = OutputLayout{width, height, stride, slice_height};
+  // What the hardware decoder says it hands back, beside what the stream's
+  // config says the pictures are -- the frames are labelled with the
+  // latter. A 10-bit video played washed out on a tablet; a decoder that
+  // tone-maps or changes range on its way to NV12 would look like that.
+  // -1 is a key the decoder did not report; range 1 is full, 0 limited.
+  LOG(WARNING) << "OHOS video decoder output: "
+               << GetProfileName(config_.profile()) << ", pixel format "
+               << ReadIntOrMissing(format.get(), OH_MD_KEY_PIXEL_FORMAT)
+               << ", range " << ReadIntOrMissing(format.get(), OH_MD_KEY_RANGE_FLAG)
+               << ", primaries "
+               << ReadIntOrMissing(format.get(), OH_MD_KEY_COLOR_PRIMARIES)
+               << ", transfer "
+               << ReadIntOrMissing(format.get(),
+                                   OH_MD_KEY_TRANSFER_CHARACTERISTICS)
+               << ", matrix "
+               << ReadIntOrMissing(format.get(), OH_MD_KEY_MATRIX_COEFFICIENTS)
+               << "; frames labelled "
+               << config_.color_space_info().ToGfxColorSpace().ToString();
   return true;
 }
 

@@ -202,6 +202,7 @@ export interface BrowserRuntimeEvent {
     'contextMenuImageFile' | 'contextMenuActionsChanged' |
     'backHandled' | 'dropNotHandled' | 'browserChromeRequested' |
     'gpuContextLost' | 'lastSessionRestorable' | 'extensionInstallFailed' |
+    'pageFullscreenChanged' |
     'extensionDetails' | 'extensionCommandFailed' |
     'pageDragStarted' | 'pageDragEnded' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
@@ -250,6 +251,8 @@ export interface BrowserRuntimeEvent {
   // backHandled: whether the page took the back gesture -- closed a dialog,
   // left fullscreen. True means the shell should not also go back.
   handled?: boolean;
+  // pageFullscreenChanged: whether the page has made itself fullscreen.
+  fullscreen?: boolean;
   // contextMenuImageFile: where the long-pressed image was written, and what
   // it is. Both empty when there was no image to write.
   path?: string;

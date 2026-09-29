@@ -33,6 +33,7 @@ class OhosInputMethod : public InputMethodMinimal {
   void OnTextInputTypeChanged(TextInputClient* client) override;
   void OnCaretBoundsChanged(const TextInputClient* client) override;
   void CancelComposition(const TextInputClient* client) override;
+  void SetVirtualKeyboardVisibilityIfEnabled(bool should_show) override;
 
  protected:
   void OnDidChangeFocusedClient(TextInputClient* focused_before,

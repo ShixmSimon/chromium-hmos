@@ -122,7 +122,10 @@
 #include "chrome/browser/printing/print_view_manager.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
+#include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
@@ -233,6 +236,9 @@ struct RuntimeBridgeState {
   bool app_focus_applied GUARDED_BY(lock) = false;
   std::map<gfx::AcceleratedWidget, bool> window_visibility GUARDED_BY(lock);
   std::map<gfx::AcceleratedWidget, bool> window_focus GUARDED_BY(lock);
+  // Whether the page in each window was fullscreen at the last poll, so a
+  // change is reported once. See IsPageFullscreen().
+  std::map<gfx::AcceleratedWidget, bool> page_fullscreen GUARDED_BY(lock);
   // How much of the bottom of each window's page the shell covers with its
   // own floating bar, in DIP. See ApplyViewportInsets().
   std::map<gfx::AcceleratedWidget, int> viewport_bottom_inset GUARDED_BY(lock);
@@ -2631,6 +2637,24 @@ void ShowBrowserControls(content::WebContents* contents) {
                                        /*animate=*/false, std::nullopt);
 }
 
+// The fullscreen controller of `browser`'s window, if it has one.
+FullscreenController* GetFullscreenController(
+    BrowserWindowInterface* browser) {
+  ExclusiveAccessManager* manager =
+      browser ? browser->GetFeatures().exclusive_access_manager() : nullptr;
+  return manager ? manager->fullscreen_controller() : nullptr;
+}
+
+// Whether the page in `browser`'s window has made itself fullscreen --
+// requestFullscreen() on a video or anything else. Chromium then makes the
+// page area fullscreen, but the page area is only the part of the window the
+// shell gives it: the tab strip and toolbar are the shell's own, and stay
+// unless the shell is told to hide them.
+bool IsPageFullscreen(BrowserWindowInterface* browser) {
+  FullscreenController* controller = GetFullscreenController(browser);
+  return controller && controller->IsTabFullscreen();
+}
+
 void PollBrowserStateOnUiThread(uint64_t generation) {
   std::string ui_family;
   std::map<gfx::AcceleratedWidget, int> bottom_insets;
@@ -2650,10 +2674,12 @@ void PollBrowserStateOnUiThread(uint64_t generation) {
   ApplyUserAgentToAllTabs(mobile, /*reload=*/false);
 
   std::vector<std::pair<gfx::AcceleratedWidget, std::string>> snapshots;
+  std::vector<std::pair<gfx::AcceleratedWidget, bool>> page_fullscreen;
   if (GlobalBrowserCollection* browsers =
           GlobalBrowserCollection::GetInstance()) {
     browsers->ForEach(
-        [&snapshots, &ui_family, &bottom_insets, top_controls_height](
+        [&snapshots, &page_fullscreen, &ui_family, &bottom_insets,
+         top_controls_height](
             BrowserWindowInterface* browser) {
           const gfx::AcceleratedWidget widget = GetBrowserWidget(browser);
           if (widget != gfx::kNullAcceleratedWidget) {
@@ -2683,9 +2709,34 @@ void PollBrowserStateOnUiThread(uint64_t generation) {
             }
             snapshots.emplace_back(
                 widget, BuildBrowserStateJson(ui_family, widget, browser));
+            page_fullscreen.emplace_back(widget, IsPageFullscreen(browser));
           }
           return true;
         });
+  }
+
+  // pageFullscreenChanged, once per change. Read with the rest of the state
+  // rather than observed, so it cannot miss a change the page made while
+  // the shell was not listening, and costs one bool per window per poll.
+  std::vector<std::pair<gfx::AcceleratedWidget, bool>> fullscreen_changed;
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    for (const auto& [widget, fullscreen] : page_fullscreen) {
+      auto [previous, inserted] =
+          state.page_fullscreen.try_emplace(widget, false);
+      if (previous->second != fullscreen) {
+        previous->second = fullscreen;
+        fullscreen_changed.emplace_back(widget, fullscreen);
+      }
+    }
+  }
+  for (const auto& [widget, fullscreen] : fullscreen_changed) {
+    LOG(WARNING) << "OHOS page fullscreen: " << fullscreen;
+    base::DictValue event;
+    event.Set("event", "pageFullscreenChanged");
+    event.Set("fullscreen", fullscreen);
+    DispatchRuntimeEvent(widget, std::move(event));
   }
 
   AuraShellBrowserStateCallback callback;
@@ -3444,14 +3495,26 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     //
     // Before the page: a bubble or dialog of the browser's own, which on a
     // phone nothing else can close.
+    //
+    // Before either: the page's fullscreen. With the shell's bars hidden and
+    // no Escape key, back is the way out of it, as it is on Android.
     base::DictValue event;
     event.Set("event", "backHandled");
     event.Set("requestId", command.FindInt("requestId").value_or(0));
-    const bool closed_dialog = CloseTopBrowserDialog(browser);
-    const bool page_handled =
-        !closed_dialog && active && active->SignalCloseWatcherIfActive();
-    event.Set("handled", closed_dialog || page_handled);
-    if (closed_dialog || page_handled) {
+    FullscreenController* fullscreen = GetFullscreenController(browser);
+    const bool left_fullscreen =
+        active && fullscreen && fullscreen->IsTabFullscreen();
+    if (left_fullscreen) {
+      fullscreen->ExitFullscreenModeForTab(active);
+    }
+    const bool closed_dialog =
+        !left_fullscreen && CloseTopBrowserDialog(browser);
+    const bool page_handled = !left_fullscreen && !closed_dialog && active &&
+                              active->SignalCloseWatcherIfActive();
+    event.Set("handled", left_fullscreen || closed_dialog || page_handled);
+    if (left_fullscreen) {
+      event.Set("by", "fullscreen");
+    } else if (closed_dialog || page_handled) {
       event.Set("by", closed_dialog ? "browserDialog" : "page");
     }
     DispatchRuntimeEvent(widget, std::move(event));
