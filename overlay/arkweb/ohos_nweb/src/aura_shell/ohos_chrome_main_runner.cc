@@ -22,6 +22,7 @@
 #include "base/path_service.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "ohos_nweb/src/nweb_hilog.h"
+#include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 
 extern "C" int ChromeMain(int argc, const char** argv);
@@ -444,7 +445,19 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   // The GPU stays in this process unless the shell asks otherwise and the
   // device can start a native child to hold it. A phone cannot; asking there
   // is logged and ignored rather than turned into a failed start.
-  const bool separate_gpu_process = config.gpu_process == "separate";
+  bool separate_gpu_process = config.gpu_process == "separate";
+  // The last run could not start its GPU child and said so. Once in the
+  // browser process, then the next launch tries again: see
+  // ohos_gpu_child_channel.cc.
+  if (separate_gpu_process && !config.user_data_dir.empty()) {
+    const std::string marker =
+        config.user_data_dir + "/" + ui::kOhosGpuChildFailedMarker;
+    if (access(marker.c_str(), F_OK) == 0) {
+      unlink(marker.c_str());
+      AURA_LOG_E("AuraShell GPU child failed last run; in process this once");
+      separate_gpu_process = false;
+    }
+  }
   if (separate_gpu_process && supports_native_child_process &&
       !config.headless) {
     AURA_LOG_I("AuraShell GPU in a process of its own by config");

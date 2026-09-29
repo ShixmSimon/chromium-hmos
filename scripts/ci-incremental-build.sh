@@ -357,6 +357,23 @@ retire_incremental_patch "${repo_root}/patches/ohos-gpu-os-type-linux.patch"
   "$readelf" --wide --dynamic "$so" 2>/dev/null \
     | grep 'libnative_window_manager.so' >/dev/null \
     || die 'libweb_engine.so is not linked to libnative_window_manager.so'
+  # The GPU process's entry points, which libnweb_render.so looks up by name
+  # at run time. libweb_engine.so exports only what cef/libweb_engine.exports
+  # lists, so a new entry point that is not listed compiles, links, and is
+  # then "Symbol not found" on the device -- which is how the first GPU child
+  # build went.
+  for entry in ChromiumHarmonyOSGpuChildOnConnect \
+               ChromiumHarmonyOSGpuChildMainProc; do
+    "$readelf" --wide --dyn-syms "$so" 2>/dev/null | grep -w "$entry" \
+      >/dev/null || die "libweb_engine.so does not export ${entry}"
+  done
+  render_so="${src}/${out}/libnweb_render.so"
+  if [[ -f "$render_so" ]]; then
+    for entry in NativeChildProcess_OnConnect NativeChildProcess_MainProc; do
+      "$readelf" --wide --dyn-syms "$render_so" 2>/dev/null | grep -w "$entry" \
+        >/dev/null || die "libnweb_render.so does not export ${entry}"
+    done
+  fi
   build_id=$("$readelf" -n "$so" 2>/dev/null \
              | grep -i 'build id' | grep -oE '[0-9a-f]{40}')
   say "built ${steps} step(s) in ${elapsed}s, build-id ${build_id}"

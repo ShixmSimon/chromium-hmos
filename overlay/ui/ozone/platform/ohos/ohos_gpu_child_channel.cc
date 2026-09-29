@@ -11,6 +11,9 @@
 
 #include "AbilityKit/native_child_process.h"
 #include "IPCKit/ipc_kit.h"
+#include "base/command_line.h"
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/process/launch_ohos.h"
@@ -153,9 +156,32 @@ void SendWidgetState(OHIPCRemoteProxy* proxy,
   }
 }
 
-// Registered with base as the way to start --type=gpu-process.
-base::ProcessId LaunchGpuChild(const std::string& encoded_params,
-                               const std::vector<std::pair<int, int>>& fds) {
+// A GPU child that failed once is not tried again in this run: Chromium
+// retries a failed GPU process launch many times, and each retry here was a
+// new native child -- the system counted fifty. What a run that cannot start
+// one can do is limited: Chromium falls back through its GPU modes and, with
+// no process at all, gives up. So the failure is also left on disk for the
+// next launch, which then keeps the GPU in the browser process (see
+// ohos_chrome_main_runner.cc) and removes the note, so the launch after that
+// tries again.
+bool& GpuChildFailed() {
+  static bool failed = false;
+  return failed;
+}
+
+void RecordGpuChildFailure() {
+  GpuChildFailed() = true;
+  const base::FilePath user_data_dir =
+      base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
+          "user-data-dir");
+  if (!user_data_dir.empty() &&
+      !base::WriteFile(user_data_dir.Append(kOhosGpuChildFailedMarker), "")) {
+    LOG(ERROR) << "OHOS GPU child: could not note the failure for next launch";
+  }
+}
+
+base::ProcessId StartGpuChild(const std::string& encoded_params,
+                              const std::vector<std::pair<int, int>>& fds) {
   BrowserSide& side = Browser();
   OHIPCRemoteProxy* proxy = nullptr;
   {
@@ -226,6 +252,19 @@ base::ProcessId LaunchGpuChild(const std::string& encoded_params,
   }
   LOG(WARNING) << "OHOS GPU child: started pid=" << pid;
   ForwardOhosSurfacesToGpuChild();
+  return pid;
+}
+
+// Registered with base as the way to start --type=gpu-process.
+base::ProcessId LaunchGpuChild(const std::string& encoded_params,
+                               const std::vector<std::pair<int, int>>& fds) {
+  if (GpuChildFailed()) {
+    return base::kNullProcessId;
+  }
+  const base::ProcessId pid = StartGpuChild(encoded_params, fds);
+  if (pid == base::kNullProcessId) {
+    RecordGpuChildFailure();
+  }
   return pid;
 }
 

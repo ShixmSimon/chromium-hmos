@@ -35,6 +35,11 @@
 
 namespace ui {
 
+// Left in the user data directory by a run whose GPU child would not start,
+// so the next launch keeps the GPU in the browser process. That launch
+// removes it.
+inline constexpr char kOhosGpuChildFailedMarker[] = "GpuChildFailed";
+
 // Browser process. Registers the launcher base uses for --type=gpu-process.
 void InstallOhosGpuChildLauncher();
 
