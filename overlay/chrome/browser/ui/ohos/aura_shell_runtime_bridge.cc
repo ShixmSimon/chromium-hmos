@@ -1720,7 +1720,10 @@ constexpr uint32_t kCloseAndRemember =
     TabCloseTypes::CLOSE_USER_GESTURE | TabCloseTypes::CLOSE_CREATE_HISTORICAL_TAB;
 
 // Defined further down, beside the rest of the navigation helpers.
-void NavigateOnUiThread(gfx::AcceleratedWidget widget, GURL url, int attempt);
+void NavigateOnUiThread(gfx::AcceleratedWidget widget,
+                        GURL url,
+                        ui::PageTransition transition,
+                        int attempt);
 
 // Dissolves this window's one-tab groups, if it is still open. Takes a widget
 // rather than a TabStripModel because it runs after the snapshot that asked
@@ -1832,7 +1835,8 @@ void CloseTabById(gfx::AcceleratedWidget widget,
     // The last tab closing would close the window. The shell expects a
     // browser to still be there, so the tab empties instead, which is what
     // closeTab has always done.
-    NavigateOnUiThread(widget, GURL("chrome://newtab/"), 0);
+    NavigateOnUiThread(widget, GURL("chrome://newtab/"),
+                       ui::PAGE_TRANSITION_TYPED, 0);
     return;
   }
   // Read before the close, and paired with the entry it produces, so undoing
@@ -2461,7 +2465,10 @@ void PollBrowserStateOnUiThread(uint64_t generation) {
       kBrowserStatePollInterval);
 }
 
-void NavigateOnUiThread(gfx::AcceleratedWidget widget, GURL url, int attempt) {
+void NavigateOnUiThread(gfx::AcceleratedWidget widget,
+                        GURL url,
+                        ui::PageTransition transition,
+                        int attempt) {
   BrowserWindowInterface* browser = FindBrowserForWidget(widget);
   if (!browser) {
     if (attempt >= kMaxBrowserLookupAttempts) {
@@ -2471,14 +2478,14 @@ void NavigateOnUiThread(gfx::AcceleratedWidget widget, GURL url, int attempt) {
     base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
         FROM_HERE,
         base::BindOnce(&NavigateOnUiThread, widget, std::move(url),
-                       attempt + 1),
+                       transition, attempt + 1),
         kBrowserLookupDelay);
     return;
   }
 
   content::OpenURLParams params(
       url, content::Referrer(), WindowOpenDisposition::CURRENT_TAB,
-      ui::PAGE_TRANSITION_TYPED, /*is_renderer_initiated=*/false);
+      transition, /*is_renderer_initiated=*/false);
   browser->OpenURL(params, {});
 }
 
@@ -3000,11 +3007,12 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
   } else if (*name == "stop" && active) {
     active->Stop();
   } else if (*name == "home") {
-    NavigateOnUiThread(widget, GURL("chrome://newtab/"), 0);
+    NavigateOnUiThread(widget, GURL("chrome://newtab/"),
+                       ui::PAGE_TRANSITION_TYPED, 0);
   } else if (*name == "pwaHome") {
     const std::string* url = command.FindString("url");
     if (url && GURL(*url).is_valid()) {
-      NavigateOnUiThread(widget, GURL(*url), 0);
+      NavigateOnUiThread(widget, GURL(*url), ui::PAGE_TRANSITION_TYPED, 0);
     }
   } else if (*name == "navigate") {
     const std::string* url = command.FindString("url");
@@ -3013,7 +3021,15 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
       // place that knows a navigation is about to start, and a watcher
       // attached afterwards has already missed the only event it wanted.
       chrome::ohos::WatchChromeWebStoreUserAgent(active);
-      NavigateOnUiThread(widget, GURL(*url), 0);
+      // The shell sends this only when its address bar is submitted, so it
+      // says so. Debug URLs such as chrome://gpu-lose-context/ act only on a
+      // navigation from the address bar (HandleDebugURL), and so does the
+      // rest of Chromium that asks how a URL was entered.
+      NavigateOnUiThread(
+          widget, GURL(*url),
+          ui::PageTransitionFromInt(ui::PAGE_TRANSITION_TYPED |
+                                    ui::PAGE_TRANSITION_FROM_ADDRESS_BAR),
+          0);
     }
   } else if (*name == "newIncognitoWindow") {
     // A Browser is bound to one Profile, so incognito tabs cannot join this
@@ -3182,7 +3198,8 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
       tabs->CloseWebContentsAt(index, kCloseAndRemember);
       RememberOpenerOfClosedTab(RestoreServiceFor(browser), had_opener);
     } else if (active) {
-      NavigateOnUiThread(widget, GURL("chrome://newtab/"), 0);
+      NavigateOnUiThread(widget, GURL("chrome://newtab/"),
+                       ui::PAGE_TRANSITION_TYPED, 0);
     }
   } else if (*name == "moveTabToNewWindow") {
     // A tab dragged off the strip. Chromium's own command does the work --
@@ -3511,7 +3528,7 @@ void NotifyAuraShellBrowserStarted() {
     ui_task_runner->PostTask(
         FROM_HERE,
         base::BindOnce(&NavigateOnUiThread, gfx::kNullAcceleratedWidget,
-                       std::move(*pending_url), 0));
+                       std::move(*pending_url), ui::PAGE_TRANSITION_TYPED, 0));
   }
   if (pending_theme_font_id) {
     ui_task_runner->PostTask(FROM_HERE,
@@ -3582,7 +3599,8 @@ bool NavigateAuraShellBrowser(gfx::AcceleratedWidget widget,
 
   ui_task_runner->PostTask(
       FROM_HERE,
-      base::BindOnce(&NavigateOnUiThread, widget, std::move(target), 0));
+      base::BindOnce(&NavigateOnUiThread, widget, std::move(target),
+                     ui::PAGE_TRANSITION_TYPED, 0));
   return true;
 }
 
