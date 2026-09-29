@@ -72,6 +72,11 @@
 #include "extensions/browser/extension_action_manager.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_action_icon_factory.h"
+#include "chrome/browser/extensions/extension_install_prompt.h"
+#include "extensions/browser/crx_installer.h"
+#include "extensions/browser/install/crx_install_error.h"
+#include "extensions/browser/install/sandboxed_unpacker_failure_reason.h"
+#include "extensions/browser/install_prompt_data.h"
 #include "chrome/browser/extensions/extension_view_host.h"
 #include "chrome/browser/extensions/extension_view_host_factory.h"
 #include "chrome/browser/ui/views/extensions/extension_popup.h"
@@ -1467,6 +1472,115 @@ gfx::Rect ExtensionPopupAnchorRect(BrowserWindowInterface* browser,
 // The same thing as clicking the button on Chromium's toolbar: the extension
 // gets its onClicked event, or its popup opens -- drawn by Chromium, anchored
 // at wherever the shell said it put the button.
+// --- Installing a downloaded .crx. -------------------------------------------
+//
+// Sites other than the web store offer extensions as .crx links. Chromium
+// will not install from a link on another site -- it downloads the file
+// instead, which is upstream's rule and stays. The shell then offers to
+// install what arrived, and this is what "Install" does: the same install
+// chrome://extensions runs for a dropped file, Chromium's own confirmation
+// dialog included, allowed off the store for the same reason -- the reader
+// chose this file themselves.
+
+// What went wrong, as a word the shell can switch on. `message` in the event
+// is Chromium's own sentence for it, already in the reader's language.
+std::string_view ExtensionInstallFailureReason(
+    const extensions::CrxInstallError& error) {
+  using extensions::CrxInstallErrorDetail;
+  if (error.type() ==
+          extensions::CrxInstallErrorType::SANDBOXED_UNPACKER_FAILURE) {
+    return error.sandbox_failure_detail() ==
+                   extensions::SandboxedUnpackerFailureReason::
+                       CRX_FILE_NOT_READABLE
+               ? "notFound"
+               : "invalid";
+  }
+  switch (error.detail()) {
+    case CrxInstallErrorDetail::USER_CANCELED:
+    case CrxInstallErrorDetail::USER_ABORTED:
+      return "cancelled";
+    case CrxInstallErrorDetail::DISALLOWED_BY_POLICY:
+    case CrxInstallErrorDetail::EXTENSION_IS_BLOCKLISTED:
+    case CrxInstallErrorDetail::INSTALL_NOT_ENABLED:
+    case CrxInstallErrorDetail::OFFSTORE_INSTALL_DISALLOWED:
+    case CrxInstallErrorDetail::KIOSK_MODE_ONLY:
+      return "blocked";
+    case CrxInstallErrorDetail::UNSUPPORTED_REQUIREMENTS:
+      return "unsupported";
+    case CrxInstallErrorDetail::MANIFEST_INVALID:
+    case CrxInstallErrorDetail::CANT_LOAD_EXTENSION:
+      return "invalid";
+    case CrxInstallErrorDetail::CANT_DOWNGRADE_VERSION:
+      return "newerInstalled";
+    default:
+      return "other";
+  }
+}
+
+void DispatchExtensionInstallFailed(gfx::AcceleratedWidget widget,
+                                    const std::string& path,
+                                    std::string_view reason,
+                                    const std::u16string& message) {
+  const std::string message_utf8 = base::UTF16ToUTF8(message);
+  LOG(WARNING) << "OHOS extension install failed: reason=" << reason
+               << " message=" << message_utf8;
+  base::DictValue event;
+  event.Set("event", "extensionInstallFailed");
+  event.Set("path", path);
+  event.Set("reason", reason);
+  event.Set("message", message_utf8);
+  DispatchRuntimeEvent(widget, std::move(event));
+}
+
+// installExtensionFromFile { path }. Success is extensionActionsChanged,
+// which the toolbar model already sends when the extension arrives.
+void InstallExtensionFromFile(gfx::AcceleratedWidget widget,
+                              BrowserWindowInterface* browser,
+                              const base::DictValue& command) {
+  const std::string* path_value = command.FindString("path");
+  const std::string path = path_value ? *path_value : std::string();
+  const base::FilePath file = base::FilePath::FromUTF8Unsafe(path);
+  content::WebContents* active =
+      browser ? browser->GetTabStripModel()->GetActiveWebContents() : nullptr;
+  if (path.empty() || !file.IsAbsolute() || file.ReferencesParent()) {
+    DispatchExtensionInstallFailed(widget, path, "notFound", u"");
+    return;
+  }
+  if (!file.MatchesExtension(FILE_PATH_LITERAL(".crx"))) {
+    DispatchExtensionInstallFailed(widget, path, "notCrx", u"");
+    return;
+  }
+  if (!active) {
+    DispatchExtensionInstallFailed(widget, path, "other", u"");
+    return;
+  }
+
+  // As DeveloperPrivateInstallDroppedFileFunction does it.
+  auto prompt = std::make_unique<ExtensionInstallPrompt>(
+      active, std::make_unique<extensions::InstallPromptData>(
+                  extensions::InstallPromptData::UNSET_PROMPT_TYPE));
+  scoped_refptr<extensions::CrxInstaller> installer =
+      extensions::CrxInstaller::Create(browser->GetProfile(),
+                                       std::move(prompt));
+  installer->set_error_on_unsupported_requirements(true);
+  installer->set_off_store_install_allow_reason(
+      extensions::CrxInstaller::OffStoreInstallAllowedFromSettingsPage);
+  installer->set_install_immediately(true);
+  installer->AddInstallerCallback(base::BindOnce(
+      [](gfx::AcceleratedWidget widget, std::string path,
+         const std::optional<extensions::CrxInstallError>& error) {
+        if (!error) {
+          LOG(WARNING) << "OHOS extension installed from file";
+          return;
+        }
+        DispatchExtensionInstallFailed(widget, path,
+                                       ExtensionInstallFailureReason(*error),
+                                       error->message());
+      },
+      widget, path));
+  installer->InstallCrx(file);
+}
+
 void RunExtensionAction(BrowserWindowInterface* browser,
                         const base::DictValue& command) {
   Profile* profile = browser ? browser->GetProfile() : nullptr;
@@ -3342,6 +3456,8 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     SendExtensionActions(widget, browser, command);
   } else if (*name == "runExtensionAction") {
     RunExtensionAction(browser, command);
+  } else if (*name == "installExtensionFromFile") {
+    InstallExtensionFromFile(widget, browser, command);
   } else if (*name == "setExtensionPinned") {
     SetExtensionPinned(browser, command);
   } else if (*name == "getTabThumbnails") {
@@ -3734,6 +3850,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "setZoom",
       "getExtensionActions",
       "runExtensionAction",
+      "installExtensionFromFile",
       "setExtensionPinned",
       "getTabThumbnails",
       "toggleReaderMode",

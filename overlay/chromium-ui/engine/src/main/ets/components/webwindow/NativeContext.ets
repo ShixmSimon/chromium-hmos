@@ -201,7 +201,7 @@ export interface BrowserRuntimeEvent {
     'openedInGroup' | 'pageScrollSettled' | 'pageContinuation' |
     'contextMenuImageFile' | 'contextMenuActionsChanged' |
     'backHandled' | 'dropNotHandled' | 'browserChromeRequested' |
-    'gpuContextLost' | 'lastSessionRestorable' |
+    'gpuContextLost' | 'lastSessionRestorable' | 'extensionInstallFailed' |
     'pageDragStarted' | 'pageDragEnded' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |

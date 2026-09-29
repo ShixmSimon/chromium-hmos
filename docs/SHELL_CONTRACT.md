@@ -307,6 +307,19 @@ shellAccelerator { action }
 | `getExtensionActions` | `requestId` | `extensionActions { requestId, items }` |
 | `runExtensionAction` | `id` | 等同于点工具栏上的扩展图标;弹窗仍由 Chromium 画,锚到 `setAnchorRects` 的 `extensions` |
 | `setExtensionPinned` | `id`, `pinned` | |
+| `installExtensionFromFile` | `path` | 成功:`extensionActionsChanged`;失败:`extensionInstallFailed { path, reason, message }` |
+
+**安装下载下来的 .crx。** 第三方扩展网站的"安装"是 .crx 下载链接,Chromium 按上游
+规则不从这类网站直接安装,只会把文件下载下来。外壳在 .crx 下载完成时提示用户,用户
+点"安装"后发 `installExtensionFromFile { path }`,`path` 就是 `downloadUpdated` 里的
+`filePath`。内核走的是和把文件拖进 `chrome://extensions` 相同的安装流程,会弹
+Chromium 自己的安装确认框,用户确认后才装。
+
+`reason` 取值:`notFound`(文件不存在或读不了)、`notCrx`(不是 .crx 文件)、
+`invalid`(文件损坏,或者不是有效的扩展)、`blocked`(被策略或黑名单禁止)、
+`unsupported`(设备不满足扩展的要求)、`newerInstalled`(已经装了更新的版本)、
+`cancelled`(用户在确认框里取消了)、`other`。`message` 是 Chromium 自己给出的那句
+说明,已经是用户的语言,可以直接显示。`cancelled` 一般不用提示。
 
 ### 其它宽屏命令
 
