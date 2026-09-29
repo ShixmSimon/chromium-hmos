@@ -732,6 +732,11 @@ gpuContextLost { windowId?: number, recovered: boolean }
 `recovered: true` 时画面会自己回来,外壳通常不用做什么,记一笔即可;
 `recovered: false` 说明连重建都没做成,建议提示用户或重载当前页。
 
+一次丢失只发一条。内核里每个 GPU 客户端会各报一次,内核收集 500ms 后合成一条
+发出;其中任何一次没救回来,`recovered` 就是 `false`。
+
+测试方法:在地址栏输入 `chrome://gpu-lose-context/`,内核会主动丢一次上下文。
+
 触发场景(还没有逐一验证):切后台较久、锁屏解锁、内存吃紧、折叠展开、窗口大小
 变化、旋转、切换界面样式。
 
@@ -815,6 +820,14 @@ XComponent({
 另外:
 - **不要把 `WebWindow` 包进 TEXTURE 模式的容器,也不要对它截图做特效。** 引擎已经测过,TEXTURE 模式会让每一帧都绕道 ArkUI 主线程。
 - 页面背景色建议和网页默认背景一致,这样旋转或加载时的空隙不会闪烁。
+
+### ANGLE 后端(调试用)
+
+启动配置里的 `angleBackend?: 'gles' | 'vulkan'` 决定 ANGLE 用哪个后端画。不填或
+`'gles'` 是鸿蒙自己的 EGL/GLES,设备上应该用这个;`'vulkan'` 走 Vulkan
+(`VK_OHOS_surface`),只用于和 GLES 对比测量,还没有在设备上长时间跑过。只在启
+动时读一次,改了要重启应用。`chrome://flags` 里的对应开关会被这个启动参数盖掉,
+不起作用。
 
 ### 怎么自查
 

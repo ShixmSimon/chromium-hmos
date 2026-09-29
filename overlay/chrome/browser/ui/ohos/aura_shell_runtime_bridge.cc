@@ -2059,6 +2059,53 @@ int ShellZoomPercent(content::WebContents* contents) {
   return controller ? controller->GetZoomPercent() : 100;
 }
 
+// --- GPU context loss. -----------------------------------------------------
+//
+// One loss reaches here once per GPU client -- every context that was lost
+// with it reports on its own -- and a loss the shell has to act on once was
+// arriving fifteen times. The reports are gathered for a short window and
+// sent as one event; `recovered` is true only if every report said so.
+
+constexpr base::TimeDelta kGpuContextLostWindow = base::Milliseconds(500);
+
+struct PendingGpuContextLost {
+  bool pending = false;
+  bool recovered = true;
+};
+
+PendingGpuContextLost& GpuContextLostState() {
+  static base::NoDestructor<PendingGpuContextLost> state;
+  return *state;
+}
+
+void DispatchGpuContextLost() {
+  PendingGpuContextLost& state = GpuContextLostState();
+  base::DictValue event;
+  event.Set("event", "gpuContextLost");
+  event.Set("recovered", state.recovered);
+  state = PendingGpuContextLost();
+  if (GlobalBrowserCollection* browsers =
+          GlobalBrowserCollection::GetInstance()) {
+    browsers->ForEach([&event](BrowserWindowInterface* browser) {
+      DispatchRuntimeEvent(GetBrowserWidget(browser), event.Clone());
+      return true;
+    });
+  }
+}
+
+// On the UI thread.
+void GatherGpuContextLost(bool recovered) {
+  PendingGpuContextLost& state = GpuContextLostState();
+  state.recovered = state.recovered && recovered;
+  if (state.pending) {
+    return;
+  }
+  state.pending = true;
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE, base::BindOnce(&DispatchGpuContextLost),
+      kGpuContextLostWindow);
+}
+
 std::string BuildBrowserStateJson(std::string_view ui_family,
                                   gfx::AcceleratedWidget widget,
                                   BrowserWindowInterface* browser) {
@@ -2154,19 +2201,16 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   static bool watching_gpu_context = false;
   if (!watching_gpu_context) {
     watching_gpu_context = true;
-    ui::SetOhosGpuContextLostCallback(
-        base::BindRepeating([](bool recovered) {
-          base::DictValue event;
-          event.Set("event", "gpuContextLost");
-          event.Set("recovered", recovered);
-          if (GlobalBrowserCollection* browsers =
-                  GlobalBrowserCollection::GetInstance()) {
-            browsers->ForEach([&event](BrowserWindowInterface* browser) {
-              DispatchRuntimeEvent(GetBrowserWidget(browser), event.Clone());
-              return true;
-            });
-          }
-        }));
+    // The callback runs on whichever thread noticed the loss -- the GPU
+    // thread, with the GPU in this process -- so it only hands the report to
+    // this one, which is where browser windows may be read.
+    ui::SetOhosGpuContextLostCallback(base::BindRepeating(
+        [](scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner,
+           bool recovered) {
+          ui_task_runner->PostTask(
+              FROM_HERE, base::BindOnce(&GatherGpuContextLost, recovered));
+        },
+        base::SingleThreadTaskRunner::GetCurrentDefault()));
   }
 
   // Images written for a share that never happened do not outlive the run

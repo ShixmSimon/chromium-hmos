@@ -984,8 +984,8 @@ void SetOhosGpuContextLostCallback(OhosGpuContextLostCallback callback) {
 }
 
 void NotifyOhosGpuContextLost(bool recovered) {
-  // Posted rather than called: this arrives on whichever thread noticed
-  // the loss, and the browser side reads window state on the UI thread.
+  // Called on whichever thread noticed the loss. The callback is the one
+  // that knows where it has to run, and posts itself there.
   const OhosGpuContextLostCallback& callback = GpuContextLostCallback();
   if (callback.is_null()) {
     return;
