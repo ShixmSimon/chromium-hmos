@@ -1,0 +1,123 @@
+Stop process-lock checks from killing a single-process browser.
+
+On a phone, opening an extension's page took the whole app down:
+"Terminating renderer for bad IPC message, reason 1"
+(RFH_CAN_COMMIT_URL_BLOCKED), then SIGTRAP on CrBrowserMain, from
+ValidateURLAndOrigin via ValidateDidCommitParams.
+
+A phone runs Chromium single-process, because the platform lets an app
+start no other process. The browser, every page, every WebUI and every
+extension share that one process, so a process lock or a grant can only
+describe what the browser itself may commit -- which is everything. The
+checks were refusing a chrome-extension:// page anyway, and a refusal
+there is a "bad message", which in single-process mode is a deliberate
+crash. Upstream already makes the same exception for WebUI in
+CanRequestURL.
+
+So on OHOS in single-process mode:
+
+- CanCommitURL and CanAccessMaybeOpaqueOrigin allow what they would
+  otherwise refuse. The second is also what an extension's service
+  worker and storage are checked against, which may be why a service
+  worker would not start ("No SW").
+- A refused commit is logged with its URL, origin and lock in a release
+  build, where the log said nothing about which URL it was.
+- A bad message from the in-process renderer is refused and logged
+  rather than crashing the app with every tab in it.
+
+Tablets and 2in1s run renderers in processes of their own and none of
+this applies to them.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/content/browser/renderer_host/render_frame_host_impl.cc b/content/browser/renderer_host/render_frame_host_impl.cc
+--- a/content/browser/renderer_host/render_frame_host_impl.cc
++++ b/content/browser/renderer_host/render_frame_host_impl.cc
+@@ -16199,6 +16199,13 @@ bool RenderFrameHostImpl::ValidateURLAndOrigin(
+       // The origin and URL are safe to commit.
+       break;
+     case CanCommitStatus::CANNOT_COMMIT_URL:
++#if BUILDFLAG(IS_OHOS)
++      // Said in a release build too: on a phone this is what took the whole
++      // browser down, and the log had no word on which URL.
++      LOG(ERROR) << "OHOS CANNOT_COMMIT_URL url '" << url << "' origin '"
++                 << origin << "' lock '" << process->GetProcessLock().ToString()
++                 << "'";
++#endif
+       DLOG(ERROR) << "CANNOT_COMMIT_URL url '" << url << "'"
+                   << " origin '" << origin << "'"
+                   << " lock '" << process->GetProcessLock().ToString() << "'";
+@@ -16211,6 +16218,11 @@ bool RenderFrameHostImpl::ValidateURLAndOrigin(
+                                       bad_message::RFH_CAN_COMMIT_URL_BLOCKED);
+       return false;
+     case CanCommitStatus::CANNOT_COMMIT_ORIGIN:
++#if BUILDFLAG(IS_OHOS)
++      LOG(ERROR) << "OHOS CANNOT_COMMIT_ORIGIN url '" << url << "' origin '"
++                 << origin << "' lock '" << process->GetProcessLock().ToString()
++                 << "'";
++#endif
+       DLOG(ERROR) << "CANNOT_COMMIT_ORIGIN url '" << url << "'"
+                   << " origin '" << origin << "'"
+                   << " lock '" << process->GetProcessLock().ToString() << "'";
+diff --git a/content/browser/renderer_host/render_process_host_impl.cc b/content/browser/renderer_host/render_process_host_impl.cc
+--- a/content/browser/renderer_host/render_process_host_impl.cc
++++ b/content/browser/renderer_host/render_process_host_impl.cc
+@@ -3331,9 +3331,19 @@ void RenderProcessHostImpl::ShutdownForBadMessage(
+   }
+ 
+   if (run_renderer_in_process()) {
++#if BUILDFLAG(IS_OHOS)
++    // On a phone single-process is not a debugging mode but the only one
++    // there is, and the process "killed" here is the whole app: every tab,
++    // and the shell with it. The message is refused -- the caller has
++    // already rejected it -- and the browser carries on.
++    LOG(ERROR) << "OHOS: bad message from the in-process renderer, ignored "
++                  "rather than crashing the browser";
++    return;
++#else
+     // In single process mode it is better if we don't suicide but just
+     // crash.
+     NOTREACHED();
++#endif
+   }
+ 
+   // We kill the renderer but don't include a NOTREACHED, because we want the
+diff --git a/content/browser/security/cpsp/child_process_security_policy_impl.cc b/content/browser/security/cpsp/child_process_security_policy_impl.cc
+--- a/content/browser/security/cpsp/child_process_security_policy_impl.cc
++++ b/content/browser/security/cpsp/child_process_security_policy_impl.cc
+@@ -1992,6 +1992,20 @@ bool ChildProcessSecurityPolicyImpl::CanCommitURL(int child_id,
+     return true;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // A phone runs Chromium single-process: the browser, every page, every
++  // WebUI and every extension share the one process, because the platform
++  // lets an app start no other. A process lock or a grant can only say what
++  // that process may commit, and there is nothing it may not -- it is the
++  // browser. The checks below were refusing chrome-extension:// pages,
++  // which in single-process mode is a browser kill (see
++  // RenderProcessHostImpl::ShutdownForBadMessage). Upstream makes the same
++  // exception for WebUI in CanRequestURL.
++  if (RenderProcessHost::run_renderer_in_process()) {
++    return true;
++  }
++#endif
++
+   // With site isolation, a URL from a site may only be committed in a process
+   // dedicated to that site.  This check will ensure that |url| can't commit if
+   // the process is locked to a different site.
+@@ -2871,6 +2885,14 @@ bool ChildProcessSecurityPolicyImpl::CanAccessMaybeOpaqueOrigin(
+     const GURL& url,
+     bool url_is_precursor_of_opaque_origin,
+     AccessType access_type) {
++#if BUILDFLAG(IS_OHOS)
++  // As in CanCommitURL: in single-process mode there is one process and it
++  // is the browser. This is also what an extension's service worker and
++  // storage are checked against.
++  if (RenderProcessHost::run_renderer_in_process()) {
++    return true;
++  }
++#endif
+   base::AutoLock lock(lock_);
+ 
+   const ProcessState* process_state =
