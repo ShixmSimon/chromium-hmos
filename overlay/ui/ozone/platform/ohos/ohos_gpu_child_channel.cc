@@ -12,6 +12,10 @@
 #include <map>
 #include <memory>
 
+#include <hilog/log.h>
+
+#include <algorithm>
+
 #include "AbilityKit/native_child_process.h"
 #include "IPCKit/ipc_kit.h"
 #include "base/command_line.h"
@@ -497,6 +501,36 @@ void ForwardOhosSurfacesToGpuChild() {
     }
   }
   side.sent = std::move(now);
+}
+
+namespace {
+
+bool ForwardGpuChildLogToHilog(int severity,
+                               const char*,
+                               int,
+                               size_t,
+                               const std::string& message) {
+  LogLevel level = LOG_INFO;
+  if (severity >= logging::LOGGING_FATAL) {
+    level = LOG_FATAL;
+  } else if (severity >= logging::LOGGING_ERROR) {
+    level = LOG_ERROR;
+  } else if (severity >= logging::LOGGING_WARNING) {
+    level = LOG_WARN;
+  }
+  OH_LOG_Print(LOG_APP, level, 0xc233, "ChromiumGpu", "%{public}s",
+               message.c_str());
+  // Let Chromium's own destinations have it too, whatever they are.
+  return false;
+}
+
+}  // namespace
+
+void AttachOhosGpuChildLogging() {
+  logging::SetLogMessageHandler(&ForwardGpuChildLogToHilog);
+  logging::SetMinLogLevel(
+      std::min(logging::GetMinLogLevel(), logging::LOGGING_WARNING));
+  LOG(WARNING) << "OHOS GPU child: logging reattached";
 }
 
 bool IsOhosGpuChildProcess() {

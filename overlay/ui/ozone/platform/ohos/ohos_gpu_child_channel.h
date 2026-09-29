@@ -51,6 +51,12 @@ void ForwardOhosSurfacesToGpuChild();
 // Chromium starts in that process.
 bool IsOhosGpuChildProcess();
 
+// GPU process. Sends Chromium's log to hilog again, at WARNING and above.
+// Called once Chromium has initialised in that process: from then on its
+// log reached nowhere -- not even ERROR -- while the probes, which run
+// before, did. Idempotent.
+void AttachOhosGpuChildLogging();
+
 // GPU process. The mirror's answers to the registry's GPU-side lookups.
 std::optional<OhosNativeSurface> GetOhosGpuChildSurface(
     gfx::AcceleratedWidget widget);

@@ -4194,9 +4194,15 @@ gfx::Rect GetAuraShellAnchorRect(gfx::AcceleratedWidget widget,
     return gfx::Rect();
   }
   // In the component's coordinates, which is what Chromium's window is.
+  // The main window's component can report its offset before Chromium has
+  // bound a widget to it, when it arrives with none; that one stands in
+  // until the window reports under its own widget.
   gfx::Rect rect = anchor->second;
-  if (auto offset = SurfaceOffsetStore().find(widget);
-      offset != SurfaceOffsetStore().end()) {
+  auto offset = SurfaceOffsetStore().find(widget);
+  if (offset == SurfaceOffsetStore().end()) {
+    offset = SurfaceOffsetStore().find(gfx::kNullAcceleratedWidget);
+  }
+  if (offset != SurfaceOffsetStore().end()) {
     rect.Offset(-offset->second);
   }
   return rect;

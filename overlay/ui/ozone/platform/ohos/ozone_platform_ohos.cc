@@ -109,6 +109,12 @@ class OzonePlatformOhos : public OzonePlatform {
 
   void InitializeGPU(const InitParams& params) override {
     (void)params;
+    // In a GPU process of its own, Chromium's log stopped reaching hilog
+    // once Chromium had started there; this is the first point on the GPU
+    // side that runs after that, and before anything it wants to hear from.
+    if (IsOhosGpuChildProcess()) {
+      AttachOhosGpuChildLogging();
+    }
     if (!surface_factory_) {
       surface_factory_ = std::make_unique<OhosSurfaceFactory>(base::FilePath());
     }

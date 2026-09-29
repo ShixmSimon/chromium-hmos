@@ -42,6 +42,7 @@ source_set("native_window_registry") {
   # windows: ohos_gpu_child_channel.h.
   libs = [
     "child_process",
+    "hilog_ndk.z",
     "ipc_capi",
     "native_window",
   ]

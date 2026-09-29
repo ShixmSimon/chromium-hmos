@@ -864,22 +864,26 @@ export struct WebWindow {
     this.componentWidthPx = width;
     this.componentHeightPx = height;
     this.notifyCurrentBounds();
-    this.notifySurfaceOffset(area);
   }
 
   // Where this component sits in the window, in vp. The shell reports its
   // bubble anchors (setAnchorRects) in the window's coordinates, and
   // Chromium's window is this component, not the whole window; without the
-  // offset a 2in1's tab strip was counted twice and popups opened below
-  // their buttons.
-  private notifySurfaceOffset(area: Area): void {
-    if (!this.nativeContext) {
+  // offset a 2in1's tab strip and toolbar were counted twice and bubbles
+  // opened below their buttons.
+  //
+  // Sent with every surface update rather than only when the area changes:
+  // the first area change comes before the engine is there to hear it, and
+  // the area rarely changes after that, so the offset never arrived.
+  private notifySurfaceOffset(): void {
+    if (!this.nativeContext || !this.hasComponentArea) {
       return;
     }
+    const ui = this.getUIContext();
     const payload: BrowserCommandPayload = {
       command: 'setSurfaceOffset',
-      x: Number(area.globalPosition.x ?? 0),
-      y: Number(area.globalPosition.y ?? 0)
+      x: ui.px2vp(this.componentOffsetXPx),
+      y: ui.px2vp(this.componentOffsetYPx)
     };
     this.nativeContext.ExecuteBrowserCommand(JSON.stringify(payload));
   }
@@ -921,6 +925,7 @@ export struct WebWindow {
     this.windowOriginY = rect.y;
     this.nativeContext.OnSurfaceChanged(rect, this.getDisplayDensity());
     this.markSurfaceReady();
+    this.notifySurfaceOffset();
   }
 
   private configureSurfaceRotation(): void {
