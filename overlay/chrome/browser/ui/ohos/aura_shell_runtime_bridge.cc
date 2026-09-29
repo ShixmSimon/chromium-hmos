@@ -153,6 +153,7 @@
 #include "ui/gfx/geometry/transform.h"
 #include "ui/native_theme/native_theme.h"
 #include "ui/ozone/platform/ohos/ohos_event_source.h"
+#include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 #include "ui/shell_dialogs/select_file_dialog_ohos.h"
 #include "ui/views/controls/menu/menu_runner.h"
 #include "ui/views/focus/focus_manager.h"
