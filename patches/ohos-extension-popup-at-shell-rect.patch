@@ -18,13 +18,30 @@ the parent widget given explicitly for the observation the anchor widget
 was providing, and the rect set before the bubble is created. Everything
 after that is the same popup desktop shows.
 
+The rect is given to the constructor and set before the popup's view is
+initialised. Init() asks GetMaxBounds() how much room there is, and
+upstream measures that with GetMaxAvailableScreenSpaceToPlaceBubble(),
+which CHECKs for an anchor view or element and has neither here. The
+first version set the rect after construction, so that measurement ran
+first and the shell's click crashed the browser (SIGTRAP in
+GetMaxAvailableScreenSpaceToPlaceBubble). With no anchor, GetMaxBounds()
+now measures the same thing from the rect.
+
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 
 diff --git a/chrome/browser/ui/views/extensions/extension_popup.cc b/chrome/browser/ui/views/extensions/extension_popup.cc
-index f720021a30..9a454e8af1 100644
 --- a/chrome/browser/ui/views/extensions/extension_popup.cc
 +++ b/chrome/browser/ui/views/extensions/extension_popup.cc
-@@ -103,6 +103,37 @@ void ExtensionPopup::ShowPopup(
+@@ -18,6 +18,8 @@
+ #include "content/public/browser/web_contents.h"
+ #include "ui/base/metadata/metadata_impl_macros.h"
+ #include "ui/base/mojom/dialog_button.mojom.h"
++#include "ui/display/display.h"
++#include "ui/display/screen.h"
+ #include "ui/gfx/geometry/insets.h"
+ #include "ui/gfx/geometry/rounded_corners_f.h"
+ #include "ui/views/border.h"
+@@ -103,6 +105,35 @@ void ExtensionPopup::ShowPopup(
  #endif
  }
  
@@ -38,13 +55,11 @@ index f720021a30..9a454e8af1 100644
 +    PopupShowAction show_action,
 +    ShowPopupCallback callback) {
 +  CHECK(parent);
-+  auto* popup =
-+      new ExtensionPopup(browser, std::move(host), views::BubbleAnchor(), arrow,
-+                         show_action, std::move(callback), parent);
++  auto* popup = new ExtensionPopup(browser, std::move(host),
++                                   views::BubbleAnchor(), arrow, show_action,
++                                   std::move(callback), parent,
++                                   anchor_rect_in_screen);
 +  popup->set_parent_window(parent->GetNativeView());
-+  // Before CreateBubble, so the bubble is laid out where it belongs rather
-+  // than being moved there after it is on screen.
-+  popup->SetAnchorRect(anchor_rect_in_screen);
 +  views::BubbleDialogDelegateView::CreateBubble(popup);
 +
 +  DCHECK_EQ(popup->GetBubbleFrameView()->GetPreferredArrowAdjustment(),
@@ -62,17 +77,66 @@ index f720021a30..9a454e8af1 100644
  ExtensionPopup::~ExtensionPopup() {
    // The ExtensionPopup may close before it was ever shown. If so, indicate such
    // through the callback.
-@@ -270,7 +301,8 @@ ExtensionPopup::ExtensionPopup(
+@@ -198,6 +229,30 @@ gfx::Size ExtensionPopup::GetMaxBounds() {
+ #endif
+ 
+   gfx::Size max_size = kMaxSize;
++#if BUILDFLAG(IS_OHOS)
++  // Anchored at the shell's rect there is neither a view nor an element, and
++  // GetMaxAvailableScreenSpaceToPlaceBubble() CHECKs for one of them. The
++  // same measurement, from the rect: the room on each side of it within the
++  // work area, the most of any of the four placements.
++  if (!GetAnchor().GetIfView() && !GetAnchor().GetIfElement()) {
++    const gfx::Rect anchor_rect = GetAnchorRect();
++    const gfx::Rect screen_rect =
++        display::Screen::Get()
++            ->GetDisplayNearestPoint(anchor_rect.CenterPoint())
++            .work_area();
++    gfx::Size room;
++    for (const views::BubbleBorder::Arrow placement :
++         {views::BubbleBorder::TOP_LEFT, views::BubbleBorder::TOP_RIGHT,
++          views::BubbleBorder::BOTTOM_RIGHT,
++          views::BubbleBorder::BOTTOM_LEFT}) {
++      room.SetToMax(BubbleDialogDelegate::GetAvailableSpaceToPlaceBubble(
++          placement, anchor_rect, screen_rect));
++    }
++    max_size.SetToMin(room);
++    max_size.SetToMax(kMinSize);
++    return max_size;
++  }
++#endif
+   max_size.SetToMin(
+       BubbleDialogDelegate::GetMaxAvailableScreenSpaceToPlaceBubble(
+           GetAnchor(), arrow(), adjust_if_offscreen(),
+@@ -270,7 +325,9 @@ ExtensionPopup::ExtensionPopup(
      views::BubbleAnchor anchor,
      views::BubbleBorder::Arrow arrow,
      PopupShowAction show_action,
 -    ShowPopupCallback callback)
 +    ShowPopupCallback callback,
-+    views::Widget* shell_parent)
++    views::Widget* shell_parent,
++    const gfx::Rect& shell_anchor_rect)
      : BubbleDialogDelegateView(anchor,
                                 arrow,
                                 views::BubbleBorder::STANDARD_SHADOW,
-@@ -303,8 +335,17 @@ ExtensionPopup::ExtensionPopup(
+@@ -291,6 +348,16 @@ ExtensionPopup::ExtensionPopup(
+   // the correct value while calculating max bounds.
+   set_adjust_if_offscreen(views::PlatformStyle::kAdjustBubbleIfOffscreen);
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Before the view below is initialised: Init() asks GetMaxBounds() how
++  // much room there is, and with no anchor view that is measured from this
++  // rect. Set after the constructor, as it first was, the rect was still
++  // empty then and the measurement CHECK-failed looking for an anchor.
++  if (shell_parent) {
++    SetAnchorRect(shell_anchor_rect);
++  }
++#endif
++
+   extension_view_ = AddChildView(std::make_unique<ExtensionViewViews>(
+       browser_->GetProfile(), host_.get()));
+   extension_view_->SetContainer(this);
+@@ -303,8 +370,17 @@ ExtensionPopup::ExtensionPopup(
        std::make_unique<ScopedDevToolsAgentHostObservation>(this);
    browser_->GetTabStripModel()->AddObserver(this);
  
@@ -91,7 +155,6 @@ index f720021a30..9a454e8af1 100644
    // Handle the containing view calling window.close();
    // The base::Unretained() below is safe because this object owns `host_`, so
 diff --git a/chrome/browser/ui/views/extensions/extension_popup.h b/chrome/browser/ui/views/extensions/extension_popup.h
-index 50ca5a225c..05a5d50781 100644
 --- a/chrome/browser/ui/views/extensions/extension_popup.h
 +++ b/chrome/browser/ui/views/extensions/extension_popup.h
 @@ -8,6 +8,7 @@
@@ -131,13 +194,14 @@ index 50ca5a225c..05a5d50781 100644
    ExtensionPopup(const ExtensionPopup&) = delete;
    ExtensionPopup& operator=(const ExtensionPopup&) = delete;
    ~ExtensionPopup() override;
-@@ -125,7 +148,8 @@ class ExtensionPopup : public views::BubbleDialogDelegateView,
+@@ -125,7 +148,9 @@ class ExtensionPopup : public views::BubbleDialogDelegateView,
                   views::BubbleAnchor anchor,
                   views::BubbleBorder::Arrow arrow,
                   PopupShowAction show_action,
 -                 ShowPopupCallback callback);
 +                 ShowPopupCallback callback,
-+                 views::Widget* shell_parent = nullptr);
++                 views::Widget* shell_parent = nullptr,
++                 const gfx::Rect& shell_anchor_rect = gfx::Rect());
  
    // Shows the bubble, focuses its content, and registers listeners.
    void ShowBubble();
