@@ -14,6 +14,7 @@
 #include "base/synchronization/condition_variable.h"
 #include "base/synchronization/lock.h"
 #include "base/time/time.h"
+#include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 
 namespace ui {
 namespace {
@@ -753,6 +754,43 @@ class NativeWindowRegistry {
     return true;
   }
 
+  std::vector<OhosGpuChildWidgetState> SnapshotForGpuChild() {
+    base::AutoLock lock(lock_);
+    std::set<gfx::AcceleratedWidget> widgets(expected_native_surfaces_);
+    for (const auto& [widget, component_id] : widget_bindings_) {
+      widgets.insert(widget);
+    }
+    for (const auto& [widget, record] : logical_windows_) {
+      widgets.insert(widget);
+    }
+    std::vector<OhosGpuChildWidgetState> states;
+    for (gfx::AcceleratedWidget widget : widgets) {
+      OhosGpuChildWidgetState state{.widget = widget};
+      auto binding = widget_bindings_.find(widget);
+      if (binding != widget_bindings_.end()) {
+        auto surface = surfaces_.find(binding->second);
+        if (surface != surfaces_.end()) {
+          state.window = surface->second.surface.window;
+          state.bounds = surface->second.surface.bounds;
+          state.density = surface->second.surface.density;
+        }
+        auto window_id = application_window_ids_.find(binding->second);
+        state.application_window_id =
+            window_id == application_window_ids_.end()
+                ? application_window_id_
+                : window_id->second;
+      } else {
+        state.application_window_id = application_window_id_;
+      }
+      auto logical = logical_windows_.find(widget);
+      state.anchored =
+          logical != logical_windows_.end() && logical->second.anchored;
+      state.expected = expected_native_surfaces_.contains(widget);
+      states.push_back(state);
+    }
+    return states;
+  }
+
  private:
   base::Lock lock_;
   base::ConditionVariable surface_available_;
@@ -795,11 +833,18 @@ NativeWindowRegistry& GetRegistry() {
 
 }  // namespace
 
+// Every call below that changes what a GPU process would need to know tells
+// ForwardOhosSurfacesToGpuChild, which sends the change when the GPU runs in
+// a native child of its own and returns at once when it does not. The
+// lookups the GPU side makes read the mirror that process keeps instead of
+// this registry, which is empty there: the windows arrive in the browser.
+
 void RegisterOhosNativeSurface(const std::string& component_id,
                                void* window,
                                const gfx::Rect& bounds,
                                float density) {
   GetRegistry().Register(component_id, window, bounds, density);
+  ForwardOhosSurfacesToGpuChild();
 }
 
 void UpdateOhosNativeSurface(const std::string& component_id,
@@ -807,43 +852,65 @@ void UpdateOhosNativeSurface(const std::string& component_id,
                              const gfx::Rect& bounds,
                              float density) {
   GetRegistry().Update(component_id, window, bounds, density);
+  ForwardOhosSurfacesToGpuChild();
 }
 
 void UnregisterOhosNativeSurface(const std::string& component_id,
                                  void* window) {
   GetRegistry().Unregister(component_id, window);
+  ForwardOhosSurfacesToGpuChild();
 }
 
 std::optional<OhosNativeSurface> BindOhosNativeSurface(
     gfx::AcceleratedWidget widget) {
-  return GetRegistry().Bind(widget);
+  std::optional<OhosNativeSurface> surface = GetRegistry().Bind(widget);
+  ForwardOhosSurfacesToGpuChild();
+  return surface;
 }
 
 void UnbindOhosNativeSurface(gfx::AcceleratedWidget widget) {
   GetRegistry().Unbind(widget);
+  ForwardOhosSurfacesToGpuChild();
 }
 
 std::optional<OhosNativeSurface> GetOhosNativeSurface(
     gfx::AcceleratedWidget widget) {
+  if (IsOhosGpuChildProcess()) {
+    return GetOhosGpuChildSurface(widget);
+  }
   return GetRegistry().Get(widget);
 }
 
 void ExpectOhosNativeSurface(gfx::AcceleratedWidget widget) {
   GetRegistry().ExpectSurface(widget);
+  ForwardOhosSurfacesToGpuChild();
 }
 
 bool IsOhosNativeSurfaceExpected(gfx::AcceleratedWidget widget) {
+  if (IsOhosGpuChildProcess()) {
+    return IsOhosGpuChildSurfaceExpected(widget);
+  }
   return GetRegistry().IsSurfaceExpected(widget);
 }
 
 bool IsOhosAnchoredWindow(gfx::AcceleratedWidget widget) {
+  if (IsOhosGpuChildProcess()) {
+    return IsOhosGpuChildAnchored(widget);
+  }
   return GetRegistry().IsAnchored(widget);
 }
 
 std::optional<OhosNativeSurface> WaitForOhosNativeSurface(
     gfx::AcceleratedWidget widget,
     base::TimeDelta timeout) {
+  if (IsOhosGpuChildProcess()) {
+    return WaitForOhosGpuChildSurface(widget, timeout);
+  }
   return GetRegistry().WaitForSurface(widget, timeout);
+}
+
+std::vector<OhosGpuChildWidgetState> SnapshotOhosSurfacesForGpuChild() {
+  return GetRegistry().SnapshotForGpuChild();
 }
 
 gfx::AcceleratedWidget GetOhosAcceleratedWidgetForNativeSurface(
@@ -864,10 +931,12 @@ void RegisterOhosLogicalWindow(gfx::AcceleratedWidget widget,
                                const gfx::Rect& bounds,
                                bool anchored) {
   GetRegistry().RegisterLogicalWindow(widget, bounds, anchored);
+  ForwardOhosSurfacesToGpuChild();
 }
 
 void UnregisterOhosLogicalWindow(gfx::AcceleratedWidget widget) {
   GetRegistry().UnregisterLogicalWindow(widget);
+  ForwardOhosSurfacesToGpuChild();
 }
 
 void UpdateOhosLogicalWindowBounds(gfx::AcceleratedWidget widget,
@@ -934,6 +1003,7 @@ gfx::Point GetOhosCursorScreenPoint() {
 
 void SetOhosApplicationWindowId(int32_t window_id) {
   GetRegistry().SetApplicationWindowId(window_id);
+  ForwardOhosSurfacesToGpuChild();
 }
 
 int32_t GetOhosApplicationWindowId() {
@@ -943,9 +1013,13 @@ int32_t GetOhosApplicationWindowId() {
 void SetOhosApplicationWindowIdForNativeSurface(const std::string& component_id,
                                                 int32_t window_id) {
   GetRegistry().SetApplicationWindowIdForComponent(component_id, window_id);
+  ForwardOhosSurfacesToGpuChild();
 }
 
 int32_t GetOhosApplicationWindowIdForWidget(gfx::AcceleratedWidget widget) {
+  if (IsOhosGpuChildProcess()) {
+    return GetOhosGpuChildApplicationWindowId(widget);
+  }
   return GetRegistry().GetApplicationWindowIdForWidget(widget);
 }
 

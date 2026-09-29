@@ -32,8 +32,18 @@ source_set("native_window_registry") {
   ]
 
   sources = [
+    "ohos_gpu_child_channel.cc",
+    "ohos_gpu_child_channel.h",
     "ohos_native_window_registry.cc",
     "ohos_native_window_registry.h",
+  ]
+
+  # The GPU process's own native child and the channel that carries its
+  # windows: ohos_gpu_child_channel.h.
+  libs = [
+    "child_process",
+    "ipc_capi",
+    "native_window",
   ]
 
   deps = [

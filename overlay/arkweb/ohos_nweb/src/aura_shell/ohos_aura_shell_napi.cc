@@ -1170,6 +1170,9 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
   if (const std::string* angle_backend = dict.FindString("angleBackend")) {
     config.angle_backend = *angle_backend;
   }
+  if (const std::string* gpu_process = dict.FindString("gpuProcess")) {
+    config.gpu_process = *gpu_process;
+  }
 
   std::optional<bool> jitless = dict.FindBool("jitless");
   if (jitless.has_value()) {

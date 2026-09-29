@@ -1,0 +1,477 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
+
+#include <unistd.h>
+
+#include <map>
+#include <memory>
+
+#include "AbilityKit/native_child_process.h"
+#include "IPCKit/ipc_kit.h"
+#include "base/logging.h"
+#include "base/no_destructor.h"
+#include "base/process/launch_ohos.h"
+#include "base/process/process_handle.h"
+#include "base/synchronization/condition_variable.h"
+#include "base/synchronization/lock.h"
+#include "base/synchronization/waitable_event.h"
+#include "base/thread_annotations.h"
+#include "native_window/external_window.h"
+#include "ui/gfx/geometry/rect.h"
+
+namespace ui {
+namespace {
+
+// The library the system loads in the child. It exports
+// NativeChildProcess_OnConnect and NativeChildProcess_MainProc, which hand
+// over to CreateOhosGpuChildStub and the child main in libweb_engine.so.
+constexpr char kGpuChildLibrary[] = "libnweb_render.so";
+constexpr char kStubDescriptor[] = "chromium.ohos.GpuChild";
+
+// Request codes, browser to GPU process.
+constexpr uint32_t kBootstrap = 1;
+constexpr uint32_t kWidgetState = 2;
+
+// What a request callback may return besides success is limited to the user
+// range; anything else comes back to the sender as a generic error.
+constexpr int kBadRequest = OH_IPC_USER_ERROR_CODE_MIN;
+
+// Long enough for a cold start of a child on a loaded device; the browser's
+// launcher thread is what waits.
+constexpr base::TimeDelta kStartTimeout = base::Seconds(10);
+constexpr base::TimeDelta kBootstrapTimeout = base::Seconds(30);
+
+OH_IPC_MessageOption SyncOption() {
+  return {.mode = OH_IPC_REQUEST_MODE_SYNC, .timeout = 0, .reserved = nullptr};
+}
+
+struct ParcelDeleter {
+  void operator()(OHIPCParcel* parcel) const { OH_IPCParcel_Destroy(parcel); }
+};
+using ScopedParcel = std::unique_ptr<OHIPCParcel, ParcelDeleter>;
+
+bool SameState(const OhosGpuChildWidgetState& a,
+               const OhosGpuChildWidgetState& b) {
+  return a.window == b.window && a.bounds == b.bounds &&
+         a.density == b.density && a.anchored == b.anchored &&
+         a.expected == b.expected && a.application_window_id ==
+                                         b.application_window_id;
+}
+
+// --- Browser process. -----------------------------------------------------
+
+struct BrowserSide {
+  base::Lock lock;
+  // The GPU child most recently started. Replaced when the GPU process is
+  // restarted; a request to a dead one fails and is ignored.
+  OHIPCRemoteProxy* proxy GUARDED_BY(lock) = nullptr;
+  // What the GPU process was last told, per widget, so only changes go out.
+  std::map<gfx::AcceleratedWidget, OhosGpuChildWidgetState> sent
+      GUARDED_BY(lock);
+
+  // The start callback has no user data, so the one start in flight lives
+  // here. GPU processes are started one at a time.
+  base::Lock start_lock;
+  base::WaitableEvent started{base::WaitableEvent::ResetPolicy::MANUAL,
+                              base::WaitableEvent::InitialState::NOT_SIGNALED};
+  int start_error GUARDED_BY(start_lock) = 0;
+  OHIPCRemoteProxy* start_proxy GUARDED_BY(start_lock) = nullptr;
+};
+
+BrowserSide& Browser() {
+  static base::NoDestructor<BrowserSide> side;
+  return *side;
+}
+
+void OnGpuChildStarted(int error, OHIPCRemoteProxy* proxy) {
+  BrowserSide& side = Browser();
+  {
+    base::AutoLock lock(side.start_lock);
+    side.start_error = error;
+    side.start_proxy = proxy;
+  }
+  side.started.Signal();
+}
+
+// Writes one widget's state. The window itself goes only when it changed:
+// every parcel read in the GPU process makes a new OHNativeWindow there, and
+// a new pointer is what the surface code reads as "the surface was
+// replaced" -- so resending an unchanged window would rebuild the EGL surface
+// on every resize.
+bool WriteWidgetState(OHIPCParcel* parcel,
+                      const OhosGpuChildWidgetState& state,
+                      bool present,
+                      bool window_changed) {
+  const bool send_window = present && window_changed && state.window;
+  return OH_IPCParcel_WriteUint64(parcel, state.widget) == OH_IPC_SUCCESS &&
+         OH_IPCParcel_WriteInt32(parcel, present) == OH_IPC_SUCCESS &&
+         OH_IPCParcel_WriteUint64(
+             parcel, reinterpret_cast<uintptr_t>(state.window)) ==
+             OH_IPC_SUCCESS &&
+         OH_IPCParcel_WriteInt32(parcel, state.bounds.x()) == OH_IPC_SUCCESS &&
+         OH_IPCParcel_WriteInt32(parcel, state.bounds.y()) == OH_IPC_SUCCESS &&
+         OH_IPCParcel_WriteInt32(parcel, state.bounds.width()) ==
+             OH_IPC_SUCCESS &&
+         OH_IPCParcel_WriteInt32(parcel, state.bounds.height()) ==
+             OH_IPC_SUCCESS &&
+         OH_IPCParcel_WriteFloat(parcel, state.density) == OH_IPC_SUCCESS &&
+         OH_IPCParcel_WriteInt32(parcel, state.anchored) == OH_IPC_SUCCESS &&
+         OH_IPCParcel_WriteInt32(parcel, state.expected) == OH_IPC_SUCCESS &&
+         OH_IPCParcel_WriteInt32(parcel, state.application_window_id) ==
+             OH_IPC_SUCCESS &&
+         OH_IPCParcel_WriteInt32(parcel, send_window) == OH_IPC_SUCCESS &&
+         (!send_window ||
+          OH_NativeWindow_WriteToParcel(
+              static_cast<OHNativeWindow*>(state.window), parcel) == 0);
+}
+
+void SendWidgetState(OHIPCRemoteProxy* proxy,
+                     const OhosGpuChildWidgetState& state,
+                     bool present,
+                     bool window_changed) {
+  ScopedParcel data(OH_IPCParcel_Create());
+  ScopedParcel reply(OH_IPCParcel_Create());
+  if (!data || !reply ||
+      !WriteWidgetState(data.get(), state, present, window_changed)) {
+    LOG(ERROR) << "OHOS GPU child: could not write widget " << state.widget;
+    return;
+  }
+  const OH_IPC_MessageOption option = SyncOption();
+  const int result = OH_IPCRemoteProxy_SendRequest(
+      proxy, kWidgetState, data.get(), reply.get(), &option);
+  if (result != OH_IPC_SUCCESS) {
+    LOG(ERROR) << "OHOS GPU child: widget " << state.widget
+               << " not delivered, error " << result;
+  }
+}
+
+// Registered with base as the way to start --type=gpu-process.
+base::ProcessId LaunchGpuChild(const std::string& encoded_params,
+                               const std::vector<std::pair<int, int>>& fds) {
+  BrowserSide& side = Browser();
+  OHIPCRemoteProxy* proxy = nullptr;
+  {
+    base::AutoLock start_lock(side.start_lock);
+    side.started.Reset();
+    side.start_error = 0;
+    side.start_proxy = nullptr;
+    const int result =
+        OH_Ability_CreateNativeChildProcess(kGpuChildLibrary,
+                                            &OnGpuChildStarted);
+    if (result != NCP_NO_ERROR) {
+      LOG(ERROR) << "OHOS GPU child: start refused, error " << result;
+      return base::kNullProcessId;
+    }
+  }
+  if (!side.started.TimedWait(kStartTimeout)) {
+    LOG(ERROR) << "OHOS GPU child: no answer from the system";
+    return base::kNullProcessId;
+  }
+  {
+    base::AutoLock start_lock(side.start_lock);
+    if (side.start_error != NCP_NO_ERROR || !side.start_proxy) {
+      LOG(ERROR) << "OHOS GPU child: start failed, error "
+                 << side.start_error;
+      return base::kNullProcessId;
+    }
+    proxy = side.start_proxy;
+  }
+
+  // The command line and descriptors the other kind of child receives from
+  // OH_Ability_StartNativeChildProcess, here sent after the fact. The reply
+  // carries the child's pid, which the start callback does not.
+  ScopedParcel data(OH_IPCParcel_Create());
+  ScopedParcel reply(OH_IPCParcel_Create());
+  bool written = data && reply &&
+                 OH_IPCParcel_WriteString(data.get(), encoded_params.c_str()) ==
+                     OH_IPC_SUCCESS &&
+                 OH_IPCParcel_WriteInt32(data.get(),
+                                         static_cast<int32_t>(fds.size())) ==
+                     OH_IPC_SUCCESS;
+  for (const auto& [source_fd, destination_fd] : fds) {
+    written = written &&
+              OH_IPCParcel_WriteInt32(data.get(), destination_fd) ==
+                  OH_IPC_SUCCESS &&
+              OH_IPCParcel_WriteFileDescriptor(data.get(), source_fd) ==
+                  OH_IPC_SUCCESS;
+  }
+  const OH_IPC_MessageOption option = SyncOption();
+  int32_t pid = 0;
+  if (!written ||
+      OH_IPCRemoteProxy_SendRequest(proxy, kBootstrap, data.get(), reply.get(),
+                                    &option) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(reply.get(), &pid) != OH_IPC_SUCCESS ||
+      pid <= 0) {
+    LOG(ERROR) << "OHOS GPU child: bootstrap not delivered";
+    OH_IPCRemoteProxy_Destroy(proxy);
+    return base::kNullProcessId;
+  }
+
+  {
+    base::AutoLock lock(side.lock);
+    if (side.proxy) {
+      OH_IPCRemoteProxy_Destroy(side.proxy);
+    }
+    side.proxy = proxy;
+    // A new GPU process knows nothing yet.
+    side.sent.clear();
+  }
+  LOG(WARNING) << "OHOS GPU child: started pid=" << pid;
+  ForwardOhosSurfacesToGpuChild();
+  return pid;
+}
+
+// --- GPU process. ---------------------------------------------------------
+
+struct MirrorRecord {
+  OhosNativeSurface surface;
+  // The browser's pointer for the window this one was read from, to tell a
+  // new window from the same one sent again.
+  uint64_t browser_window = 0;
+  bool anchored = false;
+  bool expected = false;
+  int32_t application_window_id = 0;
+};
+
+struct ChildSide {
+  base::Lock lock;
+  base::ConditionVariable changed{&lock};
+  bool is_child GUARDED_BY(lock) = false;
+  bool bootstrapped GUARDED_BY(lock) = false;
+  std::string encoded_params GUARDED_BY(lock);
+  std::vector<std::pair<int, int>> fds GUARDED_BY(lock);
+  std::map<gfx::AcceleratedWidget, MirrorRecord> mirror GUARDED_BY(lock);
+};
+
+ChildSide& Child() {
+  static base::NoDestructor<ChildSide> side;
+  return *side;
+}
+
+int HandleBootstrap(const OHIPCParcel* data, OHIPCParcel* reply) {
+  const char* params = OH_IPCParcel_ReadString(data);
+  int32_t count = 0;
+  if (!params || OH_IPCParcel_ReadInt32(data, &count) != OH_IPC_SUCCESS ||
+      count < 0) {
+    return kBadRequest;
+  }
+  std::vector<std::pair<int, int>> fds;
+  for (int32_t index = 0; index < count; ++index) {
+    int32_t destination_fd = -1;
+    int32_t fd = -1;
+    if (OH_IPCParcel_ReadInt32(data, &destination_fd) != OH_IPC_SUCCESS ||
+        OH_IPCParcel_ReadFileDescriptor(data, &fd) != OH_IPC_SUCCESS) {
+      return kBadRequest;
+    }
+    fds.emplace_back(destination_fd, fd);
+  }
+  ChildSide& side = Child();
+  {
+    base::AutoLock lock(side.lock);
+    side.encoded_params = params;
+    side.fds = std::move(fds);
+    side.bootstrapped = true;
+    side.changed.Broadcast();
+  }
+  return OH_IPCParcel_WriteInt32(reply, getpid());
+}
+
+int HandleWidgetState(const OHIPCParcel* data) {
+  uint64_t widget = 0;
+  int32_t present = 0;
+  uint64_t browser_window = 0;
+  int32_t x = 0, y = 0, width = 0, height = 0;
+  float density = 1.0f;
+  int32_t anchored = 0, expected = 0, application_window_id = 0;
+  int32_t has_window = 0;
+  if (OH_IPCParcel_ReadUint64(data, &widget) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(data, &present) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadUint64(data, &browser_window) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(data, &x) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(data, &y) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(data, &width) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(data, &height) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadFloat(data, &density) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(data, &anchored) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(data, &expected) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(data, &application_window_id) !=
+          OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(data, &has_window) != OH_IPC_SUCCESS) {
+    return kBadRequest;
+  }
+  OHNativeWindow* window = nullptr;
+  if (has_window && (OH_NativeWindow_ReadFromParcel(
+                         const_cast<OHIPCParcel*>(data), &window) != 0 ||
+                     !window)) {
+    LOG(ERROR) << "OHOS GPU child: widget " << widget
+               << " arrived without a readable window";
+    window = nullptr;
+  }
+
+  ChildSide& side = Child();
+  base::AutoLock lock(side.lock);
+  const auto key = static_cast<gfx::AcceleratedWidget>(widget);
+  if (!present) {
+    // A window the GPU code may still hold is not destroyed here: the EGL
+    // surface on it is torn down by its owner, and a window freed under it
+    // is a use-after-free. One per window ever created.
+    side.mirror.erase(key);
+    side.changed.Broadcast();
+    return OH_IPC_SUCCESS;
+  }
+  MirrorRecord& record = side.mirror[key];
+  if (!browser_window) {
+    record.surface.window = nullptr;
+  } else if (window) {
+    record.surface.window = window;
+  }
+  record.browser_window = browser_window;
+  record.surface.bounds = gfx::Rect(x, y, width, height);
+  record.surface.density = density;
+  record.anchored = anchored;
+  record.expected = expected;
+  record.application_window_id = application_window_id;
+  side.changed.Broadcast();
+  return OH_IPC_SUCCESS;
+}
+
+int OnRemoteRequest(uint32_t code,
+                    const OHIPCParcel* data,
+                    OHIPCParcel* reply,
+                    void*) {
+  switch (code) {
+    case kBootstrap:
+      return HandleBootstrap(data, reply);
+    case kWidgetState:
+      return HandleWidgetState(data);
+    default:
+      return kBadRequest;
+  }
+}
+
+}  // namespace
+
+void InstallOhosGpuChildLauncher() {
+  base::internal::SetOhosGpuChildLauncher(&LaunchGpuChild);
+}
+
+void ForwardOhosSurfacesToGpuChild() {
+  BrowserSide& side = Browser();
+  base::AutoLock lock(side.lock);
+  if (!side.proxy) {
+    return;
+  }
+  const std::vector<OhosGpuChildWidgetState> states =
+      SnapshotOhosSurfacesForGpuChild();
+  std::map<gfx::AcceleratedWidget, OhosGpuChildWidgetState> now;
+  for (const OhosGpuChildWidgetState& state : states) {
+    now[state.widget] = state;
+    auto sent = side.sent.find(state.widget);
+    const bool is_new = sent == side.sent.end();
+    if (!is_new && SameState(sent->second, state)) {
+      continue;
+    }
+    SendWidgetState(side.proxy, state, /*present=*/true,
+                    is_new || sent->second.window != state.window);
+  }
+  for (const auto& [widget, state] : side.sent) {
+    if (!now.contains(widget)) {
+      SendWidgetState(side.proxy, state, /*present=*/false,
+                      /*window_changed=*/false);
+    }
+  }
+  side.sent = std::move(now);
+}
+
+bool IsOhosGpuChildProcess() {
+  ChildSide& side = Child();
+  base::AutoLock lock(side.lock);
+  return side.is_child;
+}
+
+std::optional<OhosNativeSurface> GetOhosGpuChildSurface(
+    gfx::AcceleratedWidget widget) {
+  ChildSide& side = Child();
+  base::AutoLock lock(side.lock);
+  auto it = side.mirror.find(widget);
+  if (it == side.mirror.end()) {
+    return std::nullopt;
+  }
+  return it->second.surface;
+}
+
+bool IsOhosGpuChildSurfaceExpected(gfx::AcceleratedWidget widget) {
+  ChildSide& side = Child();
+  base::AutoLock lock(side.lock);
+  auto it = side.mirror.find(widget);
+  return it != side.mirror.end() && it->second.expected;
+}
+
+bool IsOhosGpuChildAnchored(gfx::AcceleratedWidget widget) {
+  ChildSide& side = Child();
+  base::AutoLock lock(side.lock);
+  auto it = side.mirror.find(widget);
+  return it != side.mirror.end() && it->second.anchored;
+}
+
+std::optional<OhosNativeSurface> WaitForOhosGpuChildSurface(
+    gfx::AcceleratedWidget widget,
+    base::TimeDelta timeout) {
+  ChildSide& side = Child();
+  base::AutoLock lock(side.lock);
+  const base::TimeTicks deadline = base::TimeTicks::Now() + timeout;
+  while (true) {
+    auto it = side.mirror.find(widget);
+    if (it != side.mirror.end() && it->second.surface.window) {
+      return it->second.surface;
+    }
+    if (it != side.mirror.end() && !it->second.expected) {
+      return std::nullopt;
+    }
+    const base::TimeDelta remaining = deadline - base::TimeTicks::Now();
+    if (remaining <= base::TimeDelta()) {
+      return std::nullopt;
+    }
+    side.changed.TimedWait(remaining);
+  }
+}
+
+int32_t GetOhosGpuChildApplicationWindowId(gfx::AcceleratedWidget widget) {
+  ChildSide& side = Child();
+  base::AutoLock lock(side.lock);
+  auto it = side.mirror.find(widget);
+  return it == side.mirror.end() ? 0 : it->second.application_window_id;
+}
+
+void* CreateOhosGpuChildStub() {
+  ChildSide& side = Child();
+  {
+    base::AutoLock lock(side.lock);
+    side.is_child = true;
+  }
+  return OH_IPCRemoteStub_Create(kStubDescriptor, &OnRemoteRequest,
+                                 /*destroyCallback=*/nullptr,
+                                 /*userData=*/nullptr);
+}
+
+bool WaitForOhosGpuChildBootstrap(std::string* encoded_params,
+                                  std::vector<std::pair<int, int>>* fds) {
+  ChildSide& side = Child();
+  base::AutoLock lock(side.lock);
+  const base::TimeTicks deadline = base::TimeTicks::Now() + kBootstrapTimeout;
+  while (!side.bootstrapped) {
+    const base::TimeDelta remaining = deadline - base::TimeTicks::Now();
+    if (remaining <= base::TimeDelta()) {
+      return false;
+    }
+    side.changed.TimedWait(remaining);
+  }
+  *encoded_params = side.encoded_params;
+  *fds = side.fds;
+  return true;
+}
+
+}  // namespace ui

@@ -71,6 +71,27 @@ extern "C" __attribute__((visibility("default"))) void NWebRenderMain(
   }
 }
 
+// The GPU process's entry points, the pair OH_Ability_CreateNativeChildProcess
+// looks up by these exact names. The first returns an OHIPCRemoteStub*, the
+// same as a pointer at this boundary.
+extern "C" __attribute__((visibility("default"))) void*
+NativeChildProcess_OnConnect() {
+  using Entry = void* (*)();
+  Entry entry = reinterpret_cast<Entry>(
+      ResolveEngineEntry("ChromiumHarmonyOSGpuChildOnConnect"));
+  return entry ? entry() : nullptr;
+}
+
+extern "C" __attribute__((visibility("default"))) void
+NativeChildProcess_MainProc() {
+  using Entry = void (*)();
+  Entry entry = reinterpret_cast<Entry>(
+      ResolveEngineEntry("ChromiumHarmonyOSGpuChildMainProc"));
+  if (entry) {
+    entry();
+  }
+}
+
 extern "C" __attribute__((visibility("default"))) void ChromiumNativeChildMain(
     NativeChildProcess_Args args) {
   using Entry = void (*)(NativeChildProcess_Args);

@@ -150,6 +150,11 @@ export interface AuraStartupConfig {
   // HarmonyOS's own EGL/GLES, which is what a device should use; 'vulkan'
   // is for measuring Vulkan against it. Read once, at startup.
   angleBackend?: 'gles' | 'vulkan';
+  // Where the GPU runs. Unset or 'in-process' keeps it in the browser
+  // process; 'separate' gives it a process of its own on a tablet or 2in1,
+  // so a GPU fault takes down that process and not the browser. Ignored on
+  // a phone, which cannot start one. Read once, at startup.
+  gpuProcess?: 'in-process' | 'separate';
   // What the app menu's way back to this shell's UI is called. Not sending
   // it is how a shell says it does not want that item -- a phone has no
   // setting to come back to, and a shell drawing the browser itself has

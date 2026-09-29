@@ -848,6 +848,17 @@ XComponent({
 动时读一次,改了要重启应用。`chrome://flags` 里的对应开关会被这个启动参数盖掉,
 不起作用。
 
+### 独立 GPU 进程(测试中)
+
+启动配置里的 `gpuProcess?: 'in-process' | 'separate'` 决定 GPU 放在哪。不填或
+`'in-process'` 是现在的做法,GPU 在浏览器进程里;`'separate'` 在平板和 2in1 上
+给 GPU 单独开一个进程,GPU 出错时只会影响这个进程,不会连带浏览器。手机不能创建
+子进程,传了也会忽略,hilog 里记一行 `AuraShell ignored gpuProcess separate`。
+
+所有窗口走的是同一条通道,但还没有逐一验证(主窗口之外:无痕、拖出的标签、画中
+画、PWA、弹出菜单);GPU 进程崩溃重启和 `gpuContextLost`/`gpuFallback` 事件也还没
+接。只在测试版里打开。
+
 ### 怎么自查
 
 用 DevEco Profiler 抓一段 trace,在 `render_service` 进程里搜 `DrawImage(GPU)`。滑动网页时,如果 `RSUniRenderThread` 上出现大量这类标记,说明网页图层没有走硬件合成。

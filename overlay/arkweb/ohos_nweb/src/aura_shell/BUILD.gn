@@ -63,6 +63,7 @@ source_set("aura_shell_api") {
     "//base",
     "//components/ohos_system_service",
     "//device/bluetooth",
+    "//ui/ozone/platform/ohos:native_window_registry",
   ]
 
   if (target_cpu == "arm64") {

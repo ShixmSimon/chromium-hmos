@@ -383,6 +383,23 @@ TEST(NWebAuraShellTest, SecondaryViewsWidgetsShareTheXComponentCompositor) {
   EXPECT_TRUE(chrome::ohos::ShouldEmbedSecondaryWidget(root));
 }
 
+TEST(NWebAuraShellTest, ChromiumArgumentsPlaceTheGpuProcess) {
+  AuraStartupConfig config;
+  config.device_class = "tablet";
+  OhosChromeMainRunner runner;
+  EXPECT_TRUE(ContainsArgument(runner.BuildArgumentsForTesting(config),
+                               "--in-process-gpu"));
+
+  config.gpu_process = "separate";
+  EXPECT_FALSE(ContainsArgument(runner.BuildArgumentsForTesting(config),
+                                "--in-process-gpu"));
+
+  // A phone cannot start native children, so the request is ignored.
+  config.device_class = "phone";
+  EXPECT_TRUE(ContainsArgument(runner.BuildArgumentsForTesting(config),
+                               "--in-process-gpu"));
+}
+
 TEST(NWebAuraShellTest, ChromiumArgumentsFollowAngleBackend) {
   AuraStartupConfig config;
   OhosChromeMainRunner runner;

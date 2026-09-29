@@ -12,6 +12,7 @@
 #include "ui/ozone/common/stub_overlay_manager.h"
 #include "ui/ozone/platform/ohos/ohos_clipboard.h"
 #include "ui/ozone/platform/ohos/ohos_event_source.h"
+#include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 #include "ui/ozone/platform/ohos/ohos_input_method.h"
 #include "ui/ozone/platform/ohos/ohos_platform_window.h"
 #include "ui/ozone/platform/ohos/ohos_screen.h"
@@ -88,6 +89,9 @@ class OzonePlatformOhos : public OzonePlatform {
 
   bool InitializeUI(const InitParams& params) override {
     (void)params;
+    // How --type=gpu-process is started when the GPU is not in this
+    // process. Harmless when it is: nothing asks.
+    InstallOhosGpuChildLauncher();
     surface_factory_ = std::make_unique<OhosSurfaceFactory>(base::FilePath());
     if (!PlatformEventSource::GetInstance()) {
       platform_event_source_ = std::make_unique<OhosEventSource>();

@@ -206,6 +206,21 @@ bool RequestCloseOhosLogicalWindow(gfx::AcceleratedWidget widget);
 // chrome/, which cannot be included from there. Same shape as the drag
 // callbacks above: the GPU side calls Notify, the browser side registers
 // once and forwards.
+// What a GPU process in a native child of its own needs to know about one
+// widget: see ohos_gpu_child_channel.h.
+struct OhosGpuChildWidgetState {
+  gfx::AcceleratedWidget widget = gfx::kNullAcceleratedWidget;
+  void* window = nullptr;
+  gfx::Rect bounds;
+  float density = 1.0f;
+  bool anchored = false;
+  bool expected = false;
+  int32_t application_window_id = 0;
+};
+
+// Every widget the registry knows anything about, in the browser process.
+std::vector<OhosGpuChildWidgetState> SnapshotOhosSurfacesForGpuChild();
+
 using OhosGpuContextLostCallback = base::RepeatingCallback<void(bool)>;
 void SetOhosGpuContextLostCallback(OhosGpuContextLostCallback callback);
 void NotifyOhosGpuContextLost(bool recovered);

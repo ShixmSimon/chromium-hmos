@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "base/base_export.h"
@@ -37,6 +38,19 @@ BASE_EXPORT std::optional<int> GetOhosNativeChildExitSignal(
 
 BASE_EXPORT bool DecodeOhosNativeChildParams(std::string_view encoded,
                                              OhosNativeChildParams* params);
+
+// Starts --type=gpu-process when the GPU is not in the browser process.
+//
+// The GPU process has to be started differently from a renderer -- it needs
+// an IPC channel to its parent to receive the windows it draws into -- and
+// that channel is ozone's business, so ozone registers the launcher here.
+// `fds` pairs each descriptor to pass with its number in the child, the way
+// LaunchOptions::fds_to_remap does. Returns the child's pid, or
+// kNullProcessId.
+using OhosGpuChildLauncher =
+    ProcessId (*)(const std::string& encoded_params,
+                  const std::vector<std::pair<int, int>>& fds);
+BASE_EXPORT void SetOhosGpuChildLauncher(OhosGpuChildLauncher launcher);
 
 }  // namespace base::internal
 

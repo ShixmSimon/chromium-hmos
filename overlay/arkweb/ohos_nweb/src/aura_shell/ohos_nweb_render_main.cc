@@ -22,6 +22,7 @@
 #include "base/process/launch_ohos.h"
 #include "base/strings/string_number_conversions.h"
 #include "ohos_nweb/src/nweb_hilog.h"
+#include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 
 extern "C" int ChromeMain(int argc, const char** argv);
 
@@ -60,22 +61,21 @@ int RunChromeMain(std::vector<std::string> argv_strings) {
   return ChromeMain(static_cast<int>(argv.size()), argv.data());
 }
 
-bool RestoreFileDescriptors(NativeChildProcess_Fd* fd) {
+// `fds` pairs each descriptor's number in Chromium's scheme with the
+// descriptor this process received.
+bool RestoreFileDescriptors(const std::vector<std::pair<int, int>>& fds) {
   constexpr int kMinChromiumDescriptor = 1000;
   using DescriptorMapping =
       std::pair<base::GlobalDescriptors::Key, base::ScopedFD>;
   std::vector<DescriptorMapping> mappings;
-  for (NativeChildProcess_Fd* current = fd; current; current = current->next) {
-    int destination_fd = -1;
-    if (!current->fdName ||
-        !base::StringToInt(current->fdName, &destination_fd) ||
-        destination_fd < base::GlobalDescriptors::kBaseDescriptor ||
-        current->fd < 0) {
+  for (const auto& [destination_fd, received_fd] : fds) {
+    if (destination_fd < base::GlobalDescriptors::kBaseDescriptor ||
+        received_fd < 0) {
       return false;
     }
-    const int source_flags = fcntl(current->fd, F_GETFL);
+    const int source_flags = fcntl(received_fd, F_GETFL);
     const int duplicated_fd =
-        fcntl(current->fd, F_DUPFD_CLOEXEC, kMinChromiumDescriptor);
+        fcntl(received_fd, F_DUPFD_CLOEXEC, kMinChromiumDescriptor);
     if (source_flags < 0 || duplicated_fd < 0) {
       return false;
     }
@@ -88,6 +88,19 @@ bool RestoreFileDescriptors(NativeChildProcess_Fd* fd) {
       base::GlobalDescriptors::GetInstance();
   for (auto& [key, descriptor] : mappings) {
     global_descriptors->Set(key, descriptor.release());
+  }
+  return true;
+}
+
+bool ReadFdList(NativeChildProcess_Fd* fd,
+                std::vector<std::pair<int, int>>* fds) {
+  for (NativeChildProcess_Fd* current = fd; current; current = current->next) {
+    int destination_fd = -1;
+    if (!current->fdName ||
+        !base::StringToInt(current->fdName, &destination_fd)) {
+      return false;
+    }
+    fds->emplace_back(destination_fd, current->fd);
   }
   return true;
 }
@@ -149,18 +162,20 @@ extern "C" __attribute__((visibility("default"))) void ChromiumNWebRenderMain(
   (void)exit_code;
 }
 
-extern "C" __attribute__((visibility("default"))) void
-ChromiumHarmonyOSNativeChildMain(NativeChildProcess_Args args) {
-  logging::SetLogMessageHandler(&ForwardChromiumChildLogToHilog);
-  LOG(WARNING) << "AuraShell native child start pid=" << getpid();
+namespace {
+
+// Both kinds of child end here: a renderer with what
+// OH_Ability_StartNativeChildProcess handed it, the GPU process with what its
+// parent sent over the IPC channel.
+void RunNativeChild(const char* encoded_params,
+                    const std::vector<std::pair<int, int>>& fds) {
   base::internal::OhosNativeChildParams launch_params;
-  if (!args.entryParams || !base::internal::DecodeOhosNativeChildParams(
-                               args.entryParams, &launch_params)) {
+  if (!encoded_params || !base::internal::DecodeOhosNativeChildParams(
+                             encoded_params, &launch_params)) {
     WVLOG_E("AuraShell native child rejected encoded startup parameters");
     return;
   }
-  if (!RestoreFileDescriptors(args.fdList.head) ||
-      !ApplyLaunchParams(launch_params) ||
+  if (!RestoreFileDescriptors(fds) || !ApplyLaunchParams(launch_params) ||
       !ConfigureRuntimePaths(launch_params)) {
     WVLOG_E("AuraShell native child rejected startup parameters");
     return;
@@ -175,4 +190,40 @@ ChromiumHarmonyOSNativeChildMain(NativeChildProcess_Args args) {
   LOG(WARNING) << "AuraShell native child end pid=" << getpid()
                << " code=" << exit_code;
   (void)exit_code;
+}
+
+}  // namespace
+
+extern "C" __attribute__((visibility("default"))) void
+ChromiumHarmonyOSNativeChildMain(NativeChildProcess_Args args) {
+  logging::SetLogMessageHandler(&ForwardChromiumChildLogToHilog);
+  LOG(WARNING) << "AuraShell native child start pid=" << getpid();
+  std::vector<std::pair<int, int>> fds;
+  if (!ReadFdList(args.fdList.head, &fds)) {
+    WVLOG_E("AuraShell native child rejected its descriptors");
+    return;
+  }
+  RunNativeChild(args.entryParams, fds);
+}
+
+// The GPU process, started with OH_Ability_CreateNativeChildProcess so that
+// it has an IPC channel to the browser: see ohos_gpu_child_channel.h. The
+// system calls OnConnect first, then MainProc, and the process ends when
+// MainProc returns.
+extern "C" __attribute__((visibility("default"))) void*
+ChromiumHarmonyOSGpuChildOnConnect() {
+  logging::SetLogMessageHandler(&ForwardChromiumChildLogToHilog);
+  return ui::CreateOhosGpuChildStub();
+}
+
+extern "C" __attribute__((visibility("default"))) void
+ChromiumHarmonyOSGpuChildMainProc() {
+  LOG(WARNING) << "AuraShell GPU child start pid=" << getpid();
+  std::string encoded_params;
+  std::vector<std::pair<int, int>> fds;
+  if (!ui::WaitForOhosGpuChildBootstrap(&encoded_params, &fds)) {
+    WVLOG_E("AuraShell GPU child never received its startup parameters");
+    return;
+  }
+  RunNativeChild(encoded_params.c_str(), fds);
 }

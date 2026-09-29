@@ -74,6 +74,11 @@ struct AuraStartupConfig {
   // a rebuild; chrome://flags cannot do it, because the switch set here
   // outranks the flag.
   std::string angle_backend;
+  // "separate" runs the GPU in a native child process of its own, where
+  // native children are allowed (tablets, 2in1); anything else, or a phone,
+  // keeps it in the browser process. See ui/ozone/platform/ohos/
+  // ohos_gpu_child_channel.h.
+  std::string gpu_process;
   bool jitless = false;
   bool fullscreen_requested = true;
   // Runs without a window next to another web engine, e.g. for Sync.

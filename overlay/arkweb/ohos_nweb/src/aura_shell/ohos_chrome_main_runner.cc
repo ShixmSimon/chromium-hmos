@@ -332,7 +332,6 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
       "--disable-fre",
       "--hide-crash-restore-bubble",
       "--ozone-platform=ohos",
-      "--in-process-gpu",
       "--no-zygote",
       "--no-sandbox",
       "--disable-component-update",
@@ -440,6 +439,22 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
     arguments.push_back("--renderer-process-limit=16");
   } else {
     arguments.push_back("--single-process");
+  }
+
+  // The GPU stays in this process unless the shell asks otherwise and the
+  // device can start a native child to hold it. A phone cannot; asking there
+  // is logged and ignored rather than turned into a failed start.
+  const bool separate_gpu_process = config.gpu_process == "separate";
+  if (separate_gpu_process && supports_native_child_process &&
+      !config.headless) {
+    AURA_LOG_I("AuraShell GPU in a process of its own by config");
+  } else {
+    if (separate_gpu_process) {
+      AURA_LOG_E("AuraShell ignored gpuProcess separate: device class "
+                 "%{public}s cannot start native children",
+                 config.device_class.c_str());
+    }
+    arguments.push_back("--in-process-gpu");
   }
 
   for (const AuraAdditionalSwitch& additional_switch :

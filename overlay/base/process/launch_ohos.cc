@@ -33,6 +33,17 @@ namespace {
 constexpr char kNativeChildEntry[] =
     "libnweb_render.so:ChromiumNativeChildMain";
 
+OhosGpuChildLauncher g_gpu_child_launcher = nullptr;
+
+bool IsGpuProcessCommandLine(const std::vector<std::string>& argv) {
+  for (const std::string& argument : argv) {
+    if (argument == "--type=gpu-process") {
+      return true;
+    }
+  }
+  return false;
+}
+
 struct NativeChildExitRegistry {
   Lock lock;
   std::map<ProcessHandle, int> exit_signals GUARDED_BY(lock);
@@ -133,6 +144,17 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
     return Process();
   }
 
+  if (IsGpuProcessCommandLine(argv)) {
+    if (!g_gpu_child_launcher) {
+      LOG(ERROR) << "OHOS GPU process requested with no launcher for it";
+      return Process();
+    }
+    std::vector<std::pair<int, int>> gpu_fds(options.fds_to_remap.begin(),
+                                             options.fds_to_remap.end());
+    const ProcessId gpu_pid = g_gpu_child_launcher(encoded_params, gpu_fds);
+    return gpu_pid == kNullProcessId ? Process() : Process(gpu_pid);
+  }
+
   std::vector<std::string> fd_names;
   fd_names.reserve(options.fds_to_remap.size());
   for (const auto& [source_fd, destination_fd] : options.fds_to_remap) {
@@ -171,6 +193,10 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
     DPCHECK(waited_pid == pid);
   }
   return Process(pid);
+}
+
+void SetOhosGpuChildLauncher(OhosGpuChildLauncher launcher) {
+  g_gpu_child_launcher = launcher;
 }
 
 std::optional<int> GetOhosNativeChildExitSignal(ProcessHandle handle) {
