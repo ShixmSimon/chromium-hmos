@@ -1,0 +1,113 @@
+Say where Skia on Vulkan stops after the instance, in a release build.
+
+With Skia on Vulkan in a GPU process of its own, the log reached "OHOS
+Vulkan: instance initialized" and then nothing: no surface, no
+swapchain, no frame, the page black and nothing crashing. The steps in
+between -- the device queue, the context provider built on it, and the
+output device the display gets -- say nothing in an official build, and
+one of them fails without falling back: when the context provider cannot
+be created, GpuServiceImpl only DLOGs, the context type stays Vulkan,
+and the compositor waits.
+
+On OHOS each of those says what happened, at ERROR, the level that
+reaches the log from the GPU process: the device queue and whether
+presentation was asked for, the context provider, and which output
+device a window gets -- a buffer queue through a GL presenter, or
+SkiaOutputDeviceVulkan, created or not.
+
+Diagnostic; it comes out once Vulkan is understood here.
+
+Generated for Chromium 154.0.8037.51 after
+ohos-gpu-lose-context-debug-url.patch.
+
+diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/components/viz/common/gpu/vulkan_in_process_context_provider.cc
+--- a/components/viz/common/gpu/vulkan_in_process_context_provider.cc
++++ b/components/viz/common/gpu/vulkan_in_process_context_provider.cc
+@@ -9,12 +9,14 @@
+ #include <utility>
+ 
+ #include "base/compiler_specific.h"
++#include "base/logging.h"
+ #include "base/memory_coordinator/memory_consumer.h"
+ #include "base/memory_coordinator/memory_coordinator_features.h"
+ #include "base/memory_coordinator/memory_limit.h"
+ #include "base/memory_coordinator/traits.h"
+ #include "base/memory_coordinator/utils.h"
+ #include "base/numerics/safe_conversions.h"
++#include "build/build_config.h"
+ #include "gpu/vulkan/buildflags.h"
+ #include "gpu/vulkan/vma_wrapper.h"
+ #include "gpu/vulkan/vulkan_device_queue.h"
+@@ -128,6 +130,13 @@ bool VulkanInProcessContextProvider::Initialize(const gpu::GPUInfo* gpu_info,
+   device_queue_ =
+       gpu::CreateVulkanDeviceQueue(vulkan_implementation_, flags, gpu_info,
+                                    heap_memory_limit_, is_thread_safe);
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS Vulkan: device queue "
++             << (device_queue_ ? "created" : "could not be created")
++             << (flags & gpu::VulkanDeviceQueue::PRESENTATION_SUPPORT_QUEUE_FLAG
++                     ? ", presentation asked for"
++                     : ", no presentation");
++#endif
+   if (!device_queue_)
+     return false;
+ 
+diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+--- a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
++++ b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+@@ -2077,6 +2077,14 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForGL() {
+ 
+ #if BUILDFLAG(ENABLE_VULKAN)
+ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
++#if BUILDFLAG(IS_OHOS)
++  // Which output device the display gets with Skia on Vulkan, in a release
++  // build: none of these choices said anything, and a page that stays
++  // black cannot otherwise be told from one whose frames go elsewhere.
++  LOG(ERROR) << "OHOS Vulkan: output surface for "
++             << (dependency_->IsOffscreen() ? "an offscreen display"
++                                            : "a window");
++#endif
+   if (dependency_->IsOffscreen()) {
+     output_device_ = std::make_unique<SkiaOutputDeviceOffscreen>(
+         context_state_, gfx::SurfaceOrigin::kBottomLeft,
+@@ -2109,6 +2117,10 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
+   }
+ #endif
+   if (output_presenter) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS Vulkan: output device is a buffer queue through a "
++                  "GL presenter";
++#endif
+     output_device_ = std::make_unique<SkiaOutputDeviceBufferQueue>(
+         std::move(output_presenter), dependency_,
+         shared_image_representation_factory_.get(),
+@@ -2125,6 +2137,12 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
+         shared_gpu_deps_->memory_tracker(),
+         GetDidSwapBuffersCompleteCallback());
+   }
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS Vulkan: SkiaOutputDeviceVulkan "
++             << (gpu_preferences_.disable_vulkan_surface
++                     ? "not tried, Vulkan surfaces disabled"
++                     : (output_device ? "created" : "could not be created"));
++#endif
+   if (MayFallBackToSkiaOutputDeviceX11()) {
+ #if BUILDFLAG(SUPPORTS_OZONE_X11)
+     if (output_device) {
+diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/service/gl/gpu_service_impl.cc
+--- a/components/viz/service/gl/gpu_service_impl.cc
++++ b/components/viz/service/gl/gpu_service_impl.cc
+@@ -256,6 +256,13 @@ GpuServiceImpl::GpuServiceImpl(
+     if (!vulkan_context_provider_) {
+       DLOG(ERROR) << "Failed to create Vulkan context provider.";
+     }
++#if BUILDFLAG(IS_OHOS)
++    // Without one, Skia on Vulkan has nothing to draw with, and nothing
++    // here falls back to GL: the compositor waits and the page stays black.
++    // Said in a release build, where the line above is not.
++    LOG(ERROR) << "OHOS Vulkan: context provider "
++               << (vulkan_context_provider_ ? "created" : "NOT created");
++#endif
+   }
+ #endif
+ 
