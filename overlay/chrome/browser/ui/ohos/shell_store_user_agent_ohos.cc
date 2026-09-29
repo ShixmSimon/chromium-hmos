@@ -7,14 +7,19 @@
 #include <string>
 
 #include "base/logging.h"
+#include "base/strings/stringprintf.h"
+#include "base/system/sys_info.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
 #include "components/embedder_support/user_agent_utils.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
+#include "net/http/http_request_headers.h"
 #include "url/gurl.h"
 
 namespace chrome::ohos {
@@ -34,6 +39,29 @@ bool IsChromeWebStore(const GURL& url) {
   }
   return url.host() == "chrome.google.com" &&
          url.path().starts_with("/webstore");
+}
+
+// The client hints that go with the store's user agent.
+//
+// The store reads the platform from Sec-CH-UA-Platform and
+// navigator.userAgentData, not from the User-Agent string, and sends
+// Android to /unsupported whatever the string says. A phone reports
+// Android there -- its platform follows --use-mobile-user-agent for the
+// whole process, not the per-tab mobile flag -- so "desktop site" still
+// arrived at the store as Android. The string carries X11, so the hints
+// say Linux, with the kernel's version as Chrome on Linux reports it.
+blink::UserAgentMetadata StoreUserAgentMetadata() {
+  blink::UserAgentMetadata metadata =
+      embedder_support::GetUserAgentMetadataForOhos(/*mobile=*/false);
+  metadata.platform = "Linux";
+  int32_t major = 0;
+  int32_t minor = 0;
+  int32_t bugfix = 0;
+  base::SysInfo::OperatingSystemVersionNumbers(&major, &minor, &bugfix);
+  metadata.platform_version =
+      base::StringPrintf("%d.%d.%d", major, minor, bugfix);
+  metadata.mobile = false;
+  return metadata;
 }
 
 class StoreUserAgentWatcher
@@ -72,7 +100,8 @@ class StoreUserAgentWatcher
                    << " desktop_site=" << desktop_site_
                    << " applied=" << applied
                    << " current_override=[" << current << "]"
-                   << " desktop_ua=[" << desktop << "]";
+                   << " store_ua=[" << (applied ? store_ua_ : std::string())
+                   << "]";
     };
 
     if (!is_store) {
@@ -97,12 +126,11 @@ class StoreUserAgentWatcher
     store_ua_ = embedder_support::GetOhosStoreUserAgent();
     blink::UserAgentOverride store;
     store.ua_string_override = store_ua_;
-    // The metadata is the ordinary desktop one. The UA still names
-    // OpenHarmony, so platform HarmonyOS agrees with it -- and a UA-CH
-    // platform that disagrees with the UA string is what bot checks read as
-    // a spoofed browser, which this port has been bitten by once already.
-    store.ua_metadata_override =
-        embedder_support::GetUserAgentMetadataForOhos(/*mobile=*/false);
+    // Linux, to agree with the X11 token in the string; see
+    // StoreUserAgentMetadata() for why the ordinary metadata will not do.
+    // Only on the store, so the mismatch a bot check could read as a spoofed
+    // browser is confined to a site that checks the platform itself.
+    store.ua_metadata_override = StoreUserAgentMetadata();
     web_contents()->SetUserAgentOverride(store, /*override_in_new_tabs=*/false);
     // Or the shell's next state poll follows the device back to a mobile
     // user agent, and the store's own script sends the tab to /unsupported.
@@ -113,6 +141,32 @@ class StoreUserAgentWatcher
 
  private:
   friend class content::WebContentsUserData<StoreUserAgentWatcher>;
+
+  // What the store was actually sent, once the navigation is over. The
+  // line at the start says what this watcher decided; this one says whether
+  // it held, because on a 2in1 the store still received the plain desktop
+  // string after this watcher had set the X11 one.
+  void DidFinishNavigation(content::NavigationHandle* handle) override {
+    if (!handle->IsInPrimaryMainFrame() || handle->IsSameDocument() ||
+        !IsChromeWebStore(handle->GetURL())) {
+      return;
+    }
+    const net::HttpRequestHeaders& headers = handle->GetRequestHeaders();
+    content::NavigationEntry* entry =
+        web_contents()->GetController().GetLastCommittedEntry();
+    LOG(WARNING) << "OHOS store UA sent: url=" << handle->GetURL().spec()
+                 << " committed=" << handle->HasCommitted()
+                 << " entry_overriding="
+                 << (entry && entry->GetIsOverridingUserAgent())
+                 << " header_ua=["
+                 << headers.GetHeader(net::HttpRequestHeaders::kUserAgent)
+                        .value_or("-")
+                 << "] header_platform=["
+                 << headers.GetHeader("Sec-CH-UA-Platform").value_or("-")
+                 << "] override=["
+                 << web_contents()->GetUserAgentOverride().ua_string_override
+                 << "]";
+  }
 
   // Hands the tab back the user agent it had before the store took it.
   //
