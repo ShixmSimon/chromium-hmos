@@ -106,10 +106,15 @@ bool WriteWidgetState(OHIPCParcel* parcel,
                       bool present,
                       bool window_changed) {
   const bool send_window = present && window_changed && state.window;
-  return OH_IPCParcel_WriteUint64(parcel, state.widget) == OH_IPC_SUCCESS &&
+  // Int64 rather than Uint64: the SDK this is built against has only the
+  // signed pair. Both values are opaque here.
+  return OH_IPCParcel_WriteInt64(parcel,
+                                 static_cast<int64_t>(state.widget)) ==
+             OH_IPC_SUCCESS &&
          OH_IPCParcel_WriteInt32(parcel, present) == OH_IPC_SUCCESS &&
-         OH_IPCParcel_WriteUint64(
-             parcel, reinterpret_cast<uintptr_t>(state.window)) ==
+         OH_IPCParcel_WriteInt64(
+             parcel, static_cast<int64_t>(
+                         reinterpret_cast<uintptr_t>(state.window))) ==
              OH_IPC_SUCCESS &&
          OH_IPCParcel_WriteInt32(parcel, state.bounds.x()) == OH_IPC_SUCCESS &&
          OH_IPCParcel_WriteInt32(parcel, state.bounds.y()) == OH_IPC_SUCCESS &&
@@ -280,16 +285,16 @@ int HandleBootstrap(const OHIPCParcel* data, OHIPCParcel* reply) {
 }
 
 int HandleWidgetState(const OHIPCParcel* data) {
-  uint64_t widget = 0;
+  int64_t widget = 0;
   int32_t present = 0;
-  uint64_t browser_window = 0;
+  int64_t browser_window = 0;
   int32_t x = 0, y = 0, width = 0, height = 0;
   float density = 1.0f;
   int32_t anchored = 0, expected = 0, application_window_id = 0;
   int32_t has_window = 0;
-  if (OH_IPCParcel_ReadUint64(data, &widget) != OH_IPC_SUCCESS ||
+  if (OH_IPCParcel_ReadInt64(data, &widget) != OH_IPC_SUCCESS ||
       OH_IPCParcel_ReadInt32(data, &present) != OH_IPC_SUCCESS ||
-      OH_IPCParcel_ReadUint64(data, &browser_window) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt64(data, &browser_window) != OH_IPC_SUCCESS ||
       OH_IPCParcel_ReadInt32(data, &x) != OH_IPC_SUCCESS ||
       OH_IPCParcel_ReadInt32(data, &y) != OH_IPC_SUCCESS ||
       OH_IPCParcel_ReadInt32(data, &width) != OH_IPC_SUCCESS ||
@@ -328,7 +333,7 @@ int HandleWidgetState(const OHIPCParcel* data) {
   } else if (window) {
     record.surface.window = window;
   }
-  record.browser_window = browser_window;
+  record.browser_window = static_cast<uint64_t>(browser_window);
   record.surface.bounds = gfx::Rect(x, y, width, height);
   record.surface.density = density;
   record.anchored = anchored;
