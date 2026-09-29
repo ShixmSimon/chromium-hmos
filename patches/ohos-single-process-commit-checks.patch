@@ -20,6 +20,13 @@ So on OHOS in single-process mode:
   otherwise refuse. The second is also what an extension's service
   worker and storage are checked against, which may be why a service
   worker would not start ("No SW").
+- RenderFrameHostImpl::CanCommitOriginAndUrl skips the checks that are
+  about which process may hold what -- the embedder's, where an
+  extension page must be in its extension's process, and
+  ChildProcessSecurityPolicy::CanCommitOriginAndUrl. The first version
+  exempted only CanCommitURL, and the embedder's check still refused
+  the page, which then stayed blank. The checks about the URL and
+  origin themselves still run.
 - A refused commit is logged with its URL, origin and lock in a release
   build, where the log said nothing about which URL it was.
 - A bad message from the in-process renderer is refused and logged
@@ -33,7 +40,26 @@ Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 diff --git a/content/browser/renderer_host/render_frame_host_impl.cc b/content/browser/renderer_host/render_frame_host_impl.cc
 --- a/content/browser/renderer_host/render_frame_host_impl.cc
 +++ b/content/browser/renderer_host/render_frame_host_impl.cc
-@@ -16199,6 +16199,13 @@ bool RenderFrameHostImpl::ValidateURLAndOrigin(
+@@ -12260,6 +12260,18 @@ CanCommitStatus RenderFrameHostImpl::CanCommitOriginAndUrl(
+     }
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Single-process: the checks below are all about which process may hold
++  // what -- the embedder's (an extension page must be in its extension's
++  // process) and ChildProcessSecurityPolicy's (site isolation) -- and there
++  // is one process, which is the browser. An extension page failed the
++  // first of them and stayed blank. The checks above, which are about the
++  // URL and origin themselves, still run.
++  if (RenderProcessHost::run_renderer_in_process()) {
++    return CanCommitStatus::CAN_COMMIT_ORIGIN_AND_URL;
++  }
++#endif
++
+   // Give the client a chance to disallow URLs from committing.
+   if (!GetContentClient()->browser()->CanCommitURL(GetProcess(), url)) {
+     LogCanCommitOriginAndUrlFailureReason(
+@@ -16199,6 +16211,13 @@ bool RenderFrameHostImpl::ValidateURLAndOrigin(
        // The origin and URL are safe to commit.
        break;
      case CanCommitStatus::CANNOT_COMMIT_URL:
@@ -47,7 +73,7 @@ diff --git a/content/browser/renderer_host/render_frame_host_impl.cc b/content/b
        DLOG(ERROR) << "CANNOT_COMMIT_URL url '" << url << "'"
                    << " origin '" << origin << "'"
                    << " lock '" << process->GetProcessLock().ToString() << "'";
-@@ -16211,6 +16218,11 @@ bool RenderFrameHostImpl::ValidateURLAndOrigin(
+@@ -16211,6 +16230,11 @@ bool RenderFrameHostImpl::ValidateURLAndOrigin(
                                        bad_message::RFH_CAN_COMMIT_URL_BLOCKED);
        return false;
      case CanCommitStatus::CANNOT_COMMIT_ORIGIN:
