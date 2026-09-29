@@ -246,6 +246,14 @@ struct RuntimeBridgeState {
   // GetAuraShellTopControlsHeight() and GetAuraShellTopControlsMinHeight().
   int top_controls_height GUARDED_BY(lock) = 0;
   int top_controls_min_height GUARDED_BY(lock) = 0;
+  // The shell's bottom bar that hides with the top one, in DIP; see
+  // GetAuraShellBottomControlsHeight(). Not part of viewport_bottom_inset,
+  // which is what stays covered however the page scrolls.
+  int bottom_controls_height GUARDED_BY(lock) = 0;
+  // The last page each window's controls were shown for, by the navigation
+  // entry's unique id: a new page starts with both bars showing.
+  std::map<gfx::AcceleratedWidget, int> controls_shown_for_entry
+      GUARDED_BY(lock);
   // The view each window last had its controls shown on. Compared, never
   // dereferenced: it tells the poll that a different view is now current -- a
   // tab switch, or a navigation that swapped in a new renderer, which starts
@@ -1522,6 +1530,9 @@ ExtensionPopupAnchor ExtensionPopupAnchorFor(BrowserWindowInterface* browser,
     if (inset != state.viewport_bottom_inset.end()) {
       bottom_inset = inset->second;
     }
+    // A dock that hides with the page is not in the inset; it is showing
+    // when an extension button on it is tapped, so open above it.
+    bottom_inset += state.bottom_controls_height;
   }
   return {gfx::Rect(window.CenterPoint().x(), window.bottom() - bottom_inset,
                     0, 0),
@@ -2597,26 +2608,35 @@ int DipToPixels(int dip) {
 // Defined next to OnAuraShellTopControlsShownRatio.
 void ApplyTopControlsOffset(content::WebContents* contents, float ratio);
 
-// The page's bottom is covered by the shell's floating bar (bottom_dip) and,
-// once ApplyTopControlsOffset() moves the page down, also pushed off the
-// screen by the controls: the renderer lets the viewport grow as the controls
-// hide but never shrinks it for the controls it shows, so the end of the page
-// sits one full controls height too low. Inset the bottom by both so the last
-// line still scrolls up to just above the floating bar.
+// The page's bottom is covered by whatever the shell keeps there however the
+// page scrolls (bottom_dip: a floating bar, or on a phone whose dock hides,
+// only the system's gesture bar) and, once ApplyTopControlsOffset() moves the
+// page down, also pushed off the screen by the controls: the renderer lets
+// the viewport grow as the controls hide but never shrinks it for the
+// controls it shows, so the end of the page sits one full controls height too
+// low. Inset the bottom by all of it -- the bottom controls too, for the same
+// reason -- so that with the bars showing the last line scrolls up to just
+// above them, and with them hidden, as the viewport grows by both, to just
+// above bottom_dip.
 void ApplyViewportInsets(content::WebContents* contents, int bottom_dip) {
   if (!contents) {
     return;
   }
   int top_dip = 0;
+  int bottom_controls_dip = 0;
   {
     RuntimeBridgeState& state = GetState();
     base::AutoLock lock(state.lock);
     top_dip = state.top_controls_height;
+    bottom_controls_dip = state.bottom_controls_height;
   }
   if (content::RenderWidgetHostView* view =
           contents->GetRenderWidgetHostView()) {
     view->SetInsets(gfx::Insets::TLBR(
-        0, 0, std::max(0, bottom_dip) + std::max(0, top_dip), 0));
+        0, 0,
+        std::max(0, bottom_dip) + std::max(0, top_dip) +
+            std::max(0, bottom_controls_dip),
+        0));
   }
 }
 
@@ -2702,9 +2722,31 @@ void PollBrowserStateOnUiThread(uint64_t generation) {
                   shown = reinterpret_cast<uintptr_t>(view);
                 }
               }
+              // A new page in the same view: bring both bars back, as Chrome
+              // on Android does when a page starts loading. With them hidden
+              // the reader would land on a page with no address to read and
+              // no dock, and only scrolling back up would bring them.
+              content::NavigationEntry* entry =
+                  active ? active->GetController().GetLastCommittedEntry()
+                         : nullptr;
+              const int entry_id = entry ? entry->GetUniqueID() : 0;
+              bool new_page = false;
+              {
+                RuntimeBridgeState& state = GetState();
+                base::AutoLock lock(state.lock);
+                int& shown_entry = state.controls_shown_for_entry[widget];
+                new_page = !switched && entry_id != 0 && shown_entry != 0 &&
+                           shown_entry != entry_id;
+                shown_entry = entry_id;
+              }
               if (switched) {
                 LOG(WARNING) << "OHOS browser controls: showing on new view";
                 ShowBrowserControls(active);
+              } else if (new_page) {
+                active->UpdateBrowserControlsState(
+                    cc::BrowserControlsState::kBoth,
+                    cc::BrowserControlsState::kShown, /*animate=*/true,
+                    std::nullopt);
               }
             }
             snapshots.emplace_back(
@@ -3257,18 +3299,21 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     const int top = std::max(0, command.FindInt("top").value_or(0));
     const int min_top =
         std::clamp(command.FindInt("minTop").value_or(0), 0, top);
+    const int bottom = std::max(0, command.FindInt("bottom").value_or(0));
     int bottom_inset = 0;
     {
       RuntimeBridgeState& state = GetState();
       base::AutoLock lock(state.lock);
       state.top_controls_height = top;
       state.top_controls_min_height = min_top;
+      state.bottom_controls_height = bottom;
       state.controls_shown_for[widget] = reinterpret_cast<uintptr_t>(
           active ? active->GetRenderWidgetHostView() : nullptr);
       state.last_shown_ratio = -1.0f;
       bottom_inset = state.viewport_bottom_inset[widget];
     }
-    LOG(WARNING) << "OHOS browser controls: top=" << top << " min=" << min_top;
+    LOG(WARNING) << "OHOS browser controls: top=" << top << " min=" << min_top
+                 << " bottom=" << bottom;
     // The bottom inset includes the controls height; see ApplyViewportInsets().
     ApplyViewportInsets(active, bottom_inset);
     if (top == 0) {
@@ -3750,6 +3795,12 @@ int GetAuraShellTopControlsMinHeight() {
   RuntimeBridgeState& state = GetState();
   base::AutoLock lock(state.lock);
   return DipToPixels(state.top_controls_min_height);
+}
+
+int GetAuraShellBottomControlsHeight() {
+  RuntimeBridgeState& state = GetState();
+  base::AutoLock lock(state.lock);
+  return DipToPixels(state.bottom_controls_height);
 }
 
 namespace {

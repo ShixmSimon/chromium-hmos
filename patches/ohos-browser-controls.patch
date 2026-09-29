@@ -18,6 +18,13 @@ viewport shrink while the controls show, and passes the ratio back to the
 bridge, which hands it to the shell. The minimum height lets the shell keep a
 collapsed strip of its bar on screen instead of letting it hide completely.
 
+A phone's dock is the same kind of bar at the bottom: on OHOS the delegate
+also reports the shell's bottom bar height as the bottom controls, which
+WebContentsViewAura already forwards, so the dock slides away with the top
+bar and the page grows into its room. The renderer normalises the two
+ratios, so both bars start and finish together and the shell moves the
+dock by the same ratio it moves the top bar by.
+
 WebContentsViewAura::GetTopControlsMinHeight() forwards to the delegate
 unconditionally, the same way GetTopControlsHeight() already does -- it is
 not guarded by BUILDFLAG(IS_OHOS). WebContentsDelegate::GetTopControlsMinHeight()
@@ -30,7 +37,6 @@ Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-browser-controls.patch
 
 diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
-index 9e27bdc..41d731d 100644
 --- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 +++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 @@ -115,6 +115,12 @@
@@ -46,7 +52,7 @@ index 9e27bdc..41d731d 100644
  // Kill switch for merge safety for a fix for https://crbug.com/489205993
  // TODO(crbug.com/489205993): Remove in M150 or later.
  BASE_FEATURE(kBackgroundActorTaskPopupsOpenInBackground,
-@@ -368,15 +374,41 @@ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
+@@ -368,15 +374,52 @@ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
  void BrowserWebContentsDelegate::SetTopControlsShownRatio(
      content::WebContents* web_contents,
      float ratio) {
@@ -76,12 +82,23 @@ index 9e27bdc..41d731d 100644
 +#endif
 +}
 +
++int BrowserWebContentsDelegate::GetBottomControlsHeight() {
++#if BUILDFLAG(IS_OHOS)
++  // A phone's dock, the shell's bar along the bottom: it slides away with
++  // the top bar as the page scrolls, and the page grows into the room.
++  return chrome::ohos::GetAuraShellBottomControlsHeight();
++#else
++  return content::WebContentsDelegate::GetBottomControlsHeight();
++#endif
++}
++
  bool BrowserWebContentsDelegate::DoBrowserControlsShrinkRendererSize(
      content::WebContents* contents) {
 +#if BUILDFLAG(IS_OHOS)
 +  // Room is made for the shell's bar rather than the page drawing under it
 +  // at the top: shrink the viewport while the controls are shown.
-+  if (chrome::ohos::GetAuraShellTopControlsHeight() > 0) {
++  if (chrome::ohos::GetAuraShellTopControlsHeight() > 0 ||
++      chrome::ohos::GetAuraShellBottomControlsHeight() > 0) {
 +    return true;
 +  }
 +#endif
@@ -89,20 +106,18 @@ index 9e27bdc..41d731d 100644
  }
  
 diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h
-index 05a9d7f..8b2b212 100644
 --- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h
 +++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h
-@@ -73,6 +73,7 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
+@@ -73,6 +73,8 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
    void SetTopControlsShownRatio(content::WebContents* web_contents,
                                  float ratio) override;
    int GetTopControlsHeight() override;
 +  int GetTopControlsMinHeight() override;
++  int GetBottomControlsHeight() override;
    bool DoBrowserControlsShrinkRendererSize(
        content::WebContents* contents) override;
    int GetVirtualKeyboardHeight(content::WebContents* contents) override;
-
 diff --git a/content/browser/web_contents/web_contents_view_aura.cc b/content/browser/web_contents/web_contents_view_aura.cc
-index 8440d74..9f59818 100644
 --- a/content/browser/web_contents/web_contents_view_aura.cc
 +++ b/content/browser/web_contents/web_contents_view_aura.cc
 @@ -2009,6 +2009,13 @@ int WebContentsViewAura::GetTopControlsHeight() const {
@@ -120,7 +135,6 @@ index 8440d74..9f59818 100644
    WebContentsDelegate* delegate = web_contents_->GetDelegate();
    if (!delegate)
 diff --git a/content/browser/web_contents/web_contents_view_aura.h b/content/browser/web_contents/web_contents_view_aura.h
-index 98df67a..b5ba95b 100644
 --- a/content/browser/web_contents/web_contents_view_aura.h
 +++ b/content/browser/web_contents/web_contents_view_aura.h
 @@ -281,6 +281,7 @@ class CONTENT_EXPORT WebContentsViewAura

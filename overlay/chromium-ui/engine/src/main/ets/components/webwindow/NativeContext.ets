@@ -407,7 +407,9 @@ export interface BrowserCommandPayload {
   // sitePermissionDecision: the answer to sitePermissionRequested.
   decision?: SitePermissionDecision;
   sizeVp?: number;
-  // setViewportInsets: how much of the page bottom the shell covers, in vp.
+  // setViewportInsets: how much of the page bottom the shell covers however
+  // the page scrolls, in vp. setBrowserControls: the height of the shell's
+  // bottom bar (a phone's dock) that hides with the top bar, in vp.
   bottom?: number;
   // setBrowserControls: the shell's top bar height, in vp; 0 for none.
   top?: number;

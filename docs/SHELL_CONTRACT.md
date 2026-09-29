@@ -400,7 +400,7 @@ Chromium 自己的安装确认框,用户确认后才装。
 | `findResult` | 否 | `matches` 匹配总数，`activeMatch` 当前是第几个（从 1 开始，0 表示没有），`finalUpdate` 为 true 时计数已定 |
 | `pageText` | 否 | 回复 `getPageText`：`requestId`、`text` |
 | `contextMenuRequested` | **是**(手机) | 长按网页元素。引擎这时不弹自己的菜单，由外壳画，见下文"长按菜单"。**每次都要回一条命令**：选了某项发 `contextMenuAction`，没选就关掉发 `contextMenuDismissed`。 |
-| `browserControlsRatio` | 否 | 用了 `setBrowserControls` 才会有。`ratio` 为顶栏当前露出的比例（1 全部显示，0 完全滑走），外壳把顶栏往上移 `(1 - ratio) × 顶栏高度`。传了 `minTop` 时，比例的下限是 `minTop / top`（顶栏收起到 `minTop` 就不会再往上滑了）。 |
+| `browserControlsRatio` | 否 | 用了 `setBrowserControls` 才会有。`ratio` 为顶栏当前露出的比例（1 全部显示，0 完全滑走），外壳把顶栏往上移 `(1 - ratio) × 顶栏高度`；传了 `bottom` 时，底栏用同一个 `ratio`，往下移 `(1 - ratio) × bottom`（两栏同时开始、同时收完，内核保证）。传了 `minTop` 时，比例的下限是 `minTop / top`（顶栏收起到 `minTop` 就不会再往上滑了）。 |
 
 ### 长按菜单
 
@@ -465,18 +465,41 @@ function report() {
 | `permissionResult` | `requestId`, `granted`, `denied` | 回复 `permissionsRequested` |
 | `systemPermissionState` | `location`: `'allowed' \| 'denied' \| 'notDetermined'` | 上报应用的定位权限状态 |
 | `recoverInput` | | 触摸或焦点异常时让引擎恢复输入 |
-| `setBrowserControls` | `top`（vp）, `minTop?`（vp） | 外壳顶栏的高度，交给 Chromium 当作 browser controls：网页顶部给它留出位置，网页下滑时顶栏被滑走，上滑时再出现。引擎按当前设备的缩放比例把 vp 换算成物理像素后再交给 Chromium。`minTop` 是顶栏收起后仍保留的高度（vp），不传或传 0 表示可以完全滑走；`minTop` 会被夹到 `[0, top]` 之间。显示比例通过 `browserControlsRatio` 事件告诉外壳，外壳据此移动顶栏；`top` 传 0 取消 |
+| `setBrowserControls` | `top`（vp）, `minTop?`（vp）, `bottom?`（vp） | `bottom` 是随滚动一起收起的底栏高度（手机的 dock，连同它上面延伸出的小工具栏），不传或 0 表示没有；它不算在 `setViewportInsets` 里。外壳顶栏的高度，交给 Chromium 当作 browser controls：网页顶部给它留出位置，网页下滑时顶栏被滑走，上滑时再出现。引擎按当前设备的缩放比例把 vp 换算成物理像素后再交给 Chromium。`minTop` 是顶栏收起后仍保留的高度（vp），不传或传 0 表示可以完全滑走；`minTop` 会被夹到 `[0, top]` 之间。显示比例通过 `browserControlsRatio` 事件告诉外壳，外壳据此移动顶栏；`top` 传 0 取消 |
 | `setBrowserControlsState` | `state`: `'shown' \| 'hidden' \| 'both'`, `animate?` | 主动把顶栏收起或展开，而不是等网页滚动触发。`'shown'` 强制展开、`'hidden'` 强制收起（收到 `minTop`）、`'both'`（默认）交还给滚动控制。`animate` 默认 true |
 | `findInPage` | `text`, `forward?` | 在当前标签页查找，同一段文字再发一次即跳到下一个（`forward: false` 为上一个）。结果通过 `findResult` 事件返回 |
 | `stopFind` | | 结束查找，清除高亮 |
 | `getPageText` | `requestId` | 读取当前网页的可见文字（最多 20000 字），在独立的脚本环境里执行，网页自己的脚本看不到。结果通过 `pageText` 事件返回 |
 | `contextMenuAction` | `requestId`, `action` | 回复 `contextMenuRequested`：执行选中的项。`action` 必须是事件 `supportedActions` 里的一项 |
 | `contextMenuDismissed` | `requestId` | 回复 `contextMenuRequested`：用户没选任何项就关掉了菜单 |
-| `setViewportInsets` | `bottom`（vp） | 外壳在网页底部盖了多高的悬浮栏。网页照常画到底，但可视区域缩小这么多，网页末尾能滚到悬浮栏上方。切换标签、新建标签后引擎会自动沿用，不用重发；传 0 取消 |
+| `setViewportInsets` | `bottom`（vp） | 外壳在网页底部盖了多高、且不随滚动收起的东西。dock 随滚动收起的手机上，这里只传系统手势条的高度。网页照常画到底，但可视区域缩小这么多，网页末尾能滚到悬浮栏上方。切换标签、新建标签后引擎会自动沿用，不用重发；传 0 取消 |
 | `pwaHome`、`pwaMenu`、`pwaMenuAction`、`pwaMenuDismiss` | 见 `BrowserCommandPayload` | PWA 窗口菜单 |
 | `defaultBrowserState`、`systemCapabilities` | 见参考实现 | 系统集成相关状态 |
 
 后退、前进、刷新这类命令,以 `aura_shell_runtime_bridge.cc` 里 `ExecuteAuraShellBrowserCommand` 实际接受的为准。这张表是按 `286a844` 整理的。
+
+### 手机：滚动时收起地址栏和 dock
+
+页面不再避让 dock。页面刚加载时两栏都在，页面上边在地址栏下方、下边在 dock 上方；
+网页往上滑(看下面的内容)时两栏跟手收起、页面同步拉伸，直到完全收起；往下滑时两栏
+跟手出现并常驻。两栏同时开始、同时收完。平板和 2in1 不变。
+
+外壳要做的:
+
+1. `WebWindow` 铺满整个窗口(包括 dock 和系统手势条下面)。
+2. `setBrowserControls { top: 地址栏高度, minTop: 0, bottom: dock 高度 }`。`bottom`
+   包括 dock 上方延伸出的小工具栏,它和 dock 一起收起。
+3. `setViewportInsets { bottom: 系统手势条高度 }`。这一段不收起:两栏收起后网页画面
+   会延伸到手势条下面,但内容最多滚到手势条上方,最后一行不会被挡。不要再把 dock 算
+   进来。
+4. 收到 `browserControlsRatio { ratio }`:地址栏 `translateY = -(1 - ratio) × top`,
+   dock `translateY = (1 - ratio) × bottom`。外壳自己不判断滚动方向,收起和出现都听
+   这个比例。
+5. 地址栏获得焦点、页面输入框弹出键盘时,发 `setBrowserControlsState { state:
+   'shown' }` 把两栏钉住;失焦或键盘收起后发 `state: 'both'` 交还给滚动。
+
+内核自动处理:切换标签、打开新页面(包括前进后退)时两栏重新显示;页面短到不能滚动时
+两栏一直显示;滚到页面最底部时不会自动显示(和 Chrome 安卓一致)。
 
 ### Profile 数据（书签、历史、下载、设置）
 
