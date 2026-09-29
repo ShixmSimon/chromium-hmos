@@ -1,0 +1,88 @@
+Say, at a level a release build prints, how far GL got.
+
+Two builds in a row came back with glImplementationParts
+(gl=none,angle=none), and on the phone not a single GL or EGL line in
+the log. The failure Chromium reports for GL not coming up at all is
+
+    VLOG(1) << "gl::init::InitializeGLNoExtensionsOneOff failed";
+
+which a release build never prints, so "nothing in the log" could mean
+several different places, and the only way to tell them apart has been
+another build and another round on a device.
+
+Four lines, each at a boundary, so one run says where it stopped:
+
+  - GpuInit, entering GL init: the implementation asked for.
+  - GLDisplayEGL, before the first display type: which types it will try.
+    If this line is missing, GL init never reached EGL display creation.
+  - GLDisplayEGL, on success: which one it got.
+  - GpuInit, leaving: what GL ended up as, or that it failed -- the
+    VLOG above, promoted.
+
+Between them and the two lines already there (GetDisplayFromType failed:
+<EGL error>, and eglInitialize failed with <error>) every step from the
+command line to a working display is accounted for.
+
+Diagnostic, OHOS only, and it comes out again once GL is up on a device.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/ui/gl/gl_display.cc b/ui/gl/gl_display.cc
+--- a/ui/gl/gl_display.cc
++++ b/ui/gl/gl_display.cc
+@@ -607,5 +607,17 @@
+       base::CommandLine::ForCurrentProcess(), enabled_angle_features,
+       disabled_angle_features);
+ 
++#if BUILDFLAG(IS_OHOS)
++  {
++    std::string types;
++    for (DisplayType type : init_displays) {
++      types += types.empty() ? "" : ",";
++      types += DisplayTypeString(type);
++    }
++    LOG(ERROR) << "OHOS GL: creating EGL display, trying [" << types
++               << "], ANGLE " << (supports_angle ? "yes" : "no");
++  }
++#endif
++
+   for (size_t disp_index = 0; disp_index < init_displays.size(); ++disp_index) {
+     DisplayType display_type = init_displays[disp_index];
+@@ -674,4 +686,8 @@
+     display_ = display;
+     display_type_ = display_type;
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS GL: EGL display is "
++               << DisplayTypeString(display_type);
++#endif
+     if (!existing_display) {
+       ext->InitializeExtensionSettings(display);
+diff --git a/gpu/ipc/service/gpu_init.cc b/gpu/ipc/service/gpu_init.cc
+--- a/gpu/ipc/service/gpu_init.cc
++++ b/gpu/ipc/service/gpu_init.cc
+@@ -1171,11 +1171,24 @@
+   gl_use_swiftshader_ = EnableSwiftShaderIfNeeded(
+       command_line, gpu_feature_info_,
+       gpu_preferences_.disable_software_rasterizer, needs_more_info);
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS GL: initializing in process, swiftshader "
++             << (gl_use_swiftshader_ ? "yes" : "no") << ", --use-gl="
++             << command_line->GetSwitchValueASCII("use-gl") << " --use-angle="
++             << command_line->GetSwitchValueASCII("use-angle");
++#endif
+   gl_display = gl::init::InitializeGLNoExtensionsOneOff(
+       /*init_bindings=*/true,
+       /*gpu_preference=*/gl::GpuPreference::kDefault);
+   if (!gl_display) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS GL: InitializeGLNoExtensionsOneOff failed, GL is "
++               << gl::GetGLImplementationParts().ToString();
++#endif
+     VLOG(1) << "gl::init::InitializeGLNoExtensionsOneOff failed";
+     return;
+   }
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS GL: up, " << gl::GetGLImplementationParts().ToString();
++#endif
+   bool gl_disabled = gl::GetGLImplementation() == gl::kGLImplementationDisabled;
+
