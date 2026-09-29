@@ -16,17 +16,25 @@ The fallback order matches desktop's: the extension's own button first,
 the extensions button when it is not pinned, and the modal box when the
 shell has reported neither.
 
+The rect it anchors to is logged with what it is made of -- the rect the
+shell reported, the window origin it is moved by -- because the shell has
+seen the bubble away from its button and from outside it cannot be told
+which is off. Diagnostic; it goes once that is settled. (It lives here, not
+in a later patch: a later patch changing lines this one adds stops this
+one from being recognised as applied.)
+
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 
 diff --git a/chrome/browser/ui/extensions/extension_dialog_utils_views.cc b/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
 --- a/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
 +++ b/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
-@@ -12,7 +12,61 @@
+@@ -12,8 +12,70 @@
  #include "ui/views/bubble/bubble_dialog_model_host.h"
  #include "ui/views/widget/widget.h"
  
 +#include "build/build_config.h"
 +#if BUILDFLAG(IS_OHOS)
++#include "base/logging.h"
 +#include "base/strings/strcat.h"
 +#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"  // nogncheck
 +#include "ui/aura/window.h"
@@ -34,7 +42,7 @@ diff --git a/chrome/browser/ui/extensions/extension_dialog_utils_views.cc b/chro
 +#endif
 +
  namespace {
-+
+ 
 +#if BUILDFLAG(IS_OHOS)
 +// Where the shell drew the button this bubble should point at.
 +//
@@ -76,14 +84,22 @@ diff --git a/chrome/browser/ui/extensions/extension_dialog_utils_views.cc b/chro
 +  }
 +  // The shell reports the button in its window's own coordinates; a bubble
 +  // anchors in screen ones.
++  const gfx::Rect reported = rect;
 +  rect.Offset(root->GetBoundsInScreen().OffsetFromOrigin());
++  // Diagnostic: the shell still sees the "added" bubble away from its
++  // button, and from outside it cannot be told which of these is off.
++  LOG(WARNING) << "OHOS extension bubble anchor: reported="
++               << reported.ToString()
++               << " root=" << root->GetBoundsInScreen().ToString()
++               << " anchor=" << rect.ToString();
 +  return rect;
 +}
 +#endif  // BUILDFLAG(IS_OHOS)
- 
++
  // Returns the action view corresponding to the extension if a single
  // extension is specified in `extension_ids`; otherwise, returns the
-@@ -54,10 +108,27 @@
+ // extensions button.
+@@ -54,10 +116,27 @@ void ShowDialog(gfx::NativeWindow parent,
        parent ? GetExtensionsContainerViews(parent) : nullptr;
    if (container && container->IsVisible()) {
      ShowDialog(container, extension_ids, std::move(dialog_model));
