@@ -389,6 +389,9 @@ export interface BrowserCommandPayload {
   anchors?: ShellAnchorRect[];
   // setExtensionPinned.
   pinned?: boolean;
+  // getExtensionActions: the edge of the square icon to render, in px.
+  // Omitted means 32.
+  iconSizePx?: number;
   // setBrowserChrome: who draws the browser from now on.
   mode?: 'shell' | 'native';
   // sitePermissionDecision: the answer to sitePermissionRequested.
