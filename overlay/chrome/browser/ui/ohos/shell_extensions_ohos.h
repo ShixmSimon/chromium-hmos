@@ -10,6 +10,7 @@
 
 #include "base/memory/scoped_refptr.h"
 #include "base/values.h"
+#include "ui/gfx/image/image.h"
 #include "ui/gfx/native_ui_types.h"
 
 class BrowserWindowInterface;
@@ -37,6 +38,14 @@ void AddExtensionPageFields(Profile* profile,
 // ones disabled for them.
 std::vector<scoped_refptr<const extensions::Extension>>
 DisabledExtensionsForPage(Profile* profile);
+
+// The icon from the extension's manifest, for an extension the toolbar has
+// no action for -- a disabled one. Loaded from disk the first time, so the
+// first call returns an empty image and extensionActionsChanged follows
+// once it is there; later calls return it at once.
+gfx::Image ExtensionManifestIcon(Profile* profile,
+                                 const extensions::Extension& extension,
+                                 int size_px);
 
 // setExtensionEnabled, uninstallExtension, getExtensionDetails,
 // setExtensionSiteAccess and openExtensionOptions. Returns false for any

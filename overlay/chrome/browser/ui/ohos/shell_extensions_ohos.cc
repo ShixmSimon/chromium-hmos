@@ -7,8 +7,10 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 
+#include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
 #include "base/scoped_observation.h"
@@ -28,6 +30,7 @@
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_registry_observer.h"
 #include "extensions/browser/extension_system.h"
+#include "extensions/browser/image_loader.h"
 #include "extensions/browser/management_policy.h"
 #include "extensions/browser/permissions/scripting_permissions_modifier.h"
 #include "extensions/browser/permissions_manager.h"
@@ -35,6 +38,9 @@
 #include "extensions/browser/uninstall_reason.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/manifest.h"
+#include "extensions/common/extension_icon_set.h"
+#include "extensions/common/extension_resource.h"
+#include "extensions/common/manifest_handlers/icons_handler.h"
 #include "extensions/common/manifest_handlers/options_page_info.h"
 #include "extensions/common/permissions/permission_message_provider.h"
 #include "extensions/common/permissions/permission_set.h"
@@ -195,7 +201,11 @@ class UninstallRequest : public extensions::ExtensionUninstallDialog::Delegate {
                                         const std::u16string& error) override {
     // Cancelled is not a failure the shell needs to hear about: the reader
     // chose it. An error is -- a policy that keeps the extension installed.
-    if (!did_start_uninstall && !error.empty()) {
+    // The dialog reports a cancel as an error too, in these exact words
+    // (ExtensionUninstallDialog::OnDialogClosed), so they are what tells
+    // the two apart.
+    if (!did_start_uninstall && !error.empty() &&
+        error != u"User canceled uninstall dialog") {
       DispatchFailed(widget_, "uninstallExtension", id_, "notAllowed", error);
     }
     base::SequencedTaskRunner::GetCurrentDefault()->DeleteSoon(FROM_HERE,
@@ -373,6 +383,40 @@ void OpenOptions(gfx::AcceleratedWidget widget,
 }
 
 }  // namespace
+
+gfx::Image ExtensionManifestIcon(Profile* profile,
+                                 const Extension& extension,
+                                 int size_px) {
+  // Keyed on the version too, so an update's new icon is loaded afresh.
+  using Key = std::tuple<const Profile*, std::string, std::string, int>;
+  // Present and empty while a load is in flight, so it is started once.
+  static base::NoDestructor<std::map<Key, gfx::Image>> icons;
+  const Key key{profile, extension.id(), extension.VersionString(), size_px};
+  auto it = icons->find(key);
+  if (it != icons->end()) {
+    return it->second;
+  }
+  icons->emplace(key, gfx::Image());
+  const extensions::ExtensionResource resource =
+      extensions::IconsInfo::GetIconResource(
+          &extension, size_px, ExtensionIconSet::Match::kBigger);
+  if (resource.empty()) {
+    return gfx::Image();
+  }
+  // The loader belongs to the profile and drops the reply with it, so the
+  // profile is still there when this runs.
+  extensions::ImageLoader::Get(profile)->LoadImageAsync(
+      &extension, resource, gfx::Size(size_px, size_px),
+      base::BindOnce(
+          [](Profile* profile, Key key, const gfx::Image& image) {
+            (*icons)[key] = image;
+            if (!image.IsEmpty()) {
+              Notify(profile, "extensionActionsChanged");
+            }
+          },
+          base::Unretained(profile), key));
+  return gfx::Image();
+}
 
 void AddExtensionPageFields(Profile* profile,
                             const Extension& extension,

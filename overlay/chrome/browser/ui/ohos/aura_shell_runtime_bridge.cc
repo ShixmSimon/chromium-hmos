@@ -1441,10 +1441,14 @@ void SendExtensionActions(gfx::AcceleratedWidget widget,
       base::DictValue item;
       item.Set("id", extension->id());
       item.Set("name", extension->name());
+      // A disabled extension usually has no action to take the icon from;
+      // the page still shows its icon, from the manifest.
       ExtensionIconSource* icons = IconSourceFor(profile, *extension, action);
-      item.Set("iconPngBase64",
-               icons ? EncodeExtensionIcon(icons->GetIcon(tab_id), icon_size_px)
-                     : std::string());
+      const gfx::Image icon =
+          icons ? icons->GetIcon(tab_id)
+                : chrome::ohos::ExtensionManifestIcon(profile, *extension,
+                                                      icon_size_px);
+      item.Set("iconPngBase64", EncodeExtensionIcon(icon, icon_size_px));
       item.Set("badgeText", std::string());
       item.Set("badgeColor", "#00000000");
       item.Set("enabled", false);
