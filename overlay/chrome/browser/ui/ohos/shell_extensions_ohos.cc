@@ -395,7 +395,11 @@ void AddExtensionPageFields(Profile* profile,
                       .spec()
                 : std::string());
   item->Set("version", extension.VersionString());
-  item->Set("description", extension.description());
+  // From the manifest, which has had its __MSG_ placeholders replaced in
+  // the reader's language by the time the extension is loaded.
+  const std::string* description =
+      extension.manifest()->FindStringPath("description");
+  item->Set("description", description ? *description : std::string());
   // A string in almost every manifest; an object ({"email": ...}) in a
   // few, which has no name to show.
   const std::string* author = extension.manifest()->FindStringPath("author");
