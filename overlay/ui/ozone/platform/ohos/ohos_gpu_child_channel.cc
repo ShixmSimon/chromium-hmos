@@ -271,6 +271,15 @@ base::ProcessId StartGpuChild(const std::string& encoded_params,
               OH_IPCParcel_WriteFileDescriptor(data.get(), source_fd) ==
                   OH_IPC_SUCCESS;
   }
+  // Whether Skia was asked to use Vulkan, which the GPU process's own
+  // command line does not say: Chromium carries it in the encoded
+  // --gpu-preferences, not as --use-vulkan. The child reads this to decide
+  // whether to probe Vulkan before starting.
+  const bool wants_vulkan =
+      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+          "use-vulkan") == "native";
+  written = written &&
+            OH_IPCParcel_WriteInt32(data.get(), wants_vulkan) == OH_IPC_SUCCESS;
   const OH_IPC_MessageOption option = SyncOption();
   int32_t pid = 0;
   if (!written ||
@@ -341,6 +350,7 @@ struct ChildSide {
   base::ConditionVariable changed{&lock};
   bool is_child GUARDED_BY(lock) = false;
   bool bootstrapped GUARDED_BY(lock) = false;
+  bool wants_vulkan GUARDED_BY(lock) = false;
   std::string encoded_params GUARDED_BY(lock);
   std::vector<std::pair<int, int>> fds GUARDED_BY(lock);
   std::map<gfx::AcceleratedWidget, MirrorRecord> mirror GUARDED_BY(lock);
@@ -368,9 +378,12 @@ int HandleBootstrap(const OHIPCParcel* data, OHIPCParcel* reply) {
     }
     fds.emplace_back(destination_fd, fd);
   }
+  int32_t wants_vulkan = 0;
+  OH_IPCParcel_ReadInt32(data, &wants_vulkan);
   ChildSide& side = Child();
   {
     base::AutoLock lock(side.lock);
+    side.wants_vulkan = wants_vulkan != 0;
     side.encoded_params = params;
     side.fds = std::move(fds);
     side.bootstrapped = true;
@@ -683,6 +696,12 @@ void ProbeOhosGpuChildEgl() {
   // Released with the process; this ran once, before Chromium, and
   // Chromium's own context comes next.
   make_current(display, nullptr, nullptr, nullptr);
+}
+
+bool OhosGpuChildWantsVulkan() {
+  ChildSide& side = Child();
+  base::AutoLock lock(side.lock);
+  return side.wants_vulkan;
 }
 
 void ProbeOhosGpuChildVulkan() {

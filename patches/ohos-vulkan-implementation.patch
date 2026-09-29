@@ -37,7 +37,8 @@ passed it to vkCreateSurfaceOHOS as though it were the OHNativeWindow*.
 The window lives in ozone's registry -- mirrored into the GPU process when
 the GPU runs in one of its own -- so the platform that creates this
 implementation now also says how to find a widget's window. And the steps
-that decide whether Vulkan is used at all say so at WARNING: when it fails,
+that decide whether Vulkan is used at all say so at ERROR -- the level that
+reaches the log from the GPU process -- because when it fails
 Chromium falls back to GL without a word, and the reason was lost.
 
 diff --git a/gpu/vulkan/features.gni b/gpu/vulkan/features.gni
@@ -122,11 +123,11 @@ new file mode 100644
 +  DCHECK(using_surface);
 +  std::vector<const char*> required_extensions = {
 +      VK_KHR_SURFACE_EXTENSION_NAME, "VK_OHOS_surface"};
-+  // Said at WARNING either way: when Vulkan was asked for and this fails,
++  // Said at ERROR either way: when Vulkan was asked for and this fails,
 +  // Chromium falls back to GL quietly, and the reason is otherwise lost.
 +  const bool initialized = vulkan_instance_.Initialize(
 +      base::FilePath("libvulkan.so"), required_extensions, {});
-+  LOG(WARNING) << "OHOS Vulkan: instance "
++  LOG(ERROR) << "OHOS Vulkan: instance "
 +               << (initialized ? "initialized" : "failed to initialize");
 +  return initialized;
 +}
@@ -189,7 +190,7 @@ new file mode 100644
 +    LOG(ERROR) << "OHOS Vulkan: vkCreateSurfaceOHOS() failed: " << result;
 +    return nullptr;
 +  }
-+  LOG(WARNING) << "OHOS Vulkan: surface created for widget " << window;
++  LOG(ERROR) << "OHOS Vulkan: surface created for widget " << window;
 +
 +  return std::make_unique<VulkanSurface>(instance, window, surface);
 +}

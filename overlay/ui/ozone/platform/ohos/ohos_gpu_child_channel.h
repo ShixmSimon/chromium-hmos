@@ -73,6 +73,10 @@ void ProbeOhosGpuChildEgl();
 // extensions, instance, physical device, swapchain support. Chromium falls
 // back to GL without a word when any of these fails. Diagnostic.
 void ProbeOhosGpuChildVulkan();
+// GPU process. Whether the browser asked Skia to use Vulkan, as it said in
+// the bootstrap. Chromium carries that to the GPU process in the encoded
+// --gpu-preferences, which is not readable before Chromium starts.
+bool OhosGpuChildWantsVulkan();
 // Blocks until the parent has sent the command line and descriptors.
 // `fds` pairs each descriptor's number in the child with the descriptor.
 bool WaitForOhosGpuChildBootstrap(std::string* encoded_params,
