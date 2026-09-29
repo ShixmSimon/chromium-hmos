@@ -1,0 +1,170 @@
+Say how far GPU start-up gets, on both sides of the channel.
+
+With Skia on Vulkan in a GPU process of its own, the browser never asked
+for a compositor, and in one run the GPU process said nothing after the
+Vulkan instance -- not even the device queue it had reported the time
+before. A GPU process that has not finished starting and a browser that
+never heard it finish look the same from outside, and the process does
+not crash, so the shell sees it as settled.
+
+On OHOS each step says so at ERROR: in the GPU process, initialisation
+beginning and done (with whether Vulkan and Skia-on-Vulkan survived it),
+Vulkan beginning and ready, the context provider and the device queue
+being created -- before the call as well as after, so one that never
+returns shows -- the service initialised with its host, and each channel
+established. In the browser, the GPU process reported initialised, and
+each channel asked for and established or failed.
+
+Diagnostic; it comes out once Vulkan is understood here.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch,
+ohos-gpu-fence-capability.patch, ohos-gl-init-diagnostics.patch,
+ohos-gpu-lose-context-debug-url.patch and
+ohos-vulkan-compositor-diagnostics.patch.
+diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/components/viz/common/gpu/vulkan_in_process_context_provider.cc
+--- a/components/viz/common/gpu/vulkan_in_process_context_provider.cc
++++ b/components/viz/common/gpu/vulkan_in_process_context_provider.cc
+@@ -127,6 +127,11 @@ bool VulkanInProcessContextProvider::Initialize(const gpu::GPUInfo* gpu_info,
+     }
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Before as well as after: a device queue that never comes back looks
++  // the same as one that was never asked for.
++  LOG(ERROR) << "OHOS Vulkan: creating the device queue";
++#endif
+   device_queue_ =
+       gpu::CreateVulkanDeviceQueue(vulkan_implementation_, flags, gpu_info,
+                                    heap_memory_limit_, is_thread_safe);
+diff --git a/components/viz/host/gpu_host_impl.cc b/components/viz/host/gpu_host_impl.cc
+--- a/components/viz/host/gpu_host_impl.cc
++++ b/components/viz/host/gpu_host_impl.cc
+@@ -9,6 +9,7 @@
+ #include "base/feature_list.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback_helpers.h"
++#include "base/logging.h"
+ #include "base/no_destructor.h"
+ #include "base/process/process_handle.h"
+ #include "base/strings/strcat.h"
+@@ -302,6 +303,10 @@ void GpuHostImpl::EstablishGpuChannel(int client_id,
+                                       mojo::ScopedMessagePipeHandle handle,
+                                       EstablishChannelCallback callback) {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS GPU host: asking for a channel for client "
++             << client_id;
++#endif
+   TRACE_EVENT2("gpu", "GpuHostImpl::EstablishGpuChannel", "client_id",
+                client_id, "is_gpu_host", is_gpu_host);
+   DCHECK(!(is_gpu_host && enable_extra_handles_validation));
+@@ -590,6 +595,10 @@ void GpuHostImpl::OnChannelEstablished(
+     const gpu::GPUInfo& gpu_info,
+     const gpu::GpuFeatureInfo& gpu_feature_info,
+     const gpu::SharedImageCapabilities& shared_image_capabilities) {
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS GPU host: channel for client " << client_id
++             << (success ? " established" : " FAILED");
++#endif
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+   TRACE_EVENT0("gpu", "GpuHostImpl::OnChannelEstablished");
+ 
+@@ -647,6 +656,11 @@ void GpuHostImpl::DidInitialize(
+     const std::optional<gpu::GpuFeatureInfo>& gpu_feature_info_for_hardware_gpu,
+     const gfx::GpuExtraInfo& gpu_extra_info) {
+   TRACE_EVENT0("gpu", "GpuHostImpl::DidInitialize");
++#if BUILDFLAG(IS_OHOS)
++  // The browser's side of GPU start-up. Without these the browser waiting
++  // on the GPU process looked the same as the GPU process never answering.
++  LOG(ERROR) << "OHOS GPU host: GPU process initialised";
++#endif
+   delegate_->DidInitialize(gpu_info, gpu_feature_info,
+                            gpu_info_for_hardware_gpu,
+                            gpu_feature_info_for_hardware_gpu, gpu_extra_info);
+diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/service/gl/gpu_service_impl.cc
+--- a/components/viz/service/gl/gpu_service_impl.cc
++++ b/components/viz/service/gl/gpu_service_impl.cc
+@@ -247,6 +247,9 @@ GpuServiceImpl::GpuServiceImpl(
+ 
+     const bool is_thread_safe = features::IsDrDcEnabled(gpu_feature_info);
+ 
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS GPU startup: creating the Vulkan context provider";
++#endif
+     // If GL is using a real GPU, the gpu_info will be passed in and vulkan will
+     // use the same GPU.
+     vulkan_context_provider_ = VulkanInProcessContextProvider::Create(
+@@ -555,6 +558,9 @@ void GpuServiceImpl::InitializeWithHostInternal(
+   }
+ 
+   UMA_HISTOGRAM_BOOLEAN("GPU.DrDcEnabled", !!compositor_gpu_thread_);
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS GPU startup: GPU service initialised with the host";
++#endif
+ 
+ #if BUILDFLAG(IS_WIN)
+   // Add GpuServiceImpl to DirectCompositionOverlayCapsMonitor observer list for
+@@ -950,6 +956,10 @@ void GpuServiceImpl::EstablishGpuChannel(
+ 
+   media_gpu_channel_manager_->AddChannel(client_id, channel_token);
+ 
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS GPU startup: channel established for client "
++             << client_id;
++#endif
+   std::move(callback).Run(
+       /*success=*/true, gpu_info_, gpu_feature_info_,
+       gpu_channel->shared_image_stub()->factory()->MakeCapabilities());
+diff --git a/gpu/ipc/service/gpu_init.cc b/gpu/ipc/service/gpu_init.cc
+--- a/gpu/ipc/service/gpu_init.cc
++++ b/gpu/ipc/service/gpu_init.cc
+@@ -444,6 +444,12 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
+ #if BUILDFLAG(IS_CHROMEOS)
+   LOG(WARNING) << "Starting gpu initialization.";
+ #endif  //  BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_OHOS)
++  // Where GPU start-up gets to, step by step: with Skia on Vulkan in a GPU
++  // process of its own the browser never asked for a compositor, which is
++  // what happens while it waits on a GPU process that has not finished.
++  LOG(ERROR) << "OHOS GPU startup: initialisation begins";
++#endif
+   gpu_preferences_ = gpu_preferences;
+ 
+   // Record the number of recent GPU process crashes as a crash key so that it
+@@ -1098,6 +1104,16 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
+   }
+ #endif  // !BUILDFLAG(IS_MAC)
+ 
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS GPU startup: initialisation done, Vulkan "
++             << (gpu_preferences_.use_vulkan != VulkanImplementationName::kNone
++                     ? "on"
++                     : "off")
++             << ", Skia on "
++             << (gpu_preferences_.gr_context_type == GrContextType::kVulkan
++                     ? "Vulkan"
++                     : "not Vulkan");
++#endif
+   return true;
+ }
+ 
+@@ -1493,6 +1509,9 @@ bool GpuInit::InitializeDawn() {
+ bool GpuInit::InitializeVulkan() {
+ #if BUILDFLAG(ENABLE_VULKAN)
+   TRACE_EVENT("gpu,startup", "gpu::GpuInit::InitializeVulkan");
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS GPU startup: Vulkan begins";
++#endif
+   DCHECK(gpu_feature_info_.status_values[GPU_FEATURE_TYPE_VULKAN] ==
+              kGpuFeatureStatusEnabled ||
+          gpu_feature_info_
+@@ -1569,6 +1588,9 @@ bool GpuInit::InitializeVulkan() {
+   gpu_info_.gpu.device_id = device_properties.device_id;
+ #endif  // BUILDFLAG(IS_ANDROID)
+ 
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS GPU startup: Vulkan ready";
++#endif
+   return true;
+ #else   // !BUILDFLAG(ENABLE_VULKAN)
+   return false;
