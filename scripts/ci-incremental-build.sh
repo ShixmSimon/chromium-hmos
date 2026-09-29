@@ -61,21 +61,30 @@ apply_incremental_patch() {
   # any patch in the list wedges every build after it with "neither applies
   # nor is already present".
   #
-  # "Reverse-applies" alone cannot tell which revision is in the tree: an edit
-  # that only removes a line leaves the new revision's context intact, so it
-  # reverse-applies over the old one too (ohos-screen-orientation.patch
-  # dropped a `deps +=` line and was reported as already applied while the
-  # old line kept breaking gn). Of the revisions that reverse-apply, the one
-  # adding the most lines is the one actually present.
-  #
   # Reverse checks ignore context (-C0): patches later in the list add lines
   # next to earlier ones (several add sources to the same BUILD.gn list), so an
   # earlier patch's context no longer matches once they are in, although its
   # own lines are all there.
+  #
+  # If the current revision reverse-applies, every line it adds is in the tree,
+  # and that is the end of it. Reading on through history for a revision that
+  # adds more lines is what broke this build: ohos-gpu-ohos-os-type.patch at
+  # 86b6945d was exported against pristine Chromium and so carried three lines
+  # belonging to the main patch and one to another incremental patch. That made
+  # it the revision adding the most lines, so it won every round, and backing
+  # it out deleted those four lines from a tree the main patch is never
+  # replayed into -- leaving the build unable to link gpu_info_collector_ohos.cc
+  # with nothing wrong in the source.
+  #
+  # The cost of stopping here: an edit that only *removes* a line leaves the
+  # new revision reverse-applying over the old one, so the removed line stays
+  # in the tree and this says "already applied" (ohos-screen-orientation.patch
+  # dropped a `deps +=` line, and the stale line kept breaking gn). That fails
+  # loudly and at once. Deleting another patch's lines does not.
   local rev best_rev="" best_lines=-1 lines
   if git -C "$src" apply -C0 --reverse --check "$patch" 2>/dev/null; then
-    best_rev=current
-    best_lines=$(grep -c '^+[^+]' "$patch" || true)
+    say "incremental patch ${name} already applied"
+    return
   fi
   for rev in $(git -C "$repo_root" log --format=%H -n 20 -- "$rel"); do
     if git -C "$repo_root" show "${rev}:${rel}" 2>/dev/null | cmp -s - "$patch"; then
@@ -90,10 +99,6 @@ apply_incremental_patch() {
       fi
     fi
   done
-  if [[ "$best_rev" == current ]]; then
-    say "incremental patch ${name} already applied"
-    return
-  fi
   if [[ -n "$best_rev" ]]; then
     git -C "$repo_root" show "${best_rev}:${rel}" |
       git -C "$src" apply -C0 --reverse ||
