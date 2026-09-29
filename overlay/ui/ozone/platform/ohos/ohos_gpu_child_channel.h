@@ -65,6 +65,10 @@ int32_t GetOhosGpuChildApplicationWindowId(gfx::AcceleratedWidget widget);
 //
 // Returns the OHIPCRemoteStub the system hands to the parent.
 void* CreateOhosGpuChildStub();
+// Tries the system's EGL and GLES directly, step by step, and logs each
+// result: whether this process can reach the GPU at all, before ANGLE and
+// Chromium make the same calls with less to say about them. Diagnostic.
+void ProbeOhosGpuChildEgl();
 // Blocks until the parent has sent the command line and descriptors.
 // `fds` pairs each descriptor's number in the child with the descriptor.
 bool WaitForOhosGpuChildBootstrap(std::string* encoded_params,

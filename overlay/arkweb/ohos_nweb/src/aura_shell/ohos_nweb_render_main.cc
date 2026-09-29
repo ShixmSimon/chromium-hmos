@@ -225,5 +225,6 @@ ChromiumHarmonyOSGpuChildMainProc() {
     WVLOG_E("AuraShell GPU child never received its startup parameters");
     return;
   }
+  ui::ProbeOhosGpuChildEgl();
   RunNativeChild(encoded_params.c_str(), fds);
 }

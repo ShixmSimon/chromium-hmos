@@ -4,6 +4,7 @@
 
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 
+#include <dlfcn.h>
 #include <unistd.h>
 
 #include <map>
@@ -499,6 +500,113 @@ void* CreateOhosGpuChildStub() {
   return OH_IPCRemoteStub_Create(kStubDescriptor, &OnRemoteRequest,
                                  /*destroyCallback=*/nullptr,
                                  /*userData=*/nullptr);
+}
+
+void ProbeOhosGpuChildEgl() {
+  // Which process this is to the system: a GPU denied by the sandbox shows
+  // up here, not as an EGL error.
+  std::string security_context;
+  base::ReadFileToString(base::FilePath("/proc/self/attr/current"),
+                         &security_context);
+  LOG(WARNING) << "OHOS GPU child probe: uid=" << getuid()
+               << " context=" << security_context;
+
+  // By dlopen, as ANGLE's FunctionsEGLDL loads them, so nothing here links
+  // against the system's GL and nothing clashes with ANGLE's own libraries.
+  void* egl = dlopen("libEGL.so", RTLD_NOW | RTLD_LOCAL);
+  void* gles = dlopen("libGLESv3.so", RTLD_NOW | RTLD_LOCAL);
+  LOG(WARNING) << "OHOS GPU child probe: libEGL=" << (egl ? "ok" : dlerror())
+               << " libGLESv3=" << (gles ? "ok" : "missing");
+  if (!egl || !gles) {
+    return;
+  }
+  using GetDisplay = void* (*)(void*);
+  using Initialize = unsigned (*)(void*, int*, int*);
+  using GetError = int (*)();
+  using ChooseConfig = unsigned (*)(void*, const int*, void**, int, int*);
+  using CreatePbuffer = void* (*)(void*, void*, const int*);
+  using CreateContext = void* (*)(void*, void*, void*, const int*);
+  using MakeCurrent = unsigned (*)(void*, void*, void*, void*);
+  using GetString = const unsigned char* (*)(unsigned);
+  auto get_display = reinterpret_cast<GetDisplay>(dlsym(egl, "eglGetDisplay"));
+  auto initialize = reinterpret_cast<Initialize>(dlsym(egl, "eglInitialize"));
+  auto get_error = reinterpret_cast<GetError>(dlsym(egl, "eglGetError"));
+  auto choose_config =
+      reinterpret_cast<ChooseConfig>(dlsym(egl, "eglChooseConfig"));
+  auto create_pbuffer =
+      reinterpret_cast<CreatePbuffer>(dlsym(egl, "eglCreatePbufferSurface"));
+  auto create_context =
+      reinterpret_cast<CreateContext>(dlsym(egl, "eglCreateContext"));
+  auto make_current =
+      reinterpret_cast<MakeCurrent>(dlsym(egl, "eglMakeCurrent"));
+  auto get_string = reinterpret_cast<GetString>(dlsym(gles, "glGetString"));
+  if (!get_display || !initialize || !get_error || !choose_config ||
+      !create_pbuffer || !create_context || !make_current || !get_string) {
+    LOG(WARNING) << "OHOS GPU child probe: an EGL or GLES entry is missing";
+    return;
+  }
+
+  constexpr int kNone = 0x3038;               // EGL_NONE
+  constexpr int kSurfaceType = 0x3033;        // EGL_SURFACE_TYPE
+  constexpr int kPbufferBit = 0x0001;         // EGL_PBUFFER_BIT
+  constexpr int kRenderableType = 0x3040;     // EGL_RENDERABLE_TYPE
+  constexpr int kOpenGLES3Bit = 0x0040;       // EGL_OPENGL_ES3_BIT
+  constexpr int kWidth = 0x3057;              // EGL_WIDTH
+  constexpr int kHeight = 0x3056;             // EGL_HEIGHT
+  constexpr int kClientVersion = 0x3098;      // EGL_CONTEXT_CLIENT_VERSION
+  constexpr unsigned kVendor = 0x1F00;        // GL_VENDOR
+  constexpr unsigned kRenderer = 0x1F01;      // GL_RENDERER
+  constexpr unsigned kVersion = 0x1F02;       // GL_VERSION
+
+  void* display = get_display(nullptr);
+  int major = 0;
+  int minor = 0;
+  const unsigned initialized =
+      display ? initialize(display, &major, &minor) : 0;
+  LOG(WARNING) << "OHOS GPU child probe: display=" << (display ? "ok" : "none")
+               << " initialize=" << initialized << " version=" << major << "."
+               << minor << " error=0x" << std::hex << get_error();
+  if (!initialized) {
+    return;
+  }
+  const int config_attributes[] = {kSurfaceType, kPbufferBit, kRenderableType,
+                                   kOpenGLES3Bit, kNone};
+  void* config = nullptr;
+  int config_count = 0;
+  const unsigned chosen =
+      choose_config(display, config_attributes, &config, 1, &config_count);
+  const int pbuffer_attributes[] = {kWidth, 1, kHeight, 1, kNone};
+  void* surface =
+      chosen && config_count ? create_pbuffer(display, config,
+                                              pbuffer_attributes)
+                             : nullptr;
+  const int context_attributes[] = {kClientVersion, 3, kNone};
+  void* context = chosen && config_count
+                      ? create_context(display, config, nullptr,
+                                       context_attributes)
+                      : nullptr;
+  const unsigned current =
+      surface && context ? make_current(display, surface, surface, context)
+                         : 0;
+  LOG(WARNING) << "OHOS GPU child probe: configs=" << config_count
+               << " pbuffer=" << (surface ? "ok" : "none")
+               << " context=" << (context ? "ok" : "none")
+               << " current=" << current << " error=0x" << std::hex
+               << get_error();
+  if (!current) {
+    return;
+  }
+  auto text = [&](unsigned name) {
+    const unsigned char* value = get_string(name);
+    return value ? std::string(reinterpret_cast<const char*>(value))
+                 : std::string("(null)");
+  };
+  LOG(WARNING) << "OHOS GPU child probe: vendor=" << text(kVendor)
+               << " renderer=" << text(kRenderer)
+               << " version=" << text(kVersion);
+  // Released with the process; this ran once, before Chromium, and
+  // Chromium's own context comes next.
+  make_current(display, nullptr, nullptr, nullptr);
 }
 
 bool WaitForOhosGpuChildBootstrap(std::string* encoded_params,

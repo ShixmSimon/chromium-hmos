@@ -1,0 +1,52 @@
+Refuse a GL that returns no version string instead of crashing on it.
+
+The GPU process in a native child of its own crashed in its first half
+second, every time: SIGSEGV in strlen, from FunctionsGL::initialize via
+DisplayEGL::createRenderer. glGetString(GL_VERSION) had returned null --
+no current context, or a driver that would not answer in that process --
+and it went straight into a std::string.
+
+On OHOS a null version is now read as version 0.0 of GLES, which
+DisplayEGL refuses, so EGL initialisation fails and Chromium's own
+fallback takes over instead of the process dying. The extensions string
+gets the same guard. This does not make GL work in that process; it
+makes a GL that does not work fail the way the rest of the stack
+expects.
+
+Generated for ANGLE 5382ed032a48ca6fefe8c3bca2c3c7c8edb8b63c (Chromium
+154.0.8037.51).
+
+diff --git a/third_party/angle/src/libANGLE/renderer/gl/FunctionsGL.cpp b/third_party/angle/src/libANGLE/renderer/gl/FunctionsGL.cpp
+--- a/third_party/angle/src/libANGLE/renderer/gl/FunctionsGL.cpp
++++ b/third_party/angle/src/libANGLE/renderer/gl/FunctionsGL.cpp
+@@ -21,7 +21,19 @@ static void GetGLVersion(PFNGLGETSTRINGPROC getStringFunction,
+                          gl::Version *outVersion,
+                          StandardGL *outStandard)
+ {
+-    const std::string version = reinterpret_cast<const char *>(getStringFunction(GL_VERSION));
++    const char *rawVersion = reinterpret_cast<const char *>(getStringFunction(GL_VERSION));
++#if defined(ANGLE_PLATFORM_OHOS)
++    // No current context, or a driver that will not answer: glGetString
++    // returns null, and constructing a string from it was a segfault in
++    // strlen. Version 0.0 makes the caller refuse the context instead.
++    if (rawVersion == nullptr)
++    {
++        *outStandard = STANDARD_GL_ES;
++        *outVersion  = gl::Version(0, 0);
++        return;
++    }
++#endif
++    const std::string version = rawVersion;
+     if (version.find("OpenGL ES") == std::string::npos)
+     {
+         // OpenGL spec states the GL_VERSION string will be in the following format:
+@@ -83,6 +95,9 @@ void FunctionsGL::initialize(const egl::AttributeMap &displayAttributes)
+     else
+     {
+         const char *exts = reinterpret_cast<const char *>(getString(GL_EXTENSIONS));
++#if defined(ANGLE_PLATFORM_OHOS)
++        if (exts != nullptr)
++#endif
+         angle::SplitStringAlongWhitespace(std::string(exts), &extensions);
+     }
+ 
