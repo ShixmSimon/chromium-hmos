@@ -358,7 +358,7 @@ Chromium 自己的安装确认框,用户确认后才装。
 |---|---|---|
 | `moveTab` | `id`, `toIndex` | 按 id 重排标签 |
 | `activateTabById` | `id` | 按 id 切换标签 |
-| `handleBack` | `requestId` | `backHandled { requestId, handled }`。系统返回手势**先问网页**:页面开着 `<dialog>`、全屏、或自己注册了 CloseWatcher 时 `handled` 为 true,外壳就不要再后退 |
+| `handleBack` | `requestId` | `backHandled { requestId, handled, by? }`。系统返回手势**先发这条,不要直接发 `back`**。内核先关浏览器自己打开的气泡或对话框(装完扩展的"已添加"气泡、权限询问等,手机上没有别的办法关掉它们),`by` 为 `browserDialog`;没有的话再问网页,页面开着 `<dialog>`、全屏、或自己注册了 CloseWatcher 时 `by` 为 `page`。`handled` 为 true 时外壳就不要再后退 |
 | `insertText` | `text` | 把文字插到当前输入位置。Chromium 读不了系统剪贴板(要 `READ_PASTEBOARD` 受限权限),外壳用系统粘贴安全控件读出来后发这条 |
 | `groupTabs` | `ids`, `openerIds?` | 把这些标签编成一个组。`openerIds` 与 `ids` 等长、`''` 表示没有,用来在重启后把"谁打开了谁"一起交回来(内核按 session id 记 opener,重开的标签是全新的,自己推不出来);长度对不上就整个忽略。自己保存网址列表、启动后逐个 `newTab` 重开的外壳用这个把组重新建起来。少于两个不建组;已经在别的组里的会退出来加入新组 |
 | `getPageContinuation` | `requestId` | `pageContinuation { requestId, url, title, scrollX, scrollY, pageWidth, pageHeight }`。当前窗口的当前标签 |

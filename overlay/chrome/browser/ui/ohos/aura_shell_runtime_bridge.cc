@@ -1475,13 +1475,18 @@ void SendExtensionActions(gfx::AcceleratedWidget widget,
 // already uses: the extension's own button when it is pinned, the extensions
 // button otherwise.
 //
-// A phone has neither -- there is no toolbar to pin anything to. Until the
-// phone's own extensions page exists and settles what should happen there,
-// anchor to the bottom edge of the window, which is where a sheet would come
-// from and is at least reachable by a thumb.
-gfx::Rect ExtensionPopupAnchorRect(BrowserWindowInterface* browser,
-                                   views::Widget* parent,
-                                   const std::string& extension_id) {
+// A phone has neither -- there is no toolbar to pin anything to -- and the
+// popup opens upward from the bottom, centred and clear of the shell's
+// bottom bar, which is where a sheet would come from and is within reach of
+// a thumb.
+struct ExtensionPopupAnchor {
+  gfx::Rect rect;
+  views::BubbleBorder::Arrow arrow;
+};
+
+ExtensionPopupAnchor ExtensionPopupAnchorFor(BrowserWindowInterface* browser,
+                                             views::Widget* parent,
+                                             const std::string& extension_id) {
   const gfx::AcceleratedWidget widget = GetBrowserWidget(browser);
   const gfx::Rect window = parent->GetWindowBoundsInScreen();
 
@@ -1494,12 +1499,27 @@ gfx::Rect ExtensionPopupAnchorRect(BrowserWindowInterface* browser,
     // Relative to the page's component (GetAuraShellAnchorRect takes the
     // shell's window coordinates there); a bubble anchors in screen ones.
     rect.Offset(window.OffsetFromOrigin());
-    return rect;
+    return {rect, views::BubbleBorder::TOP_RIGHT};
   }
 
-  // Nothing reported: a zero-height strip along the bottom, so the bubble
-  // opens upward across the width of the window.
-  return gfx::Rect(window.x(), window.bottom(), window.width(), 0);
+  // Nothing reported -- a phone, with no toolbar to point at: a point at
+  // the middle of the window's width, just above whatever the shell draws
+  // over the bottom of the page (setViewportInsets), so the popup opens
+  // upward from there, centred. It used to hang from a strip across the
+  // bottom edge, which put it against the left side and under the shell's
+  // bottom bar.
+  int bottom_inset = 0;
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    auto inset = state.viewport_bottom_inset.find(widget);
+    if (inset != state.viewport_bottom_inset.end()) {
+      bottom_inset = inset->second;
+    }
+  }
+  return {gfx::Rect(window.CenterPoint().x(), window.bottom() - bottom_inset,
+                    0, 0),
+          views::BubbleBorder::BOTTOM_CENTER};
 }
 
 // The same thing as clicking the button on Chromium's toolbar: the extension
@@ -1667,11 +1687,12 @@ void RunExtensionAction(BrowserWindowInterface* browser,
     return;
   }
 
-  ExtensionPopup::ShowPopupAtShellRect(
-      browser, std::move(host), parent,
-      ExtensionPopupAnchorRect(browser, parent, *id),
-      views::BubbleBorder::TOP_RIGHT, PopupShowAction::kShow,
-      ShowPopupCallback());
+  const ExtensionPopupAnchor anchor =
+      ExtensionPopupAnchorFor(browser, parent, *id);
+  ExtensionPopup::ShowPopupAtShellRect(browser, std::move(host), parent,
+                                       anchor.rect, anchor.arrow,
+                                       PopupShowAction::kShow,
+                                       ShowPopupCallback());
 }
 
 void SetExtensionPinned(BrowserWindowInterface* browser,
@@ -2750,6 +2771,46 @@ bool BrowserOwnedWidgetIsActive(BrowserWindowInterface* browser) {
   return false;
 }
 
+// Closes the last shown of the browser's own bubbles and dialogs -- an
+// extension's "added" bubble, a permission prompt, a chooser -- and says
+// whether there was one. Popups and menus are left alone, and so are windows
+// the shell hosts itself: only widgets whose delegate is a dialog.
+//
+// On a desktop these close when the window loses activation or with Escape.
+// A phone has one window and no Escape key, so the back gesture is the only
+// way out -- and without this it went to the page, and a bubble with no
+// close button stayed until the app was killed.
+bool CloseTopBrowserDialog(BrowserWindowInterface* browser) {
+  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
+  views::Widget* browser_widget =
+      browser_view ? browser_view->GetWidget() : nullptr;
+  if (!browser_widget) {
+    return false;
+  }
+  const gfx::NativeView native_view = browser_widget->GetNativeView();
+  views::Widget* top = nullptr;
+  for (const views::Widget::Widgets& widgets :
+       {views::Widget::GetAllOwnedWidgets(native_view),
+        views::Widget::GetAllChildWidgets(native_view)}) {
+    for (views::Widget* candidate : widgets) {
+      if (candidate == browser_widget || !candidate->IsVisible() ||
+          candidate->IsClosed() || !candidate->widget_delegate() ||
+          !candidate->widget_delegate()->AsDialogDelegate()) {
+        continue;
+      }
+      // The active one if there is one, which is what Escape would close.
+      if (!top || candidate->IsActive()) {
+        top = candidate;
+      }
+    }
+  }
+  if (!top) {
+    return false;
+  }
+  top->CloseWithReason(views::Widget::ClosedReason::kEscKeyPressed);
+  return true;
+}
+
 void ApplyWindowStateOnUiThread(gfx::AcceleratedWidget widget, int attempt) {
   BrowserWindowInterface* browser = FindBrowserForWidget(widget);
   if (!browser || !browser->GetWindow()) {
@@ -3380,10 +3441,19 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     // it. A page with a <dialog> open, in fullscreen, or with a CloseWatcher
     // of its own expects back to close that first -- which is what it does
     // in every other browser -- and the shell cannot know that from outside.
+    //
+    // Before the page: a bubble or dialog of the browser's own, which on a
+    // phone nothing else can close.
     base::DictValue event;
     event.Set("event", "backHandled");
     event.Set("requestId", command.FindInt("requestId").value_or(0));
-    event.Set("handled", active && active->SignalCloseWatcherIfActive());
+    const bool closed_dialog = CloseTopBrowserDialog(browser);
+    const bool page_handled =
+        !closed_dialog && active && active->SignalCloseWatcherIfActive();
+    event.Set("handled", closed_dialog || page_handled);
+    if (closed_dialog || page_handled) {
+      event.Set("by", closed_dialog ? "browserDialog" : "page");
+    }
     DispatchRuntimeEvent(widget, std::move(event));
   } else if (*name == "insertText" && active) {
     // The shell read the system pasteboard for us. Chromium cannot: reading

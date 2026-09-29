@@ -591,4 +591,8 @@ export interface BackHandledEvent {
   event: 'backHandled';
   requestId: number;
   handled: boolean;
+  // What took it, when handled: 'browserDialog' when one of the browser's
+  // own bubbles or dialogs was open and was closed (an extension's "added"
+  // bubble, a permission prompt), 'page' when the page took it.
+  by?: 'browserDialog' | 'page';
 }

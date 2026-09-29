@@ -15,6 +15,11 @@ The title said "... has been added to Chromium". The product is the
 shell's, and it names itself with productName in the startup config; the
 title uses that name instead of Chromium's when one was given.
 
+On a phone the bubble could not be closed at all. Upstream closes it when
+the window loses activation, and a phone has one window, so that never
+happens; it has no close button either. It has one on OHOS now, and the
+shell's back gesture (handleBack) closes it too.
+
 Generated for Chromium 154.0.8037.51 after
 ohos-extension-bubble-anchor.patch.
 
@@ -55,13 +60,10 @@ diff --git a/chrome/browser/ui/extensions/extension_post_install_dialog.cc b/chr
  #if BUILDFLAG(IS_ANDROID)
  #include "chrome/common/pref_names.h"
  #include "components/prefs/pref_service.h"
-@@ -54,9 +58,15 @@ void ConfigurePostInstallDialogModel(
+@@ -54,9 +58,22 @@ void ConfigurePostInstallDialogModel(
        extensions::ui_util::GetFixupExtensionNameForUIDisplay(
            model->extension_name());
    base::i18n::AdjustStringForLocaleDirection(&extension_name);
--  dialog_model_builder
--      .SetTitle(l10n_util::GetStringFUTF16(IDS_EXTENSION_INSTALLED_HEADING,
--                                           extension_name))
 +  std::u16string title =
 +      l10n_util::GetStringFUTF16(IDS_EXTENSION_INSTALLED_HEADING,
 +                                 extension_name);
@@ -70,7 +72,16 @@ diff --git a/chrome/browser/ui/extensions/extension_post_install_dialog.cc b/chr
 +  // its name.
 +  title = chrome::ohos::WithAuraShellProductName(std::move(title));
 +#endif
-+  dialog_model_builder.SetTitle(title)
++  dialog_model_builder.SetTitle(title);
++#if BUILDFLAG(IS_OHOS)
++  // A way to close it that does not depend on the window losing activation:
++  // on a phone there is one window, so it never does, and the bubble stayed
++  // until the app was killed.
++  dialog_model_builder.OverrideShowCloseButton(true);
++#endif
+   dialog_model_builder
+-      .SetTitle(l10n_util::GetStringFUTF16(IDS_EXTENSION_INSTALLED_HEADING,
+-                                           extension_name))
        .SetIcon(
            ui::ImageModel::FromImageSkia(model->MakeIconOfSize(kMaxIconSize)));
  
