@@ -1,0 +1,85 @@
+Put every extension in the one process a single-process phone has.
+
+With extension pages committing on a phone, uBlock Origin Lite's popup
+came up bare: its own five stylesheets unreadable (SecurityError), a
+fetch of its own css failing, no icon font, the script stuck in
+"loading", and chrome.runtime.sendMessage to its service worker never
+answered.
+
+ProcessMap records one extension per renderer process. A phone runs
+single-process -- one renderer, inside the browser, holding every page
+and every extension -- so whichever extension got there first owned the
+process, and every other one was "not in its process". Its page's own
+subresources were then cross-renderer loads and refused
+(AllowExtensionResourceLoad), and its API context was classified the way
+a web page's would be.
+
+On OHOS in single-process mode ProcessMap::Contains now answers that
+every extension is in the one process there is. That is the process
+check only: whether a resource belongs to the extension, whether it is
+web-accessible, and the rest of AllowExtensionResourceLoad run as before.
+A refused extension resource is also logged in a release build, with the
+URL, process and destination -- in the page it is only a failed fetch.
+
+Tablets and 2in1s run renderers in processes of their own and none of
+this applies to them.
+
+Generated for Chromium 154.0.8037.51 after
+ohos-extension-context-diagnostics.patch.
+
+diff --git a/extensions/browser/extension_protocols.cc b/extensions/browser/extension_protocols.cc
+--- a/extensions/browser/extension_protocols.cc
++++ b/extensions/browser/extension_protocols.cc
+@@ -279,6 +279,13 @@ bool AllowExtensionResourceLoad(const network::ResourceRequest& request,
+     return true;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Said in a release build: a refused load is otherwise only a failed
++  // fetch or an unreadable stylesheet in the page.
++  LOG(ERROR) << "OHOS extension resource refused: " << request.url.spec()
++             << " from process " << child_id.GetUnsafeValue()
++             << ", destination " << static_cast<int>(destination);
++#endif
+   // No special exceptions for cross-process loading. Block the load.
+   return false;
+ }
+diff --git a/extensions/browser/process_map.cc b/extensions/browser/process_map.cc
+--- a/extensions/browser/process_map.cc
++++ b/extensions/browser/process_map.cc
+@@ -11,6 +11,7 @@
+ #include "base/containers/map_util.h"
+ #include "base/logging.h"
+ #include "base/types/optional_util.h"
++#include "build/build_config.h"
+ #include "components/guest_view/buildflags/buildflags.h"
+ #include "content/public/browser/child_process_security_policy.h"
+ #include "content/public/browser/render_process_host.h"
+@@ -98,11 +99,27 @@ int ProcessMap::Remove(content::ChildProcessId process_id) {
+ 
+ bool ProcessMap::Contains(const ExtensionId& extension_id_in,
+                           content::ChildProcessId process_id) const {
++#if BUILDFLAG(IS_OHOS)
++  // A phone runs single-process: one renderer, inside the browser, holds
++  // every page and every extension. The map keeps one extension per
++  // process, so whichever extension started first owned it and every other
++  // one was "not in its process" -- its page's own stylesheets and scripts
++  // were refused, its API context was taken for a web page's. Every
++  // extension is in the one process there is.
++  if (content::RenderProcessHost::run_renderer_in_process()) {
++    return true;
++  }
++#endif
+   auto* extension_id = base::FindOrNull(items_, process_id);
+   return extension_id && *extension_id == extension_id_in;
+ }
+ 
+ bool ProcessMap::Contains(content::ChildProcessId process_id) const {
++#if BUILDFLAG(IS_OHOS)
++  if (content::RenderProcessHost::run_renderer_in_process()) {
++    return true;
++  }
++#endif
+   return items_.contains(process_id);
+ }
+ 
