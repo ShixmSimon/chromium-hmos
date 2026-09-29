@@ -271,6 +271,11 @@ export interface ExtensionActionItem {
   // extensions page. Not `enabled`, which is about the current page. Switched
   // off extensions are listed after the others.
   userEnabled: boolean;
+  // Why a disabled extension is disabled, Chromium's own reasons by name --
+  // 'userAction' is the reader's switch; 'notVerified', 'corrupted',
+  // 'permissionsIncrease' and the rest are Chromium's doing. Empty when
+  // enabled.
+  disableReasons: string[];
   // Whether it has a popup (action.default_popup).
   hasPopup: boolean;
   // Its options page, or empty. openExtensionOptions opens it.

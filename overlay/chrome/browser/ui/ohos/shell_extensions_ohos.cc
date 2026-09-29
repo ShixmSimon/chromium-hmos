@@ -121,6 +121,56 @@ void EnsureRegistryWatcher(Profile* profile) {
   watchers->emplace(profile, std::make_unique<RegistryWatcher>(profile));
 }
 
+// Why Chromium holds an extension disabled, by name. chrome.management
+// reports most of these as "unknown", which is what the shell saw for two
+// extensions nobody had switched off.
+std::string_view DisableReasonName(
+    extensions::disable_reason::DisableReason reason) {
+  namespace reason_ns = extensions::disable_reason;
+  switch (reason) {
+    case reason_ns::DISABLE_USER_ACTION:
+      return "userAction";
+    case reason_ns::DISABLE_PERMISSIONS_INCREASE:
+      return "permissionsIncrease";
+    case reason_ns::DISABLE_RELOAD:
+      return "reload";
+    case reason_ns::DISABLE_UNSUPPORTED_REQUIREMENT:
+      return "unsupportedRequirement";
+    case reason_ns::DISABLE_SIDELOAD_WIPEOUT:
+      return "sideloadWipeout";
+    case reason_ns::DISABLE_NOT_VERIFIED:
+      return "notVerified";
+    case reason_ns::DISABLE_GREYLIST:
+      return "greylist";
+    case reason_ns::DISABLE_CORRUPTED:
+      return "corrupted";
+    case reason_ns::DISABLE_REMOTE_INSTALL:
+      return "remoteInstall";
+    case reason_ns::DISABLE_EXTERNAL_EXTENSION:
+      return "externalExtension";
+    case reason_ns::DISABLE_UPDATE_REQUIRED_BY_POLICY:
+      return "updateRequiredByPolicy";
+    case reason_ns::DISABLE_CUSTODIAN_APPROVAL_REQUIRED:
+      return "custodianApprovalRequired";
+    case reason_ns::DISABLE_BLOCKED_BY_POLICY:
+      return "blockedByPolicy";
+    case reason_ns::DISABLE_REINSTALL:
+      return "reinstall";
+    case reason_ns::DISABLE_NOT_ALLOWLISTED:
+      return "notAllowlisted";
+    case reason_ns::DISABLE_PUBLISHED_IN_STORE_REQUIRED_BY_POLICY:
+      return "publishedInStoreRequiredByPolicy";
+    case reason_ns::DISABLE_UNSUPPORTED_MANIFEST_VERSION:
+      return "unsupportedManifestVersion";
+    case reason_ns::DISABLE_UNSUPPORTED_DEVELOPER_EXTENSION:
+      return "unsupportedDeveloperExtension";
+    case reason_ns::DISABLE_BLOCKED_BY_CLOUD_POLICY_CHECK:
+      return "blockedByCloudPolicyCheck";
+    default:
+      return "other";
+  }
+}
+
 const Extension* FindExtension(Profile* profile, const std::string& id) {
   ExtensionRegistry* registry = ExtensionRegistry::Get(profile);
   return registry ? registry->GetExtensionById(id, ExtensionRegistry::EVERYTHING)
@@ -423,9 +473,21 @@ void AddExtensionPageFields(Profile* profile,
                             base::DictValue* item) {
   EnsureRegistryWatcher(profile);
   ExtensionRegistry* registry = ExtensionRegistry::Get(profile);
-  item->Set("userEnabled",
-            registry->enabled_extensions().Contains(extension.id()) ||
-                registry->terminated_extensions().Contains(extension.id()));
+  const bool user_enabled =
+      registry->enabled_extensions().Contains(extension.id()) ||
+      registry->terminated_extensions().Contains(extension.id());
+  item->Set("userEnabled", user_enabled);
+  // For a disabled one, why: Chromium's own reasons, which may be several.
+  // "userAction" is the reader's switch; anything else Chromium did.
+  base::ListValue reasons;
+  if (!user_enabled) {
+    for (const extensions::disable_reason::DisableReason reason :
+         extensions::ExtensionPrefs::Get(profile)->GetDisableReasons(
+             extension.id())) {
+      reasons.Append(DisableReasonName(reason));
+    }
+  }
+  item->Set("disableReasons", std::move(reasons));
   extensions::ExtensionActionManager* actions =
       extensions::ExtensionActionManager::Get(profile);
   const extensions::ExtensionAction* action =

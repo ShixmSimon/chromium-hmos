@@ -320,7 +320,9 @@ shellAccelerator { action }
 - `extensionActions` 的每一项除了原有字段,还有 `userEnabled`(用户是否启用了这个扩
   展,也就是页面上的开关;原有的 `enabled` 表示在当前网页上可不可用,两者不同)、
   `hasPopup`、`optionsUrl`(没有设置页时为空串)、`version`、`description`、
-  `author`。
+  `author`,以及 `disableReasons`(停用的扩展为什么停用,Chromium 自己记的原因,
+  可能有几个;`userAction` 是用户关的,`notVerified`、`corrupted`、
+  `permissionsIncrease` 等是 Chromium 关的;启用时为空数组)。
 - 用户停用的扩展也在列表里,排在启用的后面,`enabled` 和 `userEnabled` 都是
   `false`。
 - `permissions` 是 Chromium 已经本地化好的权限说明,和 `chrome://extensions` 详情页
