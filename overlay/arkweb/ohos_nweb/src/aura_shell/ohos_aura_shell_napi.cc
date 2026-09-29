@@ -1167,6 +1167,9 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
   if (std::optional<bool> show_frame_rate = dict.FindBool("showFrameRate")) {
     config.show_frame_rate = *show_frame_rate;
   }
+  if (const std::string* angle_backend = dict.FindString("angleBackend")) {
+    config.angle_backend = *angle_backend;
+  }
 
   std::optional<bool> jitless = dict.FindBool("jitless");
   if (jitless.has_value()) {

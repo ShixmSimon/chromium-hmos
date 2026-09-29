@@ -383,6 +383,22 @@ TEST(NWebAuraShellTest, SecondaryViewsWidgetsShareTheXComponentCompositor) {
   EXPECT_TRUE(chrome::ohos::ShouldEmbedSecondaryWidget(root));
 }
 
+TEST(NWebAuraShellTest, ChromiumArgumentsFollowAngleBackend) {
+  AuraStartupConfig config;
+  OhosChromeMainRunner runner;
+  EXPECT_TRUE(ContainsArgument(runner.BuildArgumentsForTesting(config),
+                               "--use-angle=gles-egl"));
+
+  config.angle_backend = "vulkan";
+  std::vector<std::string> arguments = runner.BuildArgumentsForTesting(config);
+  EXPECT_TRUE(ContainsArgument(arguments, "--use-angle=vulkan"));
+  EXPECT_FALSE(ContainsArgument(arguments, "--use-angle=gles-egl"));
+
+  config.angle_backend = "metal";
+  EXPECT_TRUE(ContainsArgument(runner.BuildArgumentsForTesting(config),
+                               "--use-angle=gles-egl"));
+}
+
 TEST(NWebAuraShellTest, ChromiumArgumentsEnforceJitlessWasmPhoneFallback) {
   AuraStartupConfig config;
   config.device_class = "phone";

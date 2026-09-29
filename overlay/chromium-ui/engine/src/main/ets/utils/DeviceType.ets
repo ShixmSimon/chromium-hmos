@@ -146,6 +146,10 @@ export interface AuraStartupConfig {
   // UI. For checking a 120Hz panel is driven at 120 and that a still page
   // stops asking for frames.
   showFrameRate?: boolean;
+  // Which of ANGLE's backends draws. Unset or 'gles' is ANGLE on
+  // HarmonyOS's own EGL/GLES, which is what a device should use; 'vulkan'
+  // is for measuring Vulkan against it. Read once, at startup.
+  angleBackend?: 'gles' | 'vulkan';
   // What the app menu's way back to this shell's UI is called. Not sending
   // it is how a shell says it does not want that item -- a phone has no
   // setting to come back to, and a shell drawing the browser itself has

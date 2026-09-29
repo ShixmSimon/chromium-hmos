@@ -68,6 +68,12 @@ struct AuraStartupConfig {
   // browser's own UI. For checking that a 120Hz panel is actually being
   // driven at 120, and that a still page stops asking for frames.
   bool show_frame_rate = false;
+  // Which of ANGLE's backends draws: "vulkan" for Vulkan, anything else for
+  // the GLES one on HarmonyOS's own EGL, which is what a device should use
+  // until Vulkan has been measured against it. For that comparison, without
+  // a rebuild; chrome://flags cannot do it, because the switch set here
+  // outranks the flag.
+  std::string angle_backend;
   bool jitless = false;
   bool fullscreen_requested = true;
   // Runs without a window next to another web engine, e.g. for Sync.

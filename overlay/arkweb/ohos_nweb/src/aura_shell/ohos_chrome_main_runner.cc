@@ -385,10 +385,17 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
                  *config.gpu_rasterization ? "on" : "off");
     }
 
-  arguments.push_back("--use-gl=angle");
-    // The device Vulkan driver lacks VK_KHR_display required by ANGLE's
-    // Linux Vulkan display; use ANGLE on the native HarmonyOS EGL/GLES.
-    arguments.push_back("--use-angle=gles-egl");
+    arguments.push_back("--use-gl=angle");
+    // ANGLE on HarmonyOS's own EGL and GLES unless the shell asks for
+    // Vulkan, which presents through VK_OHOS_surface
+    // (ohos-angle-vulkan-backend.patch) and is here to be measured against
+    // GLES before it could be anyone's default.
+    if (config.angle_backend == "vulkan") {
+      arguments.push_back("--use-angle=vulkan");
+      AURA_LOG_I("AuraShell ANGLE backend vulkan by config");
+    } else {
+      arguments.push_back("--use-angle=gles-egl");
+    }
   }
 
   AppendSwitchWithValue(&arguments, "--ohos-ui-profile", config.ui_profile);
