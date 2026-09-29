@@ -30,6 +30,11 @@ margin at the sides and at most 80% of its height, since a phone's work
 area is narrower than kMaxSize and a popup as tall as the window leaves
 nothing outside it to tap.
 
+A popup centred on a phone was half as wide as its content: the room was
+measured with the four corner placements, which from a point in the
+middle of the screen see half its width each way. A centred popup is
+moved to stay on screen and has the whole width, less the margins.
+
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 
 diff --git a/chrome/browser/ui/views/extensions/extension_popup.cc b/chrome/browser/ui/views/extensions/extension_popup.cc
@@ -80,7 +85,7 @@ diff --git a/chrome/browser/ui/views/extensions/extension_popup.cc b/chrome/brow
  ExtensionPopup::~ExtensionPopup() {
    // The ExtensionPopup may close before it was ever shown. If so, indicate such
    // through the callback.
-@@ -198,6 +229,36 @@ gfx::Size ExtensionPopup::GetMaxBounds() {
+@@ -198,6 +229,44 @@ gfx::Size ExtensionPopup::GetMaxBounds() {
  #endif
  
    gfx::Size max_size = kMaxSize;
@@ -103,6 +108,14 @@ diff --git a/chrome/browser/ui/views/extensions/extension_popup.cc b/chrome/brow
 +      room.SetToMax(BubbleDialogDelegate::GetAvailableSpaceToPlaceBubble(
 +          placement, anchor_rect, screen_rect));
 +    }
++    // A centred popup (BOTTOM_CENTER, a phone) has the whole width: it is
++    // moved to stay on screen, so the room on either side of the anchor
++    // point -- half the screen each way, which is all the four corner
++    // placements above can see -- is not its limit. Measured that way it
++    // came out half as wide as its content, and cut off.
++    if (views::BubbleBorder::is_arrow_at_center(arrow())) {
++      room.set_width(screen_rect.width());
++    }
 +    // And never more than the screen gives: a phone's work area is narrower
 +    // than kMaxSize, and a popup as tall as the window leaves nothing to tap
 +    // to close it. A margin at the sides, and at most 80% of the height.
@@ -117,7 +130,7 @@ diff --git a/chrome/browser/ui/views/extensions/extension_popup.cc b/chrome/brow
    max_size.SetToMin(
        BubbleDialogDelegate::GetMaxAvailableScreenSpaceToPlaceBubble(
            GetAnchor(), arrow(), adjust_if_offscreen(),
-@@ -270,7 +331,9 @@ ExtensionPopup::ExtensionPopup(
+@@ -270,7 +339,9 @@ ExtensionPopup::ExtensionPopup(
      views::BubbleAnchor anchor,
      views::BubbleBorder::Arrow arrow,
      PopupShowAction show_action,
@@ -128,7 +141,7 @@ diff --git a/chrome/browser/ui/views/extensions/extension_popup.cc b/chrome/brow
      : BubbleDialogDelegateView(anchor,
                                 arrow,
                                 views::BubbleBorder::STANDARD_SHADOW,
-@@ -291,6 +354,16 @@ ExtensionPopup::ExtensionPopup(
+@@ -291,6 +362,16 @@ ExtensionPopup::ExtensionPopup(
    // the correct value while calculating max bounds.
    set_adjust_if_offscreen(views::PlatformStyle::kAdjustBubbleIfOffscreen);
  
@@ -145,7 +158,7 @@ diff --git a/chrome/browser/ui/views/extensions/extension_popup.cc b/chrome/brow
    extension_view_ = AddChildView(std::make_unique<ExtensionViewViews>(
        browser_->GetProfile(), host_.get()));
    extension_view_->SetContainer(this);
-@@ -303,8 +376,17 @@ ExtensionPopup::ExtensionPopup(
+@@ -303,8 +384,17 @@ ExtensionPopup::ExtensionPopup(
        std::make_unique<ScopedDevToolsAgentHostObservation>(this);
    browser_->GetTabStripModel()->AddObserver(this);
  
