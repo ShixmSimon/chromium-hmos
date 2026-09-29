@@ -899,6 +899,13 @@ XComponent({
 给 GPU 单独开一个进程,GPU 出错时只会影响这个进程,不会连带浏览器。手机不能创建
 子进程,传了也会忽略,hilog 里记一行 `AuraShell ignored gpuProcess separate`。
 
+**Skia 走 Vulkan(测试中)。** `skiaBackend?: 'gl' | 'vulkan'`,不填是 GL。只在
+`gpuProcess: 'separate'` 时有效,进程内 GPU 时忽略,hilog 里记一行
+`AuraShell ignored skiaBackend vulkan`。Vulkan 起不来时 Chromium 自己退回 GL,不会黑
+屏;GPU 进程启动时的 `OHOS GPU child Vulkan probe` 几行日志说明卡在哪一步(加载器、
+实例扩展、实例、物理设备、交换链支持),Chromium 自己的步骤看 `OHOS Vulkan:` 开头的
+日志。`chrome://gpu` 里 Vulkan 为 Enabled 才算真的在用。
+
 所有窗口走的是同一条通道,但还没有逐一验证(主窗口之外:无痕、拖出的标签、画中
 画、PWA、弹出菜单);GPU 进程崩溃重启和 `gpuContextLost`/`gpuFallback` 事件也还没
 接。只在测试版里打开。

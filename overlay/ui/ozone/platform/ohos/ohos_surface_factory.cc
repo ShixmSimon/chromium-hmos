@@ -4,6 +4,7 @@
 #include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
 #endif
 
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
 #include "base/time/time.h"
@@ -232,8 +233,20 @@ OhosSurfaceFactory::CreateVulkanImplementation(bool use_swiftshader,
     LOG(WARNING) << "OHOS: no SwiftShader Vulkan in this build";
     return nullptr;
   }
+  // A widget's window as the GL path finds it: from the registry -- the
+  // mirror of the browser's, in a GPU process of its own -- waiting for it
+  // when one is expected and has not arrived yet.
   return std::make_unique<gpu::VulkanImplementationOhos>(
-      /*force_native=*/true);
+      /*force_native=*/true,
+      base::BindRepeating([](gfx::AcceleratedWidget widget) -> void* {
+        std::optional<OhosNativeSurface> surface =
+            GetOhosNativeSurface(widget);
+        if ((!surface || !surface->window) &&
+            IsOhosNativeSurfaceExpected(widget)) {
+          surface = WaitForOhosNativeSurface(widget, kNativeSurfaceWaitTimeout);
+        }
+        return surface ? surface->window : nullptr;
+      }));
 }
 #endif  // BUILDFLAG(ENABLE_VULKAN)
 

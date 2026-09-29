@@ -48,6 +48,7 @@ source_set("native_window_registry") {
 
   deps = [
     "//base",
+    "//third_party/vulkan-headers/src:vulkan_headers",
     "//ui/base",
     "//ui/gfx/geometry",
   ]

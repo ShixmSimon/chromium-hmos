@@ -28,6 +28,7 @@
 #include "base/task/thread_pool.h"
 #include "base/thread_annotations.h"
 #include "native_window/external_window.h"
+#include "vulkan/vulkan_core.h"
 #include "ui/gfx/geometry/rect.h"
 
 namespace ui {
@@ -682,6 +683,115 @@ void ProbeOhosGpuChildEgl() {
   // Released with the process; this ran once, before Chromium, and
   // Chromium's own context comes next.
   make_current(display, nullptr, nullptr, nullptr);
+}
+
+void ProbeOhosGpuChildVulkan() {
+  void* loader = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
+  if (!loader) {
+    LOG(WARNING) << "OHOS GPU child Vulkan probe: no libvulkan.so: "
+                 << dlerror();
+    return;
+  }
+  auto get_instance_proc = reinterpret_cast<PFN_vkGetInstanceProcAddr>(
+      dlsym(loader, "vkGetInstanceProcAddr"));
+  if (!get_instance_proc) {
+    LOG(WARNING) << "OHOS GPU child Vulkan probe: no vkGetInstanceProcAddr";
+    return;
+  }
+  auto enumerate_instance_extensions =
+      reinterpret_cast<PFN_vkEnumerateInstanceExtensionProperties>(
+          get_instance_proc(nullptr,
+                            "vkEnumerateInstanceExtensionProperties"));
+  auto create_instance = reinterpret_cast<PFN_vkCreateInstance>(
+      get_instance_proc(nullptr, "vkCreateInstance"));
+  if (!enumerate_instance_extensions || !create_instance) {
+    LOG(WARNING) << "OHOS GPU child Vulkan probe: loader entry points missing";
+    return;
+  }
+
+  uint32_t extension_count = 0;
+  enumerate_instance_extensions(nullptr, &extension_count, nullptr);
+  std::vector<VkExtensionProperties> extensions(extension_count);
+  enumerate_instance_extensions(nullptr, &extension_count, extensions.data());
+  bool has_surface = false;
+  bool has_ohos_surface = false;
+  for (const VkExtensionProperties& extension : extensions) {
+    has_surface |= strcmp(extension.extensionName, "VK_KHR_surface") == 0;
+    has_ohos_surface |=
+        strcmp(extension.extensionName, "VK_OHOS_surface") == 0;
+  }
+  LOG(WARNING) << "OHOS GPU child Vulkan probe: instance extensions="
+               << extension_count << " VK_KHR_surface=" << has_surface
+               << " VK_OHOS_surface=" << has_ohos_surface;
+  if (!has_surface || !has_ohos_surface) {
+    return;
+  }
+
+  const char* const instance_extensions[] = {"VK_KHR_surface",
+                                             "VK_OHOS_surface"};
+  VkApplicationInfo application = {};
+  application.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+  application.apiVersion = VK_API_VERSION_1_1;
+  VkInstanceCreateInfo instance_info = {};
+  instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+  instance_info.pApplicationInfo = &application;
+  instance_info.enabledExtensionCount = 2;
+  instance_info.ppEnabledExtensionNames = instance_extensions;
+  VkInstance instance = VK_NULL_HANDLE;
+  const VkResult created = create_instance(&instance_info, nullptr, &instance);
+  LOG(WARNING) << "OHOS GPU child Vulkan probe: vkCreateInstance=" << created;
+  if (created != VK_SUCCESS) {
+    return;
+  }
+
+  auto enumerate_devices = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(
+      get_instance_proc(instance, "vkEnumeratePhysicalDevices"));
+  auto get_properties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(
+      get_instance_proc(instance, "vkGetPhysicalDeviceProperties"));
+  auto enumerate_device_extensions =
+      reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(
+          get_instance_proc(instance, "vkEnumerateDeviceExtensionProperties"));
+  auto destroy_instance = reinterpret_cast<PFN_vkDestroyInstance>(
+      get_instance_proc(instance, "vkDestroyInstance"));
+  uint32_t device_count = 0;
+  if (enumerate_devices) {
+    enumerate_devices(instance, &device_count, nullptr);
+  }
+  std::vector<VkPhysicalDevice> devices(device_count);
+  if (device_count) {
+    enumerate_devices(instance, &device_count, devices.data());
+  }
+  LOG(WARNING) << "OHOS GPU child Vulkan probe: physical devices="
+               << device_count;
+  for (VkPhysicalDevice device : devices) {
+    VkPhysicalDeviceProperties properties = {};
+    if (get_properties) {
+      get_properties(device, &properties);
+    }
+    uint32_t count = 0;
+    bool has_swapchain = false;
+    if (enumerate_device_extensions) {
+      enumerate_device_extensions(device, nullptr, &count, nullptr);
+      std::vector<VkExtensionProperties> device_extensions(count);
+      enumerate_device_extensions(device, nullptr, &count,
+                                  device_extensions.data());
+      for (const VkExtensionProperties& extension : device_extensions) {
+        has_swapchain |=
+            strcmp(extension.extensionName, "VK_KHR_swapchain") == 0;
+      }
+    }
+    LOG(WARNING) << "OHOS GPU child Vulkan probe: device="
+                 << properties.deviceName << " api="
+                 << VK_API_VERSION_MAJOR(properties.apiVersion) << "."
+                 << VK_API_VERSION_MINOR(properties.apiVersion) << "."
+                 << VK_API_VERSION_PATCH(properties.apiVersion)
+                 << " driver=0x" << std::hex << properties.driverVersion
+                 << std::dec << " type=" << properties.deviceType
+                 << " VK_KHR_swapchain=" << has_swapchain;
+  }
+  if (destroy_instance) {
+    destroy_instance(instance, nullptr);
+  }
 }
 
 bool WaitForOhosGpuChildBootstrap(std::string* encoded_params,

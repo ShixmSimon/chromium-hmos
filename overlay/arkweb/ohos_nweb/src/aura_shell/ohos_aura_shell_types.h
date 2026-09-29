@@ -82,6 +82,11 @@ struct AuraStartupConfig {
   // keeps it in the browser process. See ui/ozone/platform/ohos/
   // ohos_gpu_child_channel.h.
   std::string gpu_process;
+  // "vulkan" has Skia composite and rasterize with Vulkan in the GPU
+  // process; anything else keeps GL. Only with gpu_process "separate":
+  // upstream does not run Skia on Vulkan with the GPU in the browser
+  // process.
+  std::string skia_backend;
   bool jitless = false;
   bool fullscreen_requested = true;
   // Runs without a window next to another web engine, e.g. for Sync.

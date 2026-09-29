@@ -459,8 +459,10 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
       separate_gpu_process = false;
     }
   }
-  if (separate_gpu_process && supports_native_child_process &&
-      !config.headless) {
+  const bool gpu_in_own_process = separate_gpu_process &&
+                                  supports_native_child_process &&
+                                  !config.headless;
+  if (gpu_in_own_process) {
     AURA_LOG_I("AuraShell GPU in a process of its own by config");
   } else {
     if (separate_gpu_process) {
@@ -469,6 +471,27 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
                  config.device_class.c_str());
     }
     arguments.push_back("--in-process-gpu");
+  }
+
+  // Skia on Vulkan, for comparing with GL. Upstream only runs it with the GPU
+  // in a process of its own, so that is the only place it is asked for. If
+  // Vulkan cannot be brought up there, Chromium falls back to GL by itself;
+  // the GPU process says which step failed (ohos_gpu_child_channel.cc).
+  if (config.skia_backend == "vulkan") {
+    if (gpu_in_own_process) {
+      arguments.push_back("--use-vulkan=native");
+      // Added to the one --enable-features there is: a second would replace
+      // it.
+      for (std::string& argument : arguments) {
+        if (argument.rfind("--enable-features=", 0) == 0) {
+          argument += ",Vulkan";
+        }
+      }
+      AURA_LOG_I("AuraShell Skia on Vulkan by config");
+    } else {
+      AURA_LOG_E("AuraShell ignored skiaBackend vulkan: the GPU is not in a "
+                 "process of its own");
+    }
   }
 
   for (const AuraAdditionalSwitch& additional_switch :

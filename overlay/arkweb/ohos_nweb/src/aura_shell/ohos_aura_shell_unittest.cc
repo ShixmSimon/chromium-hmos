@@ -394,10 +394,17 @@ TEST(NWebAuraShellTest, ChromiumArgumentsPlaceTheGpuProcess) {
   EXPECT_FALSE(ContainsArgument(runner.BuildArgumentsForTesting(config),
                                 "--in-process-gpu"));
 
-  // A phone cannot start native children, so the request is ignored.
-  config.device_class = "phone";
+  // Skia on Vulkan goes with a GPU process of its own.
+  config.skia_backend = "vulkan";
   EXPECT_TRUE(ContainsArgument(runner.BuildArgumentsForTesting(config),
-                               "--in-process-gpu"));
+                               "--use-vulkan=native"));
+
+  // A phone cannot start native children, so the request is ignored, and
+  // Vulkan with it.
+  config.device_class = "phone";
+  std::vector<std::string> arguments = runner.BuildArgumentsForTesting(config);
+  EXPECT_TRUE(ContainsArgument(arguments, "--in-process-gpu"));
+  EXPECT_FALSE(ContainsArgument(arguments, "--use-vulkan=native"));
 }
 
 TEST(NWebAuraShellTest, ChromiumArgumentsFollowAngleBackend) {

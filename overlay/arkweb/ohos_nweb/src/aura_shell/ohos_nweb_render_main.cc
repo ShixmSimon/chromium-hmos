@@ -233,5 +233,8 @@ ChromiumHarmonyOSGpuChildMainProc() {
     return;
   }
   ui::ProbeOhosGpuChildEgl();
+  if (encoded_params.find("--use-vulkan") != std::string::npos) {
+    ui::ProbeOhosGpuChildVulkan();
+  }
   RunNativeChild(encoded_params.c_str(), fds, /*gpu_child=*/true);
 }

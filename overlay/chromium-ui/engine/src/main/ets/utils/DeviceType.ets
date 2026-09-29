@@ -155,6 +155,10 @@ export interface AuraStartupConfig {
   // so a GPU fault takes down that process and not the browser. Ignored on
   // a phone, which cannot start one. Read once, at startup.
   gpuProcess?: 'in-process' | 'separate';
+  // What Skia draws with in the GPU process. Unset or 'gl' is GL; 'vulkan'
+  // is Vulkan, for comparing the two. Only with gpuProcess 'separate', and
+  // ignored otherwise. If Vulkan cannot start, the engine falls back to GL.
+  skiaBackend?: 'gl' | 'vulkan';
   // What the app menu's way back to this shell's UI is called. Not sending
   // it is how a shell says it does not want that item -- a phone has no
   // setting to come back to, and a shell drawing the browser itself has
