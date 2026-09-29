@@ -56,6 +56,9 @@ struct AuraStartupConfig {
   // so renaming the product or adding a language does not mean rebuilding
   // the engine. Read once, at startup.
   std::string shell_ui_menu_label;
+  // What the product calls itself, for the places Chromium would say
+  // "Chromium" to the reader. Empty leaves those alone.
+  std::string product_name;
   // Unset lets the GPU decide, which is what a device should do. Set only
   // to take rasterization off the GPU (or force it back on) for a
   // comparison, without a rebuild.

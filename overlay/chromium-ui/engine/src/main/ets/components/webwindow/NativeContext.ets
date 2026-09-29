@@ -202,6 +202,7 @@ export interface BrowserRuntimeEvent {
     'contextMenuImageFile' | 'contextMenuActionsChanged' |
     'backHandled' | 'dropNotHandled' | 'browserChromeRequested' |
     'gpuContextLost' | 'lastSessionRestorable' | 'extensionInstallFailed' |
+    'extensionDetails' | 'extensionCommandFailed' |
     'pageDragStarted' | 'pageDragEnded' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |
@@ -398,7 +399,8 @@ export interface BrowserCommandPayload {
   // Omitted means 32.
   iconSizePx?: number;
   // setBrowserChrome: who draws the browser from now on.
-  mode?: 'shell' | 'native';
+  // setExtensionSiteAccess: which sites the extension may read.
+  mode?: 'shell' | 'native' | 'onClick' | 'specificSites' | 'allSites';
   // sitePermissionDecision: the answer to sitePermissionRequested.
   decision?: SitePermissionDecision;
   sizeVp?: number;

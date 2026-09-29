@@ -160,6 +160,10 @@ export interface AuraStartupConfig {
   // setting to come back to, and a shell drawing the browser itself has
   // its own settings a tap away. Read once, at startup.
   shellUiMenuLabel?: string;
+  // The product's name, used where Chromium would name itself to the
+  // reader -- "... has been added to Chromium" after installing an
+  // extension. Read once, at startup.
+  productName?: string;
   fullscreenRequested: boolean;
   // Who draws long-press menus. 'shell': the engine sends contextMenuRequested
   // and the shell draws the menu. 'native': Chromium's own menu. Unset, phones

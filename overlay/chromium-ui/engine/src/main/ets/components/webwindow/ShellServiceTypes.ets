@@ -267,6 +267,46 @@ export interface ExtensionActionItem {
   // False when the extension has nothing to do on this page.
   enabled: boolean;
   pinned: boolean;
+  // Whether the reader has the extension switched on -- the switch on an
+  // extensions page. Not `enabled`, which is about the current page. Switched
+  // off extensions are listed after the others.
+  userEnabled: boolean;
+  // Whether it has a popup (action.default_popup).
+  hasPopup: boolean;
+  // Its options page, or empty. openExtensionOptions opens it.
+  optionsUrl: string;
+  version: string;
+  description: string;
+  author: string;
+}
+
+// getExtensionDetails.
+export interface ExtensionDetailsEvent extends ShellServiceEvent {
+  requestId: number;
+  id: string;
+  // Chromium's own permission lines, in the reader's language. A line with
+  // detail under it (sites, devices) keeps the detail on following lines.
+  permissions: string[];
+  siteAccess: ExtensionSiteAccess;
+  // False when the extension asks for no sites, or policy decides for it.
+  siteAccessChangeable: boolean;
+  // 'notFound' when there is no such extension.
+  error?: string;
+}
+
+export type ExtensionSiteAccess = 'onClick' | 'specificSites' | 'allSites';
+
+// A setExtensionEnabled, uninstallExtension, setExtensionSiteAccess or
+// openExtensionOptions that could not be carried out. A cancelled uninstall
+// is not one.
+export interface ExtensionCommandFailedEvent extends ShellServiceEvent {
+  command: string;
+  id: string;
+  // notFound, notAllowed, stillDisabled (switched on but disabled for
+  // another reason, such as new permissions), badMode, failed.
+  reason: string;
+  // Chromium's own sentence when it gave one, in the reader's language.
+  message: string;
 }
 
 // A site is asking the user for a permission, and the shell draws the sheet

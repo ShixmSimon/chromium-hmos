@@ -1,0 +1,76 @@
+Point the "added" bubble at the shell's button, under the shell's name.
+
+Two things the shell saw after installing an extension from a file.
+
+The bubble came out at the window's top left, not at the extensions button
+the shell had reported. ohos-extension-bubble-anchor.patch anchors to that
+button when Chromium's own extensions container is not showing -- but with
+the shell drawing the toolbar, Chromium's toolbar is hidden while the
+container inside it still says IsVisible(), its own flag rather than
+whether anything shows it. So the upstream branch ran and anchored the
+bubble to a button nobody can see. With the shell drawing the browser that
+branch is now skipped.
+
+The title said "... has been added to Chromium". The product is the
+shell's, and it names itself with productName in the startup config; the
+title uses that name instead of Chromium's when one was given.
+
+Generated for Chromium 154.0.8037.51 after
+ohos-extension-bubble-anchor.patch.
+
+diff --git a/chrome/browser/ui/extensions/extension_dialog_utils_views.cc b/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
+--- a/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
++++ b/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
+@@ -106,7 +106,18 @@ void ShowDialog(gfx::NativeWindow parent,
+                 std::unique_ptr<ui::DialogModel> dialog_model) {
+   ExtensionsContainerViews* const container =
+       parent ? GetExtensionsContainerViews(parent) : nullptr;
+-  if (container && container->IsVisible()) {
++#if BUILDFLAG(IS_OHOS)
++  // With the shell drawing the toolbar, Chromium's is hidden, but the
++  // container inside it still says it is visible -- its own flag, not
++  // whether anything shows it. Anchored to a button nobody can see, the
++  // bubble came out at the window's top left.
++  const bool container_shown =
++      container && container->IsVisible() &&
++      !chrome::ohos::IsAuraShellChromeHiddenByShell();
++#else
++  const bool container_shown = container && container->IsVisible();
++#endif
++  if (container_shown) {
+     ShowDialog(container, extension_ids, std::move(dialog_model));
+     return;
+   }
+diff --git a/chrome/browser/ui/extensions/extension_post_install_dialog.cc b/chrome/browser/ui/extensions/extension_post_install_dialog.cc
+--- a/chrome/browser/ui/extensions/extension_post_install_dialog.cc
++++ b/chrome/browser/ui/extensions/extension_post_install_dialog.cc
+@@ -31,6 +31,10 @@
+ #include "ui/base/models/dialog_model.h"
+ #include "ui/base/window_open_disposition.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"  // nogncheck
++#endif
++
+ #if BUILDFLAG(IS_ANDROID)
+ #include "chrome/common/pref_names.h"
+ #include "components/prefs/pref_service.h"
+@@ -54,9 +58,15 @@ void ConfigurePostInstallDialogModel(
+       extensions::ui_util::GetFixupExtensionNameForUIDisplay(
+           model->extension_name());
+   base::i18n::AdjustStringForLocaleDirection(&extension_name);
+-  dialog_model_builder
+-      .SetTitle(l10n_util::GetStringFUTF16(IDS_EXTENSION_INSTALLED_HEADING,
+-                                           extension_name))
++  std::u16string title =
++      l10n_util::GetStringFUTF16(IDS_EXTENSION_INSTALLED_HEADING,
++                                 extension_name);
++#if BUILDFLAG(IS_OHOS)
++  // "... has been added to Chromium": the product is the shell's, and so is
++  // its name.
++  title = chrome::ohos::WithAuraShellProductName(std::move(title));
++#endif
++  dialog_model_builder.SetTitle(title)
+       .SetIcon(
+           ui::ImageModel::FromImageSkia(model->MakeIconOfSize(kMaxIconSize)));
+ 

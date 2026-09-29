@@ -130,6 +130,14 @@ bool IsAuraShellNativeChromeChosen();
 // shell's name, the shell has the translations, and a string compiled into
 // the engine came out in English on a Chinese device.
 void SetAuraShellUiMenuLabel(const std::string& label);
+// The product's name as the shell gives it (productName in the startup
+// config), for the few places Chromium names itself to the reader. Empty
+// when the shell gave none.
+void SetAuraShellProductName(const std::string& name);
+// `text` with "Chromium" replaced by that name, or unchanged when there is
+// none. Chromium's strings carry the brand untranslated in every language,
+// so this works on any of them.
+std::u16string WithAuraShellProductName(std::u16string text);
 std::u16string AuraShellUiMenuLabel();
 
 // Asks the shell to change which browser UI is drawn, without changing it

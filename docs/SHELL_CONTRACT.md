@@ -308,6 +308,37 @@ shellAccelerator { action }
 | `runExtensionAction` | `id` | 等同于点工具栏上的扩展图标;弹窗仍由 Chromium 画,锚到 `setAnchorRects` 的 `extensions` |
 | `setExtensionPinned` | `id`, `pinned` | |
 | `installExtensionFromFile` | `path` | 成功:`extensionActionsChanged`;失败:`extensionInstallFailed { path, reason, message }` |
+| `setExtensionEnabled` | `id`, `enabled` | 成功:`extensionActionsChanged` |
+| `uninstallExtension` | `id` | 弹 Chromium 自己的确认框;确认后 `extensionActionsChanged`,取消什么都不发 |
+| `getExtensionDetails` | `requestId`, `id` | `extensionDetails { requestId, id, permissions, siteAccess, siteAccessChangeable }` |
+| `setExtensionSiteAccess` | `id`, `mode` | `mode`:`onClick` / `specificSites` / `allSites`;成功:`extensionActionsChanged` |
+| `openExtensionOptions` | `id` | 在新标签页打开扩展的设置页 |
+
+**扩展程序页。** 手机上没有能用的 `chrome://extensions`,外壳自己画一页,平板/PC
+也可以用同一套接口:
+
+- `extensionActions` 的每一项除了原有字段,还有 `userEnabled`(用户是否启用了这个扩
+  展,也就是页面上的开关;原有的 `enabled` 表示在当前网页上可不可用,两者不同)、
+  `hasPopup`、`optionsUrl`(没有设置页时为空串)、`version`、`description`、
+  `author`。
+- 用户停用的扩展也在列表里,排在启用的后面,`enabled` 和 `userEnabled` 都是
+  `false`。
+- `permissions` 是 Chromium 已经本地化好的权限说明,和 `chrome://extensions` 详情页
+  上的一致;某条下面有细项(网站、设备)时,细项放在同一个字符串的后续行里。能改网站
+  访问权限时,网站相关的那几条不在 `permissions` 里,由 `siteAccess` 表示。
+  `siteAccessChangeable` 为 `false` 时(扩展不访问任何网站,或者由策略决定),不要让
+  用户改。
+- 命令做不成时发 `extensionCommandFailed { command, id, reason, message }`。
+  `reason`:`notFound`、`notAllowed`(策略不允许)、`stillDisabled`(打开了开关,但
+  扩展因为别的原因仍是停用的,比如新版本要了新权限)、`badMode`、`failed`。
+  `message` 是 Chromium 给的那句话,可能为空。用户在确认框里取消卸载不算失败,不发。
+- 停用、启用、卸载都会触发 `extensionActionsChanged`,包括停用状态下的扩展。
+
+**手机上的扩展面板。** `runExtensionAction` 打开的面板在手机上从窗口底边往上弹,宽度
+不超过屏幕(两边各留 8vp),高度不超过屏幕的 80%。
+
+**产品名。** 启动配置 `productName`(比如 `'Lumie'`)会替换 Chromium 在少数地方对
+用户说出的 "Chromium",目前是装完扩展后的那个"已添加到 Chromium"气泡。
 
 **安装下载下来的 .crx。** 第三方扩展网站的"安装"是 .crx 下载链接,Chromium 按上游
 规则不从这类网站直接安装,只会把文件下载下来。外壳在 .crx 下载完成时提示用户,用户

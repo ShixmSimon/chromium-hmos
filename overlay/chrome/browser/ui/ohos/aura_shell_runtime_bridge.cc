@@ -8,6 +8,7 @@
 #include "chrome/browser/ui/ohos/shell_permission_prompt_ohos.h"
 #include "chrome/browser/ui/ohos/shell_context_menu_image_ohos.h"
 #include "chrome/browser/ui/ohos/shell_drag_drop_ohos.h"
+#include "chrome/browser/ui/ohos/shell_extensions_ohos.h"
 #include "chrome/browser/ui/ohos/shell_page_position_ohos.h"
 #include "chrome/browser/ui/ohos/shell_store_user_agent_ohos.h"
 #include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
@@ -44,6 +45,7 @@
 #include "base/no_destructor.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/lock.h"
 #include "base/task/single_thread_task_runner.h"
@@ -1425,6 +1427,29 @@ void SendExtensionActions(gfx::AcceleratedWidget widget,
                    action ? action->GetBadgeBackgroundColor(tab_id) : 0u));
       item.Set("enabled", action ? action->GetIsVisible(tab_id) : true);
       item.Set("pinned", model->IsActionPinned(id));
+      chrome::ohos::AddExtensionPageFields(profile, *extension, &item);
+      items.Append(std::move(item));
+    }
+
+    // The toolbar model holds enabled extensions only. An extensions page
+    // lists the switched-off ones too, after the others, greyed out by the
+    // shell: `enabled` and `userEnabled` are both false.
+    for (const scoped_refptr<const extensions::Extension>& extension :
+         chrome::ohos::DisabledExtensionsForPage(profile)) {
+      extensions::ExtensionAction* action =
+          actions ? actions->GetExtensionAction(*extension) : nullptr;
+      base::DictValue item;
+      item.Set("id", extension->id());
+      item.Set("name", extension->name());
+      ExtensionIconSource* icons = IconSourceFor(profile, *extension, action);
+      item.Set("iconPngBase64",
+               icons ? EncodeExtensionIcon(icons->GetIcon(tab_id), icon_size_px)
+                     : std::string());
+      item.Set("badgeText", std::string());
+      item.Set("badgeColor", "#00000000");
+      item.Set("enabled", false);
+      item.Set("pinned", model->IsActionPinned(extension->id()));
+      chrome::ohos::AddExtensionPageFields(profile, *extension, &item);
       items.Append(std::move(item));
     }
   }
@@ -3458,6 +3483,10 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     RunExtensionAction(browser, command);
   } else if (*name == "installExtensionFromFile") {
     InstallExtensionFromFile(widget, browser, command);
+  } else if (chrome::ohos::HandleShellExtensionCommand(*name, widget, browser,
+                                                       command)) {
+    // setExtensionEnabled, uninstallExtension, getExtensionDetails,
+    // setExtensionSiteAccess, openExtensionOptions.
   } else if (*name == "setExtensionPinned") {
     SetExtensionPinned(browser, command);
   } else if (*name == "getTabThumbnails") {
@@ -3851,6 +3880,11 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "getExtensionActions",
       "runExtensionAction",
       "installExtensionFromFile",
+      "setExtensionEnabled",
+      "uninstallExtension",
+      "getExtensionDetails",
+      "setExtensionSiteAccess",
+      "openExtensionOptions",
       "setExtensionPinned",
       "getTabThumbnails",
       "toggleReaderMode",
@@ -4461,6 +4495,22 @@ bool IsAuraShellDesktopUi() {
 static std::u16string& UiMenuLabel() {
   static base::NoDestructor<std::u16string> label;
   return *label;
+}
+
+static std::u16string& ProductName() {
+  static base::NoDestructor<std::u16string> name;
+  return *name;
+}
+
+void SetAuraShellProductName(const std::string& name) {
+  ProductName() = base::UTF8ToUTF16(name);
+}
+
+std::u16string WithAuraShellProductName(std::u16string text) {
+  if (!ProductName().empty()) {
+    base::ReplaceSubstringsAfterOffset(&text, 0, u"Chromium", ProductName());
+  }
+  return text;
 }
 
 void SetAuraShellUiMenuLabel(const std::string& label) {

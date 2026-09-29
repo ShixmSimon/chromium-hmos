@@ -234,6 +234,8 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-touch-gesture-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-focus-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-drop-data-at-drop.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-shell-extensions-page.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-extension-installed-bubble.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-ohos-os-type.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-context-lost-recovery.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-lose-context-debug-url.patch"
