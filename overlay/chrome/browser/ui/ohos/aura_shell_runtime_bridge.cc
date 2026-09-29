@@ -2078,8 +2078,8 @@ struct PendingGpuContextLost {
 };
 
 PendingGpuContextLost& GpuContextLostState() {
-  static base::NoDestructor<PendingGpuContextLost> state;
-  return *state;
+  static PendingGpuContextLost state;
+  return state;
 }
 
 void DispatchGpuContextLost() {
