@@ -15,13 +15,41 @@ The title said "... has been added to Chromium". The product is the
 shell's, and it names itself with productName in the startup config; the
 title uses that name instead of Chromium's when one was given.
 
+With that, the bubble moved but still did not sit on the button, and the
+numbers that decide where it goes -- the rect the shell reported, the
+window origin it is moved by, the result -- are now logged so the next
+look says which one is off.
+
 Generated for Chromium 154.0.8037.51 after
 ohos-extension-bubble-anchor.patch.
 
 diff --git a/chrome/browser/ui/extensions/extension_dialog_utils_views.cc b/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
 --- a/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
 +++ b/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
-@@ -106,7 +106,18 @@ void ShowDialog(gfx::NativeWindow parent,
+@@ -14,6 +14,7 @@
+ 
+ #include "build/build_config.h"
+ #if BUILDFLAG(IS_OHOS)
++#include "base/logging.h"
+ #include "base/strings/strcat.h"
+ #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"  // nogncheck
+ #include "ui/aura/window.h"
+@@ -63,7 +64,14 @@ gfx::Rect GetOhosShellAnchorRect(
+   }
+   // The shell reports the button in its window's own coordinates; a bubble
+   // anchors in screen ones.
++  const gfx::Rect reported = rect;
+   rect.Offset(root->GetBoundsInScreen().OffsetFromOrigin());
++  // Diagnostic: the shell still sees the "added" bubble away from its
++  // button, and from outside it cannot be told which of these is off.
++  LOG(WARNING) << "OHOS extension bubble anchor: reported="
++               << reported.ToString()
++               << " root=" << root->GetBoundsInScreen().ToString()
++               << " anchor=" << rect.ToString();
+   return rect;
+ }
+ #endif  // BUILDFLAG(IS_OHOS)
+@@ -106,7 +114,18 @@ void ShowDialog(gfx::NativeWindow parent,
                  std::unique_ptr<ui::DialogModel> dialog_model) {
    ExtensionsContainerViews* const container =
        parent ? GetExtensionsContainerViews(parent) : nullptr;

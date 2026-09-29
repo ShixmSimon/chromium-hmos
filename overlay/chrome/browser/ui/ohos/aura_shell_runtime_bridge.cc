@@ -1193,6 +1193,10 @@ void SetAuraShellSurfaceOffset(gfx::AcceleratedWidget widget,
   SurfaceOffsetStore()[widget] =
       gfx::Vector2d(static_cast<int>(command.FindDouble("x").value_or(0.0)),
                     static_cast<int>(command.FindDouble("y").value_or(0.0)));
+  // Diagnostic, with the extension bubble's anchor line: which offset the
+  // anchors were taken back by.
+  LOG(WARNING) << "OHOS surface offset in window: "
+               << SurfaceOffsetStore()[widget].ToString();
 }
 
 void SetAuraShellAnchorRects(gfx::AcceleratedWidget widget,
