@@ -20,6 +20,15 @@ ERROR:
   - waiting for the background to start, whether it did, and the channel
     opening.
 
+The next run showed the channel opening and reaching the service worker
+-- as a user script's, through onUserScriptMessage, which Tampermonkey
+does not wait on. The renderer decides that from the world the script
+runs in: the isolated world for manifest and scripting.executeScript
+content scripts, the user script world for chrome.userScripts. So the
+renderer also says, for each extension world a context is created in,
+which world it is, whose, how it was classified and on what page -- which
+shows whether the manifest content script was injected at all.
+
 Refusals are always logged; channels that go the ordinary way, the first
 twenty and then every hundredth.
 
@@ -259,3 +268,52 @@ diff --git a/extensions/browser/api/messaging/message_service_bindings.cc b/exte
  
    std::unique_ptr<MessagePort> opener_port =
        ExtensionMessagePort::CreateForEndpoint(
+diff --git a/extensions/renderer/script_context_set.cc b/extensions/renderer/script_context_set.cc
+--- a/extensions/renderer/script_context_set.cc
++++ b/extensions/renderer/script_context_set.cc
+@@ -7,8 +7,10 @@
+ #include "base/compiler_specific.h"
+ #include "base/functional/bind.h"
+ #include "base/location.h"
++#include "base/logging.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/task/single_thread_task_runner.h"
++#include "build/build_config.h"
+ #include "content/public/common/url_constants.h"
+ #include "content/public/renderer/render_frame.h"
+ #include "content/public/renderer/worker_thread.h"
+@@ -96,6 +98,34 @@ ScriptContext* ScriptContextSet::Register(
+   std::optional<int> blink_isolated_world_id;
+   if (IsolatedWorldManager::IsExtensionIsolatedWorld(world_id)) {
+     blink_isolated_world_id = world_id;
++#if BUILDFLAG(IS_OHOS)
++    // What an extension's script on a page was taken for, and why: the
++    // world it runs in decides it, and the world was chosen when the
++    // script was injected -- manifest and scripting.executeScript scripts
++    // in the isolated world, chrome.userScripts in the user script world.
++    // Messaging then reports it to the browser as that endpoint type.
++    static int ohos_worlds = 0;
++    if (++ohos_worlds <= 50 || ohos_worlds % 100 == 0) {
++      const std::optional<mojom::ExecutionWorld> execution_world =
++          IsolatedWorldManager::GetInstance()
++              .GetExecutionWorldForIsolatedWorld(world_id);
++      LOG(ERROR) << "OHOS script context: world " << world_id << " of "
++                 << IsolatedWorldManager::GetInstance()
++                        .GetHostIdForIsolatedWorld(world_id)
++                 << " is "
++                 << (!execution_world ? "an unknown world"
++                     : *execution_world == mojom::ExecutionWorld::kUserScript
++                         ? "the user script world"
++                         : "the isolated (content script) world")
++                 << ", classified "
++                 << (context_type == mojom::ContextType::kUserScript
++                         ? "user script"
++                     : context_type == mojom::ContextType::kContentScript
++                         ? "content script"
++                         : "other")
++                 << ", on " << frame_url.possibly_invalid_spec();
++    }
++#endif
+   }
+ 
+   ScriptContext* context = new ScriptContext(

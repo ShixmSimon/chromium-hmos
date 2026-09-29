@@ -33,6 +33,13 @@ instead of at once. The pause is not diagnostic and stays: a GPU process
 that is up and cannot make channels would otherwise be asked dozens of
 times a second for as long as the app runs.
 
+None of the GPU process's lines after that point ever reached hilog, the
+new ones included: VizMainImpl::CreateGpuService, just before it
+initialises the service with its host, replaces the log handler that
+wrote to hilog with the one that forwards the log to the browser for
+chrome://gpu. The browser now writes what it is forwarded, WARNING and
+above, to hilog as "OHOS GPU process says:".
+
 The logging is diagnostic; it comes out once Vulkan is understood here.
 
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch,
@@ -151,6 +158,23 @@ diff --git a/components/viz/host/gpu_host_impl.cc b/components/viz/host/gpu_host
    delegate_->DidInitialize(gpu_info, gpu_feature_info,
                             gpu_info_for_hardware_gpu,
                             gpu_feature_info_for_hardware_gpu, gpu_extra_info);
+@@ -893,6 +942,16 @@ void GpuHostImpl::CreateWebNNWeightsFile(CreateWebNNWeightsFileCallback cb) {
+ void GpuHostImpl::RecordLogMessage(int32_t severity,
+                                    const std::string& header,
+                                    const std::string& message) {
++#if BUILDFLAG(IS_OHOS)
++  // Once the GPU service exists, VizMainImpl::CreateGpuService installs the
++  // handler that sends the GPU process's log here, and it replaces the one
++  // that wrote it to hilog: from then on nothing the GPU process says --
++  // not even at ERROR -- reaches hilog, only chrome://gpu, which a black
++  // window cannot show. Say it again from here, WARNING and above.
++  if (severity >= logging::LOGGING_WARNING) {
++    LOG(ERROR) << "OHOS GPU process says: " << header << message;
++  }
++#endif
+   delegate_->RecordLogMessage(severity, header, message);
+ }
+ 
 diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/service/gl/gpu_service_impl.cc
 --- a/components/viz/service/gl/gpu_service_impl.cc
 +++ b/components/viz/service/gl/gpu_service_impl.cc
