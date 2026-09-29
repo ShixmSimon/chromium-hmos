@@ -3,11 +3,11 @@
 #include <window_manager/oh_display_info.h>
 #include <window_manager/oh_display_manager.h>
 
-#include "components/viz/common/resources/shared_image_format.h"
 #include "ui/gfx/display_color_spaces.h"
 
 #include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/synchronization/lock.h"
 #include "base/task/single_thread_task_runner.h"
@@ -34,6 +34,8 @@ constexpr gfx::Size kOhosPrimaryDisplaySize(1920, 1080);
 // costs something real: claim HDR on a panel without it and highlights
 // clip, deny it on a panel with it and HDR video is tone-mapped down for
 // no reason.
+//
+// For now the answer is SDR even on a panel with HDR; see below.
 gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
   // The default is sRGB throughout, which is what a panel without HDR
   // wants and a safe answer when the question cannot be asked.
@@ -60,23 +62,24 @@ gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
   }
   OH_NativeDisplayManager_DestroyDisplay(info);
 
-  if (!hdr) {
-    return color_spaces;
+  if (hdr) {
+    // This used to answer Rec. 2020 PQ for HDR content on such a panel, and
+    // the compositor then drew HDR video PQ-encoded. But the surface it draws
+    // into -- the XComponent's native window -- is never told its colour
+    // space, so the system showed those PQ values as sRGB: on a Mate 70
+    // Pro+ every HDR video on YouTube came out washed out, blacks grey.
+    // Answering SDR makes the compositor tone-map HDR down to sRGB itself,
+    // which the 2in1 emulator (no HDR panel) shows correctly, and tells
+    // pages (dynamic-range: high) is false, so YouTube stops choosing HDR
+    // streams it then has to decode in software. Real HDR output needs the
+    // native window's colour space and HDR metadata set to match first.
+    static bool said = false;
+    if (!said) {
+      said = true;
+      LOG(WARNING) << "OHOS display: the panel can show HDR; output stays "
+                      "SDR until the surface is told its colour space";
+    }
   }
-
-  // Rec. 2020 with the PQ transfer is what HDR video arrives in and what a
-  // HarmonyOS panel advertising HDR presents. Video gets it; everything
-  // else stays sRGB, so ordinary pages are not re-encoded on their way to
-  // a panel that was showing them correctly already.
-  const gfx::ColorSpace hdr_space = gfx::ColorSpace::CreateHDR10();
-  const viz::SharedImageFormat hdr_format =
-      viz::SinglePlaneFormat::kRGBA_1010102;
-  color_spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR,
-                                            /*needs_alpha=*/false, hdr_space,
-                                            hdr_format);
-  color_spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR,
-                                            /*needs_alpha=*/true, hdr_space,
-                                            hdr_format);
   return color_spaces;
 }
 
