@@ -1,4 +1,4 @@
-Refuse a GL that returns no version string instead of crashing on it.
+Get GL strings through the HarmonyOS wrapper, and refuse a GL without them.
 
 The GPU process in a native child of its own crashed in its first half
 second, every time: SIGSEGV in strlen, from FunctionsGL::initialize via
@@ -9,9 +9,26 @@ and it went straight into a std::string.
 On OHOS a null version is now read as version 0.0 of GLES, which
 DisplayEGL refuses, so EGL initialisation fails and Chromium's own
 fallback takes over instead of the process dying. The extensions string
-gets the same guard. This does not make GL work in that process; it
-makes a GL that does not work fail the way the rest of the stack
-expects.
+gets the same guard.
+
+The first version checked for null and the process still crashed at the
+same place, at address 0x1F02 -- GL_VERSION. glGetString had not
+returned null; it had returned its argument, which is what the
+HarmonyOS GLES wrapper's no-context stub does. So the guard is anything
+below 64KiB, where nothing real lives.
+
+And the cause, as far as it can be seen from outside: a probe in the same
+process, reaching the system EGL and GLES through their exported symbols,
+made a context current and read all three strings. ANGLE reaches them
+through eglGetProcAddress, which can hand back entry points that bypass
+the wrapper; a context made current that way does not install the
+wrapper's dispatch table for the thread, and the wrapper's glGetString
+then answers from the stub. In the browser process something else had
+already made a context current through the wrapper, which is why it
+worked there. FunctionsEGLDL now takes the wrapper's exports first --
+only in a process that sets OHOS_ANGLE_WRAPPER_EXPORTS, which the GPU
+process started as a native child of its own does, so the browser
+process's working path is not touched.
 
 Generated for ANGLE 5382ed032a48ca6fefe8c3bca2c3c7c8edb8b63c (Chromium
 154.0.8037.51).
@@ -19,7 +36,7 @@ Generated for ANGLE 5382ed032a48ca6fefe8c3bca2c3c7c8edb8b63c (Chromium
 diff --git a/third_party/angle/src/libANGLE/renderer/gl/FunctionsGL.cpp b/third_party/angle/src/libANGLE/renderer/gl/FunctionsGL.cpp
 --- a/third_party/angle/src/libANGLE/renderer/gl/FunctionsGL.cpp
 +++ b/third_party/angle/src/libANGLE/renderer/gl/FunctionsGL.cpp
-@@ -21,7 +21,19 @@ static void GetGLVersion(PFNGLGETSTRINGPROC getStringFunction,
+@@ -21,7 +21,21 @@ static void GetGLVersion(PFNGLGETSTRINGPROC getStringFunction,
                           gl::Version *outVersion,
                           StandardGL *outStandard)
  {
@@ -27,9 +44,11 @@ diff --git a/third_party/angle/src/libANGLE/renderer/gl/FunctionsGL.cpp b/third_
 +    const char *rawVersion = reinterpret_cast<const char *>(getStringFunction(GL_VERSION));
 +#if defined(ANGLE_PLATFORM_OHOS)
 +    // No current context, or a driver that will not answer: glGetString
-+    // returns null, and constructing a string from it was a segfault in
-+    // strlen. Version 0.0 makes the caller refuse the context instead.
-+    if (rawVersion == nullptr)
++    // returns null -- or, from the GLES wrapper's no-context stub, its own
++    // argument back (0x1F02) -- and constructing a string from it was a
++    // segfault in strlen. Version 0.0 makes the caller refuse the context
++    // instead. Nothing real lives in the first 64KiB.
++    if (reinterpret_cast<uintptr_t>(rawVersion) < 0x10000)
 +    {
 +        *outStandard = STANDARD_GL_ES;
 +        *outVersion  = gl::Version(0, 0);
@@ -40,13 +59,71 @@ diff --git a/third_party/angle/src/libANGLE/renderer/gl/FunctionsGL.cpp b/third_
      if (version.find("OpenGL ES") == std::string::npos)
      {
          // OpenGL spec states the GL_VERSION string will be in the following format:
-@@ -83,6 +95,9 @@ void FunctionsGL::initialize(const egl::AttributeMap &displayAttributes)
+@@ -83,6 +97,9 @@ void FunctionsGL::initialize(const egl::AttributeMap &displayAttributes)
      else
      {
          const char *exts = reinterpret_cast<const char *>(getString(GL_EXTENSIONS));
 +#if defined(ANGLE_PLATFORM_OHOS)
-+        if (exts != nullptr)
++        if (reinterpret_cast<uintptr_t>(exts) >= 0x10000)
 +#endif
          angle::SplitStringAlongWhitespace(std::string(exts), &extensions);
      }
  
+diff --git a/third_party/angle/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp b/third_party/angle/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp
+--- a/third_party/angle/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp
++++ b/third_party/angle/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp
+@@ -9,6 +9,8 @@
+ #include "libANGLE/renderer/gl/egl/FunctionsEGLDL.h"
+ 
+ #include <dlfcn.h>
++#include <stdlib.h>
++#include <string.h>
+ 
+ namespace rx
+ {
+@@ -64,6 +66,45 @@ egl::Error FunctionsEGLDL::initialize(EGLAttrib platformType,
+ 
+ void *FunctionsEGLDL::getProcAddress(const char *name) const
+ {
++#if defined(ANGLE_PLATFORM_OHOS)
++    // HarmonyOS's libEGL.so and libGLESv3.so are a wrapper over the vendor
++    // driver. A GLES call is dispatched through the table the wrapper's own
++    // eglMakeCurrent installs for the calling thread, and eglGetProcAddress
++    // can hand back an entry point that does not go through the wrapper. In
++    // the browser process something else had already made a context current
++    // through the wrapper, so it worked; in a GPU process of its own nothing
++    // had, and glGetString answered from the no-context stub with its own
++    // argument. The wrapper's exports first, then, the way an app linking
++    // against the NDK would reach them.
++    //
++    // Only where the process asks for it: the GPU process started as a
++    // native child of its own sets OHOS_ANGLE_WRAPPER_EXPORTS. The browser
++    // process, where the other order works, is left exactly as it was.
++    static const bool wrapperExportsFirst =
++        getenv("OHOS_ANGLE_WRAPPER_EXPORTS") != nullptr;
++    if (!wrapperExportsFirst)
++    {
++        // Falls through to the upstream lookup below.
++    }
++    else if (strncmp(name, "egl", 3) == 0)
++    {
++        if (void *exported = dlsym(nativeEGLHandle, name))
++        {
++            return exported;
++        }
++    }
++    else if (strncmp(name, "gl", 2) == 0)
++    {
++        static void *gles = dlopen("libGLESv3.so", RTLD_NOW | RTLD_LOCAL);
++        if (gles != nullptr)
++        {
++            if (void *exported = dlsym(gles, name))
++            {
++                return exported;
++            }
++        }
++    }
++#endif
+     void *f = reinterpret_cast<void *>(mGetProcAddressPtr(name));
+     if (f)
+     {

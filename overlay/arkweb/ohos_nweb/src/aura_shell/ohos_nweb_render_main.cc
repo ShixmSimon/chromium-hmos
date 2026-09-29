@@ -168,7 +168,8 @@ namespace {
 // OH_Ability_StartNativeChildProcess handed it, the GPU process with what its
 // parent sent over the IPC channel.
 void RunNativeChild(const char* encoded_params,
-                    const std::vector<std::pair<int, int>>& fds) {
+                    const std::vector<std::pair<int, int>>& fds,
+                    bool gpu_child) {
   base::internal::OhosNativeChildParams launch_params;
   if (!encoded_params || !base::internal::DecodeOhosNativeChildParams(
                              encoded_params, &launch_params)) {
@@ -179,6 +180,12 @@ void RunNativeChild(const char* encoded_params,
       !ConfigureRuntimePaths(launch_params)) {
     WVLOG_E("AuraShell native child rejected startup parameters");
     return;
+  }
+  // After the launch environment, which may have cleared everything: ANGLE
+  // reaches the system EGL and GLES through the HarmonyOS wrapper's exports
+  // in this process only. See ohos-angle-null-gl-strings.patch.
+  if (gpu_child) {
+    setenv("OHOS_ANGLE_WRAPPER_EXPORTS", "1", 1);
   }
 
   std::ostringstream command_line;
@@ -203,7 +210,7 @@ ChromiumHarmonyOSNativeChildMain(NativeChildProcess_Args args) {
     WVLOG_E("AuraShell native child rejected its descriptors");
     return;
   }
-  RunNativeChild(args.entryParams, fds);
+  RunNativeChild(args.entryParams, fds, /*gpu_child=*/false);
 }
 
 // The GPU process, started with OH_Ability_CreateNativeChildProcess so that
@@ -226,5 +233,5 @@ ChromiumHarmonyOSGpuChildMainProc() {
     return;
   }
   ui::ProbeOhosGpuChildEgl();
-  RunNativeChild(encoded_params.c_str(), fds);
+  RunNativeChild(encoded_params.c_str(), fds, /*gpu_child=*/true);
 }

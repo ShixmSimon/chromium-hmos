@@ -5,8 +5,10 @@
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 
 #include <dlfcn.h>
+#include <string.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <map>
 #include <memory>
 
@@ -15,6 +17,7 @@
 #include "base/command_line.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/process/launch_ohos.h"
@@ -22,6 +25,7 @@
 #include "base/synchronization/condition_variable.h"
 #include "base/synchronization/lock.h"
 #include "base/synchronization/waitable_event.h"
+#include "base/task/thread_pool.h"
 #include "base/thread_annotations.h"
 #include "native_window/external_window.h"
 #include "ui/gfx/geometry/rect.h"
@@ -157,28 +161,64 @@ void SendWidgetState(OHIPCRemoteProxy* proxy,
   }
 }
 
-// A GPU child that failed once is not tried again in this run: Chromium
-// retries a failed GPU process launch many times, and each retry here was a
-// new native child -- the system counted fifty. What a run that cannot start
-// one can do is limited: Chromium falls back through its GPU modes and, with
-// no process at all, gives up. So the failure is also left on disk for the
-// next launch, which then keeps the GPU in the browser process (see
-// ohos_chrome_main_runner.cc) and removes the note, so the launch after that
-// tries again.
-bool& GpuChildFailed() {
-  static bool failed = false;
-  return failed;
-}
+// Whether the GPU child works is noted on disk for the next launch, which
+// keeps the GPU in the browser process once when it did not (see
+// ohos_chrome_main_runner.cc) and removes the note, so the launch after
+// that tries again.
+//
+// A child that cannot be started is only half of it. The other half is a
+// child that starts and then dies -- the GPU crashing on initialisation --
+// which Chromium answers by starting another, several times, and then one
+// with --use-gl=disabled that survives and draws nothing. None of those
+// launches fails. So the note is written whenever a child is started and
+// taken back only when that child has been up for kGpuChildSettled with no
+// other launch after it, and never once Chromium has fallen back to
+// running without GL.
+constexpr base::TimeDelta kGpuChildSettled = base::Seconds(10);
 
-void RecordGpuChildFailure() {
-  GpuChildFailed() = true;
+base::FilePath GpuChildFailedMarker() {
   const base::FilePath user_data_dir =
       base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
           "user-data-dir");
-  if (!user_data_dir.empty() &&
-      !base::WriteFile(user_data_dir.Append(kOhosGpuChildFailedMarker), "")) {
-    LOG(ERROR) << "OHOS GPU child: could not note the failure for next launch";
+  return user_data_dir.empty()
+             ? base::FilePath()
+             : user_data_dir.Append(kOhosGpuChildFailedMarker);
+}
+
+struct LaunchHistory {
+  // A start that failed outright: not tried again in this run. Chromium
+  // retries a failed launch many times, and each retry here was a new
+  // native child -- the system counted fifty.
+  bool start_failed = false;
+  // Chromium has given up on GL in the child for this run. Read from the
+  // thread the settling check runs on, as is the generation.
+  std::atomic<bool> fell_back{false};
+  std::atomic<uint64_t> generation{0};
+};
+
+LaunchHistory& History() {
+  static LaunchHistory history;
+  return history;
+}
+
+void NoteGpuChildInDoubt() {
+  const base::FilePath marker = GpuChildFailedMarker();
+  if (!marker.empty() && !base::WriteFile(marker, "")) {
+    LOG(ERROR) << "OHOS GPU child: could not note the attempt for next launch";
   }
+}
+
+void ClearGpuChildDoubtIfSettled(uint64_t generation) {
+  // A stale generation only means a later launch took over.
+  if (History().generation.load() != generation ||
+      History().fell_back.load()) {
+    return;
+  }
+  const base::FilePath marker = GpuChildFailedMarker();
+  if (!marker.empty()) {
+    base::DeleteFile(marker);
+  }
+  LOG(WARNING) << "OHOS GPU child: settled";
 }
 
 base::ProcessId StartGpuChild(const std::string& encoded_params,
@@ -259,13 +299,27 @@ base::ProcessId StartGpuChild(const std::string& encoded_params,
 // Registered with base as the way to start --type=gpu-process.
 base::ProcessId LaunchGpuChild(const std::string& encoded_params,
                                const std::vector<std::pair<int, int>>& fds) {
-  if (GpuChildFailed()) {
+  LaunchHistory& history = History();
+  if (history.start_failed) {
     return base::kNullProcessId;
   }
+  // The launch after the last GL mode has failed. It is still a child
+  // worth starting -- without it Chromium gives up altogether -- but the
+  // run counts as a failure.
+  if (encoded_params.find("--use-gl=disabled") != std::string::npos) {
+    history.fell_back = true;
+  }
+  NoteGpuChildInDoubt();
   const base::ProcessId pid = StartGpuChild(encoded_params, fds);
   if (pid == base::kNullProcessId) {
-    RecordGpuChildFailure();
+    history.start_failed = true;
+    return pid;
   }
+  const uint64_t generation = ++history.generation;
+  base::ThreadPool::PostDelayedTask(
+      FROM_HERE, {base::MayBlock()},
+      base::BindOnce(&ClearGpuChildDoubtIfSettled, generation),
+      kGpuChildSettled);
   return pid;
 }
 
@@ -544,6 +598,27 @@ void ProbeOhosGpuChildEgl() {
       !create_pbuffer || !create_context || !make_current || !get_string) {
     LOG(WARNING) << "OHOS GPU child probe: an EGL or GLES entry is missing";
     return;
+  }
+
+  // Where each entry point lives, reached the way this probe reaches it and
+  // the way ANGLE did: through eglGetProcAddress. A different library for
+  // the same name is a dispatch that bypasses the wrapper.
+  using GetProcAddress = void* (*)(const char*);
+  auto get_proc_address =
+      reinterpret_cast<GetProcAddress>(dlsym(egl, "eglGetProcAddress"));
+  auto where = [](void* function) {
+    Dl_info info = {};
+    return function && dladdr(function, &info) && info.dli_fname
+               ? std::string(info.dli_fname)
+               : std::string(function ? "?" : "null");
+  };
+  for (const char* name : {"eglMakeCurrent", "glGetString"}) {
+    void* exported = dlsym(strncmp(name, "egl", 3) == 0 ? egl : gles, name);
+    void* resolved = get_proc_address ? get_proc_address(name) : nullptr;
+    LOG(WARNING) << "OHOS GPU child probe: " << name
+                 << " exported=" << where(exported)
+                 << " via_getprocaddress=" << where(resolved)
+                 << " same=" << (exported == resolved);
   }
 
   constexpr int kNone = 0x3038;               // EGL_NONE
