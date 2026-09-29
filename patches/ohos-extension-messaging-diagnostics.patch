@@ -1,0 +1,261 @@
+Say where an extension message goes, and where it stops.
+
+On a phone Tampermonkey's content script calls chrome.runtime.sendMessage
+and nothing happens: no reply, no runtime.lastError, and neither onMessage
+nor onConnect fires in the service worker. The same call from the
+extension's own popup is answered. Scripts cannot be installed, because
+the content script is what tells the background to start.
+
+Every refusal on the browser's side is silent in the page. The checks on
+an incoming channel report a bad message, which would end the renderer --
+on a single-process phone that is the browser, so it is only logged -- and
+the later ones return without telling the opener at all. So on OHOS, at
+ERROR:
+
+  - each incoming channel, with its endpoint type, extension, target,
+    source URL and process, and which check refused it if one did;
+  - each place the message service drops a channel without telling the
+    opener: the source gone, the opener's port invalid, no receiver
+    (including none left once the opener's own frames are removed);
+  - waiting for the background to start, whether it did, and the channel
+    opening.
+
+Refusals are always logged; channels that go the ordinary way, the first
+twenty and then every hundredth.
+
+Diagnostic; it comes out once content-script messaging works on a phone.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/extensions/browser/api/messaging/message_service.cc b/extensions/browser/api/messaging/message_service.cc
+--- a/extensions/browser/api/messaging/message_service.cc
++++ b/extensions/browser/api/messaging/message_service.cc
+@@ -15,6 +15,7 @@
+ #include "base/containers/fixed_flat_set.h"
+ #include "base/containers/span.h"
+ #include "base/feature_list.h"
++#include "base/logging.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback.h"
+ #include "base/json/json_writer.h"
+@@ -86,6 +87,16 @@ namespace extensions {
+ 
+ namespace {
+ 
++#if BUILDFLAG(IS_OHOS)
++// Whether to log one more channel that went the ordinary way. Every
++// sendMessage opens a channel, so the first twenty and then every
++// hundredth; refusals are always logged.
++bool OhosSayOrdinaryChannel() {
++  static int channels = 0;
++  return ++channels <= 20 || channels % 100 == 0;
++}
++#endif
++
+ const char kReceivingEndDoesntExistError[] =
+     "Could not establish connection. Receiving end does not exist.";
+ const char kReceivingEndIncompatibleMessageSerializationFormat[] =
+@@ -476,6 +487,10 @@ void MessageService::OpenChannelToExtension(
+   content::RenderFrameHost* source_render_frame_host =
+       source.is_for_render_frame() ? source.GetRenderFrameHost() : nullptr;
+   if (!source.IsValid()) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS messaging: channel to " << target_extension_id
++               << " dropped, its source is gone";
++#endif
+     for (const auto& tracking_id : open_channel_tracking_ids) {
+       message_tracker->StopTrackingMessagingStage(
+           tracking_id, MessageTracker::OpenChannelMessagePipelineResult::
+@@ -489,6 +504,10 @@ void MessageService::OpenChannelToExtension(
+ 
+   CHECK(opener_port);
+   if (!opener_port->IsValidPort()) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS messaging: channel to " << target_extension_id
++               << " dropped, the opener's port is not valid";
++#endif
+     for (const auto& tracking_id : open_channel_tracking_ids) {
+       message_tracker->StopTrackingMessagingStage(
+           tracking_id, MessageTracker::OpenChannelMessagePipelineResult::
+@@ -991,6 +1010,17 @@ void MessageService::OpenChannelImpl(BrowserContext* browser_context,
+   auto* message_tracker = MessageTracker::Get(context_);
+ 
+   if (!will_open_channel) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS messaging: channel to " << params->target_extension_id
++               << " not opened"
++               << (did_enqueue ? " after waiting for its background" : "")
++               << ": "
++               << (!source.IsValid() ? "the source is gone"
++                   : (!params->opener_port ||
++                      !params->opener_port->IsValidPort())
++                       ? "the opener's port is not valid"
++                       : "no receiver");
++#endif
+     // The channel won't open. If this was a pending channel, remove it,
+     // because now it will never open. This prevents the pending message
+     // from being re-added indefinitely. See https://crbug.com/1231683.
+@@ -1016,6 +1046,13 @@ void MessageService::OpenChannelImpl(BrowserContext* browser_context,
+ 
+   params->receiver->RemoveCommonFrames(*params->opener_port);
+   if (!params->receiver->IsValidPort()) {
++#if BUILDFLAG(IS_OHOS)
++    // Every receiver was also the opener. On a single-process phone "the
++    // same frame" is worth checking here.
++    LOG(ERROR) << "OHOS messaging: channel to " << params->target_extension_id
++               << " not opened: no receiver left once the opener's own "
++                  "frames were removed";
++#endif
+     params->opener_port->DispatchOnDisconnect(kReceivingEndDoesntExistError);
+     pending_lazy_context_channels_.erase(
+         params->receiver_port_id.GetChannelId());
+@@ -1027,6 +1064,11 @@ void MessageService::OpenChannelImpl(BrowserContext* browser_context,
+     return;
+   }
+   params->receiver->set_is_for_onetime_channel(params->is_onetime_channel());
++#if BUILDFLAG(IS_OHOS)
++  LOG_IF(ERROR, OhosSayOrdinaryChannel())
++      << "OHOS messaging: channel to " << params->target_extension_id
++      << " opened";
++#endif
+ 
+   std::unique_ptr<MessageChannel> channel_ptr =
+       std::make_unique<MessageChannel>();
+@@ -1352,6 +1394,11 @@ bool MessageService::MaybeAddPendingLazyContextOpenChannelTask(
+         params->get()->channel_type);
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  LOG_IF(ERROR, OhosSayOrdinaryChannel())
++      << "OHOS messaging: channel to " << extension->id() << " waits for its "
++      << (is_worker_based ? "service worker" : "event page") << " to start";
++#endif
+   task_queue->AddPendingTask(
+       context_id,
+       base::BindOnce(&MessageService::PendingLazyContextOpenChannel,
+@@ -1386,6 +1433,10 @@ void MessageService::OnOpenChannelAllowed(
+   const ChannelEndpoint& source = params->source;
+   // Re-lookup the source process since it may no longer be valid.
+   if (!source.IsValid()) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS messaging: channel to " << params->target_extension_id
++               << " dropped once allowed, its source is gone";
++#endif
+     for (const auto& tracking_id : params->open_channel_tracking_ids) {
+       message_tracker->StopTrackingMessagingStage(
+           tracking_id, MessageTracker::OpenChannelMessagePipelineResult::
+@@ -1395,6 +1446,10 @@ void MessageService::OnOpenChannelAllowed(
+   }
+ 
+   if (!params->opener_port->IsValidPort()) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS messaging: channel to " << params->target_extension_id
++               << " dropped once allowed, the opener's port is not valid";
++#endif
+     for (const auto& tracking_id : params->open_channel_tracking_ids) {
+       message_tracker->StopTrackingMessagingStage(
+           tracking_id, MessageTracker::OpenChannelMessagePipelineResult::
+@@ -1456,6 +1511,12 @@ void MessageService::PendingLazyContextOpenChannel(
+ 
+   auto* message_tracker = MessageTracker::Get(context_);
+ 
++#if BUILDFLAG(IS_OHOS)
++  LOG_IF(ERROR, !context_info || OhosSayOrdinaryChannel())
++      << "OHOS messaging: background of " << params->target_extension_id
++      << (context_info ? " started" : " did NOT start")
++      << ", opening the channel";
++#endif
+   if (context_info == nullptr) {
+     // The lazy context failed to load (e.g. the worker failed to start).
+     // Finish tracking the wake-up attempt with a failure.
+diff --git a/extensions/browser/api/messaging/message_service_bindings.cc b/extensions/browser/api/messaging/message_service_bindings.cc
+--- a/extensions/browser/api/messaging/message_service_bindings.cc
++++ b/extensions/browser/api/messaging/message_service_bindings.cc
+@@ -6,11 +6,13 @@
+ 
+ #include "base/debug/crash_logging.h"
+ #include "base/feature_list.h"
++#include "base/logging.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/types/optional_util.h"
+ #include "content/public/browser/browser_thread.h"
+ #include "content/public/browser/child_process_security_policy.h"
+ #include "content/public/browser/render_frame_host.h"
++#include "build/build_config.h"
+ #include "content/public/browser/render_process_host.h"
+ #include "extensions/browser/api/messaging/channel_endpoint.h"
+ #include "extensions/browser/api/messaging/extension_message_port.h"
+@@ -359,6 +361,24 @@ bool IsValidSourceUrl(content::RenderProcessHost& process,
+   return true;
+ }
+ 
++#if BUILDFLAG(IS_OHOS)
++const char* OhosEndpointTypeName(MessagingEndpoint::Type type) {
++  switch (type) {
++    case MessagingEndpoint::Type::kNativeApp:
++      return "native app";
++    case MessagingEndpoint::Type::kExtension:
++      return "extension";
++    case MessagingEndpoint::Type::kContentScript:
++      return "content script";
++    case MessagingEndpoint::Type::kUserScript:
++      return "user script";
++    case MessagingEndpoint::Type::kWebPage:
++      return "web page";
++  }
++  return "unknown";
++}
++#endif
++
+ base::debug::CrashKeyString* GetTargetIdCrashKey() {
+   static auto* crash_key = base::debug::AllocateCrashKeyString(
+       "ExternalConnectionInfo-target_id", base::debug::CrashKeySize::Size64);
+@@ -476,6 +496,40 @@ void MessageService::OpenChannelToExtension(
+   ScopedExternalConnectionInfoCrashKeys info_crash_keys(info);
+   debug::ScopedPortContextCrashKeys port_context_crash_keys(
+       source.port_context());
++#if BUILDFLAG(IS_OHOS)
++  // A refusal here is silent in the page: sendMessage never calls back and
++  // runtime.lastError stays empty. A bad message would also have ended the
++  // renderer, which on a single-process phone is the browser, and is only
++  // logged instead. Say which check it was, and what asked.
++  const char* ohos_refused_by = nullptr;
++  if (!IsValidMessagingSource(*process, info.source_endpoint.type,
++                              info.source_endpoint.extension_id,
++                              source.port_context())) {
++    ohos_refused_by = "the source endpoint";
++  } else if (!IsValidMessagingTarget(*process, info.source_endpoint,
++                                     info.target_id)) {
++    ohos_refused_by = "the target";
++  } else if (!IsValidSourceUrl(*process, info.source_url,
++                               source.port_context())) {
++    ohos_refused_by = "the source URL";
++  } else if (!IsValidSourceContext(*process, source.port_context())) {
++    ohos_refused_by = "the source context";
++  }
++  static int ohos_channels = 0;
++  if (ohos_refused_by || ++ohos_channels <= 20 || ohos_channels % 100 == 0) {
++    LOG(ERROR) << "OHOS messaging: channel from "
++               << OhosEndpointTypeName(info.source_endpoint.type) << " "
++               << info.source_endpoint.extension_id.value_or("-")
++               << " to " << info.target_id << ", source "
++               << info.source_url.possibly_invalid_spec() << ", process "
++               << process->GetDeprecatedID() << ": "
++               << (ohos_refused_by ? "REFUSED by " : "accepted")
++               << (ohos_refused_by ? ohos_refused_by : "");
++  }
++  if (ohos_refused_by) {
++    return;
++  }
++#else
+   if (!IsValidMessagingSource(*process, info.source_endpoint.type,
+                               info.source_endpoint.extension_id,
+                               source.port_context()) ||
+@@ -486,6 +540,7 @@ void MessageService::OpenChannelToExtension(
+     // appropriate) within IsValidSourceContext and/or IsValidMessagingSource.
+     return;
+   }
++#endif
+ 
+   std::unique_ptr<MessagePort> opener_port =
+       ExtensionMessagePort::CreateForEndpoint(

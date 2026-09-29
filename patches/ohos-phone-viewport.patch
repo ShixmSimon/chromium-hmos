@@ -20,24 +20,27 @@ exactly what it is designed to do.
 The rules now live in one function that both hooks call, and it reports
 whether it changed anything so the after-navigation hook can send the result.
 
+A temporary log that printed the view's visible viewport size for
+chrome:// pages is gone. Preferences are recomputed for every tab at
+once -- turning on user scripts in chrome://extensions does it -- and a
+background tab's aura window has no root window, so asking its view for
+that size dereferenced null and took the browser down. The size was only
+ever printed; nothing here depends on it.
+
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 
 diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
 --- a/chrome/browser/chrome_content_browser_client.cc
 +++ b/chrome/browser/chrome_content_browser_client.cc
-@@ -367,7 +367,11 @@
+@@ -367,6 +367,7 @@
  #include "content/public/browser/internal_webui_config.h"
  #include "content/public/browser/isolated_web_apps_policy.h"
  #include "content/public/browser/legacy_tech_cookie_issue_details.h"
 +#include "content/public/browser/navigation_entry.h"
  #include "content/public/browser/navigation_handle.h"
-+#include "content/public/browser/render_widget_host_view.h"
-+#include "ui/display/display.h"
-+#include "ui/display/screen.h"
  #include "content/public/browser/network_service_instance.h"
  #include "content/public/browser/permission_controller.h"
- #include "content/public/browser/permission_descriptor_util.h"
-@@ -4524,6 +4528,165 @@
+@@ -4524,6 +4525,140 @@ content::TtsPlatform* ChromeContentBrowserClient::GetTtsPlatform() {
  #endif
  }
  
@@ -171,31 +174,6 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
 +  // the shell asked for.
 +  web_prefs->default_minimum_page_scale_factor = is_web_ui ? 1.0f : 0.25f;
 +
-+  // TEMPORARY. chrome:// still comes out at about a third size, and the
-+  // numbers from the device say the page is laid out at the screen's width in
-+  // *physical* pixels with no device scale applied. Two guesses have already
-+  // missed, so print what the browser actually believes rather than guess a
-+  // third time: if the view is 1260 wide and the scale is 1, the size handed
-+  // to the renderer is in pixels where it should be in DIP.
-+  if (is_web_ui) {
-+    gfx::Size view_size;
-+    float view_scale = 0.0f;
-+    if (content::RenderWidgetHostView* view =
-+            web_contents ? web_contents->GetRenderWidgetHostView() : nullptr) {
-+      view_size = view->GetVisibleViewportSize();
-+      view_scale = view->GetDeviceScaleFactor();
-+    }
-+    display::Screen* screen = display::Screen::Get();
-+    const display::Display display =
-+        screen ? screen->GetPrimaryDisplay() : display::Display();
-+    LOG(WARNING) << "OHOS webui viewport: url=" << url.possibly_invalid_spec()
-+                 << " view=" << view_size.ToString()
-+                 << " viewScale=" << view_scale
-+                 << " displayScale=" << display.device_scale_factor()
-+                 << " displaySize=" << display.size().ToString()
-+                 << " metaEnabled=" << viewport_meta_enabled
-+                 << " style=" << static_cast<int>(viewport_style);
-+  }
 +  return changed;
 +}
 +#endif  // BUILDFLAG(IS_OHOS)
@@ -203,7 +181,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  void ChromeContentBrowserClient::OverrideWebPreferences(
      WebContents* web_contents,
      content::SiteInstance& main_frame_site,
-@@ -4859,43 +5022,7 @@
+@@ -4859,43 +4994,7 @@ void ChromeContentBrowserClient::OverrideWebPreferences(
  #endif
  
  #if BUILDFLAG(IS_OHOS)
@@ -248,11 +226,10 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  #endif
  
    for (auto& parts : extra_parts_) {
-@@ -4928,6 +5055,14 @@
-     content::SiteInstance& main_frame_site,
+@@ -4929,6 +5028,14 @@ bool ChromeContentBrowserClient::OverrideWebPreferencesAfterNavigation(
      WebPreferences* web_prefs) {
    bool prefs_changed = false;
-+
+ 
 +#if BUILDFLAG(IS_OHOS)
 +  // Where a tab has navigated decides its viewport, so this is the hook that
 +  // matters: the full recomputation only happens when the SiteInstance
@@ -260,6 +237,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
 +  prefs_changed |=
 +      ApplyOhosPhoneWebPreferences(web_contents, main_frame_site, web_prefs);
 +#endif
- 
++
    const auto autoplay_policy = GetAutoplayPolicyForWebContents(web_contents);
    prefs_changed |= (web_prefs->autoplay_policy != autoplay_policy);
+   web_prefs->autoplay_policy = autoplay_policy;

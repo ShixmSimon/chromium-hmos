@@ -21,6 +21,13 @@ web-accessible, and the rest of AllowExtensionResourceLoad run as before.
 A refused extension resource is also logged in a release build, with the
 URL, process and destination -- in the page it is only a failed fetch.
 
+That made every context an extension had on a web page look like the
+extension's own page to the browser: GetMostLikelyContextType asks the
+same question and got the same answer, so a content script was taken for
+a privileged extension page. In single-process mode a context on an
+http(s) URL is now a content script, whatever Contains() says; the
+extension's own pages are on its own origin and are not affected.
+
 Tablets and 2in1s run renderers in processes of their own and none of
 this applies to them.
 
@@ -83,3 +90,22 @@ diff --git a/extensions/browser/process_map.cc b/extensions/browser/process_map.
    return items_.contains(process_id);
  }
  
+@@ -229,6 +246,18 @@ mojom::ContextType ProcessMap::GetMostLikelyContextType(
+   }
+ 
+   const ExtensionId& extension_id = extension->id();
++#if BUILDFLAG(IS_OHOS)
++  // With one process for everything, Contains() is true for every
++  // extension, and without this every context an extension has on a web
++  // page -- its content scripts -- would be classified as the extension's
++  // own privileged pages. What the process cannot tell apart, the URL can:
++  // an extension's own contexts are on its own origin, and anything it
++  // runs on an http(s) page is a content script.
++  if (content::RenderProcessHost::run_renderer_in_process() && url &&
++      url->SchemeIsHTTPOrHTTPS()) {
++    return mojom::ContextType::kContentScript;
++  }
++#endif
+   if (!Contains(extension_id, process_id)) {
+     // If the process map doesn't contain the process, it might be an extension
+     // frame in a webview.

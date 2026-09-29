@@ -15,12 +15,33 @@ returns shows -- the service initialised with its host, and each channel
 established. In the browser, the GPU process reported initialised, and
 each channel asked for and established or failed.
 
-Diagnostic; it comes out once Vulkan is understood here.
+The next run got further: the GPU process initialised with Vulkan and
+Skia on it, told the browser so, and every channel after that failed --
+the first 0.3 ms after, then again and again, 1280 lines in 25 seconds,
+which pushed everything before them out of hilog. So, in the GPU
+process, each step after the host is told (channel manager, compositor
+GPU thread, the shared context and what Skia runs on), each channel as
+the main thread takes it up and, when it fails, why; in the browser,
+whether a failed channel was synchronous and whether the GPU service
+pipe was still connected -- a synchronous call on a closed pipe fails at
+once without the GPU process ever hearing of it.
+
+The repeated lines are thinned to the first five and then every
+hundredth, each with its count, and on OHOS a failed channel is asked
+for again after a growing pause (100 ms more each time, at most 2 s)
+instead of at once. The pause is not diagnostic and stays: a GPU process
+that is up and cannot make channels would otherwise be asked dozens of
+times a second for as long as the app runs.
+
+The logging is diagnostic; it comes out once Vulkan is understood here.
 
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch,
 ohos-gpu-fence-capability.patch, ohos-gl-init-diagnostics.patch,
 ohos-gpu-lose-context-debug-url.patch and
-ohos-vulkan-compositor-diagnostics.patch.
+ohos-vulkan-compositor-diagnostics.patch, and for gpu_channel_manager.cc
+after ohos-gpu-context-lost-recovery.patch and
+ohos-gpu-context-failure-log-throttle.patch.
+
 diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/components/viz/common/gpu/vulkan_in_process_context_provider.cc
 --- a/components/viz/common/gpu/vulkan_in_process_context_provider.cc
 +++ b/components/viz/common/gpu/vulkan_in_process_context_provider.cc
@@ -47,29 +68,78 @@ diff --git a/components/viz/host/gpu_host_impl.cc b/components/viz/host/gpu_host
  #include "base/no_destructor.h"
  #include "base/process/process_handle.h"
  #include "base/strings/strcat.h"
-@@ -302,6 +303,10 @@ void GpuHostImpl::EstablishGpuChannel(int client_id,
+@@ -302,6 +303,19 @@ void GpuHostImpl::EstablishGpuChannel(int client_id,
                                        mojo::ScopedMessagePipeHandle handle,
                                        EstablishChannelCallback callback) {
    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 +#if BUILDFLAG(IS_OHOS)
-+  LOG(ERROR) << "OHOS GPU host: asking for a channel for client "
-+             << client_id;
++  // A channel that fails is asked for again at once, forever, so say the
++  // first few requests and then every hundredth: at the rate it retries,
++  // the lines that say why scrolled out of hilog within seconds.
++  static int ohos_channel_requests = 0;
++  if (++ohos_channel_requests <= 5 || ohos_channel_requests % 100 == 0) {
++    LOG(ERROR) << "OHOS GPU host: asking for a channel for client "
++               << client_id << (sync ? " (sync)" : "") << ", request "
++               << ohos_channel_requests << ", GPU service "
++               << (gpu_service_remote_.is_connected() ? "connected"
++                                                      : "DISCONNECTED");
++  }
 +#endif
    TRACE_EVENT2("gpu", "GpuHostImpl::EstablishGpuChannel", "client_id",
                 client_id, "is_gpu_host", is_gpu_host);
    DCHECK(!(is_gpu_host && enable_extra_handles_validation));
-@@ -590,6 +595,10 @@ void GpuHostImpl::OnChannelEstablished(
+@@ -309,6 +323,10 @@ void GpuHostImpl::EstablishGpuChannel(int client_id,
+   shutdown_timeout_.Stop();
+ 
+   if (gpu::IsReservedClientId(client_id)) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS GPU host: channel for client " << client_id
++               << " refused here, a reserved client id";
++#endif
+     // The display-compositor/GrShaderCache in the gpu process uses these
+     // special client ids.
+     std::move(callback).Run(gpu::GPUInfo(), gpu::GpuFeatureInfo(),
+@@ -434,6 +452,13 @@ void GpuHostImpl::SendOutstandingReplies() {
+     std::move(handler).Run();
+   connection_error_handlers_.clear();
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (!channel_requests_.empty()) {
++    LOG(ERROR) << "OHOS GPU host: " << channel_requests_.size()
++               << " channel requests answered as failed, the GPU host is "
++                  "going away";
++  }
++#endif
+   // Send empty channel handles for all EstablishChannel requests.
+   for (auto& entry : channel_requests_) {
+     std::move(entry.second)
+@@ -590,6 +615,25 @@ void GpuHostImpl::OnChannelEstablished(
      const gpu::GPUInfo& gpu_info,
      const gpu::GpuFeatureInfo& gpu_feature_info,
      const gpu::SharedImageCapabilities& shared_image_capabilities) {
 +#if BUILDFLAG(IS_OHOS)
-+  LOG(ERROR) << "OHOS GPU host: channel for client " << client_id
-+             << (success ? " established" : " FAILED");
++  // Why it failed, as far as this side can tell. A synchronous call on a
++  // disconnected pipe returns false at once without the GPU process ever
++  // seeing it; otherwise the GPU process answered false itself, and its
++  // own log says why.
++  static int ohos_channel_failures = 0;
++  if (success) {
++    LOG(ERROR) << "OHOS GPU host: channel for client " << client_id
++               << " established";
++  } else if (++ohos_channel_failures <= 5 ||
++             ohos_channel_failures % 100 == 0) {
++    LOG(ERROR) << "OHOS GPU host: channel for client " << client_id
++               << " FAILED (" << ohos_channel_failures << "), "
++               << (sync ? "sync" : "async") << ", GPU service "
++               << (gpu_service_remote_.is_connected()
++                       ? "connected: the GPU process said no"
++                       : "DISCONNECTED: the GPU process is gone");
++  }
 +#endif
    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
    TRACE_EVENT0("gpu", "GpuHostImpl::OnChannelEstablished");
  
-@@ -647,6 +656,11 @@ void GpuHostImpl::DidInitialize(
+@@ -647,6 +691,11 @@ void GpuHostImpl::DidInitialize(
      const std::optional<gpu::GpuFeatureInfo>& gpu_feature_info_for_hardware_gpu,
      const gfx::GpuExtraInfo& gpu_extra_info) {
    TRACE_EVENT0("gpu", "GpuHostImpl::DidInitialize");
@@ -94,7 +164,38 @@ diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/serv
      // If GL is using a real GPU, the gpu_info will be passed in and vulkan will
      // use the same GPU.
      vulkan_context_provider_ = VulkanInProcessContextProvider::Create(
-@@ -555,6 +558,9 @@ void GpuServiceImpl::InitializeWithHostInternal(
+@@ -503,6 +506,12 @@ void GpuServiceImpl::InitializeWithHostInternal(
+                           gpu_info_for_hardware_gpu_,
+                           gpu_feature_info_for_hardware_gpu_, gpu_extra_info_);
+   gpu_host_ = mojo::SharedRemote<mojom::GpuHost>(gpu_host.Unbind(), io_runner_);
++#if BUILDFLAG(IS_OHOS)
++  // The browser hears the GPU process is up here, before the channel
++  // manager exists. Everything below still has to finish before a single
++  // channel can be established, so say how far it gets.
++  LOG(ERROR) << "OHOS GPU startup: told the host, creating the channel manager";
++#endif
+ 
+   // Defer creation of the render thread. This is to prevent it from handling
+   // IPC messages before the sandbox has been enabled and all other necessary
+@@ -517,6 +526,10 @@ void GpuServiceImpl::InitializeWithHostInternal(
+ 
+   media_gpu_channel_manager_ = std::make_unique<media::MediaGpuChannelManager>(
+       gpu_channel_manager_.get());
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS GPU startup: channel managers created, DrDC "
++             << (features::IsDrDcEnabled(gpu_feature_info_) ? "on" : "off");
++#endif
+ 
+   // Create and Initialize compositor gpu thread.
+   if (features::IsDrDcEnabled(gpu_feature_info_)) {
+@@ -552,9 +565,16 @@ void GpuServiceImpl::InitializeWithHostInternal(
+ #endif
+ 
+     compositor_gpu_thread_ = CompositorGpuThread::Create(params);
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS GPU startup: compositor GPU thread "
++               << (compositor_gpu_thread_ ? "created" : "NOT created");
++#endif
    }
  
    UMA_HISTOGRAM_BOOLEAN("GPU.DrDcEnabled", !!compositor_gpu_thread_);
@@ -104,7 +205,53 @@ diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/serv
  
  #if BUILDFLAG(IS_WIN)
    // Add GpuServiceImpl to DirectCompositionOverlayCapsMonitor observer list for
-@@ -950,6 +956,10 @@ void GpuServiceImpl::EstablishGpuChannel(
+@@ -906,6 +926,10 @@ void GpuServiceImpl::EstablishGpuChannel(
+     EstablishGpuChannelCallback callback) {
+   if (io_runner_->BelongsToCurrentThread()) {
+     if (IsExiting()) {
++#if BUILDFLAG(IS_OHOS)
++      LOG(ERROR) << "OHOS GPU startup: channel for client " << client_id
++                 << " dropped, the GPU process is exiting";
++#endif
+       // We are already exiting so there is no point in responding. Close the
+       // receiver so we can safely drop the callback.
+       receiver_.reset();
+@@ -929,6 +953,17 @@ void GpuServiceImpl::EstablishGpuChannel(
+     return;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Reached on the main thread only. If the browser hears nothing back and
++  // this never appears, the main thread is still busy with something else.
++  static int ohos_channel_requests = 0;
++  const bool ohos_say = ++ohos_channel_requests <= 5 ||
++                        ohos_channel_requests % 100 == 0;
++  if (ohos_say) {
++    LOG(ERROR) << "OHOS GPU startup: establishing a channel for client "
++               << client_id << " (request " << ohos_channel_requests << ")";
++  }
++#endif
+   auto channel_token = base::UnguessableToken::Create();
+   gpu::GpuChannel* gpu_channel = gpu_channel_manager_->EstablishChannel(
+       channel_token, client_id, client_tracing_id, is_gpu_host,
+@@ -936,6 +971,16 @@ void GpuServiceImpl::EstablishGpuChannel(
+       gpu_feature_info_);
+ 
+   if (!gpu_channel) {
++#if BUILDFLAG(IS_OHOS)
++    // The one way this fails: the channel's shared image stub needs the
++    // shared context -- GL, then Skia on it, Vulkan here -- and that could
++    // not be created. The ContextResult line before this says which part.
++    if (ohos_say) {
++      LOG(ERROR) << "OHOS GPU startup: channel for client " << client_id
++                 << " NOT established: no shared context for its shared "
++                    "image stub";
++    }
++#endif
+     std::move(callback).Run(/*success=*/false, gpu::GPUInfo(),
+                             gpu::GpuFeatureInfo(),
+                             gpu::SharedImageCapabilities());
+@@ -950,6 +995,10 @@ void GpuServiceImpl::EstablishGpuChannel(
  
    media_gpu_channel_manager_->AddChannel(client_id, channel_token);
  
@@ -168,3 +315,94 @@ diff --git a/gpu/ipc/service/gpu_init.cc b/gpu/ipc/service/gpu_init.cc
    return true;
  #else   // !BUILDFLAG(ENABLE_VULKAN)
    return false;
+diff --git a/content/browser/gpu/browser_gpu_channel_host_factory.cc b/content/browser/gpu/browser_gpu_channel_host_factory.cc
+--- a/content/browser/gpu/browser_gpu_channel_host_factory.cc
++++ b/content/browser/gpu/browser_gpu_channel_host_factory.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "content/browser/gpu/browser_gpu_channel_host_factory.h"
+ 
++#include <algorithm>
++#include <atomic>
+ #include <utility>
+ 
+ #include "base/android/orderfile/orderfile_buildflags.h"
+@@ -11,6 +13,7 @@
+ #include "base/compiler_specific.h"
+ #include "base/functional/bind.h"
+ #include "base/location.h"
++#include "base/logging.h"
+ #include "base/process/process_handle.h"
+ #include "base/synchronization/waitable_event.h"
+ #include "base/task/single_thread_task_runner.h"
+@@ -41,6 +44,18 @@ namespace content {
+ 
+ namespace {
+ 
++#if BUILDFLAG(IS_OHOS)
++// Channel requests the existing GPU process failed in a row. Upstream asks
++// again at once, which is right for a GPU process that has just been
++// restarted. A GPU process that is up and cannot make channels -- one whose
++// Skia context never came up -- was asked dozens of times a second, for as
++// long as the app ran, and the log it filled scrolled out the lines that
++// said why. So each retry waits a little longer than the one before.
++std::atomic<int> g_ohos_failed_channel_requests{0};
++constexpr base::TimeDelta kOhosChannelRetryStep = base::Milliseconds(100);
++constexpr base::TimeDelta kOhosChannelRetryMax = base::Seconds(2);
++#endif
++
+ #if BUILDFLAG(IS_ANDROID)
+ 
+ // This is used as the stack frame to group these timeout crashes, so avoid
+@@ -197,6 +212,22 @@ void BrowserGpuChannelHostFactory::EstablishRequest::OnEstablished(
+         base::BindOnce(
+             &BrowserGpuChannelHostFactory::EstablishRequest::RestartTimeout,
+             this));
++#if BUILDFLAG(IS_OHOS)
++    const int failures = ++g_ohos_failed_channel_requests;
++    const base::TimeDelta delay =
++        std::min(kOhosChannelRetryStep * (failures - 1), kOhosChannelRetryMax);
++    if (failures <= 5 || failures % 100 == 0) {
++      LOG(ERROR) << "OHOS GPU channel: " << failures
++                 << " requests failed in a row, asking again in " << delay;
++    }
++    GetUIThreadTaskRunner({})->PostDelayedTask(
++        FROM_HERE,
++        base::BindOnce(
++            &BrowserGpuChannelHostFactory::EstablishRequest::Establish, this,
++            false),
++        delay);
++    return;
++#else
+     // TODO(jam): can we ever enter this when it was a sync call?
+     GetUIThreadTaskRunner({})->PostTask(
+         FROM_HERE,
+@@ -204,10 +235,14 @@ void BrowserGpuChannelHostFactory::EstablishRequest::OnEstablished(
+             &BrowserGpuChannelHostFactory::EstablishRequest::Establish, this,
+             false));
+     return;
++#endif
+   }
+ 
+   if (status == viz::GpuHostImpl::EstablishChannelStatus::kSuccess &&
+       channel_handle.is_valid()) {
++#if BUILDFLAG(IS_OHOS)
++    g_ohos_failed_channel_requests = 0;
++#endif
+     gpu_channel_ = gpu::GpuChannelHost::Create(
+         gpu_client_id_, gpu_info, gpu_feature_info, shared_image_capabilities,
+         std::move(channel_handle), GetIOThreadTaskRunner({}));
+diff --git a/gpu/ipc/service/gpu_channel_manager.cc b/gpu/ipc/service/gpu_channel_manager.cc
+--- a/gpu/ipc/service/gpu_channel_manager.cc
++++ b/gpu/ipc/service/gpu_channel_manager.cc
+@@ -1030,6 +1030,10 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+     return nullptr;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  LOG(ERROR) << "OHOS GPU startup: shared context created, Skia on "
++             << GrContextTypeToString(gpu_preferences_.gr_context_type);
++#endif
+   shared_context_state_ = std::move(shared_context_state);
+ 
+   *result = ContextResult::kSuccess;
