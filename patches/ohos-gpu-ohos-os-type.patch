@@ -92,7 +92,7 @@ diff --git a/gpu/config/gpu_driver_bug_list.json b/gpu/config/gpu_driver_bug_lis
 index a572716679..2f32f84eec 100644
 --- a/gpu/config/gpu_driver_bug_list.json
 +++ b/gpu/config/gpu_driver_bug_list.json
-@@ -3927,6 +3927,1241 @@
+@@ -3927,6 +3927,1214 @@
        "features": [
          "disable_accelerated_av1_decode"
        ]
@@ -177,33 +177,6 @@ index a572716679..2f32f84eec 100644
 +      "gl_renderer": ".*Mali-4.*",
 +      "features": [
 +        "use_non_zero_size_for_client_side_stream_buffers"
-+      ]
-+    },
-+    {
-+      "id": 905,
-+      "cr_bugs": [
-+        154715,
-+        10068,
-+        269829,
-+        294779,
-+        285292,
-+        1018528,
-+        179815,
-+        179250,
-+        229643,
-+        230896,
-+        163464,
-+        233612,
-+        289461,
-+        369316,
-+        678508
-+      ],
-+      "description": "[HarmonyOS, from Android rule 31] Always use virtualized contexts on Android",
-+      "os": {
-+        "type": "ohos"
-+      },
-+      "features": [
-+        "use_virtualized_gl_contexts"
 +      ]
 +    },
 +    {
@@ -1366,30 +1339,10 @@ diff --git a/gpu/config/software_rendering_list.json b/gpu/config/software_rende
 index 403145a5f7..f51e6164b1 100644
 --- a/gpu/config/software_rendering_list.json
 +++ b/gpu/config/software_rendering_list.json
-@@ -1557,6 +1557,249 @@
+@@ -1557,6 +1557,229 @@
        "features": [
          "gpu_tile_rasterization"
        ]
-+    },
-+    {
-+      "id": 900,
-+      "description": "[HarmonyOS, from Android rule 76] WebGL is disabled on Android unless the GPU runs in a separate process or reset notification is supported",
-+      "os": {
-+        "type": "ohos"
-+      },
-+      "in_process_gpu": true,
-+      "exceptions": [
-+        {
-+          "gl_reset_notification_strategy": "33362"
-+        },
-+        {
-+          "gl_renderer": "Mali-4.*",
-+          "gl_extensions": ".*EXT_robustness.*"
-+        }
-+      ],
-+      "features": [
-+        "accelerated_webgl"
-+      ]
 +    },
 +    {
 +      "id": 901,

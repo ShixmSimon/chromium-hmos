@@ -1,0 +1,80 @@
+Say a GPU context failed a few times, not thirty thousand.
+
+A device that could not create a GL context produced about 32000 copies
+each of three lines within a minute of starting:
+
+  ContextResult::kFatalFailure: Failed to create shared context for
+  virtualization.
+  SharedImageStub: unable to create context
+  GpuChannel: Failed to create SharedImageStub
+
+Each retry is a channel being re-established, and the retrying is worth
+keeping: it is the same path a context lost at runtime comes back
+through, which this port depends on (see
+ohos-gpu-context-lost-recovery.patch). Latching the first fatal result
+and refusing to try again would turn a recoverable loss into a permanent
+white page.
+
+What is not worth keeping is saying so every time. The first few say
+everything the hundredth does, and at this rate the interesting lines
+around them -- what ANGLE said when the display failed -- scroll out of
+the log before anyone can read them.
+
+So: the first three, then every thousandth, each carrying its count so
+the rate is still visible.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/gpu/ipc/service/gpu_channel_manager.cc b/gpu/ipc/service/gpu_channel_manager.cc
+--- a/gpu/ipc/service/gpu_channel_manager.cc
++++ b/gpu/ipc/service/gpu_channel_manager.cc
+@@ -954,9 +954,16 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+     if (!context) {
+       // TODO(piman): This might not be fatal, we could recurse into
+       // CreateGLContext to get more info, tho it should be exceedingly
+       // rare and may not be recoverable anyway.
+-      LOG(ERROR) << "ContextResult::kFatalFailure: "
+-                    "Failed to create shared context for virtualization.";
++      // Exceedingly rare it is not, when GL never came up at all: every
++      // channel that is established tries again. Say the first few and
++      // then thin it out, so what ANGLE said stays readable.
++      static int failures = 0;
++      if (++failures <= 3 || failures % 1000 == 0) {
++        LOG(ERROR) << "ContextResult::kFatalFailure: "
++                      "Failed to create shared context for virtualization. ("
++                   << failures << ")";
++      }
+       *result = ContextResult::kFatalFailure;
+       return nullptr;
+     }
+diff --git a/gpu/ipc/service/shared_image_stub.cc b/gpu/ipc/service/shared_image_stub.cc
+--- a/gpu/ipc/service/shared_image_stub.cc
++++ b/gpu/ipc/service/shared_image_stub.cc
+@@ -590,7 +590,11 @@ ContextResult SharedImageStub::Initialize() {
+     ContextResult result;
+     context_state_ = channel_manager->GetSharedContextState(&result);
+     if (result != ContextResult::kSuccess) {
+-      LOG(ERROR) << "SharedImageStub: unable to create context";
++      static int failures = 0;
++      if (++failures <= 3 || failures % 1000 == 0) {
++        LOG(ERROR) << "SharedImageStub: unable to create context ("
++                   << failures << ")";
++      }
+       context_state_ = nullptr;
+       return result;
+     }
+diff --git a/gpu/ipc/service/gpu_channel.cc b/gpu/ipc/service/gpu_channel.cc
+--- a/gpu/ipc/service/gpu_channel.cc
++++ b/gpu/ipc/service/gpu_channel.cc
+@@ -784,5 +784,9 @@ std::unique_ptr<GpuChannel> GpuChannel::Create(
+
+   if (!gpu_channel->CreateSharedImageStub(gpu_extra_info)) {
+-    LOG(ERROR) << "GpuChannel: Failed to create SharedImageStub";
++    static int failures = 0;
++    if (++failures <= 3 || failures % 1000 == 0) {
++      LOG(ERROR) << "GpuChannel: Failed to create SharedImageStub ("
++                 << failures << ")";
++    }
+     return nullptr;
+   }
+   return gpu_channel;

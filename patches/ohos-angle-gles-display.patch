@@ -1,0 +1,56 @@
+Give the GLES backend a display on HarmonyOS again.
+
+The device renders nothing: the page area is white, SystemInfo reports
+glImplementationParts (gl=none,angle=none) with no vendor, renderer or
+version, and the log fills with
+
+  ContextResult::kFatalFailure: Failed to create shared context for
+  virtualization.
+  SharedImageStub: unable to create context
+  GpuChannel: Failed to create SharedImageStub
+
+tens of thousands of times. None of that is the cause; all of it is what
+happens downstream of ANGLE never producing a display.
+
+ohos-angle-vulkan-backend.patch stopped OHOS from defining
+ANGLE_PLATFORM_LINUX, which is what let the Vulkan backend stop looking
+for X11. Display::CreateDisplayFromAttribs picks the backend from those
+same macros, and its EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE arm -- the
+one --use-angle=gles-egl asks for, and the one the browser actually runs
+-- knows Windows, Linux and Android:
+
+    #    elif defined(ANGLE_PLATFORM_ANDROID)
+                impl = new rx::DisplayAndroid(state);
+    #    else
+                // No GLES support on this platform, fail display creation.
+                impl = nullptr;
+
+OHOS used to reach the Linux arm and get a DisplayEGL, which is exactly
+what it wants. It now reaches the else, and display creation fails. The
+desktop GL arm above it had an #error, so the compiler demanded that one
+be handled and it was; this one fails silently at runtime, so nothing
+said anything until a device ran it.
+
+DisplayEGL is the same implementation the Linux arm chose for
+EGL_PLATFORM_ANGLE_DEVICE_TYPE_EGL_ANGLE, and there is no other device
+type here, so this is unconditional as it is on Android.
+
+Generated for Chromium 154.0.8037.51 after ohos-angle-vulkan-backend.patch.
+
+diff --git a/third_party/angle/src/libANGLE/Display.cpp b/third_party/angle/src/libANGLE/Display.cpp
+--- a/third_party/angle/src/libANGLE/Display.cpp
++++ b/third_party/angle/src/libANGLE/Display.cpp
+@@ -658,8 +658,13 @@ Display *Display::CreateDisplayFromAttribs(const AttributeMap &attribMap,
+                     break;
+                 }
+             }
+ #    elif defined(ANGLE_PLATFORM_ANDROID)
+             impl = new rx::DisplayAndroid(state);
++#    elif defined(ANGLE_PLATFORM_OHOS)
++            // What the Linux arm above hands EGL_PLATFORM_ANGLE_DEVICE_TYPE_EGL_ANGLE,
++            // which is the only device type here: the platform's own EGL, reached
++            // through ANGLE.
++            impl = new rx::DisplayEGL(state);
+ #    else
+             // No GLES support on this platform, fail display creation.
+             impl = nullptr;
