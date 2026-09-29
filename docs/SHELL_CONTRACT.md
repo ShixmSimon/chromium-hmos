@@ -741,6 +741,24 @@ gpuContextLost { windowId?: number, recovered: boolean }
 触发场景(还没有逐一验证):切后台较久、锁屏解锁、内存吃紧、折叠展开、窗口大小
 变化、旋转、切换界面样式。
 
+**上次异常退出后恢复标签页**
+
+```
+lastSessionRestorable { windowId?: number }
+restoreLastSession { restore: boolean }       // 命令
+```
+
+应用被杀(系统因 `GpuError`、内存查杀,或者用户划掉)时 Chromium 没有正常退出,
+下次启动只会打开启动 URL,之前的标签页就丢了。现在内核会在第一次状态快照时检查
+上次是不是异常退出,是的话发 `lastSessionRestorable`,状态快照里的
+`lastSessionRestorable` 也会一直是 `true`,直到外壳回复 `restoreLastSession`。
+`restore: true` 恢复上次的所有标签页,`false` 放弃。不回复的话,上次的会话一直留
+着,下次启动还会再问。
+
+要不要问、怎么问由外壳决定,因为外壳知道应用为什么退出
+(`LaunchParam.lastExitReason`)。建议:用户划掉或内存查杀直接恢复;`GpuError`
+这类可能是某个网页把应用搞崩的情况,先问用户,否则一恢复可能又被同一个网页搞崩。
+
 **画中画**
 
 长按视频的菜单里有 `pictureInPicture`,用的是 Chromium 自己的画中画。它出来的是一个

@@ -127,6 +127,9 @@ export interface BrowserStateSnapshot {
   sidePanelEntryId: string;
   focusedTarget: 'webContents' | 'sidePanel';
   activationEpoch: number;
+  // The run before this one did not end cleanly and its tabs can be
+  // restored with restoreLastSession. Stays true until the shell answers.
+  lastSessionRestorable?: boolean;
   tabs: BrowserTabState[];
   // 0..1, and 1 whenever nothing is loading, so one progress bar needs no
   // special case for the idle state.
@@ -198,7 +201,7 @@ export interface BrowserRuntimeEvent {
     'openedInGroup' | 'pageScrollSettled' | 'pageContinuation' |
     'contextMenuImageFile' | 'contextMenuActionsChanged' |
     'backHandled' | 'dropNotHandled' | 'browserChromeRequested' |
-    'gpuContextLost' |
+    'gpuContextLost' | 'lastSessionRestorable' |
     'pageDragStarted' | 'pageDragEnded' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |
@@ -389,6 +392,8 @@ export interface BrowserCommandPayload {
   anchors?: ShellAnchorRect[];
   // setExtensionPinned.
   pinned?: boolean;
+  // restoreLastSession: true restores the tabs, false lets them go.
+  restore?: boolean;
   // getExtensionActions: the edge of the square icon to render, in px.
   // Omitted means 32.
   iconSizePx?: number;

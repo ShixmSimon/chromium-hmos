@@ -58,6 +58,8 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_manager_observer.h"
+#include "chrome/browser/sessions/exit_type_service.h"
+#include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/sessions/core/tab_restore_service_observer.h"
@@ -2130,6 +2132,64 @@ void GatherGpuContextLost(bool recovered) {
       kGpuContextLostWindow);
 }
 
+// --- The last session, when it did not end cleanly. -----------------------
+//
+// A HarmonyOS app that is killed -- by the system for a GPU error, for
+// memory, or by the reader swiping it away -- never shuts Chromium down,
+// so its tabs were simply gone at the next launch: the start URL is always
+// on the command line, and nothing restored the session behind it.
+//
+// Chromium already keeps that session and knows the run before this one
+// did not end cleanly. The crash bubble is what offers it back on desktop;
+// here the shell does, because it knows why the app died
+// (LaunchParam.lastExitReason) and a page that killed the app once should
+// not be reopened without asking. So this says the session is there and
+// restores it on request. The lock keeps Chromium from treating the crash
+// as acknowledged -- and from letting the session go -- until the shell
+// has answered, the same thing the bubble's lock does.
+
+std::unique_ptr<ExitTypeService::CrashedLock>& LastSessionLock() {
+  static base::NoDestructor<std::unique_ptr<ExitTypeService::CrashedLock>>
+      lock;
+  return *lock;
+}
+
+void OfferLastSession(gfx::AcceleratedWidget widget,
+                      BrowserWindowInterface* browser) {
+  Profile* profile = browser ? browser->GetProfile() : nullptr;
+  if (!profile || profile->IsOffTheRecord() ||
+      ExitTypeService::GetLastSessionExitType(profile) !=
+          ExitType::kCrashed) {
+    return;
+  }
+  ExitTypeService* exit_type_service =
+      ExitTypeService::GetInstanceForProfile(profile);
+  if (!exit_type_service) {
+    return;
+  }
+  LastSessionLock() = exit_type_service->CreateCrashedLock();
+  LOG(WARNING) << "OHOS last session did not end cleanly; offering it";
+  base::DictValue event;
+  event.Set("event", "lastSessionRestorable");
+  DispatchRuntimeEvent(widget, std::move(event));
+}
+
+// restoreLastSession { restore: boolean }. false lets the session go.
+void AnswerLastSession(BrowserWindowInterface* browser,
+                       const base::DictValue& command) {
+  // Taken out first and dropped only after the restore has started: the
+  // restore has to begin while the lock still holds, or ExitTypeService
+  // counts the crash acknowledged and does not wait for it.
+  std::unique_ptr<ExitTypeService::CrashedLock> lock =
+      std::move(LastSessionLock());
+  if (!lock) {
+    return;
+  }
+  if (command.FindBool("restore").value_or(true) && browser) {
+    SessionRestore::RestoreSessionAfterCrash(browser);
+  }
+}
+
 std::string BuildBrowserStateJson(std::string_view ui_family,
                                   gfx::AcceleratedWidget widget,
                                   BrowserWindowInterface* browser) {
@@ -2245,7 +2305,11 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
     chrome::ohos::ClearSharedImageDirectory();
     chrome::ohos::ClearDroppedFileDirectory();
     chrome::ohos::WatchPageDragsOut();
+    OfferLastSession(widget, browser);
   }
+  // Also in every snapshot, so a shell that was not listening yet when the
+  // event went out still finds it.
+  state.Set("lastSessionRestorable", LastSessionLock() != nullptr);
 
   base::ListValue tab_values;
   for (int index = 0; index < tabs->count(); ++index) {
@@ -3288,6 +3352,8 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     SendRecentlyClosed(widget, browser, command);
   } else if (*name == "restoreRecentlyClosed") {
     RestoreRecentlyClosed(browser, command);
+  } else if (*name == "restoreLastSession") {
+    AnswerLastSession(browser, command);
   } else if (*name == "print" && active) {
     RequestAuraShellSystemPrint(active);
   } else if (*name == "share" && active) {
@@ -3673,6 +3739,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "toggleReaderMode",
       "getRecentlyClosed",
       "restoreRecentlyClosed",
+      "restoreLastSession",
       "print",
       "share",
       "pwaMenu",
