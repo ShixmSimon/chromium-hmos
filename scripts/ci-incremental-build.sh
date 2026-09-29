@@ -246,6 +246,22 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-extension-store.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-store-ua-tab-helper.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-image-drag-out.patch"
+  # Repair, once. The anchor log lines moved from
+  # ohos-extension-installed-bubble.patch into this patch; the next build
+  # backed out the old installed-bubble revision, which took those lines
+  # with it, so this patch no longer recognised itself, backed out an
+  # older revision of its own and could not apply the current one. The two
+  # files these two patches touch -- nothing else does -- go back to
+  # upstream and both are applied afresh. Keyed on the log line only the
+  # current revision has, so a sound tree is left alone.
+  anchor_cc="${src}/chrome/browser/ui/extensions/extension_dialog_utils_views.cc"
+  if ! grep -q 'OHOS extension bubble anchor' "$anchor_cc" 2>/dev/null; then
+    git -C "$src" checkout -- \
+      chrome/browser/ui/extensions/extension_dialog_utils_views.cc \
+      chrome/browser/ui/extensions/extension_post_install_dialog.cc ||
+      die 'could not restore the extension dialog files'
+    say 'restored the extension dialog files to upstream before reapplying'
+  fi
   apply_incremental_patch "${repo_root}/patches/ohos-extension-bubble-anchor.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-extension-popup-at-shell-rect.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-native-extensions-button.patch"
