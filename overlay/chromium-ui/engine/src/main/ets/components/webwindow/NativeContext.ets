@@ -421,6 +421,8 @@ export interface BrowserCommandPayload {
   stage?: 'enter' | 'move' | 'leave' | 'drop';
   // dragEvent: where the finger is, in vp inside the page's own box -- not
   // the window: the shell's bars are not part of the page.
+  // setSurfaceOffset (sent by WebWindow itself): where the page's box sits
+  // in the window, in vp.
   x?: number;
   y?: number;
   // dragEvent: the dragged HTML, when the source offered any.

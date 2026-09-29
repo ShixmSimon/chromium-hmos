@@ -1166,6 +1166,26 @@ std::map<gfx::AcceleratedWidget, AnchorRects>& AnchorStore() {
   return *store;
 }
 
+// Where the page's component sits in the shell's window, in vp, per window.
+//
+// Anchors arrive in the window's coordinates, but Chromium's window is the
+// component, not the shell's whole window: its screen origin already
+// includes whatever the shell draws above it -- a tab strip on a 2in1.
+// Adding that origin to a window-relative anchor counted the tab strip
+// twice, and the extension popup opened about 40vp below its button.
+std::map<gfx::AcceleratedWidget, gfx::Vector2d>& SurfaceOffsetStore() {
+  static base::NoDestructor<std::map<gfx::AcceleratedWidget, gfx::Vector2d>>
+      store;
+  return *store;
+}
+
+void SetAuraShellSurfaceOffset(gfx::AcceleratedWidget widget,
+                               const base::DictValue& command) {
+  SurfaceOffsetStore()[widget] =
+      gfx::Vector2d(static_cast<int>(command.FindDouble("x").value_or(0.0)),
+                    static_cast<int>(command.FindDouble("y").value_or(0.0)));
+}
+
 void SetAuraShellAnchorRects(gfx::AcceleratedWidget widget,
                              const base::DictValue& command) {
   AnchorRects rects;
@@ -1431,8 +1451,8 @@ gfx::Rect ExtensionPopupAnchorRect(BrowserWindowInterface* browser,
     rect = GetAuraShellAnchorRect(widget, "extensions");
   }
   if (!rect.IsEmpty()) {
-    // Reported in the shell window's own coordinates; a bubble anchors in
-    // screen ones.
+    // Relative to the page's component (GetAuraShellAnchorRect takes the
+    // shell's window coordinates there); a bubble anchors in screen ones.
     rect.Offset(window.OffsetFromOrigin());
     return rect;
   }
@@ -2796,6 +2816,11 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     return;
   }
 
+  if (*name == "setSurfaceOffset") {
+    SetAuraShellSurfaceOffset(widget, command);
+    return;
+  }
+
   if (*name == "sitePermissionDecision") {
     // The user answered the sheet the shell drew for
     // sitePermissionRequested. Handled before the browser lookup below: a
@@ -3659,6 +3684,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "systemCapabilities",
       "sitePermissionDecision",
       "setAnchorRects",
+      "setSurfaceOffset",
       "setBrowserChrome",
       "passwordAuthReset",
       "requestState",
@@ -3938,7 +3964,16 @@ gfx::Rect GetAuraShellAnchorRect(gfx::AcceleratedWidget widget,
     return gfx::Rect();
   }
   auto anchor = window->second.find(std::string(anchor_id));
-  return anchor == window->second.end() ? gfx::Rect() : anchor->second;
+  if (anchor == window->second.end()) {
+    return gfx::Rect();
+  }
+  // In the component's coordinates, which is what Chromium's window is.
+  gfx::Rect rect = anchor->second;
+  if (auto offset = SurfaceOffsetStore().find(widget);
+      offset != SurfaceOffsetStore().end()) {
+    rect.Offset(-offset->second);
+  }
+  return rect;
 }
 
 bool DispatchAuraShellLinkHovered(content::WebContents* contents,

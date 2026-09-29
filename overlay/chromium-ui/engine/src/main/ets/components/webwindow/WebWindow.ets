@@ -864,6 +864,24 @@ export struct WebWindow {
     this.componentWidthPx = width;
     this.componentHeightPx = height;
     this.notifyCurrentBounds();
+    this.notifySurfaceOffset(area);
+  }
+
+  // Where this component sits in the window, in vp. The shell reports its
+  // bubble anchors (setAnchorRects) in the window's coordinates, and
+  // Chromium's window is this component, not the whole window; without the
+  // offset a 2in1's tab strip was counted twice and popups opened below
+  // their buttons.
+  private notifySurfaceOffset(area: Area): void {
+    if (!this.nativeContext) {
+      return;
+    }
+    const payload: BrowserCommandPayload = {
+      command: 'setSurfaceOffset',
+      x: Number(area.globalPosition.x ?? 0),
+      y: Number(area.globalPosition.y ?? 0)
+    };
+    this.nativeContext.ExecuteBrowserCommand(JSON.stringify(payload));
   }
 
   private notifyWindowStatus(): void {
