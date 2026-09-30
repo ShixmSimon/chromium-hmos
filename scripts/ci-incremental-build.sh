@@ -280,9 +280,11 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-crx-download-kept.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-single-process-commit-checks.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-single-process-extensions.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-extension-messaging-diagnostics.patch"
+  # Answered: the channel was a user script's and reached the worker.
+  retire_incremental_patch "${repo_root}/patches/ohos-extension-messaging-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-extension-event-diagnostics.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-video-frame-diagnostics.patch"
+  # Answered: HDR output drawn PQ into an sRGB window; output is SDR now.
+  retire_incremental_patch "${repo_root}/patches/ohos-video-frame-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-pull-to-refresh.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-ohos-os-type.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-context-lost-recovery.patch"
@@ -297,7 +299,11 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-implementation.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-surface-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-compositor-diagnostics.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-gpu-startup-diagnostics.patch"
+  # The GPU start-up diagnosis is done: its logging comes out, and what it
+  # led to -- Skia on GL when Vulkan cannot hold it, paced channel retries,
+  # the GPU process's log in hilog -- stays, in a patch of its own.
+  retire_incremental_patch "${repo_root}/patches/ohos-gpu-startup-diagnostics.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-gpu-vulkan-fallback.patch"
   # The manager is trustworthy now -- HUKS holds the key and the user is asked
   # before a saved password is handed back -- so the patch that switched it off
   # comes out. The tree is persistent, so deleting the file is not enough.

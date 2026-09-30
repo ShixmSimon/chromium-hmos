@@ -1,73 +1,34 @@
-Say how far GPU start-up gets, on both sides of the channel.
+Run Skia on GL when it cannot make a Vulkan GrContext, and keep GPU channel
+retries from spinning.
 
-With Skia on Vulkan in a GPU process of its own, the browser never asked
-for a compositor, and in one run the GPU process said nothing after the
-Vulkan instance -- not even the device queue it had reported the time
-before. A GPU process that has not finished starting and a browser that
-never heard it finish look the same from outside, and the process does
-not crash, so the shell sees it as settled.
+Split out of ohos-gpu-startup-diagnostics.patch once the diagnosis it was
+written for was done; its step-by-step start-up logging is gone.
 
-On OHOS each step says so at ERROR: in the GPU process, initialisation
-beginning and done (with whether Vulkan and Skia-on-Vulkan survived it),
-Vulkan beginning and ready, the context provider and the device queue
-being created -- before the call as well as after, so one that never
-returns shows -- the service initialised with its host, and each channel
-established. In the browser, the GPU process reported initialised, and
-each channel asked for and established or failed.
+On the 2in1 emulator (Vulkan 1.1 translated from the host's GPU) Skia's
+Vulkan GrContext failed although the instance, device queue and context
+provider came up. It failed only when the first channel asked for a shared
+context, long after the GPU process told the browser it was up, so the
+process refused every channel and the window stayed black. On OHOS the GPU
+service now asks Skia for a GrContext as soon as the Vulkan context provider
+exists; if Skia says no it drops the provider, runs Skia on GL and reports
+Vulkan disabled, and the browser records the GPU mode as GL. GpuServiceImpl's
+preferences and feature info stop being const on OHOS for it. When Skia does
+fail, the context provider says what it was given -- versions, allocator,
+extensions, and any function Skia requires that cannot be found -- which a
+tablet's Vulkan will need.
 
-The next run got further: the GPU process initialised with Vulkan and
-Skia on it, told the browser so, and every channel after that failed --
-the first 0.3 ms after, then again and again, 1280 lines in 25 seconds,
-which pushed everything before them out of hilog. So, in the GPU
-process, each step after the host is told (channel manager, compositor
-GPU thread, the shared context and what Skia runs on), each channel as
-the main thread takes it up and, when it fails, why; in the browser,
-whether a failed channel was synchronous and whether the GPU service
-pipe was still connected -- a synchronous call on a closed pipe fails at
-once without the GPU process ever hearing of it.
+A failed channel is asked for again after a growing pause (100 ms more each
+time, at most 2 s) instead of at once, dozens of times a second, for as long
+as the app runs.
 
-The repeated lines are thinned to the first five and then every
-hundredth, each with its count, and on OHOS a failed channel is asked
-for again after a growing pause (100 ms more each time, at most 2 s)
-instead of at once. The pause is not diagnostic and stays: a GPU process
-that is up and cannot make channels would otherwise be asked dozens of
-times a second for as long as the app runs.
-
-None of the GPU process's lines after that point ever reached hilog, the
-new ones included: VizMainImpl::CreateGpuService, just before it
-initialises the service with its host, replaces the log handler that
-wrote to hilog with the one that forwards the log to the browser for
-chrome://gpu. The browser now writes what it is forwarded, WARNING and
-above, to hilog as "OHOS GPU process says:".
-
-With that, the cause showed: Skia could not make a GrContext on the
-2in1 emulator's Vulkan (1.1, translated from the host's GPU), though the
-instance, device queue and context provider all came up. It fails only
-when the first channel asks for a shared context, long after the GPU
-process told the browser it was up, so the process stayed and refused
-every channel and the window stayed black.
-
-So on OHOS the GPU service asks Skia for a GrContext once, as soon as the
-Vulkan context provider exists and before anything is built on it or the
-browser is told what the process can do. If Skia says no, the service
-drops the provider, runs Skia on GL, and reports Vulkan disabled; the
-browser then records the GPU mode as GL, as for any other fallback. This
-part is not diagnostic and stays. GpuServiceImpl's preferences and
-feature info stop being const on OHOS for it.
-
-When Skia does fail, the context provider says what it was given: the
-instance and device versions, whether it has a memory allocator and
-features2, the extensions, and every function Skia's VulkanInterface
-requires that the lookup Skia uses cannot find.
-
-The logging is diagnostic; it comes out once Vulkan is understood here.
+And the GPU process's own log reaches hilog again: VizMainImpl replaces the
+handler that wrote it there with one that forwards it to the browser for
+chrome://gpu, so the browser writes what it is forwarded, WARNING and above,
+as "OHOS GPU process says:".
 
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch,
-ohos-gpu-fence-capability.patch, ohos-gl-init-diagnostics.patch,
-ohos-gpu-lose-context-debug-url.patch (also for gpu_service_impl.h) and
-ohos-vulkan-compositor-diagnostics.patch, and for gpu_channel_manager.cc
-after ohos-gpu-context-lost-recovery.patch and
-ohos-gpu-context-failure-log-throttle.patch.
+ohos-gpu-lose-context-debug-url.patch and
+ohos-vulkan-compositor-diagnostics.patch.
 
 diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/components/viz/common/gpu/vulkan_in_process_context_provider.cc
 --- a/components/viz/common/gpu/vulkan_in_process_context_provider.cc
@@ -334,19 +295,7 @@ diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/c
  // static
  scoped_refptr<VulkanInProcessContextProvider>
  VulkanInProcessContextProvider::Create(
-@@ -127,6 +368,11 @@ bool VulkanInProcessContextProvider::Initialize(const gpu::GPUInfo* gpu_info,
-     }
-   }
- 
-+#if BUILDFLAG(IS_OHOS)
-+  // Before as well as after: a device queue that never comes back looks
-+  // the same as one that was never asked for.
-+  LOG(ERROR) << "OHOS Vulkan: creating the device queue";
-+#endif
-   device_queue_ =
-       gpu::CreateVulkanDeviceQueue(vulkan_implementation_, flags, gpu_info,
-                                    heap_memory_limit_, is_thread_safe);
-@@ -212,6 +458,12 @@ bool VulkanInProcessContextProvider::InitializeGrContext(
+@@ -212,6 +453,12 @@ bool VulkanInProcessContextProvider::InitializeGrContext(
    backend_context.fProtectedContext = GrProtected::kNo;
  
    gr_context_ = GrDirectContexts::MakeVulkan(backend_context, context_options);
@@ -370,90 +319,7 @@ diff --git a/components/viz/host/gpu_host_impl.cc b/components/viz/host/gpu_host
  #include "base/no_destructor.h"
  #include "base/process/process_handle.h"
  #include "base/strings/strcat.h"
-@@ -302,6 +303,19 @@ void GpuHostImpl::EstablishGpuChannel(int client_id,
-                                       mojo::ScopedMessagePipeHandle handle,
-                                       EstablishChannelCallback callback) {
-   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-+#if BUILDFLAG(IS_OHOS)
-+  // A channel that fails is asked for again at once, forever, so say the
-+  // first few requests and then every hundredth: at the rate it retries,
-+  // the lines that say why scrolled out of hilog within seconds.
-+  static int ohos_channel_requests = 0;
-+  if (++ohos_channel_requests <= 5 || ohos_channel_requests % 100 == 0) {
-+    LOG(ERROR) << "OHOS GPU host: asking for a channel for client "
-+               << client_id << (sync ? " (sync)" : "") << ", request "
-+               << ohos_channel_requests << ", GPU service "
-+               << (gpu_service_remote_.is_connected() ? "connected"
-+                                                      : "DISCONNECTED");
-+  }
-+#endif
-   TRACE_EVENT2("gpu", "GpuHostImpl::EstablishGpuChannel", "client_id",
-                client_id, "is_gpu_host", is_gpu_host);
-   DCHECK(!(is_gpu_host && enable_extra_handles_validation));
-@@ -309,6 +323,10 @@ void GpuHostImpl::EstablishGpuChannel(int client_id,
-   shutdown_timeout_.Stop();
- 
-   if (gpu::IsReservedClientId(client_id)) {
-+#if BUILDFLAG(IS_OHOS)
-+    LOG(ERROR) << "OHOS GPU host: channel for client " << client_id
-+               << " refused here, a reserved client id";
-+#endif
-     // The display-compositor/GrShaderCache in the gpu process uses these
-     // special client ids.
-     std::move(callback).Run(gpu::GPUInfo(), gpu::GpuFeatureInfo(),
-@@ -434,6 +452,13 @@ void GpuHostImpl::SendOutstandingReplies() {
-     std::move(handler).Run();
-   connection_error_handlers_.clear();
- 
-+#if BUILDFLAG(IS_OHOS)
-+  if (!channel_requests_.empty()) {
-+    LOG(ERROR) << "OHOS GPU host: " << channel_requests_.size()
-+               << " channel requests answered as failed, the GPU host is "
-+                  "going away";
-+  }
-+#endif
-   // Send empty channel handles for all EstablishChannel requests.
-   for (auto& entry : channel_requests_) {
-     std::move(entry.second)
-@@ -590,6 +615,25 @@ void GpuHostImpl::OnChannelEstablished(
-     const gpu::GPUInfo& gpu_info,
-     const gpu::GpuFeatureInfo& gpu_feature_info,
-     const gpu::SharedImageCapabilities& shared_image_capabilities) {
-+#if BUILDFLAG(IS_OHOS)
-+  // Why it failed, as far as this side can tell. A synchronous call on a
-+  // disconnected pipe returns false at once without the GPU process ever
-+  // seeing it; otherwise the GPU process answered false itself, and its
-+  // own log says why.
-+  static int ohos_channel_failures = 0;
-+  if (success) {
-+    LOG(ERROR) << "OHOS GPU host: channel for client " << client_id
-+               << " established";
-+  } else if (++ohos_channel_failures <= 5 ||
-+             ohos_channel_failures % 100 == 0) {
-+    LOG(ERROR) << "OHOS GPU host: channel for client " << client_id
-+               << " FAILED (" << ohos_channel_failures << "), "
-+               << (sync ? "sync" : "async") << ", GPU service "
-+               << (gpu_service_remote_.is_connected()
-+                       ? "connected: the GPU process said no"
-+                       : "DISCONNECTED: the GPU process is gone");
-+  }
-+#endif
-   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-   TRACE_EVENT0("gpu", "GpuHostImpl::OnChannelEstablished");
- 
-@@ -647,6 +691,11 @@ void GpuHostImpl::DidInitialize(
-     const std::optional<gpu::GpuFeatureInfo>& gpu_feature_info_for_hardware_gpu,
-     const gfx::GpuExtraInfo& gpu_extra_info) {
-   TRACE_EVENT0("gpu", "GpuHostImpl::DidInitialize");
-+#if BUILDFLAG(IS_OHOS)
-+  // The browser's side of GPU start-up. Without these the browser waiting
-+  // on the GPU process looked the same as the GPU process never answering.
-+  LOG(ERROR) << "OHOS GPU host: GPU process initialised";
-+#endif
-   delegate_->DidInitialize(gpu_info, gpu_feature_info,
-                            gpu_info_for_hardware_gpu,
-                            gpu_feature_info_for_hardware_gpu, gpu_extra_info);
-@@ -893,6 +942,16 @@ void GpuHostImpl::CreateWebNNWeightsFile(CreateWebNNWeightsFileCallback cb) {
+@@ -893,6 +894,16 @@ void GpuHostImpl::CreateWebNNWeightsFile(CreateWebNNWeightsFileCallback cb) {
  void GpuHostImpl::RecordLogMessage(int32_t severity,
                                     const std::string& header,
                                     const std::string& message) {
@@ -481,17 +347,7 @@ diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/serv
  #include "third_party/skia/include/gpu/ganesh/GrDirectContext.h"
  #include "third_party/skia/include/gpu/ganesh/gl/GrGLAssembleInterface.h"
  #include "third_party/skia/include/gpu/ganesh/gl/GrGLInterface.h"
-@@ -247,6 +248,9 @@ GpuServiceImpl::GpuServiceImpl(
- 
-     const bool is_thread_safe = features::IsDrDcEnabled(gpu_feature_info);
- 
-+#if BUILDFLAG(IS_OHOS)
-+    LOG(ERROR) << "OHOS GPU startup: creating the Vulkan context provider";
-+#endif
-     // If GL is using a real GPU, the gpu_info will be passed in and vulkan will
-     // use the same GPU.
-     vulkan_context_provider_ = VulkanInProcessContextProvider::Create(
-@@ -262,6 +266,33 @@ GpuServiceImpl::GpuServiceImpl(
+@@ -262,6 +263,33 @@ GpuServiceImpl::GpuServiceImpl(
      // Said in a release build, where the line above is not.
      LOG(ERROR) << "OHOS Vulkan: context provider "
                 << (vulkan_context_provider_ ? "created" : "NOT created");
@@ -525,157 +381,6 @@ diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/serv
  #endif
    }
  #endif
-@@ -503,6 +534,12 @@ void GpuServiceImpl::InitializeWithHostInternal(
-                           gpu_info_for_hardware_gpu_,
-                           gpu_feature_info_for_hardware_gpu_, gpu_extra_info_);
-   gpu_host_ = mojo::SharedRemote<mojom::GpuHost>(gpu_host.Unbind(), io_runner_);
-+#if BUILDFLAG(IS_OHOS)
-+  // The browser hears the GPU process is up here, before the channel
-+  // manager exists. Everything below still has to finish before a single
-+  // channel can be established, so say how far it gets.
-+  LOG(ERROR) << "OHOS GPU startup: told the host, creating the channel manager";
-+#endif
- 
-   // Defer creation of the render thread. This is to prevent it from handling
-   // IPC messages before the sandbox has been enabled and all other necessary
-@@ -517,6 +554,10 @@ void GpuServiceImpl::InitializeWithHostInternal(
- 
-   media_gpu_channel_manager_ = std::make_unique<media::MediaGpuChannelManager>(
-       gpu_channel_manager_.get());
-+#if BUILDFLAG(IS_OHOS)
-+  LOG(ERROR) << "OHOS GPU startup: channel managers created, DrDC "
-+             << (features::IsDrDcEnabled(gpu_feature_info_) ? "on" : "off");
-+#endif
- 
-   // Create and Initialize compositor gpu thread.
-   if (features::IsDrDcEnabled(gpu_feature_info_)) {
-@@ -552,9 +593,16 @@ void GpuServiceImpl::InitializeWithHostInternal(
- #endif
- 
-     compositor_gpu_thread_ = CompositorGpuThread::Create(params);
-+#if BUILDFLAG(IS_OHOS)
-+    LOG(ERROR) << "OHOS GPU startup: compositor GPU thread "
-+               << (compositor_gpu_thread_ ? "created" : "NOT created");
-+#endif
-   }
- 
-   UMA_HISTOGRAM_BOOLEAN("GPU.DrDcEnabled", !!compositor_gpu_thread_);
-+#if BUILDFLAG(IS_OHOS)
-+  LOG(ERROR) << "OHOS GPU startup: GPU service initialised with the host";
-+#endif
- 
- #if BUILDFLAG(IS_WIN)
-   // Add GpuServiceImpl to DirectCompositionOverlayCapsMonitor observer list for
-@@ -906,6 +954,10 @@ void GpuServiceImpl::EstablishGpuChannel(
-     EstablishGpuChannelCallback callback) {
-   if (io_runner_->BelongsToCurrentThread()) {
-     if (IsExiting()) {
-+#if BUILDFLAG(IS_OHOS)
-+      LOG(ERROR) << "OHOS GPU startup: channel for client " << client_id
-+                 << " dropped, the GPU process is exiting";
-+#endif
-       // We are already exiting so there is no point in responding. Close the
-       // receiver so we can safely drop the callback.
-       receiver_.reset();
-@@ -929,6 +981,17 @@ void GpuServiceImpl::EstablishGpuChannel(
-     return;
-   }
- 
-+#if BUILDFLAG(IS_OHOS)
-+  // Reached on the main thread only. If the browser hears nothing back and
-+  // this never appears, the main thread is still busy with something else.
-+  static int ohos_channel_requests = 0;
-+  const bool ohos_say = ++ohos_channel_requests <= 5 ||
-+                        ohos_channel_requests % 100 == 0;
-+  if (ohos_say) {
-+    LOG(ERROR) << "OHOS GPU startup: establishing a channel for client "
-+               << client_id << " (request " << ohos_channel_requests << ")";
-+  }
-+#endif
-   auto channel_token = base::UnguessableToken::Create();
-   gpu::GpuChannel* gpu_channel = gpu_channel_manager_->EstablishChannel(
-       channel_token, client_id, client_tracing_id, is_gpu_host,
-@@ -936,6 +999,16 @@ void GpuServiceImpl::EstablishGpuChannel(
-       gpu_feature_info_);
- 
-   if (!gpu_channel) {
-+#if BUILDFLAG(IS_OHOS)
-+    // The one way this fails: the channel's shared image stub needs the
-+    // shared context -- GL, then Skia on it, Vulkan here -- and that could
-+    // not be created. The ContextResult line before this says which part.
-+    if (ohos_say) {
-+      LOG(ERROR) << "OHOS GPU startup: channel for client " << client_id
-+                 << " NOT established: no shared context for its shared "
-+                    "image stub";
-+    }
-+#endif
-     std::move(callback).Run(/*success=*/false, gpu::GPUInfo(),
-                             gpu::GpuFeatureInfo(),
-                             gpu::SharedImageCapabilities());
-@@ -950,6 +1023,10 @@ void GpuServiceImpl::EstablishGpuChannel(
- 
-   media_gpu_channel_manager_->AddChannel(client_id, channel_token);
- 
-+#if BUILDFLAG(IS_OHOS)
-+  LOG(ERROR) << "OHOS GPU startup: channel established for client "
-+             << client_id;
-+#endif
-   std::move(callback).Run(
-       /*success=*/true, gpu_info_, gpu_feature_info_,
-       gpu_channel->shared_image_stub()->factory()->MakeCapabilities());
-diff --git a/gpu/ipc/service/gpu_init.cc b/gpu/ipc/service/gpu_init.cc
---- a/gpu/ipc/service/gpu_init.cc
-+++ b/gpu/ipc/service/gpu_init.cc
-@@ -444,6 +444,12 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
- #if BUILDFLAG(IS_CHROMEOS)
-   LOG(WARNING) << "Starting gpu initialization.";
- #endif  //  BUILDFLAG(IS_CHROMEOS)
-+#if BUILDFLAG(IS_OHOS)
-+  // Where GPU start-up gets to, step by step: with Skia on Vulkan in a GPU
-+  // process of its own the browser never asked for a compositor, which is
-+  // what happens while it waits on a GPU process that has not finished.
-+  LOG(ERROR) << "OHOS GPU startup: initialisation begins";
-+#endif
-   gpu_preferences_ = gpu_preferences;
- 
-   // Record the number of recent GPU process crashes as a crash key so that it
-@@ -1098,6 +1104,16 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
-   }
- #endif  // !BUILDFLAG(IS_MAC)
- 
-+#if BUILDFLAG(IS_OHOS)
-+  LOG(ERROR) << "OHOS GPU startup: initialisation done, Vulkan "
-+             << (gpu_preferences_.use_vulkan != VulkanImplementationName::kNone
-+                     ? "on"
-+                     : "off")
-+             << ", Skia on "
-+             << (gpu_preferences_.gr_context_type == GrContextType::kVulkan
-+                     ? "Vulkan"
-+                     : "not Vulkan");
-+#endif
-   return true;
- }
- 
-@@ -1493,6 +1509,9 @@ bool GpuInit::InitializeDawn() {
- bool GpuInit::InitializeVulkan() {
- #if BUILDFLAG(ENABLE_VULKAN)
-   TRACE_EVENT("gpu,startup", "gpu::GpuInit::InitializeVulkan");
-+#if BUILDFLAG(IS_OHOS)
-+  LOG(ERROR) << "OHOS GPU startup: Vulkan begins";
-+#endif
-   DCHECK(gpu_feature_info_.status_values[GPU_FEATURE_TYPE_VULKAN] ==
-              kGpuFeatureStatusEnabled ||
-          gpu_feature_info_
-@@ -1569,6 +1588,9 @@ bool GpuInit::InitializeVulkan() {
-   gpu_info_.gpu.device_id = device_properties.device_id;
- #endif  // BUILDFLAG(IS_ANDROID)
- 
-+#if BUILDFLAG(IS_OHOS)
-+  LOG(ERROR) << "OHOS GPU startup: Vulkan ready";
-+#endif
-   return true;
- #else   // !BUILDFLAG(ENABLE_VULKAN)
-   return false;
 diff --git a/components/viz/service/gl/gpu_service_impl.h b/components/viz/service/gl/gpu_service_impl.h
 --- a/components/viz/service/gl/gpu_service_impl.h
 +++ b/components/viz/service/gl/gpu_service_impl.h
@@ -780,17 +485,3 @@ diff --git a/content/browser/gpu/browser_gpu_channel_host_factory.cc b/content/b
      gpu_channel_ = gpu::GpuChannelHost::Create(
          gpu_client_id_, gpu_info, gpu_feature_info, shared_image_capabilities,
          std::move(channel_handle), GetIOThreadTaskRunner({}));
-diff --git a/gpu/ipc/service/gpu_channel_manager.cc b/gpu/ipc/service/gpu_channel_manager.cc
---- a/gpu/ipc/service/gpu_channel_manager.cc
-+++ b/gpu/ipc/service/gpu_channel_manager.cc
-@@ -1030,6 +1030,10 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
-     return nullptr;
-   }
- 
-+#if BUILDFLAG(IS_OHOS)
-+  LOG(ERROR) << "OHOS GPU startup: shared context created, Skia on "
-+             << GrContextTypeToString(gpu_preferences_.gr_context_type);
-+#endif
-   shared_context_state_ = std::move(shared_context_state);
- 
-   *result = ContextResult::kSuccess;

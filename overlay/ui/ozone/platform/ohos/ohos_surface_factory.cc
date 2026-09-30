@@ -8,7 +8,6 @@
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
 #include "base/time/time.h"
-#include "ui/gfx/color_space.h"
 #include "ui/gfx/vsync_provider.h"
 #include "ui/gl/gl_display.h"
 #include "ui/gl/gl_implementation.h"
@@ -74,7 +73,6 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
               float scale_factor,
               const gfx::ColorSpace& color_space,
               bool has_alpha) override {
-    LogColorSpace(color_space);
     const WindowRefreshResult refresh = RefreshNativeWindow();
     if (refresh == WindowRefreshResult::kUnavailable) {
       return false;
@@ -113,37 +111,6 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
 
  private:
   enum class WindowRefreshResult { kUnavailable, kUnchanged, kChanged };
-
-  // The colour space the compositor draws this window in, beside what the
-  // native window it lands in says it holds. They are meant to agree: on an
-  // HDR panel the compositor draws HDR video in Rec. 2020 PQ, and nothing
-  // here tells the window so -- if it still says sRGB and 8-bit, the system
-  // shows PQ values as sRGB, which is washed out with grey blacks, as HDR
-  // video on YouTube looked on a Mate 70 Pro+. Once per change.
-  void LogColorSpace(const gfx::ColorSpace& color_space) {
-    if (color_space == logged_color_space_) {
-      return;
-    }
-    logged_color_space_ = color_space;
-    auto* native_window = reinterpret_cast<OHNativeWindow*>(window_);
-    OH_NativeBuffer_ColorSpace window_color_space = OH_COLORSPACE_NONE;
-    const int32_t color_space_result =
-        native_window
-            ? OH_NativeWindow_GetColorSpace(native_window, &window_color_space)
-            : -1;
-    int32_t format = -1;
-    const int32_t format_result =
-        native_window ? OH_NativeWindow_NativeWindowHandleOpt(
-                            native_window, GET_FORMAT, &format)
-                      : -1;
-    LOG(WARNING) << "OHOS surface colour space: compositor draws in "
-                 << color_space.ToString() << "; native window colour space "
-                 << static_cast<int>(window_color_space) << " (result "
-                 << color_space_result << "), buffer format " << format
-                 << " (result " << format_result << ")";
-  }
-
-  gfx::ColorSpace logged_color_space_;
 
   WindowRefreshResult RefreshNativeWindow() {
     std::optional<OhosNativeSurface> surface = GetOhosNativeSurface(widget_);

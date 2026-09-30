@@ -157,7 +157,7 @@ diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/con
  #include <limits>
  #include <memory>
  #include <set>
-@@ -1000,14 +1002,110 @@ bool RenderWidgetHostViewAura::IsPointerLocked() {
+@@ -1000,14 +1002,95 @@ bool RenderWidgetHostViewAura::IsPointerLocked() {
    return event_handler_->mouse_locked();
  }
  
@@ -210,21 +210,6 @@ diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/con
 +  if (reserved.reserves_insets) {
 +    reserved_px += static_cast<int>(
 +        std::ceil(insets_.bottom() * GetDeviceScaleFactor()));
-+  }
-+  if (reserved_px > 0) {
-+    // Once per change, so the numbers can be checked against the page's
-+    // innerHeight and visualViewport.height on a device.
-+    static int logged_height = -1;
-+    static int logged_reserved = -1;
-+    if (logged_height != size.height() || logged_reserved != reserved_px) {
-+      logged_height = size.height();
-+      logged_reserved = reserved_px;
-+      LOG(WARNING) << "OHOS browser controls: renderer gets "
-+                   << size.height() - reserved_px << "px of a "
-+                   << size.height() << "px window; controls "
-+                   << reserved.controls_px << "px, kept covered "
-+                   << reserved_px - reserved.controls_px << "px";
-+    }
 +  }
 +  size.set_height(std::max(0, size.height() - reserved_px));
 +  return size;

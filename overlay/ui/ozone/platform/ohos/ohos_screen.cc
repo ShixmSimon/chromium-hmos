@@ -3,15 +3,11 @@
 #include <window_manager/oh_display_info.h>
 #include <window_manager/oh_display_manager.h>
 
-#include <string>
-
 #include "ui/gfx/display_color_spaces.h"
 
 #include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/logging.h"
 #include "base/no_destructor.h"
-#include "base/strings/string_number_conversions.h"
 #include "base/synchronization/lock.h"
 #include "base/task/single_thread_task_runner.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
@@ -29,64 +25,19 @@ constexpr gfx::Size kOhosPrimaryDisplaySize(1920, 1080);
 // screen.orientation.angle and the orientation type are computed from; the
 // display's own bounds already follow the rotation.
 // What the panel can show, as Chromium's compositor asks the question.
-//
-// HarmonyOS reports a display's HDR formats and colour spaces on its
-// display info. Chromium wants it the other way round -- a colour space
-// per content type, and how much headroom there is above white -- so this
-// answers the second from the first. Reported wrongly in either direction
-// costs something real: claim HDR on a panel without it and highlights
-// clip, deny it on a panel with it and HDR video is tone-mapped down for
-// no reason.
 gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
-  // The default is sRGB throughout, which is what a panel without HDR
-  // wants and a safe answer when the question cannot be asked.
-  gfx::DisplayColorSpaces color_spaces(gfx::ColorSpace::CreateSRGB());
-
-  NativeDisplayManager_DisplayInfo* info = nullptr;
-  if (OH_NativeDisplayManager_CreateDisplayById(0, &info) !=
-          DISPLAY_MANAGER_OK ||
-      !info) {
-    return color_spaces;
-  }
-
-  bool hdr = false;
-  std::string formats;
-  if (info->hdrFormat && info->hdrFormat->hdrFormats) {
-    for (uint32_t i = 0; i < info->hdrFormat->hdrFormatLength; ++i) {
-      formats += " " + base::NumberToString(info->hdrFormat->hdrFormats[i]);
-    }
-    for (uint32_t i = 0; i < info->hdrFormat->hdrFormatLength; ++i) {
-      // Any format beyond "none" means the panel can show more than SDR.
-      // Which one it is decides tone mapping, not whether to offer HDR at
-      // all, and the engine does not choose the format anyway.
-      if (info->hdrFormat->hdrFormats[i] != 0) {
-        hdr = true;
-        break;
-      }
-    }
-  }
-  OH_NativeDisplayManager_DestroyDisplay(info);
-
-  // HDR output is off for now, whatever the panel can do. Answering Rec.
-  // 2020 PQ for HDR content made the compositor switch the whole output
-  // surface to PQ as soon as an HDR video played, and nothing tells the
-  // native window so: on a Mate 70 Pro+ it reported no colour space and an
-  // RGBA_8888 buffer, the system showed the PQ values as sRGB, and the
-  // whole page -- not only the video -- went grey. With SDR answered, the
-  // compositor tone-maps HDR video to sRGB itself, which shows correctly
-  // (the 2in1 emulator, whose panel has no HDR, always did this), and pages
-  // are told (dynamic-range: high) is false. Real HDR output needs the
-  // native window's colour space, a 10-bit buffer and the HDR metadata set
-  // to match first.
-  static base::NoDestructor<std::string> last_said;
-  const std::string said = "panel HDR formats [" + formats +
-                           " ], HDR content is output as sRGB (tone-mapped)" +
-                           (hdr ? "; the panel's HDR is not used yet" : "");
-  if (*last_said != said) {
-    *last_said = said;
-    LOG(WARNING) << "OHOS display: " << said;
-  }
-  return color_spaces;
+  // sRGB throughout, whatever the panel can do, until HDR output works.
+  // Answering Rec. 2020 PQ for HDR content on a panel that reports HDR made
+  // the compositor switch the whole output surface to PQ as soon as an HDR
+  // video played, and nothing tells the native window so: on a Mate 70 Pro+
+  // it reported no colour space and an RGBA_8888 buffer, the system showed
+  // the PQ values as sRGB, and the whole page -- not only the video -- went
+  // grey. With SDR answered, the compositor tone-maps HDR video to sRGB
+  // itself, which shows correctly, and pages are told (dynamic-range: high)
+  // is false. Real HDR output needs the native window's colour space, a
+  // 10-bit buffer and the HDR metadata set to match first, and then this
+  // reads the panel's HDR formats from the display info again.
+  return gfx::DisplayColorSpaces(gfx::ColorSpace::CreateSRGB());
 }
 
 display::Display::Rotation ReadDisplayRotation() {
