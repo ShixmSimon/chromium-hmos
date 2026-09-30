@@ -29,8 +29,9 @@ std::unique_ptr<device_reauth::DeviceAuthenticator> MakeOhosDeviceAuthenticator(
     const device_reauth::DeviceAuthParams& params);
 
 // Whether this device can ask at all: false when the user has set no lock
-// screen and enrolled no biometric, in which case stored passwords stay shut
-// rather than opening to anyone holding the phone.
+// screen and enrolled no biometric -- then the passwords open without a
+// prompt, as the product decided -- and false while the shell has not said.
+// The authenticator itself tells the two apart and asks first.
 bool CanAuthenticateOnThisDevice();
 
 // Asks the shell whether anything is enrolled, and remembers the answer for

@@ -19,7 +19,6 @@
 #include <BasicServicesKit/oh_commonevent.h>
 #include <BasicServicesKit/oh_commonevent_support.h>
 
-#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "components/ohos_system_service/system_service_ohos.h"
 
 namespace chrome::ohos {
@@ -53,20 +52,36 @@ base::TimeDelta& ShellGrantValidity() {
   return validity;
 }
 
-// What the shell last said about enrolled credentials. Remembered because the
-// Can... methods answer synchronously and the shell is a round trip away.
-bool& DeviceCanAuthenticate() {
-  static bool can = false;
-  return can;
+// What the shell last said about enrolled credentials, or nothing when it has
+// not answered: before the first answer, and after a failed question.
+// Remembered because the Can... methods answer synchronously and the shell is
+// a round trip away. "Nothing enrolled" opens the passwords without a prompt,
+// so it has to be an answer, never a default.
+std::optional<bool>& KnownAvailability() {
+  static std::optional<bool> known;
+  return known;
 }
 
-void RememberAvailability(bool available) {
-  if (DeviceCanAuthenticate() != available) {
+bool DeviceCanAuthenticate() {
+  return KnownAvailability().value_or(false);
+}
+
+void RememberAvailability(std::optional<bool> available) {
+  if (KnownAvailability() != available) {
     LOG(WARNING) << "OHOS password auth: the device "
-                 << (available ? "can" : "cannot")
+                 << (!available ? "has not said whether it can"
+                     : *available ? "can"
+                                  : "cannot")
                  << " verify the user (lock screen or biometric)";
   }
-  DeviceCanAuthenticate() = available;
+  KnownAvailability() = available;
+}
+
+std::optional<bool> ReadAvailability(ohos_system_service::Reply& reply) {
+  if (!reply.ok) {
+    return std::nullopt;
+  }
+  return reply.result_dict().FindBool("available");
 }
 
 // Locking the screen ends the reuse window. Watched here rather than asked of
@@ -129,34 +144,22 @@ class DeviceAuthenticatorOhos
       std::move(callback).Run(true);
       return;
     }
-    if (!DeviceCanAuthenticate()) {
-      // No lock screen and nothing enrolled. Refusing is the point: opening
-      // to whoever is holding the phone is worse than not opening.
-      LOG(WARNING) << "OHOS password auth: refused, nothing enrolled to "
-                      "verify against";
-      // The page that asked -- chrome://password-manager -- just shows
-      // nothing then. Tell the shell, which can ask the user to set a lock
-      // screen first.
-      base::DictValue event;
-      event.Set("event", "passwordAuthUnavailable");
-      DispatchAuraShellRuntimeEventToWidget(gfx::kNullAcceleratedWidget,
-                                            std::move(event));
-      std::move(callback).Run(false);
-      return;
-    }
     if (!ohos_system_service::IsAvailable()) {
       LOG(WARNING) << "OHOS password auth: refused, the shell is not attached";
       std::move(callback).Run(false);
       return;
     }
-
-    base::DictValue args;
-    args.Set("title", message);
     pending_ = std::move(callback);
-    ohos_system_service::Call(
-        kService, "verify", std::move(args),
-        base::BindOnce(&DeviceAuthenticatorOhos::OnVerified,
-                       weak_factory_.GetWeakPtr()));
+    if (!KnownAvailability().has_value()) {
+      // Not known yet: ask first. Treating "not known" as "nothing enrolled"
+      // would open the passwords of a phone that has a lock screen.
+      ohos_system_service::Call(
+          kService, "available", base::DictValue(),
+          base::BindOnce(&DeviceAuthenticatorOhos::OnAvailability,
+                         weak_factory_.GetWeakPtr(), message));
+      return;
+    }
+    VerifyOrAllow(message);
   }
 
   void Cancel() override {
@@ -180,6 +183,40 @@ class DeviceAuthenticatorOhos
     // turning the fill-time check off -- so it never reuses anything.
     return !validity_.is_zero() && last.has_value() &&
            base::TimeTicks::Now() - *last < validity_;
+  }
+
+  void OnAvailability(const std::u16string& message,
+                      ohos_system_service::Reply reply) {
+    RememberAvailability(ReadAvailability(reply));
+    if (!KnownAvailability().has_value()) {
+      LOG(WARNING) << "OHOS password auth: refused, the shell did not say "
+                      "whether anything is enrolled";
+      if (pending_) {
+        std::move(pending_).Run(false);
+      }
+      return;
+    }
+    VerifyOrAllow(message);
+  }
+
+  void VerifyOrAllow(const std::u16string& message) {
+    if (!*KnownAvailability()) {
+      // No lock screen, no face, no fingerprint: there is nothing to verify
+      // against, and the product's answer is to let the user in, as on a
+      // desktop without a password. A device that has one still asks.
+      LOG(WARNING) << "OHOS password auth: allowed, nothing enrolled to "
+                      "verify against";
+      if (pending_) {
+        std::move(pending_).Run(true);
+      }
+      return;
+    }
+    base::DictValue args;
+    args.Set("title", message);
+    ohos_system_service::Call(
+        kService, "verify", std::move(args),
+        base::BindOnce(&DeviceAuthenticatorOhos::OnVerified,
+                       weak_factory_.GetWeakPtr()));
   }
 
   void OnVerified(ohos_system_service::Reply reply) {
@@ -222,15 +259,13 @@ bool CanAuthenticateOnThisDevice() {
 void RefreshAuthenticationAvailability() {
   WatchForScreenLock();
   if (!ohos_system_service::IsAvailable()) {
-    RememberAvailability(false);
+    RememberAvailability(std::nullopt);
     return;
   }
   ohos_system_service::Call(
       kService, "available", base::DictValue(),
       base::BindOnce([](ohos_system_service::Reply reply) {
-        RememberAvailability(
-            reply.ok &&
-            reply.result_dict().FindBool("available").value_or(false));
+        RememberAvailability(ReadAvailability(reply));
       }));
 }
 

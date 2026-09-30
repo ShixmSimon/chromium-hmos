@@ -218,7 +218,7 @@ export interface BrowserRuntimeEvent {
     'clearBrowsingDataDone' | 'browsingDataCounts' | 'searchEngines' |
     'prefs' | 'prefsChanged' | 'siteSettings' | 'aboutInfo' | 'favicons' |
     'savedPasswords' | 'passwordRevealed' | 'passwordCommandResult' |
-    'passwordsExported' | 'savedPasswordsChanged' | 'passwordAuthUnavailable';
+    'passwordsExported' | 'savedPasswordsChanged';
   // gpuContextLost: whether the engine could rebuild after the GPU lost
   // its context. False means the picture will not come back on its own.
   recovered?: boolean;
