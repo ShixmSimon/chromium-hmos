@@ -606,6 +606,23 @@ export interface BackHandledEvent {
   by?: 'fullscreen' | 'browserDialog' | 'page';
 }
 
+// Pull-to-refresh on a phone. Chromium decides when it starts (the page at
+// its top, no inner scroller taking the pull, overscroll-behavior-y auto)
+// and reloads the page itself when a release is far enough; the shell only
+// draws the indicator. Distances are in vp, past the ~50vp a pull has to
+// travel before it starts.
+export interface PullToRefreshEvent {
+  event: 'pullToRefresh';
+  state: 'start' | 'pull' | 'release' | 'reset';
+  // start: how far a pull has to reach for a release to refresh.
+  threshold?: number;
+  // pull: how far the page has been pulled.
+  distance?: number;
+  // release: true when the page is being reloaded, false when the pull was
+  // too short, turned into a scroll, or was cut off (a tab switch).
+  refresh?: boolean;
+}
+
 // The page made itself fullscreen (requestFullscreen() on a video or any
 // other element), or left it. Chromium fills the page area; the shell hides
 // its own bars and makes the window immersive, and puts them back when

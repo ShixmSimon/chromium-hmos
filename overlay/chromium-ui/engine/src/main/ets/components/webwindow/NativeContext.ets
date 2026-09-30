@@ -202,7 +202,7 @@ export interface BrowserRuntimeEvent {
     'contextMenuImageFile' | 'contextMenuActionsChanged' |
     'backHandled' | 'dropNotHandled' | 'browserChromeRequested' |
     'gpuContextLost' | 'lastSessionRestorable' | 'extensionInstallFailed' |
-    'pageFullscreenChanged' |
+    'pageFullscreenChanged' | 'pullToRefresh' |
     'extensionDetails' | 'extensionCommandFailed' |
     'pageDragStarted' | 'pageDragEnded' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |

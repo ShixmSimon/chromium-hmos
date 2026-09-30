@@ -147,6 +147,7 @@
 #include "components/printing/browser/print_to_pdf/pdf_print_utils.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/overscroll_configuration.h"
 #include "content/public/browser/page_navigator.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
@@ -2954,8 +2955,43 @@ void ApplyWindowStateOnUiThread(gfx::AcceleratedWidget widget, int attempt) {
   }
 }
 
+// Pull-to-refresh, reported to the shell as pullToRefresh { state, ... },
+// which draws the indicator. Chromium decides everything else, as it does
+// for Chrome on Android: only once the page is at the top, not when a
+// scroller inside it takes the pull, not with overscroll-behavior-y set, and
+// it reloads the page itself when a release is far enough.
+void OnPullToRefresh(content::WebContents* contents,
+                     std::string_view state,
+                     float value,
+                     bool refresh) {
+  BrowserWindowInterface* browser = FindBrowserForWebContents(contents);
+  if (!browser) {
+    return;
+  }
+  base::DictValue event;
+  event.Set("event", "pullToRefresh");
+  event.Set("state", state);
+  if (state == "start") {
+    event.Set("threshold", static_cast<double>(value));
+  } else if (state == "pull") {
+    event.Set("distance", static_cast<double>(value));
+  } else if (state == "release") {
+    event.Set("refresh", refresh);
+  }
+  DispatchRuntimeEvent(GetBrowserWidget(browser), std::move(event));
+}
+
+// Phones only: a tablet or a PC has no pull-to-refresh, as in Chrome.
+void ApplyPullToRefresh(bool enabled) {
+  content::OverscrollConfig::SetOhosPullToRefresh(
+      enabled, enabled ? base::BindRepeating(&OnPullToRefresh)
+                       : content::OverscrollConfig::OhosPullToRefreshCallback());
+  LOG(WARNING) << "OHOS pull-to-refresh: " << (enabled ? "on" : "off");
+}
+
 void ApplyUiFamilyOnUiThread(std::string ui_family) {
   const bool mobile = IsMobileUiFamily(ui_family);
+  ApplyPullToRefresh(ui_family == "mobile_phone");
   const bool use_touch_ui = ui_family != "aura_pc";
   ui::TouchUiController* controller = ui::TouchUiController::Get();
   if (controller->touch_ui() == use_touch_ui) {
@@ -3913,6 +3949,7 @@ void NotifyAuraShellBrowserStarted() {
   }
   ui::SetOhosSelectFileDialogRequestCallback(
       base::BindRepeating(&DispatchFilePickerRequest));
+  ApplyPullToRefresh(IsAuraShellMobilePhoneUi());
   OhosWebPermissionWatcher::GetInstance().Start();
   // Only Android installs one upstream; without it screen.orientation.lock()
   // rejects with NotSupportedError.

@@ -806,6 +806,29 @@ pageFullscreenChanged { windowId?: number, fullscreen: boolean }
 
 内核在 200ms 一次的状态轮询里读全屏状态,所以事件最多晚 200ms 到。
 
+**下拉刷新(仅手机)**
+
+```
+pullToRefresh { windowId?: number, state: 'start', threshold: number }
+pullToRefresh { windowId?: number, state: 'pull', distance: number }
+pullToRefresh { windowId?: number, state: 'release', refresh: boolean }
+pullToRefresh { windowId?: number, state: 'reset' }
+```
+
+用的是 Chromium 自己的下拉刷新(和安卓 Chrome 同一套判断):网页已经在最顶部、手指
+继续往下拉才开始;网页内部的滚动容器会先把拉动吃掉,只有它也到顶了才轮到下拉刷新;
+网页设置了 `overscroll-behavior-y: contain/none` 时不会触发。内核不画刷新圈,外壳画。
+
+- `start`:开始。`threshold` 是松手即可刷新的拉动距离(vp)。
+- `pull`:拖动中。`distance` 是已拉动的距离(vp,已扣掉开始前约 50vp 的起始距离),
+  外壳据此画跟手的刷新圈,`distance >= threshold` 时可以提示"松手刷新"。
+- `release`:松手。`refresh: true` 时**内核已经开始 reload**,外壳不用再发 `reload`,
+  把刷新圈转到页面加载完成(看 `loadProgress`/`isLoading`)再收起;`false` 表示没拉够、
+  拉动变成了反向滚动或被打断(比如切了标签),外壳直接收起刷新圈。
+- `reset`:手势所在的页面没了(标签被关闭等),外壳收起刷新圈。
+
+只在 `uiFamily` 为手机时开启;平板和 2in1 不会收到。
+
 **GPU 上下文丢失**
 
 ```
