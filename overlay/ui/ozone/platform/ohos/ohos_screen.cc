@@ -5,7 +5,6 @@
 
 #include <string>
 
-#include "components/viz/common/resources/shared_image_format.h"
 #include "ui/gfx/display_color_spaces.h"
 
 #include "base/functional/bind.h"
@@ -68,36 +67,25 @@ gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
   }
   OH_NativeDisplayManager_DestroyDisplay(info);
 
-  // What the panel said and what the compositor is told, once per change.
-  // On an HDR panel HDR content is then drawn PQ-encoded; whether the
-  // surface it lands in agrees is logged where the surface is resized
-  // ("OHOS surface colour space").
+  // HDR output is off for now, whatever the panel can do. Answering Rec.
+  // 2020 PQ for HDR content made the compositor switch the whole output
+  // surface to PQ as soon as an HDR video played, and nothing tells the
+  // native window so: on a Mate 70 Pro+ it reported no colour space and an
+  // RGBA_8888 buffer, the system showed the PQ values as sRGB, and the
+  // whole page -- not only the video -- went grey. With SDR answered, the
+  // compositor tone-maps HDR video to sRGB itself, which shows correctly
+  // (the 2in1 emulator, whose panel has no HDR, always did this), and pages
+  // are told (dynamic-range: high) is false. Real HDR output needs the
+  // native window's colour space, a 10-bit buffer and the HDR metadata set
+  // to match first.
   static base::NoDestructor<std::string> last_said;
-  const std::string said =
-      "panel HDR formats [" + formats + " ], HDR content is output as " +
-      (hdr ? "Rec. 2020 PQ in RGBA_1010102" : "sRGB (tone-mapped)");
+  const std::string said = "panel HDR formats [" + formats +
+                           " ], HDR content is output as sRGB (tone-mapped)" +
+                           (hdr ? "; the panel's HDR is not used yet" : "");
   if (*last_said != said) {
     *last_said = said;
     LOG(WARNING) << "OHOS display: " << said;
   }
-
-  if (!hdr) {
-    return color_spaces;
-  }
-
-  // Rec. 2020 with the PQ transfer is what HDR video arrives in and what a
-  // HarmonyOS panel advertising HDR presents. Video gets it; everything
-  // else stays sRGB, so ordinary pages are not re-encoded on their way to
-  // a panel that was showing them correctly already.
-  const gfx::ColorSpace hdr_space = gfx::ColorSpace::CreateHDR10();
-  const viz::SharedImageFormat hdr_format =
-      viz::SinglePlaneFormat::kRGBA_1010102;
-  color_spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR,
-                                            /*needs_alpha=*/false, hdr_space,
-                                            hdr_format);
-  color_spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR,
-                                            /*needs_alpha=*/true, hdr_space,
-                                            hdr_format);
   return color_spaces;
 }
 
