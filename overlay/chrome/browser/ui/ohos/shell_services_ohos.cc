@@ -77,6 +77,7 @@ constexpr ShellServiceCommand kShellServiceCommands[] = {
     {"updatePassword", &HandlePasswordsCommand},
     {"deletePassword", &HandlePasswordsCommand},
     {"exportPasswords", &HandlePasswordsCommand},
+    {"importPasswords", &HandlePasswordsCommand},
     // Favicons, shared by every list the shell draws.
     {"getFavicons", &HandleFaviconsCommand},
 };

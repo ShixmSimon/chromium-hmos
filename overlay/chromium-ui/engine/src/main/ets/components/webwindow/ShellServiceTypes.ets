@@ -560,7 +560,8 @@ export interface PasswordRevealedEvent extends ShellServiceEvent {
 }
 
 export type PasswordCommandFailure =
-  'authRequired' | 'notFound' | 'duplicate' | 'ioError' | 'unknown';
+  'authRequired' | 'notFound' | 'duplicate' | 'ioError' | 'badFormat' |
+  'tooLarge' | 'unknown';
 
 export interface PasswordCommandResultEvent extends ShellServiceEvent {
   requestId: number;
@@ -576,6 +577,20 @@ export interface PasswordsExportedEvent extends ShellServiceEvent {
   requestId: number;
   ok: boolean;
   count: number;
+  reason?: PasswordCommandFailure;
+}
+
+export interface PasswordsImportedEvent extends ShellServiceEvent {
+  requestId: number;
+  ok: boolean;
+  // Rows now in the store, those that replaced a saved password included.
+  imported: number;
+  // Rows for a site and username already saved with another password, left
+  // as they were because overwrite was not set.
+  skipped: number;
+  // Rows that could not be read: a missing or bad URL, a missing password,
+  // a field too long.
+  failed: number;
   reason?: PasswordCommandFailure;
 }
 

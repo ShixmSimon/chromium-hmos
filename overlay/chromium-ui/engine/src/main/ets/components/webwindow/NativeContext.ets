@@ -218,7 +218,7 @@ export interface BrowserRuntimeEvent {
     'clearBrowsingDataDone' | 'browsingDataCounts' | 'searchEngines' |
     'prefs' | 'prefsChanged' | 'siteSettings' | 'aboutInfo' | 'favicons' |
     'savedPasswords' | 'passwordRevealed' | 'passwordCommandResult' |
-    'passwordsExported' | 'savedPasswordsChanged';
+    'passwordsExported' | 'passwordsImported' | 'savedPasswordsChanged';
   // gpuContextLost: whether the engine could rebuild after the GPU lost
   // its context. False means the picture will not come back on its own.
   recovered?: boolean;
@@ -377,6 +377,9 @@ export interface BrowserCommandPayload {
   username?: string;
   password?: string;
   note?: string;
+  // importPasswords: replace a saved password for the same site and username
+  // with the imported one. Off by default: such rows are skipped.
+  overwrite?: boolean;
   // moveTab: where the tab should end up, counting positions after the move.
   toIndex?: number;
   // setRequestDesktopSite: ask this tab's site for its desktop pages.

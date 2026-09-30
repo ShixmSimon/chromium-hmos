@@ -19,10 +19,13 @@
 //     -> "passwordCommandResult" {requestId, command, ok, reason?}
 //   exportPasswords {requestId, path}
 //     -> "passwordsExported" {requestId, ok, count, reason?}
+//   importPasswords {requestId, path, overwrite?}
+//     -> "passwordsImported" {requestId, ok, imported, skipped, failed,
+//          reason?}
 //   (broadcast) "savedPasswordsChanged"
 //
 // The shell verifies the user itself before it asks for a plain-text
-// password or changes one, and says so with passwordAuthGranted; the four
+// password or changes one, and says so with passwordAuthGranted; the five
 // sensitive commands are refused with authRequired outside that window.
 // Nothing here keeps a password, a username or a note, and nothing here logs
 // one: ids are handed out per sign-on realm and username, keyed by a hash.
@@ -59,6 +62,9 @@
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/password_manager/core/browser/export/export_progress_status.h"
 #include "components/password_manager/core/browser/export/password_manager_exporter.h"
+#include "components/password_manager/core/browser/import/import_results.h"
+#include "components/password_manager/core/browser/import/password_importer.h"
+#include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/browser/ui/credential_ui_entry.h"
 #include "components/password_manager/core/browser/ui/saved_passwords_presenter.h"
 #include "crypto/sha2.h"
@@ -119,6 +125,41 @@ void SendExported(const ReplyTarget& target,
   target.Send(std::move(event));
 }
 
+void SendImported(const ReplyTarget& target,
+                  bool ok,
+                  size_t imported,
+                  size_t skipped,
+                  size_t failed,
+                  std::string_view reason = std::string_view()) {
+  base::DictValue event;
+  event.Set("event", "passwordsImported");
+  event.Set("ok", ok);
+  event.Set("imported", static_cast<int>(imported));
+  event.Set("skipped", static_cast<int>(skipped));
+  event.Set("failed", static_cast<int>(failed));
+  if (!reason.empty()) {
+    event.Set("reason", reason);
+  }
+  target.Send(std::move(event));
+}
+
+// The shell's reason for an import that did not finish.
+std::string_view ImportFailureReason(
+    password_manager::ImportResults::Status status) {
+  using password_manager::ImportResults;
+  switch (status) {
+    case ImportResults::IO_ERROR:
+      return "ioError";
+    case ImportResults::BAD_FORMAT:
+      return "badFormat";
+    case ImportResults::MAX_FILE_SIZE:
+    case ImportResults::NUM_PASSWORDS_EXCEEDED:
+      return "tooLarge";
+    default:
+      return "unknown";
+  }
+}
+
 // What an id is handed out for: one sign-on realm and one username. Hashed,
 // so the map that remembers ids holds no usernames. A password change keeps
 // the id; a username change is a different credential to the store, and gets
@@ -128,9 +169,10 @@ std::string IdKey(const CredentialUIEntry& entry) {
       entry.GetFirstSignonRealm() + '\x1f' + base::UTF16ToUTF8(entry.username)));
 }
 
-// A sandbox path the shell handed over for the export. Absolute and without
-// parent references; where it points is the shell's to choose.
-bool IsUsableExportPath(const std::string& path) {
+// A sandbox path the shell handed over, to export to or import from.
+// Absolute and without parent references; where it points is the shell's to
+// choose.
+bool IsUsableSandboxPath(const std::string& path) {
   const base::FilePath file_path(path);
   return !path.empty() && file_path.IsAbsolute() &&
          !file_path.ReferencesParent();
@@ -285,6 +327,30 @@ class ShellPasswords : public SavedPasswordsPresenter::Observer {
     exporter_->SetDestination(base::FilePath(path));
   }
 
+  // Chromium's own importer, the one chrome://password-manager uses: the
+  // file is parsed in its sandboxed CSV parser and read into memory only --
+  // nothing here keeps a copy, and the shell deletes its own. A row for a
+  // site and username already saved with another password is a conflict,
+  // which the importer stops on: kept as it is unless `overwrite`.
+  void Import(const ReplyTarget& target,
+              const std::string& path,
+              bool overwrite) {
+    if (importer_) {
+      LOG(WARNING) << "OHOS passwords: import failed(busy)";
+      SendImported(target, false, 0, 0, 0, "unknown");
+      return;
+    }
+    import_target_ = target;
+    import_overwrite_ = overwrite;
+    import_skipped_ = 0;
+    importer_ =
+        std::make_unique<password_manager::PasswordImporter>(presenter_);
+    importer_->Import(base::FilePath(path),
+                      password_manager::PasswordForm::Store::kProfileStore,
+                      base::BindOnce(&ShellPasswords::OnImportResults,
+                                     weak_factory_.GetWeakPtr()));
+  }
+
   // SavedPasswordsPresenter::Observer:
   void OnSavedPasswordsChanged(
       const password_manager::PasswordStoreChangeList& changes) override {
@@ -341,6 +407,57 @@ class ShellPasswords : public SavedPasswordsPresenter::Observer {
         FROM_HERE, std::move(exporter_));
   }
 
+  void OnImportResults(const password_manager::ImportResults& results) {
+    using password_manager::ImportEntry;
+    using password_manager::ImportResults;
+    if (results.status == ImportResults::CONFLICTS) {
+      std::vector<int> replace;
+      if (import_overwrite_) {
+        for (const ImportEntry& entry : results.displayed_entries) {
+          replace.push_back(entry.id);
+        }
+      } else {
+        import_skipped_ = results.displayed_entries.size();
+      }
+      // Not from inside the importer's own callback.
+      base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE, base::BindOnce(&ShellPasswords::ContinueImport,
+                                    weak_factory_.GetWeakPtr(),
+                                    std::move(replace)));
+      return;
+    }
+
+    // Rows that could not be imported: a missing or bad URL, a missing
+    // password, a field too long.
+    size_t failed = 0;
+    for (const ImportEntry& entry : results.displayed_entries) {
+      if (entry.status != ImportEntry::VALID) {
+        failed++;
+      }
+    }
+    const bool ok = results.status == ImportResults::SUCCESS;
+    const std::string_view reason =
+        ok ? std::string_view() : ImportFailureReason(results.status);
+    LOG(WARNING) << "OHOS passwords: import imported="
+                 << results.number_imported << " skipped=" << import_skipped_
+                 << " failed=" << failed
+                 << (ok ? std::string() : " (" + std::string(reason) + ")");
+    SendImported(import_target_, ok, results.number_imported, import_skipped_,
+                 failed, reason);
+    // The importer is still on the stack.
+    base::SequencedTaskRunner::GetCurrentDefault()->DeleteSoon(
+        FROM_HERE, std::move(importer_));
+  }
+
+  void ContinueImport(std::vector<int> replace) {
+    if (!importer_) {
+      return;
+    }
+    importer_->ContinueImport(replace,
+                              base::BindOnce(&ShellPasswords::OnImportResults,
+                                             weak_factory_.GetWeakPtr()));
+  }
+
   const raw_ptr<Profile> profile_;
   SavedPasswordsPresenter presenter_;
   bool ready_ = false;
@@ -350,6 +467,10 @@ class ShellPasswords : public SavedPasswordsPresenter::Observer {
   std::unique_ptr<password_manager::PasswordManagerExporter> exporter_;
   ReplyTarget export_target_;
   size_t export_count_ = 0;
+  std::unique_ptr<password_manager::PasswordImporter> importer_;
+  ReplyTarget import_target_;
+  bool import_overwrite_ = false;
+  size_t import_skipped_ = 0;
   base::WeakPtrFactory<ShellPasswords> weak_factory_{this};
 };
 
@@ -361,7 +482,7 @@ ShellPasswords* GetShellPasswords(Profile* profile) {
   return passwords->Get(profile);
 }
 
-// The four commands that hand out or change a password, refused outside the
+// The five commands that hand out or change passwords, refused outside the
 // window a verification opened.
 bool RequireAuthentication(const ReplyTarget& target,
                            std::string_view command,
@@ -377,6 +498,8 @@ bool RequireAuthentication(const ReplyTarget& target,
   }
   if (command == "exportPasswords") {
     SendExported(target, false, 0, "authRequired");
+  } else if (command == "importPasswords") {
+    SendImported(target, false, 0, 0, 0, "authRequired");
   } else {
     SendCommandResult(target, command, false, "authRequired");
   }
@@ -415,7 +538,8 @@ bool HandlePasswordsCommand(const ShellCommandContext& context,
     return true;
   }
   if (name != "revealPassword" && name != "updatePassword" &&
-      name != "deletePassword" && name != "exportPasswords") {
+      name != "deletePassword" && name != "exportPasswords" &&
+      name != "importPasswords") {
     return false;
   }
   if (!RequireAuthentication(target, name, id)) {
@@ -433,9 +557,19 @@ bool HandlePasswordsCommand(const ShellCommandContext& context,
     passwords->WhenReady(base::BindOnce(&ShellPasswords::Delete,
                                         base::Unretained(passwords), target,
                                         id));
+  } else if (name == "importPasswords") {
+    const std::string* path = command.FindString("path");
+    if (!path || !IsUsableSandboxPath(*path)) {
+      LOG(WARNING) << "OHOS passwords: import failed(ioError)";
+      SendImported(target, false, 0, 0, 0, "ioError");
+      return true;
+    }
+    passwords->WhenReady(base::BindOnce(
+        &ShellPasswords::Import, base::Unretained(passwords), target, *path,
+        command.FindBool("overwrite").value_or(false)));
   } else {
     const std::string* path = command.FindString("path");
-    if (!path || !IsUsableExportPath(*path)) {
+    if (!path || !IsUsableSandboxPath(*path)) {
       LOG(WARNING) << "OHOS passwords: export failed(ioError)";
       SendExported(target, false, 0, "ioError");
       return true;

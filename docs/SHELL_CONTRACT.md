@@ -705,10 +705,11 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 | `updatePassword` | `requestId`, `id`, `username?`, `password?`, `note?` | `passwordCommandResult { requestId, command, ok, reason?, newId? }`。只传要改的字段。改了用户名时这条密码换了 id,新的在 `newId` |
 | `deletePassword` | `requestId`, `id` | `passwordCommandResult` |
 | `exportPasswords` | `requestId`, `path` | `passwordsExported { requestId, ok, count, reason? }`。导出 Chromium 格式的 CSV 到外壳沙箱里的 `path`(绝对路径),之后外壳用系统保存框让用户选位置 |
+| `importPasswords` | `requestId`, `path`, `overwrite?` | `passwordsImported { requestId, ok, imported, skipped, failed, reason? }`。`path` 是外壳沙箱里的 CSV(外壳从用户选的文件复制过来),格式按 Chromium 的导入器,兼容 Chrome / Edge / Firefox 导出的 CSV。同网站同用户名、密码不同的条目默认跳过(计入 `skipped`);传 `overwrite: true` 用导入的覆盖。和库里完全一样的条目 Chromium 算作已导入,计入 `imported`。`failed` 是读不出来的行(缺网址、网址不对、缺密码、字段太长)。`reason`:`authRequired`、`badFormat`(表头缺失或不对)、`ioError`、`tooLarge`(超过 1000KB 或条数超上限)、`unknown`(含上一次导入还没结束)。导入有变化时照常 `savedPasswordsChanged`。内核只把文件读进内存,不留副本,缓存文件由外壳删 |
 | `passwordAuthReset` | `reason?` | 已有,让验证立即失效 |
 
 - `reason`:`authRequired`(验证过期或没验证)、`notFound`、`duplicate`(改成的用户名在这个网站已经有了)、`ioError`(导出写文件失败或路径不可用)、`unknown`。
-- 验证窗口和原生页、填充共用:锁屏、息屏、`passwordAuthReset` 都会让它立即失效,之后四条敏感命令一律回 `authRequired`。
+- 验证窗口和原生页、填充共用:锁屏、息屏、`passwordAuthReset` 都会让它立即失效,之后五条敏感命令(显示、修改、删除、导出、导入)一律回 `authRequired`。
 - `savedPasswordsChanged {}`:网页保存了新密码、同步、或其他窗口改了密码时广播,外壳重新拉列表。外壳至少发过一次 `getSavedPasswords` 之后才会收到。
 - `id` 在同一次运行中稳定(按网站 + 用户名分配),改密码不换 id,改用户名换 id。
 - 无痕窗口里发的这些命令读写的是普通 Profile 的密码,和 Chromium 一致。
