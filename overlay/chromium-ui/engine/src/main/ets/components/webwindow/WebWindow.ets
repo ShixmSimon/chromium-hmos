@@ -23,6 +23,10 @@ import { i18n } from '@kit.LocalizationKit';
 import { AuraStartupConfig, CHROMIUM_HOME_URL } from '../../utils/DeviceType';
 import { UIManager } from '../../utils/UIManager';
 import {
+  SequencedBrowserCommand,
+  SequencedBrowserCommandBatch
+} from '../../utils/BrowserCommandChannel';
+import {
   INativeContext,
   AuxiliaryWindowState,
   BrowserCommandPayload,
@@ -126,6 +130,10 @@ export struct WebWindow {
   private focusRecoveryTimers: number[] = [];
   private rotationSyncTimer: number = -1;
   private lastExecutedBrowserCommandRevision: number = 0;
+  // For commands from a BrowserCommandChannel: which channel, and the last
+  // command of it run. See BrowserCommandChannel.
+  private browserCommandChannel: string = '';
+  private lastExecutedBrowserCommandSeq: number = 0;
   private lastAuxiliaryDismissRevision: number = 0;
   private lastPwaWindowActive: number = -1;
   private lastActivationEpoch: number = 0;
@@ -1407,8 +1415,51 @@ export struct WebWindow {
       return;
     }
 
-    if (this.nativeContext.ExecuteBrowserCommand(this.browserCommandText)) {
+    const sequenced: SequencedBrowserCommandBatch | undefined =
+      this.parseSequencedBrowserCommands(this.browserCommandText);
+    if (!sequenced) {
+      if (this.nativeContext.ExecuteBrowserCommand(this.browserCommandText)) {
+        this.lastExecutedBrowserCommandRevision = this.browserCommandRevision;
+      }
+      return;
+    }
+
+    // Run only the commands this window has not run yet: the channel writes
+    // every recent one each time, so a write that replaced another before
+    // this monitor ran still carries the commands it held.
+    if (sequenced.channel !== this.browserCommandChannel) {
+      this.browserCommandChannel = sequenced.channel;
+      this.lastExecutedBrowserCommandSeq = 0;
+    }
+    const fresh: SequencedBrowserCommand[] = sequenced.sequencedCommands.filter(
+      (entry: SequencedBrowserCommand): boolean => entry.seq > this.lastExecutedBrowserCommandSeq);
+    if (fresh.length === 0) {
       this.lastExecutedBrowserCommandRevision = this.browserCommandRevision;
+      return;
+    }
+    const commands: BrowserCommandPayload[] =
+      fresh.map((entry: SequencedBrowserCommand): BrowserCommandPayload => entry.command);
+    const text: string = JSON.stringify(commands.length === 1 ? commands[0] : commands);
+    if (this.nativeContext.ExecuteBrowserCommand(text)) {
+      this.lastExecutedBrowserCommandRevision = this.browserCommandRevision;
+      this.lastExecutedBrowserCommandSeq = fresh[fresh.length - 1].seq;
+    }
+  }
+
+  // A BrowserCommandChannel's write, or undefined for anything else -- a
+  // single command or a plain array written by a shell without the channel.
+  private parseSequencedBrowserCommands(text: string): SequencedBrowserCommandBatch | undefined {
+    if (!text.startsWith('{"channel"')) {
+      return undefined;
+    }
+    try {
+      const batch: SequencedBrowserCommandBatch = JSON.parse(text) as SequencedBrowserCommandBatch;
+      if (typeof batch.channel !== 'string' || !Array.isArray(batch.sequencedCommands)) {
+        return undefined;
+      }
+      return batch;
+    } catch (error) {
+      return undefined;
     }
   }
 
