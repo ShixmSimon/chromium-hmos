@@ -31,60 +31,36 @@ constexpr gfx::Size kOhosPrimaryDisplaySize(1920, 1080);
 // display's own bounds already follow the rotation.
 // What the panel can show, as Chromium's compositor asks the question.
 //
-// HarmonyOS reports a display's HDR formats on its display info. Chromium
-// wants a colour space per content type instead, so this answers the second
-// from the first: on a panel with HDR, HDR content is output as Rec. 2020 PQ
-// and everything else stays sRGB.
-//
-// The format stays 8-bit. The EGL window is created from an 8-bit config,
-// and the surface tags its native window as PQ when it is asked to draw in
-// it (OhosNativeViewGLSurfaceEGL::Resize) -- without that tag the system
-// showed PQ values as sRGB and the whole page went grey on a Mate 70 Pro+.
-// A 10-bit buffer to go with it is the next step.
+// On a panel with HDR, HDR content is output as Rec. 2020 PQ and everything
+// else stays sRGB, and an opaque window is drawn in RGBA_1010102 whatever it
+// holds: the GL surface factory gives such a window a 10-bit EGL config
+// (LogTenBitConfigs lists what there is), and Skia takes the format given
+// here as what that framebuffer is. 8-bit PQ is a quarter of the precision
+// HDR10 is defined with, and SDR content drawn into PQ -- the whole page
+// while HDR video plays -- has only ~150 of 256 codes to spend. A window
+// with alpha stays RGBA_8888: two bits of alpha is not enough to round a
+// popup's corners, and the factory keeps those windows 8-bit.
 gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
+  const bool hdr = OhosDisplaySupportsHdr();
   gfx::DisplayColorSpaces color_spaces(gfx::ColorSpace::CreateSRGB());
-
-  NativeDisplayManager_DisplayInfo* info = nullptr;
-  if (OH_NativeDisplayManager_CreateDisplayById(0, &info) !=
-          DISPLAY_MANAGER_OK ||
-      !info) {
-    return color_spaces;
-  }
-
-  bool hdr = false;
-  std::string formats;
-  if (info->hdrFormat && info->hdrFormat->hdrFormats) {
-    for (uint32_t i = 0; i < info->hdrFormat->hdrFormatLength; ++i) {
-      formats += " " + base::NumberToString(info->hdrFormat->hdrFormats[i]);
-      // Any format beyond "none" means the panel can show more than SDR.
-      if (info->hdrFormat->hdrFormats[i] != 0) {
-        hdr = true;
-      }
-    }
-  }
-  OH_NativeDisplayManager_DestroyDisplay(info);
-
-  static base::NoDestructor<std::string> last_said;
-  const std::string said =
-      "panel HDR formats [" + formats + " ], HDR content is output as " +
-      (hdr ? "Rec. 2020 PQ in RGBA_8888" : "sRGB (tone-mapped)");
-  if (*last_said != said) {
-    *last_said = said;
-    LOG(WARNING) << "OHOS display: " << said;
-  }
-
   if (!hdr) {
     return color_spaces;
   }
 
+  const gfx::ColorSpace srgb = gfx::ColorSpace::CreateSRGB();
   const gfx::ColorSpace hdr_space = gfx::ColorSpace::CreateHDR10();
-  const viz::SharedImageFormat hdr_format = viz::SinglePlaneFormat::kRGBA_8888;
-  color_spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR,
-                                            /*needs_alpha=*/false, hdr_space,
-                                            hdr_format);
-  color_spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR,
-                                            /*needs_alpha=*/true, hdr_space,
-                                            hdr_format);
+  const viz::SharedImageFormat ten_bit = viz::SinglePlaneFormat::kRGBA_1010102;
+  const viz::SharedImageFormat eight_bit = viz::SinglePlaneFormat::kRGBA_8888;
+  for (gfx::ContentColorUsage usage :
+       {gfx::ContentColorUsage::kSRGB, gfx::ContentColorUsage::kWideColorGamut,
+        gfx::ContentColorUsage::kHDR}) {
+    const gfx::ColorSpace& space =
+        usage == gfx::ContentColorUsage::kHDR ? hdr_space : srgb;
+    color_spaces.SetOutputColorSpaceAndFormat(usage, /*needs_alpha=*/false,
+                                              space, ten_bit);
+    color_spaces.SetOutputColorSpaceAndFormat(usage, /*needs_alpha=*/true,
+                                              space, eight_bit);
+  }
   return color_spaces;
 }
 
@@ -120,6 +96,43 @@ DisplayChangeRelay& GetDisplayChangeRelay() {
 }
 
 }  // namespace
+
+bool OhosDisplaySupportsHdr() {
+  NativeDisplayManager_DisplayInfo* info = nullptr;
+  if (OH_NativeDisplayManager_CreateDisplayById(0, &info) !=
+          DISPLAY_MANAGER_OK ||
+      !info) {
+    return false;
+  }
+
+  bool hdr = false;
+  std::string formats;
+  if (info->hdrFormat && info->hdrFormat->hdrFormats) {
+    for (uint32_t i = 0; i < info->hdrFormat->hdrFormatLength; ++i) {
+      formats += " " + base::NumberToString(info->hdrFormat->hdrFormats[i]);
+      // Any format beyond "none" means the panel can show more than SDR.
+      if (info->hdrFormat->hdrFormats[i] != 0) {
+        hdr = true;
+      }
+    }
+  }
+  OH_NativeDisplayManager_DestroyDisplay(info);
+
+  // Asked from the UI thread and the GPU thread alike.
+  static base::NoDestructor<base::Lock> lock;
+  static base::NoDestructor<std::string> last_said;
+  const std::string said =
+      "panel HDR formats [" + formats + " ], " +
+      (hdr ? "HDR content is output as Rec. 2020 PQ, opaque windows in "
+             "RGBA_1010102"
+           : "HDR content is tone-mapped to sRGB");
+  base::AutoLock hold(*lock);
+  if (*last_said != said) {
+    *last_said = said;
+    LOG(WARNING) << "OHOS display: " << said;
+  }
+  return hdr;
+}
 
 OhosScreen::OhosScreen() {
   float scale = kOhosPrimaryDisplayScale;

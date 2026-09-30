@@ -12,6 +12,11 @@
 
 namespace ui {
 
+// Whether the default display reports any HDR format. Asked by the screen,
+// to tell the compositor what to draw HDR content in, and by the GL surface
+// factory, to give a window a 10-bit buffer to draw it into.
+bool OhosDisplaySupportsHdr();
+
 class OhosScreen : public PlatformScreen {
  public:
   OhosScreen();

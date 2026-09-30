@@ -1,5 +1,6 @@
 #include "ui/ozone/platform/ohos/ohos_surface_factory.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,7 @@
 #include <native_window/external_window.h>
 
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
+#include "ui/ozone/platform/ohos/ohos_screen.h"
 #include "ui/ozone/platform/ohos/ohos_vsync_provider.h"
 
 namespace ui {
@@ -30,9 +32,10 @@ namespace {
 
 constexpr base::TimeDelta kNativeSurfaceWaitTimeout = base::Seconds(3);
 
-// OH_NativeBuffer_Format's RGBA_8888. Taking the enum by value keeps
-// native_buffer out of this target's headers for one constant.
+// OH_NativeBuffer_Format's RGBA_8888 and RGBA_1010102. Taking the enum by
+// value keeps native_buffer out of this target's headers for two constants.
 constexpr int32_t kPixelFormatRgba8888 = 12;
+constexpr int32_t kPixelFormatRgba1010102 = 34;
 
 // Views asks for a translucent window for anything with a rounded corner or a
 // shadow -- an autofill list, a <select> menu, a bubble -- and paints the area
@@ -54,12 +57,11 @@ void RequestAlphaCapableBuffer(void* window) {
   }
 }
 
-// What a 10-bit output surface could be made from. Chromium's config choice
-// asks for 8 bits per channel, so HDR output is PQ in RGBA_8888 and can
-// band; a 10-bit window config from ANGLE (and the driver under it) is what
-// would fix that. Lists every config with 10 or more bits of red, whether it
-// can back a window, and the display's colour-space and pixel-format
-// extensions. Once per process.
+// What a 10-bit output surface can be made from, beside what
+// ChooseTenBitWindowConfig picks from it: every config ANGLE (and the driver
+// under it) lists with 10 or more bits of red, whether it can back a window,
+// and the display's colour-space and pixel-format extensions. Once per
+// process.
 void LogTenBitConfigs(EGLDisplay display) {
   static bool logged = false;
   if (logged || display == EGL_NO_DISPLAY) {
@@ -118,6 +120,55 @@ void LogTenBitConfigs(EGLDisplay display) {
                << extensions << " ]";
 }
 
+// A window config with exactly 10 bits per colour and 2 of alpha, the
+// layout of RGBA_1010102, without depth or stencil if there is one: the
+// compositor draws its output into the default framebuffer with neither,
+// and Chromium's own 8-bit choice takes the smallest depth there is too.
+EGLConfig ChooseTenBitWindowConfig(EGLDisplay display) {
+  const EGLint attributes[] = {EGL_RED_SIZE,        10,
+                               EGL_GREEN_SIZE,      10,
+                               EGL_BLUE_SIZE,       10,
+                               EGL_ALPHA_SIZE,      2,
+                               EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
+                               EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+                               EGL_NONE};
+  EGLint count = 0;
+  if (!eglChooseConfig(display, attributes, nullptr, 0, &count) ||
+      count <= 0) {
+    return nullptr;
+  }
+  std::vector<EGLConfig> configs(count);
+  if (!eglChooseConfig(display, attributes, configs.data(), count, &count)) {
+    return nullptr;
+  }
+  configs.resize(count);
+
+  auto attrib = [display](EGLConfig config, EGLint name) {
+    EGLint value = 0;
+    eglGetConfigAttrib(display, config, name, &value);
+    return value;
+  };
+  EGLConfig chosen = nullptr;
+  for (EGLConfig config : configs) {
+    // eglChooseConfig takes these sizes as minimums, and sorts deeper
+    // colour first: RGBA16F would come back as well.
+    if (attrib(config, EGL_RED_SIZE) != 10 ||
+        attrib(config, EGL_GREEN_SIZE) != 10 ||
+        attrib(config, EGL_BLUE_SIZE) != 10 ||
+        attrib(config, EGL_ALPHA_SIZE) != 2) {
+      continue;
+    }
+    if (attrib(config, EGL_DEPTH_SIZE) == 0 &&
+        attrib(config, EGL_STENCIL_SIZE) == 0) {
+      return config;
+    }
+    if (!chosen) {
+      chosen = config;
+    }
+  }
+  return chosen;
+}
+
 class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
  public:
   OhosNativeViewGLSurfaceEGL(gl::GLDisplayEGL* display,
@@ -125,22 +176,65 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
                              EGLNativeWindowType window,
                              std::unique_ptr<gfx::VSyncProvider> vsync_provider)
       : gl::NativeViewGLSurfaceEGL(display, window, std::move(vsync_provider)),
-        widget_(widget) {}
+        widget_(widget),
+        hdr_panel_(OhosDisplaySupportsHdr()),
+        // Whether the window has alpha is only known at the first Resize;
+        // until then, a popup is the window that draws it.
+        ten_bit_(hdr_panel_ && !IsOhosAnchoredWindow(widget)) {}
+
+  // On an HDR panel the screen tells the compositor an opaque window is
+  // RGBA_1010102 (ReadDisplayColorSpaces), and Skia takes that as what the
+  // default framebuffer is, so an opaque window gets a 10-bit config to
+  // match. A window with alpha -- a popup's rounded corners and shadow --
+  // needs more than two bits of it and stays 8-bit, as the screen says too.
+  // Chromium's own choice asks for 8 bits per channel.
+  EGLConfig GetConfig() override {
+    if (!config_ && ten_bit_) {
+      config_ = ChooseTenBitWindowConfig(display_->GetDisplay());
+      if (!config_) {
+        ten_bit_ = false;
+        ten_bit_unavailable_ = true;
+      }
+      LogConfig(config_ ? "10-bit" : "8-bit (no 10-bit window config)");
+    }
+    return gl::NativeViewGLSurfaceEGL::GetConfig();
+  }
+
+  // A 10-bit config the driver lists but cannot make a window from must not
+  // cost the window: viz takes a failed view surface as GPU compositing
+  // being broken and falls back to software, which reaches no screen here.
+  bool Initialize(gl::GLSurfaceFormat format) override {
+    // Settle 8 or 10 bits before the base class asks the native window to be
+    // set up, which is where its buffers are given the matching format.
+    GetConfig();
+    if (gl::NativeViewGLSurfaceEGL::Initialize(format)) {
+      return true;
+    }
+    // Without a native window there is nothing to learn about the config.
+    std::optional<OhosNativeSurface> surface = GetOhosNativeSurface(widget_);
+    if (!ten_bit_ || !surface || !surface->window) {
+      return false;
+    }
+    ten_bit_ = false;
+    ten_bit_unavailable_ = true;
+    config_ = nullptr;
+    LogConfig("8-bit (the 10-bit window could not be created)");
+    return gl::NativeViewGLSurfaceEGL::Initialize(format);
+  }
 
   bool InitializeNativeWindow() override {
     std::optional<OhosNativeSurface> surface = GetOhosNativeSurface(widget_);
     if (!surface || !surface->window) {
       return false;
     }
-    if (IsOhosAnchoredWindow(widget_)) {
-      RequestAlphaCapableBuffer(surface->window);
-    }
     const EGLNativeWindowType window =
         reinterpret_cast<EGLNativeWindowType>(surface->window);
     if (window != window_) {
       tagged_pq_ = false;
+      original_format_.reset();
     }
     window_ = window;
+    SetBufferFormat();
     TagNativeWindowColorSpace();
     return true;
   }
@@ -156,7 +250,13 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
     pq_output_ =
         color_space.GetTransferID() == gfx::ColorSpace::TransferID::PQ;
     TagNativeWindowColorSpace();
-    if (refresh == WindowRefreshResult::kChanged) {
+    const bool ten_bit = hdr_panel_ && !has_alpha && !ten_bit_unavailable_;
+    const bool config_changed = ten_bit != ten_bit_;
+    if (config_changed) {
+      ten_bit_ = ten_bit;
+      config_ = nullptr;
+    }
+    if (refresh == WindowRefreshResult::kChanged || config_changed) {
       size_ = size;
       return Recreate();
     }
@@ -221,8 +321,48 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
                  << ", metadata result " << metadata_result << ")";
   }
 
+  // The window's buffers have to hold what the EGL config draws: a 10-bit
+  // config into the RGBA_8888 buffers a window starts with would be read
+  // back as the wrong bits. Raised to RGBA_1010102 for a 10-bit config and
+  // put back to what the window had when it drops to 8 bits.
+  void SetBufferFormat() {
+    auto* native_window = reinterpret_cast<OHNativeWindow*>(window_);
+    if (!native_window) {
+      return;
+    }
+    if (ten_bit_) {
+      if (!original_format_) {
+        int32_t format = kPixelFormatRgba8888;
+        OH_NativeWindow_NativeWindowHandleOpt(native_window, GET_FORMAT,
+                                              &format);
+        original_format_ = format;
+      }
+      const int32_t result = OH_NativeWindow_NativeWindowHandleOpt(
+          native_window, SET_FORMAT, kPixelFormatRgba1010102);
+      if (result != 0) {
+        LOG(WARNING) << "OHOS surface: could not ask for a 10-bit buffer: "
+                     << result;
+      }
+      return;
+    }
+    if (IsOhosAnchoredWindow(widget_)) {
+      RequestAlphaCapableBuffer(native_window);
+    } else if (original_format_) {
+      OH_NativeWindow_NativeWindowHandleOpt(native_window, SET_FORMAT,
+                                            *original_format_);
+    }
+    original_format_.reset();
+  }
+
+  void LogConfig(const char* what) {
+    LOG(WARNING) << "OHOS surface config: window " << widget_ << " is "
+                 << what;
+  }
+
   bool pq_output_ = false;
   bool tagged_pq_ = false;
+  // The buffer format the window had before it was raised to 10 bits.
+  std::optional<int32_t> original_format_;
 
   WindowRefreshResult RefreshNativeWindow() {
     std::optional<OhosNativeSurface> surface = GetOhosNativeSurface(widget_);
@@ -238,6 +378,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
 
     window_ = next_window;
     tagged_pq_ = false;
+    original_format_.reset();
     LOG(INFO) << "OHOS XComponent native window changed; recreating EGL "
                  "surface";
     return WindowRefreshResult::kChanged;
@@ -252,6 +393,11 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
   }
 
   const gfx::AcceleratedWidget widget_;
+  const bool hdr_panel_;
+  bool ten_bit_;
+  // The driver had no 10-bit window config, or could not make a window from
+  // it; asking again on every resize would recreate the surface each time.
+  bool ten_bit_unavailable_ = false;
 };
 
 class GLOzoneEGLOhos : public GLOzoneEGL {
