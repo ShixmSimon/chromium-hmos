@@ -420,6 +420,9 @@ export interface BrowserCommandPayload {
   state?: 'shown' | 'hidden' | 'both';
   // setBrowserControlsState: whether the transition animates.
   animate?: boolean;
+  // uninstallExtension: false when the shell has asked the reader itself;
+  // true (the default) shows Chromium's own confirmation.
+  confirm?: boolean;
   // findInPage: the text to find, and the direction to step in.
   // insertText: what to put where the reader is typing. The shell reads the
   // system pasteboard with a paste control and sends it here, because

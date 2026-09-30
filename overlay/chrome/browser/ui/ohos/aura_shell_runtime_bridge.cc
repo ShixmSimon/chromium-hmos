@@ -355,6 +355,11 @@ void DispatchRuntimeEvent(gfx::AcceleratedWidget widget,
   event.Set("version", 1);
   std::string event_json;
   if (!base::JSONWriter::Write(event, &event_json)) {
+    // Silent until now: a reply that could not be written never reached
+    // the shell, which waited for it until it timed out.
+    const std::string* name = event.FindString("event");
+    LOG(ERROR) << "OHOS Aura shell dropped an event it could not write: "
+               << (name ? *name : std::string("?"));
     return;
   }
 
@@ -1479,6 +1484,11 @@ void SendExtensionActions(gfx::AcceleratedWidget widget,
   base::DictValue event;
   event.Set("event", "extensionActions");
   event.Set("requestId", command.FindInt("requestId").value_or(0));
+  // Said for each request: the shell timed out waiting for several of these,
+  // and this tells whether the request arrived and was answered.
+  LOG(WARNING) << "OHOS extension actions: request "
+               << command.FindInt("requestId").value_or(0) << " answered with "
+               << items.size() << " items";
   event.Set("items", std::move(items));
   DispatchRuntimeEvent(widget, std::move(event));
 }

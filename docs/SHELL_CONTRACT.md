@@ -309,7 +309,7 @@ shellAccelerator { action }
 | `setExtensionPinned` | `id`, `pinned` | |
 | `installExtensionFromFile` | `path` | 成功:`extensionActionsChanged`;失败:`extensionInstallFailed { path, reason, message }` |
 | `setExtensionEnabled` | `id`, `enabled` | 成功:`extensionActionsChanged` |
-| `uninstallExtension` | `id` | 弹 Chromium 自己的确认框;确认后 `extensionActionsChanged`,取消什么都不发 |
+| `uninstallExtension` | `id`, `confirm?` | `confirm` 默认 `true`:弹 Chromium 自己的确认框,确认后 `extensionActionsChanged`,取消什么都不发。**手机上请传 `confirm: false`**:Chromium 的确认框画在网页区域里,外壳新标签页这类非网页界面上看不到;外壳自己弹确认框,用户确认后再发这条,内核直接卸载,成功后照常 `extensionActionsChanged`,被策略禁止时 `extensionCommandFailed { reason: 'notAllowed' }` |
 | `getExtensionDetails` | `requestId`, `id` | `extensionDetails { requestId, id, permissions, siteAccess, siteAccessChangeable }` |
 | `setExtensionSiteAccess` | `id`, `mode` | `mode`:`onClick` / `specificSites` / `allSites`;成功:`extensionActionsChanged` |
 | `openExtensionOptions` | `id` | 在新标签页打开扩展的设置页 |

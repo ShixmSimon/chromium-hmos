@@ -254,7 +254,16 @@ class UninstallRequest : public extensions::ExtensionUninstallDialog::Delegate {
     // The dialog reports a cancel as an error too, in these exact words
     // (ExtensionUninstallDialog::OnDialogClosed), so they are what tells
     // the two apart.
-    if (!did_start_uninstall && !error.empty() &&
+    //
+    // Nor is the extension having gone some other way while the dialog was
+    // up -- confirmed in another uninstall dialog, chrome://extensions' for
+    // one: the dialog closes itself then with "Extension was removed before
+    // dialog closed.", which read as a refusal, and the shell was told
+    // notAllowed for an extension that had just been removed as asked.
+    const bool still_installed =
+        ExtensionRegistry::Get(profile_)->GetExtensionById(
+            id_, ExtensionRegistry::EVERYTHING) != nullptr;
+    if (!did_start_uninstall && still_installed && !error.empty() &&
         error != u"User canceled uninstall dialog") {
       DispatchFailed(widget_, "uninstallExtension", id_, "notAllowed", error);
     }
@@ -277,6 +286,18 @@ void Uninstall(gfx::AcceleratedWidget widget,
   const Extension* extension = id ? FindExtension(profile, *id) : nullptr;
   if (!extension) {
     DispatchFailed(widget, "uninstallExtension", id ? *id : "", "notFound");
+    return;
+  }
+  // confirm: false -- the shell asked the reader itself. Chromium's dialog
+  // is drawn in the page area, which on a phone may not be showing at all
+  // (the shell's own new tab page), so the reader never saw it.
+  if (!command.FindBool("confirm").value_or(true)) {
+    std::u16string error;
+    if (!extensions::ExtensionRegistrar::Get(profile)->UninstallExtension(
+            *id, extensions::UNINSTALL_REASON_USER_INITIATED, &error)) {
+      DispatchFailed(widget, "uninstallExtension", *id, "notAllowed", error);
+    }
+    // Success is reported by the registry watcher, as extensionActionsChanged.
     return;
   }
   BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
