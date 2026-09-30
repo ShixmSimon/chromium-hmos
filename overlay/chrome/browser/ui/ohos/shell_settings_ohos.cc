@@ -7,12 +7,13 @@
 //
 //   getAboutInfo {requestId}
 //     -> "aboutInfo" {requestId, chromiumVersion, engineCommit, userAgent,
-//                     bookmarkApiVersion}
+//                     bookmarkApiVersion, browsingApiVersion, jitEnabled}
 
 #include <string>
 #include <string_view>
 #include <utility>
 
+#include "base/command_line.h"
 #include "base/values.h"
 #include "base/version_info/version_info.h"
 #include "chrome/browser/profiles/profile.h"
@@ -74,6 +75,14 @@ void GetAboutInfo(const ShellCommandContext& context,
   // and closeTabById, and the openedInGroup event; 3 adds reading and
   // restoring where the reader is in a page, for app continuation.
   event.Set("browsingApiVersion", 3);
+  // Whether V8 runs with its JIT this launch. The runner decides it before
+  // Chromium starts (the "AuraShell JIT available" line in its log) and,
+  // when the launch config asks for jitless or the process cannot map
+  // executable memory, starts every process with --jitless in --js-flags.
+  // That flag is the answer: renderers are given the same --js-flags.
+  const std::string js_flags =
+      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII("js-flags");
+  event.Set("jitEnabled", js_flags.find("--jitless") == std::string::npos);
   ReplyToShell(context, std::move(event));
 }
 

@@ -521,6 +521,9 @@ export interface AboutInfoEvent extends ShellServiceEvent {
   // exportBookmarks. Absent means 1. Read it once at startup instead of
   // probing each command with a timeout.
   bookmarkApiVersion?: number;
+  // Whether V8 runs with its JIT this launch: false when the launch config
+  // asked for jitless or the process could not map executable memory.
+  jitEnabled?: boolean;
 }
 
 export interface FaviconsEvent extends ShellServiceEvent {

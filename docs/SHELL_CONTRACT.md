@@ -664,7 +664,7 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 | `setSiteSetting` | `origin`, `type`, `setting` | `setting` 为 `'allow' \| 'block' \| 'ask' \| 'default'`，`default` 表示删除这条单独设置。定位、摄像头、麦克风、通知、剪贴板只能对 https 网站设置；`storageAccess` 不能按单个网站设置 |
 | `setDefaultSiteSetting` | `type`, `setting` | |
 | `resetSiteSettings` | `origin` | 清除这个网站的全部权限和存储 |
-| `getAboutInfo` | `requestId` | `aboutInfo { requestId, chromiumVersion, engineCommit, userAgent }` |
+| `getAboutInfo` | `requestId` | `aboutInfo { requestId, chromiumVersion, engineCommit, userAgent, bookmarkApiVersion, browsingApiVersion, jitEnabled }`。`jitEnabled` 是 V8 这次启动实际有没有用上 JIT(启动日志里 `AuraShell JIT available` 那个判断的结果):启动配置要求 jitless、或进程拿不到可执行内存时为 `false` |
 
 `types`：`history`、`cookies`、`cache`、`siteSettings`、`formData`、`passwords`、`downloads`。`timeRange`：`lastHour`、`lastDay`、`lastWeek`、`last4Weeks`、`all`。
 
