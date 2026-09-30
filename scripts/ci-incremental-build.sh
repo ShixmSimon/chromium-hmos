@@ -276,6 +276,8 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-focus-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-drop-data-at-drop.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-extensions-page.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-shell-passwords.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-password-settings-reauth.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-extension-installed-bubble.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-crx-download-kept.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-single-process-commit-checks.patch"

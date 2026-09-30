@@ -18,6 +18,7 @@
 
 #include <memory>
 
+#include "base/time/time.h"
 #include "components/device_reauth/device_authenticator.h"
 
 namespace chrome::ohos {
@@ -36,6 +37,17 @@ bool CanAuthenticateOnThisDevice();
 // the synchronous callers above. Cheap; called at startup and whenever the
 // shell says the device may have changed.
 void RefreshAuthenticationAvailability();
+
+// The shell verified the user itself -- a phone's own password pages ask
+// before they show, copy, edit or export -- and says so. Counts as a
+// successful authentication for `valid`, at most 60 seconds, until the same
+// events that end any other one end it.
+void GrantAuthenticationFromShell(base::TimeDelta valid);
+
+// Whether the shell's password commands may run now: the user was verified,
+// by the shell or by a prompt of the engine's, within the last grant's
+// window, and nothing has ended it since.
+bool IsAuthenticationFresh();
 
 // Forgets the last successful authentication, so the next action asks again.
 // Called when the app goes to the background, when the screen locks, and when

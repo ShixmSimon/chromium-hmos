@@ -70,6 +70,13 @@ constexpr ShellServiceCommand kShellServiceCommands[] = {
     {"setDefaultSiteSetting", &HandleSettingsCommand},
     {"resetSiteSettings", &HandleSettingsCommand},
     {"getAboutInfo", &HandleSettingsCommand},
+    // Saved passwords, for a phone's own password pages.
+    {"getSavedPasswords", &HandlePasswordsCommand},
+    {"passwordAuthGranted", &HandlePasswordsCommand},
+    {"revealPassword", &HandlePasswordsCommand},
+    {"updatePassword", &HandlePasswordsCommand},
+    {"deletePassword", &HandlePasswordsCommand},
+    {"exportPasswords", &HandlePasswordsCommand},
     // Favicons, shared by every list the shell draws.
     {"getFavicons", &HandleFaviconsCommand},
 };

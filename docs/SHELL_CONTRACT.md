@@ -689,6 +689,30 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 - 设备上什么都没录入时，"查看密码"这类明确要求一律拒绝，不会放行。
 - **升级会清空已存的密码。** 这个版本之前的密码是用每个 Chromium 构建都一样的固定密钥存的，等于没加密，所以第一次启动这个版本时会全部删掉，不迁移。换机、克隆、恢复备份或卸载重装之后解不开包裹密钥时也一样：密码库当作空的。这两种情况 hilog 里都有一行 `OHOS passwords: cleared stored credentials`。设置页可以提一句"因安全升级，此前保存的密码已清除"。
 - 无痕窗口不保存密码，行为和之前一致。
+- 平板 / PC 的 chrome://password-manager 里「显示 / 复制 / 编辑 / 导出」同样先弹这个验证(查看类 60 秒内不重复问,导出每次都问)。设备上什么都没录入时一律拒绝,并发 `passwordAuthUnavailable {}`:外壳提示用户先在系统设置里设置锁屏密码。
+
+**手机自绘密码页**
+
+手机不用 chrome://password-manager,外壳自己画列表、详情、编辑,内核只给数据和操作。
+外壳在「显示 / 复制 / 编辑 / 删除 / 导出」前先弹系统验证(见 `UserAuthService`),通过后发
+`passwordAuthGranted`,再发对应命令。
+
+| 命令 | 参数 | 回包 |
+|---|---|---|
+| `getSavedPasswords` | `requestId` | `savedPasswords { requestId, items }`。`items`:`{ id, origin, signonRealm, username, hasNote, dateCreated, dateLastUsed, isAndroidCredential }`,不含明文和备注内容;时间是毫秒时间戳,未知为 `-1` |
+| `passwordAuthGranted` | `validMs` | 外壳的验证通过了。`validMs` 内(最多 60000)允许下面四条敏感命令。无回包 |
+| `revealPassword` | `requestId`, `id` | `passwordRevealed { requestId, id, password, note }`;失败时 `passwordCommandResult { command: 'revealPassword', ok: false, reason }` |
+| `updatePassword` | `requestId`, `id`, `username?`, `password?`, `note?` | `passwordCommandResult { requestId, command, ok, reason?, newId? }`。只传要改的字段。改了用户名时这条密码换了 id,新的在 `newId` |
+| `deletePassword` | `requestId`, `id` | `passwordCommandResult` |
+| `exportPasswords` | `requestId`, `path` | `passwordsExported { requestId, ok, count, reason? }`。导出 Chromium 格式的 CSV 到外壳沙箱里的 `path`(绝对路径),之后外壳用系统保存框让用户选位置 |
+| `passwordAuthReset` | `reason?` | 已有,让验证立即失效 |
+
+- `reason`:`authRequired`(验证过期或没验证)、`notFound`、`duplicate`(改成的用户名在这个网站已经有了)、`ioError`(导出写文件失败或路径不可用)、`unknown`。
+- 验证窗口和原生页、填充共用:锁屏、息屏、`passwordAuthReset` 都会让它立即失效,之后四条敏感命令一律回 `authRequired`。
+- `savedPasswordsChanged {}`:网页保存了新密码、同步、或其他窗口改了密码时广播,外壳重新拉列表。外壳至少发过一次 `getSavedPasswords` 之后才会收到。
+- `id` 在同一次运行中稳定(按网站 + 用户名分配),改密码不换 id,改用户名换 id。
+- 无痕窗口里发的这些命令读写的是普通 Profile 的密码,和 Chromium 一致。
+- 内核不缓存交给外壳的明文,任何日志都不带明文、用户名、备注。联调时 hilog 里搜 `OHOS passwords:`,只有条数、id 和结果。
 
 权限类型：`location`、`camera`、`microphone`、`notifications`、`javascript`、`popups`、`sound`、`clipboard`、`storageAccess`。没有 `autoplay`：桌面版 Chromium 实际上不执行这项设置，要控制声音请用 `sound`。
 

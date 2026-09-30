@@ -148,6 +148,12 @@ bool HandleHistoryCommand(const ShellCommandContext& context,
 bool HandleDownloadsCommand(const ShellCommandContext& context,
                             std::string_view name,
                             const base::DictValue& command);
+// A phone's own password pages: the list, and -- inside the window the
+// shell's own verification opened -- the plain text, edits, deletion and
+// export. See shell_passwords_ohos.cc.
+bool HandlePasswordsCommand(const ShellCommandContext& context,
+                            std::string_view name,
+                            const base::DictValue& command);
 bool HandleSettingsCommand(const ShellCommandContext& context,
                            std::string_view name,
                            const base::DictValue& command);

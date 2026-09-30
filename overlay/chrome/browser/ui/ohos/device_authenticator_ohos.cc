@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/ohos/device_authenticator_ohos.h"
 
+#include <algorithm>
 #include <optional>
 #include <utility>
 
@@ -18,6 +19,7 @@
 #include <BasicServicesKit/oh_commonevent.h>
 #include <BasicServicesKit/oh_commonevent_support.h>
 
+#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "components/ohos_system_service/system_service_ohos.h"
 
 namespace chrome::ohos {
@@ -41,6 +43,14 @@ constexpr char kService[] = "userauth";
 std::optional<base::TimeTicks>& LastGoodAuth() {
   static std::optional<base::TimeTicks> when;
   return when;
+}
+
+// How long the last authentication counts for the shell's own password
+// commands. The engine's prompts carry their own window in their params.
+constexpr base::TimeDelta kMaxShellGrant = base::Seconds(60);
+base::TimeDelta& ShellGrantValidity() {
+  static base::TimeDelta validity = kMaxShellGrant;
+  return validity;
 }
 
 // What the shell last said about enrolled credentials. Remembered because the
@@ -124,6 +134,13 @@ class DeviceAuthenticatorOhos
       // to whoever is holding the phone is worse than not opening.
       LOG(WARNING) << "OHOS password auth: refused, nothing enrolled to "
                       "verify against";
+      // The page that asked -- chrome://password-manager -- just shows
+      // nothing then. Tell the shell, which can ask the user to set a lock
+      // screen first.
+      base::DictValue event;
+      event.Set("event", "passwordAuthUnavailable");
+      DispatchAuraShellRuntimeEventToWidget(gfx::kNullAcceleratedWidget,
+                                            std::move(event));
       std::move(callback).Run(false);
       return;
     }
@@ -173,6 +190,7 @@ class DeviceAuthenticatorOhos
                               : " transportError=" + reply.error);
     if (ok) {
       LastGoodAuth() = base::TimeTicks::Now();
+      ShellGrantValidity() = kMaxShellGrant;
       RememberAvailability(true);
     }
     if (pending_) {
@@ -216,12 +234,26 @@ void RefreshAuthenticationAvailability() {
       }));
 }
 
+void GrantAuthenticationFromShell(base::TimeDelta valid) {
+  const base::TimeDelta validity =
+      std::clamp(valid, base::TimeDelta(), kMaxShellGrant);
+  LastGoodAuth() = base::TimeTicks::Now();
+  ShellGrantValidity() = validity;
+  LOG(WARNING) << "OHOS passwords: auth granted for "
+               << validity.InMilliseconds() << "ms";
+}
+
+bool IsAuthenticationFresh() {
+  const std::optional<base::TimeTicks> last = LastGoodAuth();
+  return last.has_value() &&
+         base::TimeTicks::Now() - *last < ShellGrantValidity();
+}
+
 void ForgetRecentAuthentication(const char* reason) {
   if (!LastGoodAuth().has_value()) {
     return;
   }
-  LOG(WARNING) << "OHOS password auth: the recent check no longer counts ("
-               << reason << ")";
+  LOG(WARNING) << "OHOS passwords: auth reset (" << reason << ")";
   LastGoodAuth().reset();
 }
 

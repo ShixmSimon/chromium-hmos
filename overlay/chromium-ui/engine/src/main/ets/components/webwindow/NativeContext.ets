@@ -216,7 +216,9 @@ export interface BrowserRuntimeEvent {
     'historyResults' | 'historyChanged' | 'autocompleteResults' | 'topSites' |
     'downloadUpdated' | 'downloadList' |
     'clearBrowsingDataDone' | 'browsingDataCounts' | 'searchEngines' |
-    'prefs' | 'prefsChanged' | 'siteSettings' | 'aboutInfo' | 'favicons';
+    'prefs' | 'prefsChanged' | 'siteSettings' | 'aboutInfo' | 'favicons' |
+    'savedPasswords' | 'passwordRevealed' | 'passwordCommandResult' |
+    'passwordsExported' | 'savedPasswordsChanged' | 'passwordAuthUnavailable';
   // gpuContextLost: whether the engine could rebuild after the GPU lost
   // its context. False means the picture will not come back on its own.
   recovered?: boolean;
@@ -368,6 +370,13 @@ export interface BrowserCommandPayload {
   // sandbox. The shell owns the system file picker and the copy in or out;
   // the engine only reads and writes this path.
   path?: string;
+  // passwordAuthGranted: how long the shell's verification counts, at most
+  // 60000.
+  validMs?: number;
+  // updatePassword: only the fields to change.
+  username?: string;
+  password?: string;
+  note?: string;
   // moveTab: where the tab should end up, counting positions after the move.
   toIndex?: number;
   // setRequestDesktopSite: ask this tab's site for its desktop pages.

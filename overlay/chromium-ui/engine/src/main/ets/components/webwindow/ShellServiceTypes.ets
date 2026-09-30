@@ -532,6 +532,53 @@ export interface FaviconsEvent extends ShellServiceEvent {
 }
 
 // Reads a runtime event as the interface its `event` name says it is.
+// Saved passwords, for a phone's own password pages. No item carries a
+// password or a note; those come one at a time in PasswordRevealedEvent,
+// inside the window passwordAuthGranted opened.
+export interface SavedPasswordItem {
+  id: string;
+  origin: string;
+  signonRealm: string;
+  username: string;
+  hasNote: boolean;
+  // Milliseconds since the epoch; -1 when unknown.
+  dateCreated: number;
+  dateLastUsed: number;
+  isAndroidCredential: boolean;
+}
+
+export interface SavedPasswordsEvent extends ShellServiceEvent {
+  requestId: number;
+  items: SavedPasswordItem[];
+}
+
+export interface PasswordRevealedEvent extends ShellServiceEvent {
+  requestId: number;
+  id: string;
+  password: string;
+  note: string;
+}
+
+export type PasswordCommandFailure =
+  'authRequired' | 'notFound' | 'duplicate' | 'ioError' | 'unknown';
+
+export interface PasswordCommandResultEvent extends ShellServiceEvent {
+  requestId: number;
+  command: 'revealPassword' | 'updatePassword' | 'deletePassword';
+  ok: boolean;
+  reason?: PasswordCommandFailure;
+  // updatePassword: the credential's id from now on, when a new username
+  // made it a different credential to the store.
+  newId?: string;
+}
+
+export interface PasswordsExportedEvent extends ShellServiceEvent {
+  requestId: number;
+  ok: boolean;
+  count: number;
+  reason?: PasswordCommandFailure;
+}
+
 export function shellEvent<T>(event: Object): T {
   return event as T;
 }
