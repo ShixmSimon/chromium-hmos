@@ -1,5 +1,8 @@
 #include "ui/ozone/platform/ohos/ohos_surface_factory.h"
 
+#include <string>
+#include <vector>
+
 #if BUILDFLAG(ENABLE_VULKAN)
 #include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
 #endif
@@ -7,9 +10,11 @@
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
+#include "base/strings/string_split.h"
 #include "base/time/time.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/vsync_provider.h"
+#include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_display.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_surface_egl.h"
@@ -47,6 +52,70 @@ void RequestAlphaCapableBuffer(void* window) {
     LOG(WARNING) << "OHOS surface: could not ask for an alpha buffer: "
                  << result;
   }
+}
+
+// What a 10-bit output surface could be made from. Chromium's config choice
+// asks for 8 bits per channel, so HDR output is PQ in RGBA_8888 and can
+// band; a 10-bit window config from ANGLE (and the driver under it) is what
+// would fix that. Lists every config with 10 or more bits of red, whether it
+// can back a window, and the display's colour-space and pixel-format
+// extensions. Once per process.
+void LogTenBitConfigs(EGLDisplay display) {
+  static bool logged = false;
+  if (logged || display == EGL_NO_DISPLAY) {
+    return;
+  }
+  logged = true;
+
+  EGLint count = 0;
+  if (!eglGetConfigs(display, nullptr, 0, &count) || count <= 0) {
+    LOG(WARNING) << "OHOS EGL configs: none listed";
+    return;
+  }
+  std::vector<EGLConfig> configs(count);
+  eglGetConfigs(display, configs.data(), count, &count);
+  configs.resize(count);
+
+  auto attrib = [display](EGLConfig config, EGLint name) {
+    EGLint value = 0;
+    eglGetConfigAttrib(display, config, name, &value);
+    return value;
+  };
+  int ten_bit = 0;
+  for (EGLConfig config : configs) {
+    const EGLint red = attrib(config, EGL_RED_SIZE);
+    if (red < 10) {
+      continue;
+    }
+    ++ten_bit;
+    const EGLint surface_type = attrib(config, EGL_SURFACE_TYPE);
+    const EGLint renderable = attrib(config, EGL_RENDERABLE_TYPE);
+    LOG(WARNING) << "OHOS EGL configs: id " << attrib(config, EGL_CONFIG_ID)
+                 << " RGBA " << red << "/" << attrib(config, EGL_GREEN_SIZE)
+                 << "/" << attrib(config, EGL_BLUE_SIZE) << "/"
+                 << attrib(config, EGL_ALPHA_SIZE) << ", window "
+                 << ((surface_type & EGL_WINDOW_BIT) ? "yes" : "no")
+                 << ", ES3 "
+                 << ((renderable & EGL_OPENGL_ES3_BIT) ? "yes" : "no")
+                 << ", native visual " << attrib(config, EGL_NATIVE_VISUAL_ID)
+                 << ", depth " << attrib(config, EGL_DEPTH_SIZE)
+                 << ", stencil " << attrib(config, EGL_STENCIL_SIZE);
+  }
+
+  std::string extensions;
+  if (const char* all = eglQueryString(display, EGL_EXTENSIONS)) {
+    for (const std::string& extension :
+         base::SplitString(all, " ", base::TRIM_WHITESPACE,
+                           base::SPLIT_WANT_NONEMPTY)) {
+      if (extension.find("colorspace") != std::string::npos ||
+          extension.find("pixel_format") != std::string::npos) {
+        extensions += " " + extension;
+      }
+    }
+  }
+  LOG(WARNING) << "OHOS EGL configs: " << ten_bit << " of " << count
+               << " have 10+ bits of red; colour-space extensions ["
+               << extensions << " ]";
 }
 
 class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
@@ -213,6 +282,7 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
       return nullptr;
     }
 
+    LogTenBitConfigs(display->GetAs<gl::GLDisplayEGL>()->GetDisplay());
     auto vsync_provider = std::make_unique<OhosVSyncProvider>(
         GetOhosApplicationWindowIdForWidget(widget));
     auto gl_surface = base::MakeRefCounted<OhosNativeViewGLSurfaceEGL>(
