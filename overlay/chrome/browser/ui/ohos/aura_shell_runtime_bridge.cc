@@ -246,9 +246,9 @@ struct RuntimeBridgeState {
   // GetAuraShellTopControlsHeight() and GetAuraShellTopControlsMinHeight().
   int top_controls_height GUARDED_BY(lock) = 0;
   int top_controls_min_height GUARDED_BY(lock) = 0;
-  // The shell's bottom bar that hides with the top one, in DIP; see
-  // GetAuraShellBottomControlsHeight(). Not part of viewport_bottom_inset,
-  // which is what stays covered however the page scrolls.
+  // The shell's bottom bar that hides with the top one, in DIP, counted into
+  // the top controls; see GetAuraShellTopControlsHeight(). Not part of
+  // viewport_bottom_inset, which is what stays covered however it scrolls.
   int bottom_controls_height GUARDED_BY(lock) = 0;
   // The last page each window's controls were shown for, by the navigation
   // entry's unique id: a new page starts with both bars showing.
@@ -3771,22 +3771,31 @@ void ReloadThemeFontsOnUiThread(std::string font_id) {
 
 }  // namespace
 
+// The top bar and, on a phone, the dock, as one set of top controls.
+//
+// Blink gives the page the room top controls leave as they hide -- the
+// visual viewport grows by it -- but by design not the room bottom controls
+// leave: that only reaches the scroll bounds (VisualViewport::VisibleRect
+// and MaximumScrollOffsetAtScale). Android gets around it by resizing the
+// renderer once the controls settle, which Aura has no step for. With the
+// dock as bottom controls, a phone's page grew by the top bar's 56vp and
+// not the dock's 40vp, and scrolled to the end stopped a dock's height above
+// the gesture bar. Counted into the top controls, the renderer grows the
+// page by both; the page offset and the ratio the shell sees are worked out
+// for the top bar alone, below.
 int GetAuraShellTopControlsHeight() {
   RuntimeBridgeState& state = GetState();
   base::AutoLock lock(state.lock);
-  return DipToPixels(state.top_controls_height);
+  return DipToPixels(state.top_controls_height +
+                     (state.top_controls_height > 0
+                          ? state.bottom_controls_height
+                          : 0));
 }
 
 int GetAuraShellTopControlsMinHeight() {
   RuntimeBridgeState& state = GetState();
   base::AutoLock lock(state.lock);
   return DipToPixels(state.top_controls_min_height);
-}
-
-int GetAuraShellBottomControlsHeight() {
-  RuntimeBridgeState& state = GetState();
-  base::AutoLock lock(state.lock);
-  return DipToPixels(state.bottom_controls_height);
 }
 
 namespace {
@@ -3799,6 +3808,8 @@ namespace {
 // amount so the page begins right below the visible part of the bar and
 // follows it as it slides. Chromium is given the height in physical pixels
 // while a window's transform is in its DIPs, so divide by the window's scale.
+//
+// `ratio` is the shell's: how much of its top bar alone is showing.
 void ApplyTopControlsOffset(content::WebContents* contents, float ratio) {
   content::RenderWidgetHostView* view =
       contents ? contents->GetRenderWidgetHostView() : nullptr;
@@ -3806,7 +3817,13 @@ void ApplyTopControlsOffset(content::WebContents* contents, float ratio) {
   if (!window) {
     return;
   }
-  const int height = GetAuraShellTopControlsHeight();
+  int top_dip = 0;
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    top_dip = state.top_controls_height;
+  }
+  const int height = DipToPixels(top_dip);
   const float scale = window->layer()->device_scale_factor();
   const float offset = height > 0 && scale > 0.0f
                            ? height / scale * std::clamp(ratio, 0.0f, 1.0f)
@@ -3838,7 +3855,29 @@ bool IsAuraShellUserAgentPinned(content::WebContents* contents) {
 }
 
 void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
-                                      float ratio) {
+                                      float renderer_ratio) {
+  // The renderer's ratio is of the top bar and the dock together (see
+  // GetAuraShellTopControlsHeight()), from minTop over their sum up to 1.
+  // The shell's is of its top bar alone, from minTop over the top bar up to
+  // 1 -- what it was before the dock joined, so the shell's arithmetic, and
+  // the dock following the same normalised position, are unchanged.
+  float ratio = renderer_ratio;
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    const float top = state.top_controls_height;
+    const float total = top + state.bottom_controls_height;
+    if (state.bottom_controls_height > 0 && top > 0) {
+      const float min = state.top_controls_min_height;
+      const float renderer_min = min / total;
+      const float normalised =
+          renderer_min < 1.0f
+              ? (renderer_ratio - renderer_min) / (1.0f - renderer_min)
+              : 1.0f;
+      const float shell_min = min / top;
+      ratio = shell_min + normalised * (1.0f - shell_min);
+    }
+  }
   // Before the early return below: a new view after a navigation reports the
   // same ratio as the old one, and still has to be moved.
   ApplyTopControlsOffset(contents, ratio);

@@ -400,7 +400,7 @@ Chromium 自己的安装确认框,用户确认后才装。
 | `findResult` | 否 | `matches` 匹配总数，`activeMatch` 当前是第几个（从 1 开始，0 表示没有），`finalUpdate` 为 true 时计数已定 |
 | `pageText` | 否 | 回复 `getPageText`：`requestId`、`text` |
 | `contextMenuRequested` | **是**(手机) | 长按网页元素。引擎这时不弹自己的菜单，由外壳画，见下文"长按菜单"。**每次都要回一条命令**：选了某项发 `contextMenuAction`，没选就关掉发 `contextMenuDismissed`。 |
-| `browserControlsRatio` | 否 | 用了 `setBrowserControls` 才会有。`ratio` 为顶栏当前露出的比例（1 全部显示，0 完全滑走），外壳把顶栏往上移 `(1 - ratio) × 顶栏高度`；传了 `bottom` 时，底栏用同一个 `ratio`，往下移 `(1 - ratio) × bottom`（两栏同时开始、同时收完，内核保证）。传了 `minTop` 时，比例的下限是 `minTop / top`（顶栏收起到 `minTop` 就不会再往上滑了）。 |
+| `browserControlsRatio` | 否 | 用了 `setBrowserControls` 才会有。`ratio` 为顶栏当前露出的比例（1 全部显示，0 完全滑走），外壳把顶栏往上移 `(1 - ratio) × 顶栏高度`；传了 `bottom` 时，底栏按归一化的比例 `n = (ratio - minTop/top) / (1 - minTop/top)`（`minTop` 为 0 时 `n = ratio`）往下移 `(1 - n) × bottom`：两栏同时开始、同时收完，底栏完全收起。传了 `minTop` 时，比例的下限是 `minTop / top`（顶栏收起到 `minTop` 就不会再往上滑了）。 |
 
 ### 长按菜单
 
@@ -489,11 +489,12 @@ function report() {
 1. `WebWindow` 铺满整个窗口(包括 dock 和系统手势条下面)。
 2. `setBrowserControls { top: 地址栏高度, minTop: 0, bottom: dock 高度 }`。`bottom`
    包括 dock 上方延伸出的小工具栏,它和 dock 一起收起。
-3. `setViewportInsets { bottom: 系统手势条高度 }`。这一段不收起:两栏收起后网页画面
-   会延伸到手势条下面,但内容最多滚到手势条上方,最后一行不会被挡。不要再把 dock 算
+3. `setViewportInsets { bottom: 系统手势条高度 }`。这一段不收起,也不给网页布局:内容
+   最多滚到手势条上方,最后一行不会被挡;手势条下面露出的是网页底色。不要再把 dock 算
    进来。
-4. 收到 `browserControlsRatio { ratio }`:地址栏 `translateY = -(1 - ratio) × top`,
-   dock `translateY = (1 - ratio) × bottom`。外壳自己不判断滚动方向,收起和出现都听
+4. 收到 `browserControlsRatio { ratio }`:地址栏 `translateY = -(1 - ratio) × top`;
+   dock 用归一化的 `n = (ratio - minTop/top) / (1 - minTop/top)`,
+   `translateY = (1 - n) × bottom`(`minTop` 为 0 时 `n` 就是 `ratio`)。外壳自己不判断滚动方向,收起和出现都听
    这个比例。
 5. 地址栏获得焦点、页面输入框弹出键盘时,发 `setBrowserControlsState { state:
    'shown' }` 把两栏钉住;失焦或键盘收起后发 `state: 'both'` 交还给滚动。

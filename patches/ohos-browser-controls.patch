@@ -18,12 +18,12 @@ viewport shrink while the controls show, and passes the ratio back to the
 bridge, which hands it to the shell. The minimum height lets the shell keep a
 collapsed strip of its bar on screen instead of letting it hide completely.
 
-A phone's dock is the same kind of bar at the bottom: on OHOS the delegate
-also reports the shell's bottom bar height as the bottom controls, which
-WebContentsViewAura already forwards, so the dock slides away with the top
-bar and the page grows into its room. The renderer normalises the two
-ratios, so both bars start and finish together and the shell moves the
-dock by the same ratio it moves the top bar by.
+A phone's dock hides with the top bar too. It is not reported as bottom
+controls -- Blink grows the visual viewport for the top controls as they
+hide but, by design, not for the bottom ones, so a dock there left its
+height unused at the end of the page -- but counted into the top controls
+by the shell bridge, which works the page offset and the shell's ratio out
+for the top bar alone.
 
 The renderer is also given the size it has with the controls shown, which
 is what the compositor assumes when the controls shrink it -- Android's
@@ -33,8 +33,8 @@ with the top bar and a dock showing, the end of a page sat behind the dock
 and a page short enough to fit the window still scrolled and hid them. On
 OHOS RenderWidgetHostViewAura now takes the controls off the requested
 renderer size of the main frame's widget, keeps the compositor viewport
-the whole window, and, when there are bottom controls, takes the bottom
-inset (what stays covered, the gesture bar) off the layout as well rather
+the whole window, and, when there are controls, takes the bottom inset
+(what stays covered, a phone's gesture bar) off the layout as well rather
 than only off the visual viewport.
 
 WebContentsViewAura::GetTopControlsMinHeight() forwards to the delegate
@@ -64,7 +64,7 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
  // Kill switch for merge safety for a fix for https://crbug.com/489205993
  // TODO(crbug.com/489205993): Remove in M150 or later.
  BASE_FEATURE(kBackgroundActorTaskPopupsOpenInBackground,
-@@ -368,15 +374,52 @@ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
+@@ -368,15 +374,41 @@ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
  void BrowserWebContentsDelegate::SetTopControlsShownRatio(
      content::WebContents* web_contents,
      float ratio) {
@@ -94,23 +94,12 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
 +#endif
 +}
 +
-+int BrowserWebContentsDelegate::GetBottomControlsHeight() {
-+#if BUILDFLAG(IS_OHOS)
-+  // A phone's dock, the shell's bar along the bottom: it slides away with
-+  // the top bar as the page scrolls, and the page grows into the room.
-+  return chrome::ohos::GetAuraShellBottomControlsHeight();
-+#else
-+  return content::WebContentsDelegate::GetBottomControlsHeight();
-+#endif
-+}
-+
  bool BrowserWebContentsDelegate::DoBrowserControlsShrinkRendererSize(
      content::WebContents* contents) {
 +#if BUILDFLAG(IS_OHOS)
 +  // Room is made for the shell's bar rather than the page drawing under it
 +  // at the top: shrink the viewport while the controls are shown.
-+  if (chrome::ohos::GetAuraShellTopControlsHeight() > 0 ||
-+      chrome::ohos::GetAuraShellBottomControlsHeight() > 0) {
++  if (chrome::ohos::GetAuraShellTopControlsHeight() > 0) {
 +    return true;
 +  }
 +#endif
@@ -120,12 +109,11 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
 diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h
 --- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h
 +++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h
-@@ -73,6 +73,8 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
+@@ -73,6 +73,7 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
    void SetTopControlsShownRatio(content::WebContents* web_contents,
                                  float ratio) override;
    int GetTopControlsHeight() override;
 +  int GetTopControlsMinHeight() override;
-+  int GetBottomControlsHeight() override;
    bool DoBrowserControlsShrinkRendererSize(
        content::WebContents* contents) override;
    int GetVirtualKeyboardHeight(content::WebContents* contents) override;
@@ -169,7 +157,7 @@ diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/con
  #include <limits>
  #include <memory>
  #include <set>
-@@ -1000,14 +1002,109 @@ bool RenderWidgetHostViewAura::IsPointerLocked() {
+@@ -1000,14 +1002,110 @@ bool RenderWidgetHostViewAura::IsPointerLocked() {
    return event_handler_->mouse_locked();
  }
  
@@ -187,13 +175,13 @@ diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/con
 +// behind the dock, and a page just short enough to fit the window scrolled
 +// and hid them. Take the controls off, as Android's view already is.
 +//
-+// With bottom controls -- a phone whose dock hides -- the insets are what
-+// stays covered however the page scrolls, the gesture bar; they come off
-+// the layout too, so the end of the page stops above it without relying
-+// on the visual viewport panning past the layout one.
++// With controls, the insets are what stays covered however the page
++// scrolls -- on a phone whose dock hides with the top bar, the gesture bar
++// -- and they come off the layout too, so the end of the page stops above
++// them without relying on the visual viewport panning past the layout one.
 +struct OhosReservedHeight {
 +  int controls_px = 0;
-+  bool has_bottom_controls = false;
++  bool reserves_insets = false;
 +};
 +
 +OhosReservedHeight GetOhosReservedHeight(RenderWidgetHostImpl* host) {
@@ -206,8 +194,9 @@ diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/con
 +  if (!view || !view->DoBrowserControlsShrinkRendererSize()) {
 +    return {};
 +  }
-+  const int bottom = view->GetBottomControlsHeight();
-+  return {view->GetTopControlsHeight() + bottom, bottom > 0};
++  const int controls =
++      view->GetTopControlsHeight() + view->GetBottomControlsHeight();
++  return {controls, controls > 0};
 +}
 +
 +}  // namespace
@@ -218,7 +207,7 @@ diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/con
 +      GetDeviceScaleFactor());
 +  const OhosReservedHeight reserved = GetOhosReservedHeight(host());
 +  int reserved_px = reserved.controls_px;
-+  if (reserved.has_bottom_controls) {
++  if (reserved.reserves_insets) {
 +    reserved_px += static_cast<int>(
 +        std::ceil(insets_.bottom() * GetDeviceScaleFactor()));
 +  }
@@ -261,7 +250,7 @@ diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/con
    gfx::Rect requested_rect(GetRequestedRendererSize());
 +#if BUILDFLAG(IS_OHOS)
 +  // The insets are already off the requested size; see above.
-+  if (GetOhosReservedHeight(host()).has_bottom_controls) {
++  if (GetOhosReservedHeight(host()).reserves_insets) {
 +    return requested_rect.size();
 +  }
 +#endif
@@ -272,7 +261,7 @@ diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/con
  gfx::Size RenderWidgetHostViewAura::GetVisibleViewportSizeDevicePx() {
    gfx::Rect requested_rect(GetRequestedRendererSizeDevicePx());
 +#if BUILDFLAG(IS_OHOS)
-+  if (GetOhosReservedHeight(host()).has_bottom_controls) {
++  if (GetOhosReservedHeight(host()).reserves_insets) {
 +    return requested_rect.size();
 +  }
 +#endif

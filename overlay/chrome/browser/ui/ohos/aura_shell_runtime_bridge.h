@@ -180,9 +180,9 @@ void ShutdownAuraShellBrowser();
 // on to the shell so the bar can follow the page.
 int GetAuraShellTopControlsHeight();
 int GetAuraShellTopControlsMinHeight();
-// The same for the shell's bar along the bottom -- a phone's dock -- which
-// hides with the top bar, all the way. 0 when the shell has none there.
-int GetAuraShellBottomControlsHeight();
+// A phone's dock, which hides with the top bar, is not reported as bottom
+// controls but counted into the top ones; see GetAuraShellTopControlsHeight()
+// in the .cc.
 // Whether this tab's user agent was set deliberately and must be left alone.
 //
 // The shell's state poll re-applies the device's user agent to every tab so
