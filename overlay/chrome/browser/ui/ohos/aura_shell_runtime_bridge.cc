@@ -2608,35 +2608,22 @@ int DipToPixels(int dip) {
 // Defined next to OnAuraShellTopControlsShownRatio.
 void ApplyTopControlsOffset(content::WebContents* contents, float ratio);
 
-// The page's bottom is covered by whatever the shell keeps there however the
-// page scrolls (bottom_dip: a floating bar, or on a phone whose dock hides,
-// only the system's gesture bar) and, once ApplyTopControlsOffset() moves the
-// page down, also pushed off the screen by the controls: the renderer lets
-// the viewport grow as the controls hide but never shrinks it for the
-// controls it shows, so the end of the page sits one full controls height too
-// low. Inset the bottom by all of it -- the bottom controls too, for the same
-// reason -- so that with the bars showing the last line scrolls up to just
-// above them, and with them hidden, as the viewport grows by both, to just
-// above bottom_dip.
+// What the shell covers at the bottom of the page however it scrolls
+// (bottom_dip: a floating bar, or on a phone whose dock hides, only the
+// system's gesture bar), as the view's insets. The browser controls are not
+// in them: RenderWidgetHostViewAura takes the controls off the size it gives
+// the renderer (see ohos-browser-controls.patch), which is what the
+// compositor expects, and grows the viewport back as they hide. Adding the
+// controls here only shrank the visual viewport and left the layout one the
+// size of the window, so with the bars showing the end of the page sat
+// behind the dock and a short page scrolled.
 void ApplyViewportInsets(content::WebContents* contents, int bottom_dip) {
   if (!contents) {
     return;
   }
-  int top_dip = 0;
-  int bottom_controls_dip = 0;
-  {
-    RuntimeBridgeState& state = GetState();
-    base::AutoLock lock(state.lock);
-    top_dip = state.top_controls_height;
-    bottom_controls_dip = state.bottom_controls_height;
-  }
   if (content::RenderWidgetHostView* view =
           contents->GetRenderWidgetHostView()) {
-    view->SetInsets(gfx::Insets::TLBR(
-        0, 0,
-        std::max(0, bottom_dip) + std::max(0, top_dip) +
-            std::max(0, bottom_controls_dip),
-        0));
+    view->SetInsets(gfx::Insets::TLBR(0, 0, std::max(0, bottom_dip), 0));
   }
 }
 
@@ -3314,7 +3301,6 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     }
     LOG(WARNING) << "OHOS browser controls: top=" << top << " min=" << min_top
                  << " bottom=" << bottom;
-    // The bottom inset includes the controls height; see ApplyViewportInsets().
     ApplyViewportInsets(active, bottom_inset);
     if (top == 0) {
       // No controls any more: put the page back at the top of the window.

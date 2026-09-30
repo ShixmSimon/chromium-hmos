@@ -25,6 +25,18 @@ bar and the page grows into its room. The renderer normalises the two
 ratios, so both bars start and finish together and the shell moves the
 dock by the same ratio it moves the top bar by.
 
+The renderer is also given the size it has with the controls shown, which
+is what the compositor assumes when the controls shrink it -- Android's
+view already excludes them -- and it grows the viewport as they hide. Aura
+gave it the whole window, so the layout viewport never lost the controls:
+with the top bar and a dock showing, the end of a page sat behind the dock
+and a page short enough to fit the window still scrolled and hid them. On
+OHOS RenderWidgetHostViewAura now takes the controls off the requested
+renderer size of the main frame's widget, keeps the compositor viewport
+the whole window, and, when there are bottom controls, takes the bottom
+inset (what stays covered, the gesture bar) off the layout as well rather
+than only off the visual viewport.
+
 WebContentsViewAura::GetTopControlsMinHeight() forwards to the delegate
 unconditionally, the same way GetTopControlsHeight() already does -- it is
 not guarded by BUILDFLAG(IS_OHOS). WebContentsDelegate::GetTopControlsMinHeight()
@@ -145,3 +157,140 @@ diff --git a/content/browser/web_contents/web_contents_view_aura.h b/content/bro
    int GetBottomControlsHeight() const override;
    bool DoBrowserControlsShrinkRendererSize() const override;
  #if BUILDFLAG(USE_EXTERNAL_POPUP_MENU)
+diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/content/browser/renderer_host/render_widget_host_view_aura.cc
+--- a/content/browser/renderer_host/render_widget_host_view_aura.cc
++++ b/content/browser/renderer_host/render_widget_host_view_aura.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "content/browser/renderer_host/render_widget_host_view_aura.h"
+ 
++#include <algorithm>
++#include <cmath>
+ #include <limits>
+ #include <memory>
+ #include <set>
+@@ -1000,14 +1002,109 @@ bool RenderWidgetHostViewAura::IsPointerLocked() {
+   return event_handler_->mouse_locked();
+ }
+ 
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++// How much of the main frame's height, in device pixels, the page does not
++// lay out in while the shell's browser controls are shown.
++//
++// The compositor assumes, as on Android, that a renderer whose controls
++// shrink it was given the size it has with the controls shown, and grows
++// the viewport by what the controls hide as they slide away. Aura gave it
++// the whole window instead: the layout viewport never lost the controls'
++// height, so with a top bar and a dock showing the end of the page sat
++// behind the dock, and a page just short enough to fit the window scrolled
++// and hid them. Take the controls off, as Android's view already is.
++//
++// With bottom controls -- a phone whose dock hides -- the insets are what
++// stays covered however the page scrolls, the gesture bar; they come off
++// the layout too, so the end of the page stops above it without relying
++// on the visual viewport panning past the layout one.
++struct OhosReservedHeight {
++  int controls_px = 0;
++  bool has_bottom_controls = false;
++};
++
++OhosReservedHeight GetOhosReservedHeight(RenderWidgetHostImpl* host) {
++  // Only the main frame's widget: a <select> popup or other widget of its
++  // own is sized to what it shows.
++  if (!host || !host->owner_delegate() || !host->delegate()) {
++    return {};
++  }
++  RenderViewHostDelegateView* view = host->delegate()->GetDelegateView();
++  if (!view || !view->DoBrowserControlsShrinkRendererSize()) {
++    return {};
++  }
++  const int bottom = view->GetBottomControlsHeight();
++  return {view->GetTopControlsHeight() + bottom, bottom > 0};
++}
++
++}  // namespace
++
++gfx::Size RenderWidgetHostViewAura::GetRequestedRendererSizeDevicePx() {
++  gfx::Size size = gfx::ScaleToCeiledSize(
++      RenderWidgetHostViewBase::GetRequestedRendererSize(),
++      GetDeviceScaleFactor());
++  const OhosReservedHeight reserved = GetOhosReservedHeight(host());
++  int reserved_px = reserved.controls_px;
++  if (reserved.has_bottom_controls) {
++    reserved_px += static_cast<int>(
++        std::ceil(insets_.bottom() * GetDeviceScaleFactor()));
++  }
++  if (reserved_px > 0) {
++    // Once per change, so the numbers can be checked against the page's
++    // innerHeight and visualViewport.height on a device.
++    static int logged_height = -1;
++    static int logged_reserved = -1;
++    if (logged_height != size.height() || logged_reserved != reserved_px) {
++      logged_height = size.height();
++      logged_reserved = reserved_px;
++      LOG(WARNING) << "OHOS browser controls: renderer gets "
++                   << size.height() - reserved_px << "px of a "
++                   << size.height() << "px window; controls "
++                   << reserved.controls_px << "px, kept covered "
++                   << reserved_px - reserved.controls_px << "px";
++    }
++  }
++  size.set_height(std::max(0, size.height() - reserved_px));
++  return size;
++}
++
++// The whole window: the compositor draws into all of it, including what the
++// controls leave as they slide away. Only the layout size loses them.
++gfx::Size RenderWidgetHostViewAura::GetCompositorViewportPixelSize() {
++  return gfx::ScaleToCeiledSize(
++      RenderWidgetHostViewBase::GetRequestedRendererSize(),
++      GetDeviceScaleFactor());
++}
++
++gfx::Size RenderWidgetHostViewAura::GetRequestedRendererSize() {
++  const float scale = GetDeviceScaleFactor();
++  return scale > 0.0f ? gfx::ScaleToCeiledSize(
++                            GetRequestedRendererSizeDevicePx(), 1.0f / scale)
++                      : RenderWidgetHostViewBase::GetRequestedRendererSize();
++}
++#endif
++
+ gfx::Size RenderWidgetHostViewAura::GetVisibleViewportSize() {
+   gfx::Rect requested_rect(GetRequestedRendererSize());
++#if BUILDFLAG(IS_OHOS)
++  // The insets are already off the requested size; see above.
++  if (GetOhosReservedHeight(host()).has_bottom_controls) {
++    return requested_rect.size();
++  }
++#endif
+   requested_rect.Inset(insets_);
+   return requested_rect.size();
+ }
+ 
+ gfx::Size RenderWidgetHostViewAura::GetVisibleViewportSizeDevicePx() {
+   gfx::Rect requested_rect(GetRequestedRendererSizeDevicePx());
++#if BUILDFLAG(IS_OHOS)
++  if (GetOhosReservedHeight(host()).has_bottom_controls) {
++    return requested_rect.size();
++  }
++#endif
+   auto scaled_insets = ScaleToCeiledInsets(insets_, GetDeviceScaleFactor());
+   requested_rect.Inset(scaled_insets);
+   return requested_rect.size();
+diff --git a/content/browser/renderer_host/render_widget_host_view_aura.h b/content/browser/renderer_host/render_widget_host_view_aura.h
+--- a/content/browser/renderer_host/render_widget_host_view_aura.h
++++ b/content/browser/renderer_host/render_widget_host_view_aura.h
+@@ -137,6 +137,11 @@ class CONTENT_EXPORT RenderWidgetHostViewAura
+   bool IsPointerLocked() override;
+   gfx::Size GetVisibleViewportSize() override;
+   gfx::Size GetVisibleViewportSizeDevicePx() override;
++#if BUILDFLAG(IS_OHOS)
++  gfx::Size GetRequestedRendererSize() override;
++  gfx::Size GetRequestedRendererSizeDevicePx() override;
++  gfx::Size GetCompositorViewportPixelSize() override;
++#endif
+   void SetInsets(const gfx::Insets& insets) override;
+   void SetForceSpecifiedDeadline(
+       std::optional<uint32_t> deadline_in_frames) override;
