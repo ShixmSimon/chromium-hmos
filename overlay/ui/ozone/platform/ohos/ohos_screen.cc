@@ -3,11 +3,16 @@
 #include <window_manager/oh_display_info.h>
 #include <window_manager/oh_display_manager.h>
 
+#include <string>
+
+#include "components/viz/common/resources/shared_image_format.h"
 #include "ui/gfx/display_color_spaces.h"
 
 #include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/logging.h"
 #include "base/no_destructor.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/synchronization/lock.h"
 #include "base/task/single_thread_task_runner.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
@@ -25,19 +30,62 @@ constexpr gfx::Size kOhosPrimaryDisplaySize(1920, 1080);
 // screen.orientation.angle and the orientation type are computed from; the
 // display's own bounds already follow the rotation.
 // What the panel can show, as Chromium's compositor asks the question.
+//
+// HarmonyOS reports a display's HDR formats on its display info. Chromium
+// wants a colour space per content type instead, so this answers the second
+// from the first: on a panel with HDR, HDR content is output as Rec. 2020 PQ
+// and everything else stays sRGB.
+//
+// The format stays 8-bit. The EGL window is created from an 8-bit config,
+// and the surface tags its native window as PQ when it is asked to draw in
+// it (OhosNativeViewGLSurfaceEGL::Resize) -- without that tag the system
+// showed PQ values as sRGB and the whole page went grey on a Mate 70 Pro+.
+// A 10-bit buffer to go with it is the next step.
 gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
-  // sRGB throughout, whatever the panel can do, until HDR output works.
-  // Answering Rec. 2020 PQ for HDR content on a panel that reports HDR made
-  // the compositor switch the whole output surface to PQ as soon as an HDR
-  // video played, and nothing tells the native window so: on a Mate 70 Pro+
-  // it reported no colour space and an RGBA_8888 buffer, the system showed
-  // the PQ values as sRGB, and the whole page -- not only the video -- went
-  // grey. With SDR answered, the compositor tone-maps HDR video to sRGB
-  // itself, which shows correctly, and pages are told (dynamic-range: high)
-  // is false. Real HDR output needs the native window's colour space, a
-  // 10-bit buffer and the HDR metadata set to match first, and then this
-  // reads the panel's HDR formats from the display info again.
-  return gfx::DisplayColorSpaces(gfx::ColorSpace::CreateSRGB());
+  gfx::DisplayColorSpaces color_spaces(gfx::ColorSpace::CreateSRGB());
+
+  NativeDisplayManager_DisplayInfo* info = nullptr;
+  if (OH_NativeDisplayManager_CreateDisplayById(0, &info) !=
+          DISPLAY_MANAGER_OK ||
+      !info) {
+    return color_spaces;
+  }
+
+  bool hdr = false;
+  std::string formats;
+  if (info->hdrFormat && info->hdrFormat->hdrFormats) {
+    for (uint32_t i = 0; i < info->hdrFormat->hdrFormatLength; ++i) {
+      formats += " " + base::NumberToString(info->hdrFormat->hdrFormats[i]);
+      // Any format beyond "none" means the panel can show more than SDR.
+      if (info->hdrFormat->hdrFormats[i] != 0) {
+        hdr = true;
+      }
+    }
+  }
+  OH_NativeDisplayManager_DestroyDisplay(info);
+
+  static base::NoDestructor<std::string> last_said;
+  const std::string said =
+      "panel HDR formats [" + formats + " ], HDR content is output as " +
+      (hdr ? "Rec. 2020 PQ in RGBA_8888" : "sRGB (tone-mapped)");
+  if (*last_said != said) {
+    *last_said = said;
+    LOG(WARNING) << "OHOS display: " << said;
+  }
+
+  if (!hdr) {
+    return color_spaces;
+  }
+
+  const gfx::ColorSpace hdr_space = gfx::ColorSpace::CreateHDR10();
+  const viz::SharedImageFormat hdr_format = viz::SinglePlaneFormat::kRGBA_8888;
+  color_spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR,
+                                            /*needs_alpha=*/false, hdr_space,
+                                            hdr_format);
+  color_spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR,
+                                            /*needs_alpha=*/true, hdr_space,
+                                            hdr_format);
+  return color_spaces;
 }
 
 display::Display::Rotation ReadDisplayRotation() {

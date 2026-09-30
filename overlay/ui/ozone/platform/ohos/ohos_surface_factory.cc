@@ -8,6 +8,7 @@
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
 #include "base/time/time.h"
+#include "ui/gfx/color_space.h"
 #include "ui/gfx/vsync_provider.h"
 #include "ui/gl/gl_display.h"
 #include "ui/gl/gl_implementation.h"
@@ -65,7 +66,13 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
     if (IsOhosAnchoredWindow(widget_)) {
       RequestAlphaCapableBuffer(surface->window);
     }
-    window_ = reinterpret_cast<EGLNativeWindowType>(surface->window);
+    const EGLNativeWindowType window =
+        reinterpret_cast<EGLNativeWindowType>(surface->window);
+    if (window != window_) {
+      tagged_pq_ = false;
+    }
+    window_ = window;
+    TagNativeWindowColorSpace();
     return true;
   }
 
@@ -77,6 +84,9 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
     if (refresh == WindowRefreshResult::kUnavailable) {
       return false;
     }
+    pq_output_ =
+        color_space.GetTransferID() == gfx::ColorSpace::TransferID::PQ;
+    TagNativeWindowColorSpace();
     if (refresh == WindowRefreshResult::kChanged) {
       size_ = size;
       return Recreate();
@@ -112,6 +122,39 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
  private:
   enum class WindowRefreshResult { kUnavailable, kUnchanged, kChanged };
 
+  // Chromium's EGL surface ignores the colour space it is asked to draw in.
+  // On an HDR panel the compositor draws the whole output in Rec. 2020 PQ
+  // while HDR video plays; untagged, the system showed those values as sRGB
+  // and the page went grey. The native window keeps a colour space and an
+  // HDR metadata type that the system stamps on every buffer it hands out
+  // from then on, so tagging it before the next frame is drawn is enough --
+  // no surface has to be recreated. Back to sRGB once PQ output stops; a
+  // window that never drew PQ is left as the system made it.
+  void TagNativeWindowColorSpace() {
+    auto* native_window = reinterpret_cast<OHNativeWindow*>(window_);
+    if (!native_window || pq_output_ == tagged_pq_) {
+      return;
+    }
+    tagged_pq_ = pq_output_;
+    const int32_t color_space_result = OH_NativeWindow_SetColorSpace(
+        native_window,
+        pq_output_ ? OH_COLORSPACE_BT2020_PQ_FULL : OH_COLORSPACE_SRGB_FULL);
+    // The system reads the type from the first byte. OH_VIDEO_NONE (-1) is
+    // no type it maps, which leaves the window with none.
+    uint8_t metadata_type = static_cast<uint8_t>(
+        pq_output_ ? OH_VIDEO_HDR_HDR10 : OH_VIDEO_NONE);
+    const int32_t metadata_result = OH_NativeWindow_SetMetadataValue(
+        native_window, OH_HDR_METADATA_TYPE, sizeof(metadata_type),
+        &metadata_type);
+    LOG(WARNING) << "OHOS surface colour space: native window tagged "
+                 << (pq_output_ ? "Rec. 2020 PQ, HDR10" : "sRGB")
+                 << " (colour space result " << color_space_result
+                 << ", metadata result " << metadata_result << ")";
+  }
+
+  bool pq_output_ = false;
+  bool tagged_pq_ = false;
+
   WindowRefreshResult RefreshNativeWindow() {
     std::optional<OhosNativeSurface> surface = GetOhosNativeSurface(widget_);
     if (!surface || !surface->window) {
@@ -125,6 +168,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
     }
 
     window_ = next_window;
+    tagged_pq_ = false;
     LOG(INFO) << "OHOS XComponent native window changed; recreating EGL "
                  "surface";
     return WindowRefreshResult::kChanged;
