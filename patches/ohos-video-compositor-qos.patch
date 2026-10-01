@@ -10,16 +10,35 @@ for video. ohos-video-render-diagnostics.patch showed YouTube's 1080p60 HDR
 with a frame always ready when Render() ran, yet a third of the frames
 dropped, more as the upload slowed: the begin-frames came late.
 
-On OHOS the thread raises itself to QOS_USER_INTERACTIVE as its first task,
-through libqos.so opened at run time, and logs whether that worked.
+On OHOS the thread raises itself to QOS_USER_INTERACTIVE as its first task
+and logs whether that worked. OH_QoS_SetThreadQoS is the public NDK call
+for this (<qos/qos.h>, libqos.so, API 12), needs no permission, and is the
+one Huawei's ArkWeb lists among its NDK calls; the renderer target links
+libqos.so. Renderers here run in the application's own sandbox rather than
+a seccomp one, so nothing stands between the call and the system.
 
 Generated against Chromium 154.0.8037.51.
 
 Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-video-compositor-qos.patch
 
+diff --git a/content/renderer/BUILD.gn b/content/renderer/BUILD.gn
+index 02a5c40..cd85f3b 100644
+--- a/content/renderer/BUILD.gn
++++ b/content/renderer/BUILD.gn
+@@ -196,6 +196,10 @@ target(link_target_type, "renderer") {
+ 
+   if (is_ohos) {
+     sources += [ "renderer_main_platform_delegate_ohos.cc" ]
++
++    # OH_QoS_SetThreadQoS, for the VideoFrameCompositor thread
++    # (renderer_blink_platform_impl.cc).
++    libs = [ "qos" ]
+   }
+ 
+   if (is_mac) {
 diff --git a/content/renderer/renderer_blink_platform_impl.cc b/content/renderer/renderer_blink_platform_impl.cc
-index 4341f40..9117605 100644
+index 4341f40..ded18b8 100644
 --- a/content/renderer/renderer_blink_platform_impl.cc
 +++ b/content/renderer/renderer_blink_platform_impl.cc
 @@ -33,6 +33,10 @@
@@ -28,12 +47,12 @@ index 4341f40..9117605 100644
  #include "build/build_config.h"
 +
 +#if BUILDFLAG(IS_OHOS)
-+#include <dlfcn.h>
++#include <qos/qos.h>
 +#endif
  #include "cc/base/features.h"
  #include "components/content_settings/core/common/content_settings_pattern.h"
  #include "components/input/features.h"
-@@ -153,6 +157,31 @@ namespace content {
+@@ -153,6 +157,23 @@ namespace content {
  
  namespace {
  
@@ -45,27 +64,19 @@ index 4341f40..9117605 100644
 +// upload of each software-decoded frame it does took 6-12 ms. The same
 +// thread answers the display's begin-frames for video, and the jitter that
 +// added dropped a third of YouTube's 1080p60 HDR frames with the decoder
-+// keeping up. Raise it to QOS_USER_INTERACTIVE; libqos.so is opened rather
-+// than linked so a system without it only loses the raise.
++// keeping up. Raise it to QOS_USER_INTERACTIVE, the level the NDK names for
++// foreground rendering.
 +void RaiseVideoFrameCompositorQoS() {
-+  // QoS_Level's QOS_USER_INTERACTIVE, from <qos/qos.h>.
-+  constexpr int kQoSUserInteractive = 5;
-+  void* library = dlopen("libqos.so", RTLD_NOW | RTLD_LOCAL);
-+  auto* set_qos = library ? reinterpret_cast<int (*)(int)>(
-+                                dlsym(library, "OH_QoS_SetThreadQoS"))
-+                          : nullptr;
-+  const int result = set_qos ? set_qos(kQoSUserInteractive) : -1;
++  const int result = OH_QoS_SetThreadQoS(QOS_USER_INTERACTIVE);
 +  LOG(WARNING) << "OHOS VideoFrameCompositor thread QoS: "
-+               << (!set_qos ? "unavailable"
-+                   : result == 0 ? "user interactive"
-+                                 : "refused");
++               << (result == 0 ? "user interactive" : "refused");
 +}
 +#endif  // BUILDFLAG(IS_OHOS)
 +
  // TODO(crbug.com/40550966): Move this method and its callers to Blink.
  media::AudioParameters GetAudioHardwareParams() {
    blink::WebLocalFrame* const web_frame =
-@@ -1159,6 +1188,10 @@ RendererBlinkPlatformImpl::VideoFrameCompositorTaskRunner() {
+@@ -1159,6 +1180,10 @@ RendererBlinkPlatformImpl::VideoFrameCompositorTaskRunner() {
          std::make_unique<base::Thread>("VideoFrameCompositor");
      video_frame_compositor_thread_->StartWithOptions(
          base::Thread::Options(base::ThreadType::kPresentation));
