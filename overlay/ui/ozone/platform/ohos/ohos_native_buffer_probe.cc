@@ -242,26 +242,6 @@ void TryAngleDmaBuf(gl::GLDisplayEGL* display,
   }
 }
 
-void TryAngleNativeBuffer(gl::GLDisplayEGL* display,
-                          const char* label,
-                          const ProbeBuffer& probe) {
-  if (!probe.window_buffer) {
-    return;
-  }
-  const EGLint attributes[] = {EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE};
-  EGLImageKHR image = eglCreateImageKHR(
-      display->GetDisplay(), EGL_NO_CONTEXT, kEglNativeBufferOhos,
-      static_cast<EGLClientBuffer>(probe.window_buffer), attributes);
-  const EGLint error = image == EGL_NO_IMAGE_KHR ? eglGetError() : EGL_SUCCESS;
-  LOG(WARNING) << "OHOS native buffer probe: ANGLE EGL_NATIVE_BUFFER_OHOS "
-               << label << " "
-               << (image != EGL_NO_IMAGE_KHR ? "imported" : "failed")
-               << " (error " << error << ")";
-  if (image != EGL_NO_IMAGE_KHR) {
-    eglDestroyImageKHR(display->GetDisplay(), image);
-  }
-}
-
 void TrySystemNativeBuffer(SystemEgl& egl,
                            const char* label,
                            const ProbeBuffer& probe) {
@@ -312,8 +292,8 @@ void ProbeOhosNativeBufferImport(gl::GLDisplayEGL* display) {
   if (display->ext->b_EGL_KHR_image_base) {
     TryAngleDmaBuf(display, "P010 Rec.2020", p010, kFourccP010, true);
     TryAngleDmaBuf(display, "NV12 Rec.601", nv12, kFourccNv12, false);
-    TryAngleNativeBuffer(display, "P010", p010);
-    TryAngleNativeBuffer(display, "NV12", nv12);
+    // Not EGL_NATIVE_BUFFER_OHOS through ANGLE: ANGLE does not know the
+    // target, and asking it crashed the browser at startup.
   } else {
     LOG(WARNING) << "OHOS native buffer probe: ANGLE has no EGL_KHR_image_base";
   }
