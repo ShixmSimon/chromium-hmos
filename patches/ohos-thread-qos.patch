@@ -1,0 +1,117 @@
+Give display- and audio-paced threads HarmonyOS's interactive QoS level.
+
+HarmonyOS schedules threads by QoS level. base sets a thread type's
+priority on Linux through its nice value, and an app here cannot go below
+zero, so a kPresentation thread ran exactly like a default one: viz's
+compositor, the GPU main thread, the renderer compositor and the
+VideoFrameCompositor, none of which the system recognises as rendering the
+way it does ArkUI's own threads. On a Mate 70 Pro+ in the default power mode
+viz then took long enough to acknowledge a video frame that a third of
+YouTube's 1080p60 HDR frames dropped (ohos-video-submit-diagnostics.patch);
+in the phone's high-performance mode the same build dropped about 2-8%.
+
+On OHOS SetThreadTypeLinux() raises the calling thread to
+QOS_USER_INTERACTIVE -- the NDK level for foreground rendering -- for
+kPresentation, kAudioProcessing and kRealtimeAudio, as Android gives these
+threads display and audio priority. A thread going back to another type is
+reset only if this code raised it, so a level the system gave a thread of
+its own, such as the ArkUI main thread, is left alone. QoS applies to the
+calling thread only, so requests for other threads change nothing here.
+base links libqos.so (<qos/qos.h>, a public NDK library from API 12).
+
+Generated against Chromium 154.0.8037.51, on top of chromium-154-harmonyos.patch.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-thread-qos.patch
+
+diff --git a/base/BUILD.gn b/base/BUILD.gn
+index 6b4d10c..b852432 100644
+--- a/base/BUILD.gn
++++ b/base/BUILD.gn
+@@ -1141,6 +1141,10 @@ component("base") {
+ 
+   if (is_ohos) {
+     libs += [ "${sysroot}/usr/lib/aarch64-linux-ohos/libchild_process.so" ]
++
++    # OH_QoS_SetThreadQoS, for the thread types that need the display's
++    # pace (threading/platform_thread_linux.cc).
++    libs += [ "qos" ]
+   }
+ 
+   configs += [
+diff --git a/base/threading/platform_thread_linux.cc b/base/threading/platform_thread_linux.cc
+index b0dab76..44fdfb8 100644
+--- a/base/threading/platform_thread_linux.cc
++++ b/base/threading/platform_thread_linux.cc
+@@ -38,6 +38,10 @@
+ #include "base/threading/thread_type_delegate.h"
+ #include "build/build_config.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include <qos/qos.h>
++#endif
++
+ namespace base {
+ 
+ namespace {
+@@ -260,11 +264,60 @@ void PlatformThreadLinux::SetThreadType(ProcessId process_id,
+ }
+ 
+ namespace internal {
++
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++// Whether this thread's QoS level was raised here, so that only a level this
++// code set is ever reset: a thread HarmonyOS gave a level of its own -- the
++// ArkUI main thread the browser's UI runs on -- keeps it.
++constinit thread_local bool g_ohos_qos_raised = false;
++
++// HarmonyOS schedules threads by QoS level, and an app cannot lower its nice
++// values below zero, so the nice value set below leaves a kPresentation
++// thread where a default one is. The threads that keep pace with the display
++// -- viz's compositor, the GPU main thread, the renderer compositor, the
++// VideoFrameCompositor -- then ran at the default level, and on a Mate 70
++// Pro+ in the default power mode viz took long enough to acknowledge a
++// video frame that a third of YouTube's 1080p60 HDR frames dropped, against
++// about 2% in the high-performance mode. Raise those threads, and the audio
++// ones, to QOS_USER_INTERACTIVE, the level the NDK names for foreground
++// rendering; Android gives the same threads display priority. QoS applies
++// to the calling thread only.
++void SetCurrentThreadQoSForType(ThreadType thread_type) {
++  switch (thread_type) {
++    case ThreadType::kPresentation:
++    case ThreadType::kAudioProcessing:
++    case ThreadType::kRealtimeAudio:
++      if (OH_QoS_SetThreadQoS(QOS_USER_INTERACTIVE) == 0) {
++        g_ohos_qos_raised = true;
++      }
++      return;
++    case ThreadType::kBackground:
++    case ThreadType::kUtility:
++    case ThreadType::kDefault:
++      if (g_ohos_qos_raised) {
++        OH_QoS_ResetThreadQoS();
++        g_ohos_qos_raised = false;
++      }
++      return;
++  }
++}
++
++}  // namespace
++#endif  // BUILDFLAG(IS_OHOS)
++
+ void SetThreadTypeLinux(ProcessId process_id,
+                         PlatformThreadId thread_id,
+                         ThreadType thread_type) {
+   PlatformThreadLinux::SetThreadCgroupsForThreadType(thread_id, thread_type);
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (thread_id == PlatformThreadLinux::CurrentId()) {
++    SetCurrentThreadQoSForType(thread_type);
++  }
++#endif
++
+   // Some scheduler syscalls require thread ID of 0 for current thread.
+   // This prevents us from requiring to translate the NS TID to
+   // global TID.
