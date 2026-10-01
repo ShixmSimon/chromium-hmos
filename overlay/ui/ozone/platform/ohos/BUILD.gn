@@ -63,8 +63,6 @@ source_set("ohos") {
     "ohos_clipboard.h",
     "ohos_input_method.cc",
     "ohos_input_method.h",
-    "ohos_native_buffer_probe.cc",
-    "ohos_native_buffer_probe.h",
     "ohos_native_window_adapter.cc",
     "ohos_native_window_adapter.h",
     "ohos_platform_window.cc",
@@ -82,7 +80,6 @@ source_set("ohos") {
   defines = [ "OZONE_IMPLEMENTATION" ]
 
   libs = [
-    "native_buffer",
     "native_display_manager",
     "native_vsync",
     "native_window",
