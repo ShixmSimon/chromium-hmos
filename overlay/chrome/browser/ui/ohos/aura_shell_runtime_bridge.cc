@@ -3900,6 +3900,65 @@ bool IsAuraShellUserAgentPinned(content::WebContents* contents) {
   return contents && PinnedUserAgent::FromWebContents(contents);
 }
 
+namespace {
+
+// Tabs whose controls are all the way hidden. A WebContents drops its mark
+// when it goes away.
+class BrowserControlsHidden
+    : public content::WebContentsUserData<BrowserControlsHidden> {
+ public:
+  ~BrowserControlsHidden() override = default;
+
+ private:
+  friend class content::WebContentsUserData<BrowserControlsHidden>;
+  explicit BrowserControlsHidden(content::WebContents* contents)
+      : content::WebContentsUserData<BrowserControlsHidden>(*contents) {}
+  WEB_CONTENTS_USER_DATA_KEY_DECL();
+};
+
+WEB_CONTENTS_USER_DATA_KEY_IMPL(BrowserControlsHidden);
+
+// The renderer was sized with the controls shown, and the compositor only
+// shows more of the page as they hide: the layout viewport keeps their
+// height off. A fixed element pinned to the bottom is moved down with them,
+// but one sized to the viewport is not -- YouTube's comment sheet stopped
+// the controls' height above the screen's bottom, with its autoplay bar
+// pinned below and the page showing through between them. Android resizes
+// the renderer once the controls have gone and again as soon as they come
+// back; do the same, asking the view for new visual properties after this
+// frame's metadata has been handled.
+void FollowBrowserControlsHidden(content::WebContents* contents,
+                                 bool hidden) {
+  if (!contents ||
+      (BrowserControlsHidden::FromWebContents(contents) != nullptr) ==
+          hidden) {
+    return;
+  }
+  if (hidden) {
+    BrowserControlsHidden::CreateForWebContents(contents);
+  } else {
+    contents->RemoveUserData(BrowserControlsHidden::UserDataKey());
+  }
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(
+                     [](base::WeakPtr<content::WebContents> contents) {
+                       content::RenderWidgetHostView* view =
+                           contents ? contents->GetRenderWidgetHostView()
+                                    : nullptr;
+                       if (view) {
+                         view->GetRenderWidgetHost()
+                             ->SynchronizeVisualProperties();
+                       }
+                     },
+                     contents->GetWeakPtr()));
+}
+
+}  // namespace
+
+bool AreAuraShellBrowserControlsHidden(content::WebContents* contents) {
+  return contents && BrowserControlsHidden::FromWebContents(contents);
+}
+
 void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
                                       float renderer_ratio) {
   // The renderer's ratio is of the top bar and the dock together (see
@@ -3908,11 +3967,15 @@ void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
   // 1 -- what it was before the dock joined, so the shell's arithmetic, and
   // the dock following the same normalised position, are unchanged.
   float ratio = renderer_ratio;
+  bool hidden = false;
   {
     RuntimeBridgeState& state = GetState();
     base::AutoLock lock(state.lock);
     const float top = state.top_controls_height;
     const float total = top + state.bottom_controls_height;
+    // All the way down to the minimum, in the renderer's terms.
+    hidden = top > 0 &&
+             renderer_ratio <= state.top_controls_min_height / total + 0.001f;
     if (state.bottom_controls_height > 0 && top > 0) {
       const float min = state.top_controls_min_height;
       const float renderer_min = min / total;
@@ -3927,6 +3990,7 @@ void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
   // Before the early return below: a new view after a navigation reports the
   // same ratio as the old one, and still has to be moved.
   ApplyTopControlsOffset(contents, ratio);
+  FollowBrowserControlsHidden(contents, hidden);
   {
     RuntimeBridgeState& state = GetState();
     base::AutoLock lock(state.lock);

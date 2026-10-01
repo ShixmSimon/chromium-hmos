@@ -183,6 +183,10 @@ int GetAuraShellTopControlsMinHeight();
 // A phone's dock, which hides with the top bar, is not reported as bottom
 // controls but counted into the top ones; see GetAuraShellTopControlsHeight()
 // in the .cc.
+// Whether this tab's controls have slid away completely, down to the
+// minimum height. The renderer then lays the page out in their room too, as
+// Android's does, rather than only showing more of it.
+bool AreAuraShellBrowserControlsHidden(content::WebContents* contents);
 // Whether this tab's user agent was set deliberately and must be left alone.
 //
 // The shell's state poll re-applies the device's user agent to every tab so

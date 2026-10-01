@@ -35,7 +35,11 @@ OHOS RenderWidgetHostViewAura now takes the controls off the requested
 renderer size of the main frame's widget, keeps the compositor viewport
 the whole window, and, when there are controls, takes the bottom inset
 (what stays covered, a phone's gesture bar) off the layout as well rather
-than only off the visual viewport.
+than only off the visual viewport. Once the controls have slid away
+completely the layout gets their room as well -- the delegate stops asking
+for the shrink, as Android's does -- so a fixed element sized to the
+viewport, like a bottom sheet with a bar pinned under it, reaches the bottom
+of the screen instead of stopping where the controls' edge was.
 
 WebContentsViewAura::GetTopControlsMinHeight() forwards to the delegate
 unconditionally, the same way GetTopControlsHeight() already does -- it is
@@ -64,7 +68,7 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
  // Kill switch for merge safety for a fix for https://crbug.com/489205993
  // TODO(crbug.com/489205993): Remove in M150 or later.
  BASE_FEATURE(kBackgroundActorTaskPopupsOpenInBackground,
-@@ -368,15 +374,41 @@ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
+@@ -368,15 +374,42 @@ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
  void BrowserWebContentsDelegate::SetTopControlsShownRatio(
      content::WebContents* web_contents,
      float ratio) {
@@ -98,9 +102,10 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
      content::WebContents* contents) {
 +#if BUILDFLAG(IS_OHOS)
 +  // Room is made for the shell's bar rather than the page drawing under it
-+  // at the top: shrink the viewport while the controls are shown.
++  // at the top: shrink the viewport while the controls show at all, and
++  // give the page their room once they have slid away, as Android does.
 +  if (chrome::ohos::GetAuraShellTopControlsHeight() > 0) {
-+    return true;
++    return !chrome::ohos::AreAuraShellBrowserControlsHidden(contents);
 +  }
 +#endif
    return window_->DoBrowserControlsShrinkRendererSize(contents);
@@ -157,7 +162,7 @@ diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/con
  #include <limits>
  #include <memory>
  #include <set>
-@@ -1000,14 +1002,95 @@ bool RenderWidgetHostViewAura::IsPointerLocked() {
+@@ -1000,14 +1002,102 @@ bool RenderWidgetHostViewAura::IsPointerLocked() {
    return event_handler_->mouse_locked();
  }
  
@@ -191,12 +196,19 @@ diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/con
 +    return {};
 +  }
 +  RenderViewHostDelegateView* view = host->delegate()->GetDelegateView();
-+  if (!view || !view->DoBrowserControlsShrinkRendererSize()) {
++  if (!view) {
 +    return {};
 +  }
 +  const int controls =
 +      view->GetTopControlsHeight() + view->GetBottomControlsHeight();
-+  return {controls, controls > 0};
++  if (controls <= 0) {
++    return {};
++  }
++  // Once the controls have slid away the page lays out in their room too
++  // (DoBrowserControlsShrinkRendererSize turns false, as on Android), so a
++  // fixed element sized to the viewport reaches the bottom of the screen
++  // and not where the controls' edge was. What stays covered stays off.
++  return {view->DoBrowserControlsShrinkRendererSize() ? controls : 0, true};
 +}
 +
 +}  // namespace
