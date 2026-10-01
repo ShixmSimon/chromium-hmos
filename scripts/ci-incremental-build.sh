@@ -202,7 +202,9 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-thread-qos.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-video-submit-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-stage-diagnostics.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-video-r16-planes.patch"
+  # The Mate 70 Pro+ has neither GL_EXT_texture_norm16 nor Skia R16 on GLES,
+  # so the R16 planes it allowed never came into play.
+  retire_incremental_patch "${repo_root}/patches/ohos-video-r16-planes.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-autocomplete-hints.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-context-menu.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-services.patch"
