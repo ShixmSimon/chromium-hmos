@@ -17,7 +17,9 @@ Two logs, both OHOS only:
   Read() of the decoder stream took to come back and how long the renderer
   waited after a frame before the next Read(); and, in FrameReady(), how
   far ahead of its display time each frame arrived, with how many arrived
-  late or with less than a frame's time to spare. An earlier version
+  late or with less than a frame's time to spare; and the step between
+  successive frames' media timestamps, with how many frames the algorithm
+  refused at enqueue rather than dropped later unshown. An earlier version
   counted calls with no effective frame queued, which the current frame
   hides; with the upload made fast by ohos-video-compositor-qos.patch a
   third of the frames still dropped with that count at zero.
@@ -33,7 +35,7 @@ Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-video-render-diagnostics.patch
 
 diff --git a/media/renderers/video_renderer_impl.cc b/media/renderers/video_renderer_impl.cc
-index 576cc90..ecee3a4 100644
+index 576cc90..f768aa0 100644
 --- a/media/renderers/video_renderer_impl.cc
 +++ b/media/renderers/video_renderer_impl.cc
 @@ -20,6 +20,15 @@
@@ -52,7 +54,7 @@ index 576cc90..ecee3a4 100644
  #include "base/trace_event/trace_event.h"
  #include "media/base/media_log.h"
  #include "media/base/media_switches.h"
-@@ -47,6 +56,178 @@ perfetto::NamedTrack GetTracingTrack(const VideoRendererImpl* renderer) {
+@@ -47,6 +56,229 @@ perfetto::NamedTrack GetTracingTrack(const VideoRendererImpl* renderer) {
  // SetLatencyHint(), so we needed to peg this with a constant.
  constexpr int kAbsoluteMaxFrames = 24;
  
@@ -71,6 +73,13 @@ index 576cc90..ecee3a4 100644
 +//   how long the renderer waited after a frame before asking for the next.
 +// - FrameReady(): how far ahead of its display time each frame arrived, and
 +//   how many arrived late or with less than a frame's time to spare.
++// - The media timestamps themselves: the step from one frame to the next,
++//   smallest and largest, with how many steps were under 1 ms, under 10 ms
++//   or over 25 ms; and how many frames the algorithm refused at enqueue
++//   (too close to, or before, a queued or rendered frame) as opposed to
++//   dropping them later unshown. The interval Render() is asked to cover
++//   matched its real 16.6 ms gap and the queue stayed full, yet one 1080p60
++//   video dropped 27% where another dropped 1%.
 +struct OhosRenderStats {
 +  base::Lock lock;
 +  base::TimeTicks window_start;
@@ -93,6 +102,14 @@ index 576cc90..ecee3a4 100644
 +  int waits = 0;
 +  base::TimeDelta wait_total;
 +  base::TimeDelta wait_max;
++  base::TimeDelta last_timestamp = base::TimeDelta::Min();
++  int steps = 0;
++  int steps_under_1ms = 0;
++  int steps_under_10ms = 0;
++  int steps_over_25ms = 0;
++  base::TimeDelta step_min = base::TimeDelta::Max();
++  base::TimeDelta step_max = base::TimeDelta::Min();
++  int refused_at_enqueue = 0;
 +  int arrived = 0;
 +  int late = 0;
 +  int under_a_frame = 0;
@@ -117,6 +134,28 @@ index 576cc90..ecee3a4 100644
 +    stats.wait_total += wait;
 +    stats.wait_max = std::max(stats.wait_max, wait);
 +  }
++}
++
++void RecordOhosEnqueue(base::TimeDelta timestamp, bool refused) {
++  OhosRenderStats& stats = GetOhosRenderStats();
++  base::AutoLock hold(stats.lock);
++  if (refused) {
++    ++stats.refused_at_enqueue;
++  }
++  if (stats.last_timestamp != base::TimeDelta::Min()) {
++    const base::TimeDelta step = timestamp - stats.last_timestamp;
++    ++stats.steps;
++    stats.step_min = std::min(stats.step_min, step);
++    stats.step_max = std::max(stats.step_max, step);
++    if (step < base::Milliseconds(1)) {
++      ++stats.steps_under_1ms;
++    } else if (step < base::Milliseconds(10)) {
++      ++stats.steps_under_10ms;
++    } else if (step > base::Milliseconds(25)) {
++      ++stats.steps_over_25ms;
++    }
++  }
++  stats.last_timestamp = timestamp;
 +}
 +
 +void RecordOhosFrameReady(base::TimeTicks now,
@@ -198,7 +237,14 @@ index 576cc90..ecee3a4 100644
 +               << " late, " << stats.under_a_frame
 +               << " with under a frame to spare, least lead "
 +               << (stats.arrived ? stats.least_lead.InMillisecondsF() : 0.0)
-+               << " ms";
++               << " ms; timestamp steps " << stats.steps << " min "
++               << (stats.steps ? stats.step_min.InMillisecondsF() : 0.0)
++               << " max "
++               << (stats.steps ? stats.step_max.InMillisecondsF() : 0.0)
++               << " ms, " << stats.steps_under_1ms << " under 1 ms, "
++               << stats.steps_under_10ms << " under 10 ms, "
++               << stats.steps_over_25ms << " over 25 ms; "
++               << stats.refused_at_enqueue << " refused at enqueue";
 +  const base::TimeTicks read_start = stats.read_start;
 +  const base::TimeTicks last_frame_ready = stats.last_frame_ready;
 +  stats.window_start = now;
@@ -219,6 +265,13 @@ index 576cc90..ecee3a4 100644
 +  stats.waits = 0;
 +  stats.wait_total = base::TimeDelta();
 +  stats.wait_max = base::TimeDelta();
++  stats.steps = 0;
++  stats.steps_under_1ms = 0;
++  stats.steps_under_10ms = 0;
++  stats.steps_over_25ms = 0;
++  stats.step_min = base::TimeDelta::Max();
++  stats.step_max = base::TimeDelta::Min();
++  stats.refused_at_enqueue = 0;
 +  stats.arrived = 0;
 +  stats.late = 0;
 +  stats.under_a_frame = 0;
@@ -231,7 +284,7 @@ index 576cc90..ecee3a4 100644
  }  // namespace
  
  VideoRendererImpl::VideoRendererImpl(
-@@ -247,6 +428,9 @@ scoped_refptr<VideoFrame> VideoRendererImpl::Render(
+@@ -247,6 +479,9 @@ scoped_refptr<VideoFrame> VideoRendererImpl::Render(
        background_rendering || (was_background_rendering_ &&
                                 last_frame_ready_time_ >= last_render_time_);
  
@@ -241,7 +294,7 @@ index 576cc90..ecee3a4 100644
    last_render_time_ = tick_clock_->NowTicks();
  
    size_t frames_dropped = 0;
-@@ -280,6 +464,16 @@ scoped_refptr<VideoFrame> VideoRendererImpl::Render(
+@@ -280,6 +515,16 @@ scoped_refptr<VideoFrame> VideoRendererImpl::Render(
    // dropped frames since they are likely just dropped due to being too old.
    if (!background_rendering && !was_background_rendering_)
      stats_.video_frames_dropped += frames_dropped;
@@ -258,7 +311,7 @@ index 576cc90..ecee3a4 100644
    was_background_rendering_ = background_rendering;
  
    // Always post this task, it will acquire new frames if necessary and since it
-@@ -634,6 +828,18 @@ void VideoRendererImpl::FrameReady(VideoDecoderStream::ReadResult result) {
+@@ -634,6 +879,18 @@ void VideoRendererImpl::FrameReady(VideoDecoderStream::ReadResult result) {
    const bool has_best_first_frame = !is_eos && HasBestFirstFrame(*frame);
    const auto format = frame->format();
    const auto natural_size = frame->natural_size();
@@ -277,7 +330,23 @@ index 576cc90..ecee3a4 100644
  
    if (is_eos) {
      DCHECK(!received_end_of_stream_);
-@@ -821,6 +1027,9 @@ void VideoRendererImpl::AttemptRead_Locked() {
+@@ -805,7 +1062,15 @@ void VideoRendererImpl::AddReadyFrame_Locked(scoped_refptr<VideoFrame> frame) {
+   if (frame->metadata().power_efficient)
+     ++stats_.video_frames_decoded_power_efficient;
+ 
++#if BUILDFLAG(IS_OHOS)
++  const base::TimeDelta ohos_timestamp = frame->timestamp();
++  const size_t ohos_queued_before = algorithm_->frames_queued();
++#endif
+   algorithm_->EnqueueFrame(std::move(frame));
++#if BUILDFLAG(IS_OHOS)
++  RecordOhosEnqueue(ohos_timestamp,
++                    algorithm_->frames_queued() <= ohos_queued_before);
++#endif
+ }
+ 
+ void VideoRendererImpl::AttemptRead_Locked() {
+@@ -821,6 +1086,9 @@ void VideoRendererImpl::AttemptRead_Locked() {
    switch (state_) {
      case kPlaying:
        pending_read_ = true;
