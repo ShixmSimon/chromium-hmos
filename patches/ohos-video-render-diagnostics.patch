@@ -1,0 +1,225 @@
+Say where a software-decoded video's dropped frames come from, on OHOS.
+
+YouTube's 1080p60 HDR (VP9 profile 2, decoded in software) dropped a third
+of its frames on a Mate 70 Pro+ while ohos-vp9-row-threads.patch's log had
+only an eighth of them decoded late, and a deeper frame queue
+(ohos-video-queue-depth.patch) changed nothing. So most frames are lost
+after decoding, between the queue and the screen.
+
+Two logs, both OHOS only:
+
+- "OHOS video render", every five seconds from VideoRendererImpl::Render(),
+  which runs once per display begin-frame and counts a frame dropped when
+  it goes by unshown: how many calls, the longest gap between them and how
+  many gaps exceeded 20 ms, how many calls found no frame ready, and how
+  many frames were dropped. No frame ready means the decoder was behind;
+  long gaps mean the thread that calls Render() was.
+- "OHOS video upload", every 300 frames from
+  VideoResourceUpdater::CreateForSoftwareFrame(): the frame's size and bit
+  depth, the texture format it goes to, and the average and longest time to
+  convert and upload it, with how many took over 8 ms. That work runs on the
+  same thread as Render().
+
+Generated against Chromium 154.0.8037.51.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-video-render-diagnostics.patch
+
+diff --git a/media/renderers/video_renderer_impl.cc b/media/renderers/video_renderer_impl.cc
+index 576cc90..fe68119 100644
+--- a/media/renderers/video_renderer_impl.cc
++++ b/media/renderers/video_renderer_impl.cc
+@@ -20,6 +20,12 @@
+ #include "base/task/single_thread_task_runner.h"
+ #include "base/time/default_tick_clock.h"
+ #include "base/time/time.h"
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "base/logging.h"
++#include "base/no_destructor.h"
++#endif
+ #include "base/trace_event/trace_event.h"
+ #include "media/base/media_log.h"
+ #include "media/base/media_switches.h"
+@@ -47,6 +53,63 @@ perfetto::NamedTrack GetTracingTrack(const VideoRendererImpl* renderer) {
+ // SetLatencyHint(), so we needed to peg this with a constant.
+ constexpr int kAbsoluteMaxFrames = 24;
+ 
++#if BUILDFLAG(IS_OHOS)
++// Where dropped frames come from, logged every five seconds ("OHOS video
++// render"). Render() runs once per begin-frame of the display and counts a
++// frame dropped when it goes by without being shown. If the queue had no
++// frame ready when it ran, the decoder was behind; if Render() itself came
++// late, the thread that calls it was. YouTube's 1080p60 HDR dropped a third
++// of its frames on a Mate 70 Pro+ with only an eighth decoded late.
++struct OhosRenderStats {
++  base::Lock lock;
++  base::TimeTicks window_start;
++  int calls = 0;
++  int gaps_over_20ms = 0;
++  int nothing_ready = 0;
++  size_t dropped = 0;
++  base::TimeDelta longest_gap;
++};
++
++void RecordOhosRender(base::TimeTicks now,
++                      base::TimeDelta gap,
++                      size_t frames_dropped,
++                      size_t effective_frames_queued) {
++  static base::NoDestructor<OhosRenderStats> stats;
++  base::AutoLock hold(stats->lock);
++  if (stats->window_start.is_null()) {
++    stats->window_start = now;
++  }
++  ++stats->calls;
++  stats->dropped += frames_dropped;
++  if (effective_frames_queued == 0) {
++    ++stats->nothing_ready;
++  }
++  // The first call after a pause has no gap worth counting.
++  if (gap < base::Seconds(1)) {
++    stats->longest_gap = std::max(stats->longest_gap, gap);
++    if (gap > base::Milliseconds(20)) {
++      ++stats->gaps_over_20ms;
++    }
++  }
++  const base::TimeDelta window = now - stats->window_start;
++  if (window < base::Seconds(5)) {
++    return;
++  }
++  LOG(WARNING) << "OHOS video render: " << stats->calls << " calls in "
++               << window.InSecondsF() << " s, longest gap "
++               << stats->longest_gap.InMillisecondsF() << " ms, "
++               << stats->gaps_over_20ms << " gaps over 20 ms, "
++               << stats->nothing_ready << " with no frame ready, "
++               << stats->dropped << " frames dropped";
++  stats->window_start = now;
++  stats->calls = 0;
++  stats->gaps_over_20ms = 0;
++  stats->nothing_ready = 0;
++  stats->dropped = 0;
++  stats->longest_gap = base::TimeDelta();
++}
++#endif  // BUILDFLAG(IS_OHOS)
++
+ }  // namespace
+ 
+ VideoRendererImpl::VideoRendererImpl(
+@@ -247,6 +310,9 @@ scoped_refptr<VideoFrame> VideoRendererImpl::Render(
+       background_rendering || (was_background_rendering_ &&
+                                last_frame_ready_time_ >= last_render_time_);
+ 
++#if BUILDFLAG(IS_OHOS)
++  const base::TimeTicks previous_render_time = last_render_time_;
++#endif
+   last_render_time_ = tick_clock_->NowTicks();
+ 
+   size_t frames_dropped = 0;
+@@ -280,6 +346,15 @@ scoped_refptr<VideoFrame> VideoRendererImpl::Render(
+   // dropped frames since they are likely just dropped due to being too old.
+   if (!background_rendering && !was_background_rendering_)
+     stats_.video_frames_dropped += frames_dropped;
++#if BUILDFLAG(IS_OHOS)
++  if (!background_rendering && !was_background_rendering_) {
++    RecordOhosRender(last_render_time_,
++                     previous_render_time.is_null()
++                         ? base::TimeDelta::Max()
++                         : last_render_time_ - previous_render_time,
++                     frames_dropped, algorithm_->effective_frames_queued());
++  }
++#endif
+   was_background_rendering_ = background_rendering;
+ 
+   // Always post this task, it will acquire new frames if necessary and since it
+diff --git a/media/renderers/video_resource_updater.cc b/media/renderers/video_resource_updater.cc
+index cd6929b..bb58fc6 100644
+--- a/media/renderers/video_resource_updater.cc
++++ b/media/renderers/video_resource_updater.cc
+@@ -58,7 +58,76 @@
+ #include "ui/gl/gl_enums.h"
+ #include "ui/gl/trace_util.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "base/no_destructor.h"
++#include "base/synchronization/lock.h"
++#include "base/time/time.h"
++#endif
++
+ namespace media {
++
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++// How long a software-decoded frame takes to get to the GPU, logged every
++// 300 frames ("OHOS video upload"): the conversion a 10-bit frame needs
++// whatever the texture format, and the upload. It runs on the thread that
++// also answers the display's begin-frames, so a slow one can cost frames
++// the decoder delivered in time -- YouTube's 1080p60 HDR dropped a third of
++// its frames on a Mate 70 Pro+ with only an eighth of them decoded late.
++struct OhosUploadTimes {
++  base::Lock lock;
++  int frames = 0;
++  int over_8ms = 0;
++  base::TimeDelta total;
++  base::TimeDelta max;
++};
++
++class OhosSoftwareUploadTimer {
++ public:
++  OhosSoftwareUploadTimer(const VideoFrame& frame,
++                          const viz::SharedImageFormat& format)
++      : start_(base::TimeTicks::Now()),
++        size_(frame.coded_size()),
++        bits_(frame.BitDepth()),
++        format_(format) {}
++  OhosSoftwareUploadTimer(const OhosSoftwareUploadTimer&) = delete;
++  OhosSoftwareUploadTimer& operator=(const OhosSoftwareUploadTimer&) = delete;
++
++  ~OhosSoftwareUploadTimer() {
++    const base::TimeDelta elapsed = base::TimeTicks::Now() - start_;
++    static base::NoDestructor<OhosUploadTimes> times;
++    base::AutoLock hold(times->lock);
++    ++times->frames;
++    times->total += elapsed;
++    times->max = std::max(times->max, elapsed);
++    if (elapsed > base::Milliseconds(8)) {
++      ++times->over_8ms;
++    }
++    if (times->frames < 300) {
++      return;
++    }
++    LOG(WARNING) << "OHOS video upload: " << size_.ToString() << " "
++                 << bits_ << "-bit as " << format_.ToString() << ", "
++                 << times->frames << " frames, avg "
++                 << (times->total / times->frames).InMillisecondsF()
++                 << " ms, max " << times->max.InMillisecondsF() << " ms, "
++                 << times->over_8ms << " over 8 ms";
++    times->frames = 0;
++    times->over_8ms = 0;
++    times->total = base::TimeDelta();
++    times->max = base::TimeDelta();
++  }
++
++ private:
++  const base::TimeTicks start_;
++  const gfx::Size size_;
++  const size_t bits_;
++  const viz::SharedImageFormat format_;
++};
++
++}  // namespace
++#endif  // BUILDFLAG(IS_OHOS)
+ namespace {
+ 
+ // Generates process-unique IDs to use for tracing video resources.
+@@ -1176,6 +1245,9 @@ VideoFrameExternalResource VideoResourceUpdater::CreateForSoftwareFrame(
+ 
+   viz::SharedImageFormat output_si_format =
+       GetSoftwareOutputFormat(input_frame_format, bits_per_channel);
++#if BUILDFLAG(IS_OHOS)
++  OhosSoftwareUploadTimer ohos_upload_timer(*video_frame, output_si_format);
++#endif
+   gfx::ColorSpace output_color_space = video_frame->ColorSpace();
+   SkAlphaType output_alpha_type =
+       software_compositor() ? kPremul_SkAlphaType : kUnpremul_SkAlphaType;

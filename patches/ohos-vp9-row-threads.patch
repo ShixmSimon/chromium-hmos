@@ -17,13 +17,8 @@ the average and longest vpx_codec_decode time and how many frames went over
 more than one tile row: still one busy thread, 9-10 ms a frame on average
 and runs of 20-80 ms, which ohos-video-queue-depth.patch is for.
 
-Those times are wall time, and even 426x240 took 3-7 ms a frame: the decode
-thread was runnable but not running about half the time. HarmonyOS
-schedules by QoS level rather than by the nice value base sets, so the
-decoding thread is raised to QOS_USER_INTERACTIVE for the length of each
-decode (OH_QoS_SetThreadQoS, from libqos.so opened at run time) and put back
-after, being a thread pool thread. Whether the raise is available is logged
-once.
+Raising the decoding thread to QOS_USER_INTERACTIVE for each decode was
+tried and left the times as they were; it is not here.
 
 Generated against Chromium 154.0.8037.51.
 
@@ -31,7 +26,7 @@ Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-vp9-row-threads.patch
 
 diff --git a/media/filters/vpx_video_decoder.cc b/media/filters/vpx_video_decoder.cc
-index 0de2f4a..07a066f 100644
+index 0de2f4a..8c5c381 100644
 --- a/media/filters/vpx_video_decoder.cc
 +++ b/media/filters/vpx_video_decoder.cc
 @@ -20,6 +20,7 @@
@@ -42,13 +37,11 @@ index 0de2f4a..07a066f 100644
  #include "media/base/agtm.h"
  #include "media/base/decoder_buffer.h"
  #include "media/base/limits.h"
-@@ -32,8 +33,119 @@
+@@ -32,8 +33,57 @@
  #include "third_party/libyuv/include/libyuv/convert.h"
  #include "third_party/libyuv/include/libyuv/planar_functions.h"
  
 +#if BUILDFLAG(IS_OHOS)
-+#include <dlfcn.h>
-+
 +#include "base/no_destructor.h"
 +#include "base/synchronization/lock.h"
 +#include "base/time/time.h"
@@ -96,73 +89,13 @@ index 0de2f4a..07a066f 100644
 +  times->max = base::TimeDelta();
 +}
 +
-+// HarmonyOS schedules threads by QoS level, not by the nice value base
-+// sets for a thread type. The decode ran on a thread pool thread that was
-+// runnable but not running half the time, and even 426x240 took 3-7 ms a
-+// frame. Raise the thread to QOS_USER_INTERACTIVE for the length of one
-+// decode and put it back after: it is a pool thread, shared with other
-+// work. libqos.so is opened rather than linked so a system without it only
-+// loses the raise.
-+class ScopedOhosDecodeQoS {
-+ public:
-+  ScopedOhosDecodeQoS() {
-+    const Functions& functions = GetFunctions();
-+    if (functions.set) {
-+      raised_ = functions.set(kQoSUserInteractive) == 0;
-+    }
-+  }
-+  ScopedOhosDecodeQoS(const ScopedOhosDecodeQoS&) = delete;
-+  ScopedOhosDecodeQoS& operator=(const ScopedOhosDecodeQoS&) = delete;
-+  ~ScopedOhosDecodeQoS() {
-+    if (raised_) {
-+      GetFunctions().reset();
-+    }
-+  }
-+
-+ private:
-+  // QoS_Level's QOS_USER_INTERACTIVE, from <qos/qos.h>.
-+  static constexpr int kQoSUserInteractive = 5;
-+
-+  struct Functions {
-+    int (*set)(int) = nullptr;
-+    int (*reset)() = nullptr;
-+  };
-+
-+  static const Functions& GetFunctions() {
-+    static const Functions functions = [] {
-+      Functions loaded;
-+      if (void* library = dlopen("libqos.so", RTLD_NOW | RTLD_LOCAL)) {
-+        loaded.set = reinterpret_cast<int (*)(int)>(
-+            dlsym(library, "OH_QoS_SetThreadQoS"));
-+        loaded.reset = reinterpret_cast<int (*)()>(
-+            dlsym(library, "OH_QoS_ResetThreadQoS"));
-+      }
-+      if (!loaded.set || !loaded.reset) {
-+        loaded = Functions();
-+      }
-+      const int probe = loaded.set ? loaded.set(kQoSUserInteractive) : -1;
-+      if (probe == 0) {
-+        loaded.reset();
-+      }
-+      LOG(WARNING) << "OHOS vpx decode: thread QoS "
-+                   << (!loaded.set     ? "unavailable"
-+                       : probe == 0    ? "raised while decoding"
-+                                       : "refused");
-+      return loaded;
-+    }();
-+    return functions;
-+  }
-+
-+  bool raised_ = false;
-+};
-+
 +}  // namespace
 +#endif  // BUILDFLAG(IS_OHOS)
 +
  // Returns the number of threads.
  static int GetVpxVideoDecoderThreadCount(const VideoDecoderConfig& config) {
    // vp8a doesn't really need more threads.
-@@ -243,6 +355,23 @@ bool VpxVideoDecoder::ConfigureDecoder(const VideoDecoderConfig& config) {
+@@ -243,6 +293,23 @@ bool VpxVideoDecoder::ConfigureDecoder(const VideoDecoderConfig& config) {
                    << vpx_codec_error(vpx_codec_.get());
        return false;
      }
@@ -186,12 +119,11 @@ index 0de2f4a..07a066f 100644
    }
  
    if (config.alpha_mode() == VideoDecoderConfig::AlphaMode::kIsOpaque)
-@@ -306,9 +435,20 @@ bool VpxVideoDecoder::VpxDecode(const DecoderBuffer* buffer,
+@@ -306,9 +373,19 @@ bool VpxVideoDecoder::VpxDecode(const DecoderBuffer* buffer,
      TRACE_EVENT1("media", "vpx_codec_decode", "buffer",
                   buffer->AsHumanReadableString());
      auto buffer_span = base::span(*buffer);
 +#if BUILDFLAG(IS_OHOS)
-+    ScopedOhosDecodeQoS qos;
 +    const base::TimeTicks decode_start = base::TimeTicks::Now();
 +#endif
      vpx_codec_err_t status = vpx_codec_decode(
