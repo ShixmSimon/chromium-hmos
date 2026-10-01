@@ -184,6 +184,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-dialog-preferred-width.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-bubble-anchor-top-center.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-browser-controls.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-tab-modal-shell-insets.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-tts.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-notifications.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-media-session.patch"

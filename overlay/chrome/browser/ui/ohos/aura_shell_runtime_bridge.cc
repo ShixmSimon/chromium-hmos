@@ -3959,6 +3959,42 @@ bool AreAuraShellBrowserControlsHidden(content::WebContents* contents) {
   return contents && BrowserControlsHidden::FromWebContents(contents);
 }
 
+gfx::Insets GetAuraShellModalDialogInsets(BrowserWindowInterface* browser) {
+  const gfx::AcceleratedWidget widget = GetBrowserWidget(browser);
+  RuntimeBridgeState& state = GetState();
+  base::AutoLock lock(state.lock);
+  int bottom = 0;
+  if (auto inset = state.viewport_bottom_inset.find(widget);
+      inset != state.viewport_bottom_inset.end()) {
+    bottom = inset->second;
+  }
+  // The dock is not in the inset: it hides with the page, and is held
+  // showing while a dialog is up (OnAuraShellWebContentsBlocked).
+  bottom += state.bottom_controls_height;
+  return gfx::Insets::TLBR(std::max(0, state.top_controls_height), 0,
+                           std::max(0, bottom), 0);
+}
+
+void OnAuraShellWebContentsBlocked(content::WebContents* contents,
+                                   bool blocked) {
+  if (!contents) {
+    return;
+  }
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    if (state.top_controls_height <= 0) {
+      return;
+    }
+  }
+  // Shown and held while blocked; afterwards free to follow the page again,
+  // starting from shown.
+  contents->UpdateBrowserControlsState(
+      blocked ? cc::BrowserControlsState::kShown
+              : cc::BrowserControlsState::kBoth,
+      cc::BrowserControlsState::kShown, /*animate=*/true, std::nullopt);
+}
+
 void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
                                       float renderer_ratio) {
   // The renderer's ratio is of the top bar and the dock together (see

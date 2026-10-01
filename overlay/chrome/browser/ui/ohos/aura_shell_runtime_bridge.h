@@ -10,6 +10,7 @@
 
 #include "base/functional/callback_forward.h"
 #include "base/values.h"
+#include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/native_ui_types.h"
 
@@ -187,6 +188,17 @@ int GetAuraShellTopControlsMinHeight();
 // minimum height. The renderer then lays the page out in their room too, as
 // Android's does, rather than only showing more of it.
 bool AreAuraShellBrowserControlsHidden(content::WebContents* contents);
+
+// What of `browser`'s window the shell covers while its bars show, in DIP:
+// the top bar at the top; the dock, and whatever stays covered however the
+// page scrolls (setViewportInsets), at the bottom. A tab-modal dialog is
+// kept between them (ohos-tab-modal-shell-insets.patch).
+gfx::Insets GetAuraShellModalDialogInsets(BrowserWindowInterface* browser);
+
+// A tab-modal dialog started or stopped blocking `contents`. While one is up
+// the bars are held shown, so they cover exactly what the dialog avoids.
+void OnAuraShellWebContentsBlocked(content::WebContents* contents,
+                                   bool blocked);
 // Whether this tab's user agent was set deliberately and must be left alone.
 //
 // The shell's state poll re-applies the device's user agent to every tab so
