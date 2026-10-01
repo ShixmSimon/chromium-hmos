@@ -31,7 +31,7 @@ Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-vp9-row-threads.patch
 
 diff --git a/media/filters/vpx_video_decoder.cc b/media/filters/vpx_video_decoder.cc
-index 0de2f4a..2fdf958 100644
+index 0de2f4a..07a066f 100644
 --- a/media/filters/vpx_video_decoder.cc
 +++ b/media/filters/vpx_video_decoder.cc
 @@ -20,6 +20,7 @@
@@ -129,7 +129,7 @@ index 0de2f4a..2fdf958 100644
 +  };
 +
 +  static const Functions& GetFunctions() {
-+    static const base::NoDestructor<Functions> functions([] {
++    static const Functions functions = [] {
 +      Functions loaded;
 +      if (void* library = dlopen("libqos.so", RTLD_NOW | RTLD_LOCAL)) {
 +        loaded.set = reinterpret_cast<int (*)(int)>(
@@ -149,8 +149,8 @@ index 0de2f4a..2fdf958 100644
 +                       : probe == 0    ? "raised while decoding"
 +                                       : "refused");
 +      return loaded;
-+    }());
-+    return *functions;
++    }();
++    return functions;
 +  }
 +
 +  bool raised_ = false;
