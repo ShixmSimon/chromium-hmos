@@ -20,24 +20,23 @@ Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-tab-modal-shell-insets.patch
 
 diff --git a/chrome/browser/ui/views/frame/tab_modal_dialog_host.cc b/chrome/browser/ui/views/frame/tab_modal_dialog_host.cc
-index 7ad0e2b..583a53d 100644
+index 7ad0e2b..3e89dba 100644
 --- a/chrome/browser/ui/views/frame/tab_modal_dialog_host.cc
 +++ b/chrome/browser/ui/views/frame/tab_modal_dialog_host.cc
-@@ -23,6 +23,13 @@
+@@ -23,6 +23,12 @@
  #include "ui/views/view.h"
  #include "ui/views/widget/widget.h"
  
 +#include "build/build_config.h"
 +
 +#if BUILDFLAG(IS_OHOS)
-+#include "base/logging.h"
 +#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 +#endif
 +
  namespace {
  // The number of pixels the constrained window should overlap the bottom
  // of the omnibox.
-@@ -55,10 +62,33 @@ gfx::Point TabModalDialogHost::GetDialogPosition(const gfx::Size& dialog_size) {
+@@ -55,10 +61,21 @@ gfx::Point TabModalDialogHost::GetDialogPosition(const gfx::Size& dialog_size) {
    const int leading_x = contents_container_view_coordinates_in_browser.x();
    const int middle_x = leading_x + contents_container_view_->width() / 2;
    const int dialog_starting_x = std::max(middle_x - dialog_size.width() / 2, 0);
@@ -49,21 +48,9 @@ index 7ad0e2b..583a53d 100644
 +  // Views toolbar to hang the dialog from, and the shell's top bar covers
 +  // the top of the window. Keep the dialog below that bar, as it would hang
 +  // below Chrome's toolbar; GetMaximumDialogSize() keeps it above the dock.
-+  const int toolbar_y = dialog_y;
 +  dialog_y = std::max(dialog_y, chrome::ohos::GetAuraShellModalDialogInsets(
 +                                    browser_view_->browser())
 +                                    .top());
-+  // TODO: debugging the install dialog still under the shell's top bar on a
-+  // Mate 70 Pro+; remove once its position is understood.
-+  LOG(WARNING) << "OHOS tab modal position: toolbar y " << toolbar_y
-+               << ", shell insets "
-+               << chrome::ohos::GetAuraShellModalDialogInsets(
-+                      browser_view_->browser())
-+                      .ToString()
-+               << ", dialog " << dialog_size.ToString() << " at y "
-+               << dialog_y << ", browser view "
-+               << browser_view_->bounds().ToString() << ", max "
-+               << GetMaximumDialogSize().ToString();
 +#endif
    return gfx::Point(
        std::min(dialog_starting_x, browser_view_->width() - dialog_size.width()),
@@ -73,7 +60,7 @@ index 7ad0e2b..583a53d 100644
  }
  
  bool TabModalDialogHost::ShouldActivateDialog() const {
-@@ -100,9 +130,22 @@ gfx::Size TabModalDialogHost::GetMaximumDialogSize() {
+@@ -100,9 +117,22 @@ gfx::Size TabModalDialogHost::GetMaximumDialogSize() {
    // clipping when the content_area becomes too small for the dialog. This will
    // cause the dialog to extend beyond its corresponding content_area but remain
    // the bounds of the browser view contents container.

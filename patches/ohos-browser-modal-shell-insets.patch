@@ -9,8 +9,7 @@ hidden.
 
 On OHOS BrowserModalDialogHostViews keeps the dialog's top at or below the
 shell's top bar and its maximum height within the room above the dock and
-gesture bar, from the insets the shell reported for the window, and logs
-where it put the dialog ("OHOS browser modal position").
+gesture bar, from the insets the shell reported for the window.
 
 Generated against Chromium 154.0.8037.51.
 
@@ -18,10 +17,10 @@ Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-browser-modal-shell-insets.patch
 
 diff --git a/chrome/browser/ui/views/frame/layout/browser_view_layout.cc b/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
-index 778997a..9ddc92f 100644
+index 778997a..eb42875 100644
 --- a/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
 +++ b/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
-@@ -24,6 +24,15 @@
+@@ -24,6 +24,14 @@
  #include "ui/views/widget/widget.h"
  #include "ui/views/widget/widget_observer.h"
  
@@ -30,14 +29,13 @@ index 778997a..9ddc92f 100644
 +#if BUILDFLAG(IS_OHOS)
 +#include <algorithm>
 +
-+#include "base/logging.h"
 +#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 +#endif
 +
  using web_modal::ModalDialogHostObserver;
  using web_modal::WebContentsModalDialogHost;
  
-@@ -71,7 +80,24 @@ class BrowserViewLayout::BrowserModalDialogHostViews
+@@ -71,7 +79,19 @@ class BrowserViewLayout::BrowserModalDialogHostViews
    }
  
    gfx::Point GetDialogPosition(const gfx::Size& dialog_size) override {
@@ -49,12 +47,7 @@ index 778997a..9ddc92f 100644
 +    // below the shell's top bar, as TabModalDialogHost does for tab-modal
 +    // dialogs (ohos-tab-modal-shell-insets.patch).
 +    gfx::Point position = browser_view_layout_->GetDialogPosition(dialog_size);
-+    const gfx::Insets shell = ShellInsets();
-+    const int layout_y = position.y();
-+    position.set_y(std::max(position.y(), shell.top()));
-+    LOG(WARNING) << "OHOS browser modal position: layout y " << layout_y
-+                 << ", shell insets " << shell.ToString() << ", dialog "
-+                 << dialog_size.ToString() << " at y " << position.y();
++    position.set_y(std::max(position.y(), ShellInsets().top()));
 +    return position;
 +#else
      return browser_view_layout_->GetDialogPosition(dialog_size);
@@ -62,7 +55,7 @@ index 778997a..9ddc92f 100644
    }
  
    bool ShouldActivateDialog() const override {
-@@ -87,9 +113,29 @@ class BrowserViewLayout::BrowserModalDialogHostViews
+@@ -87,9 +107,29 @@ class BrowserViewLayout::BrowserModalDialogHostViews
    }
  
    gfx::Size GetMaximumDialogSize() override {
