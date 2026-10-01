@@ -20,7 +20,7 @@ Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-vp9-row-threads.patch
 
 diff --git a/media/filters/vpx_video_decoder.cc b/media/filters/vpx_video_decoder.cc
-index 0de2f4a..7bfe573 100644
+index 0de2f4a..be9bffc 100644
 --- a/media/filters/vpx_video_decoder.cc
 +++ b/media/filters/vpx_video_decoder.cc
 @@ -20,6 +20,7 @@
@@ -31,7 +31,7 @@ index 0de2f4a..7bfe573 100644
  #include "media/base/agtm.h"
  #include "media/base/decoder_buffer.h"
  #include "media/base/limits.h"
-@@ -32,8 +33,54 @@
+@@ -32,8 +33,57 @@
  #include "third_party/libyuv/include/libyuv/convert.h"
  #include "third_party/libyuv/include/libyuv/planar_functions.h"
  
@@ -77,7 +77,10 @@ index 0de2f4a..7bfe573 100644
 +               << (times->total / times->frames).InMillisecondsF()
 +               << " ms, max " << times->max.InMillisecondsF() << " ms, "
 +               << times->over_budget << " over 16.7 ms";
-+  *times = OhosDecodeTimes();
++  times->frames = 0;
++  times->over_budget = 0;
++  times->total = base::TimeDelta();
++  times->max = base::TimeDelta();
 +}
 +
 +}  // namespace
@@ -86,7 +89,7 @@ index 0de2f4a..7bfe573 100644
  // Returns the number of threads.
  static int GetVpxVideoDecoderThreadCount(const VideoDecoderConfig& config) {
    // vp8a doesn't really need more threads.
-@@ -243,6 +290,21 @@ bool VpxVideoDecoder::ConfigureDecoder(const VideoDecoderConfig& config) {
+@@ -243,6 +293,21 @@ bool VpxVideoDecoder::ConfigureDecoder(const VideoDecoderConfig& config) {
                    << vpx_codec_error(vpx_codec_.get());
        return false;
      }
@@ -108,7 +111,7 @@ index 0de2f4a..7bfe573 100644
    }
  
    if (config.alpha_mode() == VideoDecoderConfig::AlphaMode::kIsOpaque)
-@@ -306,9 +368,19 @@ bool VpxVideoDecoder::VpxDecode(const DecoderBuffer* buffer,
+@@ -306,9 +371,19 @@ bool VpxVideoDecoder::VpxDecode(const DecoderBuffer* buffer,
      TRACE_EVENT1("media", "vpx_codec_decode", "buffer",
                   buffer->AsHumanReadableString());
      auto buffer_span = base::span(*buffer);
