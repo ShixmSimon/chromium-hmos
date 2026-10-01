@@ -187,8 +187,10 @@ base::TimeDelta OhosVSyncProvider::ReadHardwareInterval() {
   {
     base::AutoLock lock(lock_);
     if (period != interval_) {
-      VLOG(1) << "OHOS display period now " << period.InMillisecondsF()
-              << " ms";
+      // Logged at WARNING while video's dropped frames are traced back to
+      // the display interval (ohos-video-render-diagnostics.patch).
+      LOG(WARNING) << "OHOS display period now " << period.InMillisecondsF()
+                   << " ms";
     }
   }
   if (period < kMinInterval || period > kMaxInterval) {

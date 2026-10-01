@@ -11,7 +11,9 @@ Two logs, both OHOS only:
 - "OHOS video render", every five seconds, following each frame from the
   decoder to the screen: VideoRendererImpl::Render() calls (once per
   display begin-frame), the longest gap between them, frames dropped, and
-  how many frames were queued (the current one included); how long each
+  how many frames were queued (the current one included), and the interval
+  each call was asked to cover (the begin-frame's display interval) beside
+  the average real gap between calls; how long each
   Read() of the decoder stream took to come back and how long the renderer
   waited after a frame before the next Read(); and, in FrameReady(), how
   far ahead of its display time each frame arrived, with how many arrived
@@ -31,7 +33,7 @@ Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-video-render-diagnostics.patch
 
 diff --git a/media/renderers/video_renderer_impl.cc b/media/renderers/video_renderer_impl.cc
-index 576cc90..a45b091 100644
+index 576cc90..ecee3a4 100644
 --- a/media/renderers/video_renderer_impl.cc
 +++ b/media/renderers/video_renderer_impl.cc
 @@ -20,6 +20,15 @@
@@ -50,7 +52,7 @@ index 576cc90..a45b091 100644
  #include "base/trace_event/trace_event.h"
  #include "media/base/media_log.h"
  #include "media/base/media_switches.h"
-@@ -47,6 +56,153 @@ perfetto::NamedTrack GetTracingTrack(const VideoRendererImpl* renderer) {
+@@ -47,6 +56,178 @@ perfetto::NamedTrack GetTracingTrack(const VideoRendererImpl* renderer) {
  // SetLatencyHint(), so we needed to peg this with a constant.
  constexpr int kAbsoluteMaxFrames = 24;
  
@@ -60,7 +62,11 @@ index 576cc90..a45b091 100644
 +// 70 Pro+ with Render() called steadily at 60 Hz and the upload fast, so
 +// this follows each frame from the decoder to the queue:
 +// - Render(): calls, the longest gap between them, frames dropped, and how
-+//   many frames were queued (the current one included).
++//   many frames were queued (the current one included); and the interval
++//   each call was asked to cover (deadline_max - deadline_min, the display
++//   interval the begin-frame carried) beside the average real gap between
++//   calls. With frames queued well ahead, a third still dropped while the
++//   call rate switched between 120 and 60 Hz.
 +// - Read() to FrameReady(): how long the decoder stream took per frame, and
 +//   how long the renderer waited after a frame before asking for the next.
 +// - FrameReady(): how far ahead of its display time each frame arrived, and
@@ -74,6 +80,11 @@ index 576cc90..a45b091 100644
 +  base::TimeDelta longest_gap;
 +  size_t queued_min = std::numeric_limits<size_t>::max();
 +  size_t queued_total = 0;
++  base::TimeDelta gap_total;
++  int gaps = 0;
++  base::TimeDelta interval_min = base::TimeDelta::Max();
++  base::TimeDelta interval_max;
++  base::TimeDelta interval_total;
 +  base::TimeTicks read_start;
 +  base::TimeTicks last_frame_ready;
 +  int reads = 0;
@@ -134,6 +145,7 @@ index 576cc90..a45b091 100644
 +
 +void RecordOhosRender(base::TimeTicks now,
 +                      base::TimeDelta gap,
++                      base::TimeDelta interval,
 +                      size_t frames_dropped,
 +                      size_t frames_queued) {
 +  OhosRenderStats& stats = GetOhosRenderStats();
@@ -145,8 +157,13 @@ index 576cc90..a45b091 100644
 +  stats.dropped += frames_dropped;
 +  stats.queued_min = std::min(stats.queued_min, frames_queued);
 +  stats.queued_total += frames_queued;
++  stats.interval_min = std::min(stats.interval_min, interval);
++  stats.interval_max = std::max(stats.interval_max, interval);
++  stats.interval_total += interval;
 +  // The first call after a pause has no gap worth counting.
 +  if (gap < base::Seconds(1)) {
++    ++stats.gaps;
++    stats.gap_total += gap;
 +    stats.longest_gap = std::max(stats.longest_gap, gap);
 +    if (gap > base::Milliseconds(20)) {
 +      ++stats.gaps_over_20ms;
@@ -162,7 +179,12 @@ index 576cc90..a45b091 100644
 +  LOG(WARNING) << "OHOS video render: " << stats.calls << " calls in "
 +               << window.InSecondsF() << " s, longest gap "
 +               << stats.longest_gap.InMillisecondsF() << " ms, "
-+               << stats.gaps_over_20ms << " gaps over 20 ms, "
++               << stats.gaps_over_20ms << " gaps over 20 ms, avg gap "
++               << avg_ms(stats.gap_total, stats.gaps)
++               << " ms, interval asked min "
++               << stats.interval_min.InMillisecondsF() << " avg "
++               << avg_ms(stats.interval_total, stats.calls) << " max "
++               << stats.interval_max.InMillisecondsF() << " ms, "
 +               << stats.dropped << " frames dropped; queued min "
 +               << stats.queued_min << " avg "
 +               << static_cast<double>(stats.queued_total) / stats.calls
@@ -186,6 +208,11 @@ index 576cc90..a45b091 100644
 +  stats.longest_gap = base::TimeDelta();
 +  stats.queued_min = std::numeric_limits<size_t>::max();
 +  stats.queued_total = 0;
++  stats.gap_total = base::TimeDelta();
++  stats.gaps = 0;
++  stats.interval_min = base::TimeDelta::Max();
++  stats.interval_max = base::TimeDelta();
++  stats.interval_total = base::TimeDelta();
 +  stats.reads = 0;
 +  stats.read_total = base::TimeDelta();
 +  stats.read_max = base::TimeDelta();
@@ -204,7 +231,7 @@ index 576cc90..a45b091 100644
  }  // namespace
  
  VideoRendererImpl::VideoRendererImpl(
-@@ -247,6 +403,9 @@ scoped_refptr<VideoFrame> VideoRendererImpl::Render(
+@@ -247,6 +428,9 @@ scoped_refptr<VideoFrame> VideoRendererImpl::Render(
        background_rendering || (was_background_rendering_ &&
                                 last_frame_ready_time_ >= last_render_time_);
  
@@ -214,7 +241,7 @@ index 576cc90..a45b091 100644
    last_render_time_ = tick_clock_->NowTicks();
  
    size_t frames_dropped = 0;
-@@ -280,6 +439,15 @@ scoped_refptr<VideoFrame> VideoRendererImpl::Render(
+@@ -280,6 +464,16 @@ scoped_refptr<VideoFrame> VideoRendererImpl::Render(
    // dropped frames since they are likely just dropped due to being too old.
    if (!background_rendering && !was_background_rendering_)
      stats_.video_frames_dropped += frames_dropped;
@@ -224,13 +251,14 @@ index 576cc90..a45b091 100644
 +                     previous_render_time.is_null()
 +                         ? base::TimeDelta::Max()
 +                         : last_render_time_ - previous_render_time,
-+                     frames_dropped, algorithm_->frames_queued());
++                     deadline_max - deadline_min, frames_dropped,
++                     algorithm_->frames_queued());
 +  }
 +#endif
    was_background_rendering_ = background_rendering;
  
    // Always post this task, it will acquire new frames if necessary and since it
-@@ -634,6 +802,18 @@ void VideoRendererImpl::FrameReady(VideoDecoderStream::ReadResult result) {
+@@ -634,6 +828,18 @@ void VideoRendererImpl::FrameReady(VideoDecoderStream::ReadResult result) {
    const bool has_best_first_frame = !is_eos && HasBestFirstFrame(*frame);
    const auto format = frame->format();
    const auto natural_size = frame->natural_size();
@@ -249,7 +277,7 @@ index 576cc90..a45b091 100644
  
    if (is_eos) {
      DCHECK(!received_end_of_stream_);
-@@ -821,6 +1001,9 @@ void VideoRendererImpl::AttemptRead_Locked() {
+@@ -821,6 +1027,9 @@ void VideoRendererImpl::AttemptRead_Locked() {
    switch (state_) {
      case kPlaying:
        pending_read_ = true;
