@@ -1,0 +1,81 @@
+Let 10-bit software video use R16 planes on OHOS when the GPU has norm16.
+
+VideoResourceUpdater uploads a software-decoded 10-bit frame as three
+planes: R16 when the shared image interface allows R16 images and the
+context has texture_norm16, half-float otherwise. Upstream allows R16
+shared images only with ANGLE Metal or Skia Graphite, a restriction its own
+TODO calls possibly too pessimistic (crbug.com/481590672), so this port on
+Skia GL always took half-float.
+
+ohos-gpu-stage-diagnostics.patch showed what that costs on a Mate 70 Pro+
+(Maleoon, GLES through ANGLE): RasterDecoderImpl::DoWritePixelsYUVINTERNAL
+took 5-6 ms for the half-float planes of one 1080p frame, about three times
+what their size explains against under 1 ms for an 8-bit frame, and viz
+could not acknowledge the video frame until the write was done. A third of
+YouTube's 1080p60 HDR frames dropped in the default power mode.
+
+On OHOS SharedImageFactory also allows R16 shared images on Skia GL when the
+context has GL_EXT_texture_norm16 and Skia can sample R16 images, and logs
+once whether the extension, Skia's support and the result are there ("OHOS
+shared image caps"). The frame's 10 bits are then shifted to the top of 16
+on the CPU instead of converted to half-float.
+
+Generated against Chromium 154.0.8037.51, on top of chromium-154-harmonyos.patch.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-video-r16-planes.patch
+
+diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
+index b7560b5..5089f36 100644
+--- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
++++ b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
+@@ -14,6 +14,10 @@
+ #include "base/strings/string_split.h"
+ #include "base/trace_event/memory_dump_manager.h"
+ #include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "base/logging.h"
++#endif
+ #include "build/chromecast_buildflags.h"
+ #include "components/viz/common/resources/shared_image_format_utils.h"
+ #include "gpu/command_buffer/common/shared_image_info.h"
+@@ -862,6 +866,38 @@ gpu::SharedImageCapabilities SharedImageFactory::MakeCapabilities() {
+       gr_context_type_ == GrContextType::kGraphiteDawn;
+   shared_image_caps.supports_r16_shared_images =
+       is_angle_metal || is_skia_graphite;
++#if BUILDFLAG(IS_OHOS)
++  // Software-decoded 10-bit video goes to the GPU as three planes, which
++  // VideoResourceUpdater makes R16 when these images are allowed and
++  // half-float otherwise. On a Mate 70 Pro+ (Maleoon, GLES through ANGLE)
++  // writing the half-float planes of one 1080p frame took 5-6 ms of the GPU
++  // thread -- about three times what its size explains, against under 1 ms
++  // for an 8-bit frame -- and viz could not acknowledge the frame until it
++  // was done, so a third of YouTube's 1080p60 HDR frames dropped. Allow R16
++  // on Skia GL when the context has GL_EXT_texture_norm16 and Skia can
++  // sample R16 images; upstream reserves them for ANGLE Metal and Graphite
++  // and calls that possibly too pessimistic (crbug.com/481590672).
++  if (context_state_ && context_state_->GrContextIsGL() &&
++      context_state_->gr_context()) {
++    const bool norm16 =
++        context_state_->feature_info()->feature_flags().ext_texture_norm16;
++    const bool skia_r16 =
++        context_state_->gr_context()->colorTypeSupportedAsImage(
++            kR16_unorm_SkColorType);
++    if (norm16 && skia_r16) {
++      shared_image_caps.supports_r16_shared_images = true;
++    }
++    static bool logged = false;
++    if (!logged) {
++      logged = true;
++      LOG(WARNING) << "OHOS shared image caps: GL_EXT_texture_norm16 "
++                   << (norm16 ? "yes" : "no") << ", Skia R16 images "
++                   << (skia_r16 ? "yes" : "no") << ", R16 shared images "
++                   << (shared_image_caps.supports_r16_shared_images ? "on"
++                                                                     : "off");
++    }
++  }
++#endif
+   shared_image_caps.disable_webgpu_shared_images =
+       workarounds_.disable_webgpu_shared_images;
+   if (context_state_) {
