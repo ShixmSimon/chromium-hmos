@@ -1,0 +1,293 @@
+Say how long each GPU-side stage of drawing takes, on OHOS.
+
+HDR 1080p60 video (VP9 profile 2, decoded in software) dropped about a third
+of its frames on a Mate 70 Pro+ in the default power mode, SDR 1080p60 none.
+ohos-video-submit-diagnostics.patch put the drops on viz's acknowledgement
+of each video frame: 5-7 ms for HDR against about 1 ms for SDR. Leaving the
+native window untagged, so the system composites it as SDR, halved the
+drops; this times the half that is Chromium's.
+
+On OHOS each of these logs, every 300 calls ("OHOS gpu stage"), its average
+and longest time and how many calls took over 8 ms:
+- WritePixelsYUV: RasterDecoderImpl::DoWritePixelsYUVINTERNAL, which writes
+  a software-decoded frame's planes into its shared image (half-float
+  planes for 10-bit video);
+- viz DrawAndSwap: Display::DrawAndSwap on viz's compositor thread;
+- FinishPaintCurrentFrame and SwapBuffers: SkiaOutputSurfaceImplOnGpu on
+  the GPU thread, which replay and submit the frame and present it.
+
+Generated against Chromium 154.0.8037.51.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-gpu-stage-diagnostics.patch
+
+diff --git a/components/viz/service/display/display.cc b/components/viz/service/display/display.cc
+index 73e30eb..49215af 100644
+--- a/components/viz/service/display/display.cc
++++ b/components/viz/service/display/display.cc
+@@ -34,6 +34,12 @@
+ #include "base/trace_event/traced_value.h"
+ #include "base/trace_event/typed_macros.h"
+ #include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include <algorithm>
++
++#include "base/time/time.h"
++#endif
+ #include "cc/base/math_util.h"
+ #include "cc/base/region.h"
+ #include "cc/base/simple_enclosed_region.h"
+@@ -93,6 +99,58 @@
+ #include "ui/gfx/android/android_surface_control_compat.h"
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++// How long one stage of drawing takes, logged every 300 calls ("OHOS gpu
++// stage"). HDR 1080p60 video dropped a third of its frames on a Mate 70
++// Pro+ in the default power mode, SDR none: viz took 5-7 ms to acknowledge
++// an HDR video frame against about 1 ms for SDR, about half the drops went
++// with the system's HDR composition of the window, and this times the
++// rest -- the upload of each video frame's planes, viz's DrawAndSwap, and
++// the GPU thread's FinishPaintCurrentFrame and SwapBuffers. Each stage runs
++// on one thread, so the counts need no lock.
++struct OhosStageTimes {
++  int calls = 0;
++  int over_8ms = 0;
++  base::TimeDelta total;
++  base::TimeDelta max;
++};
++
++class OhosStageTimer {
++ public:
++  OhosStageTimer(OhosStageTimes& times, const char* stage)
++      : times_(times), stage_(stage), start_(base::TimeTicks::Now()) {}
++  OhosStageTimer(const OhosStageTimer&) = delete;
++  OhosStageTimer& operator=(const OhosStageTimer&) = delete;
++  ~OhosStageTimer() {
++    const base::TimeDelta elapsed = base::TimeTicks::Now() - start_;
++    ++times_.calls;
++    times_.total += elapsed;
++    times_.max = std::max(times_.max, elapsed);
++    if (elapsed > base::Milliseconds(8)) {
++      ++times_.over_8ms;
++    }
++    if (times_.calls < 300) {
++      return;
++    }
++    LOG(WARNING) << "OHOS gpu stage " << stage_ << ": " << times_.calls
++                 << " calls, avg "
++                 << (times_.total / times_.calls).InMillisecondsF()
++                 << " ms, max " << times_.max.InMillisecondsF() << " ms, "
++                 << times_.over_8ms << " over 8 ms";
++    times_ = OhosStageTimes();
++  }
++
++ private:
++  OhosStageTimes& times_;
++  const char* const stage_;
++  const base::TimeTicks start_;
++};
++
++}  // namespace
++#endif  // BUILDFLAG(IS_OHOS)
++
+ namespace viz {
+ 
+ namespace {
+@@ -753,6 +811,10 @@ int Display::GetCurrentAllocatedBuffers() const {
+ 
+ bool Display::DrawAndSwap(const DrawAndSwapParams& params) {
+   TRACE_EVENT0("viz", "Display::DrawAndSwap");
++#if BUILDFLAG(IS_OHOS)
++  static OhosStageTimes ohos_times;
++  OhosStageTimer ohos_timer(ohos_times, "viz DrawAndSwap");
++#endif
+ #if !BUILDFLAG(IS_APPLE)
+   RecordFDUsageUMA();
+ #endif
+diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+index 5daede0..9ec217e 100644
+--- a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
++++ b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+@@ -27,6 +27,12 @@
+ #include "base/time/time.h"
+ #include "base/trace_event/typed_macros.h"
+ #include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include <algorithm>
++
++#include "base/logging.h"
++#endif
+ #include "components/viz/common/features.h"
+ #include "components/viz/common/frame_sinks/blit_request.h"
+ #include "components/viz/common/frame_sinks/copy_output_request.h"
+@@ -141,6 +147,58 @@
+ #include "components/viz/service/display_embedder/output_presenter_fuchsia.h"
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++// How long one stage of drawing takes, logged every 300 calls ("OHOS gpu
++// stage"). HDR 1080p60 video dropped a third of its frames on a Mate 70
++// Pro+ in the default power mode, SDR none: viz took 5-7 ms to acknowledge
++// an HDR video frame against about 1 ms for SDR, about half the drops went
++// with the system's HDR composition of the window, and this times the
++// rest -- the upload of each video frame's planes, viz's DrawAndSwap, and
++// the GPU thread's FinishPaintCurrentFrame and SwapBuffers. Each stage runs
++// on one thread, so the counts need no lock.
++struct OhosStageTimes {
++  int calls = 0;
++  int over_8ms = 0;
++  base::TimeDelta total;
++  base::TimeDelta max;
++};
++
++class OhosStageTimer {
++ public:
++  OhosStageTimer(OhosStageTimes& times, const char* stage)
++      : times_(times), stage_(stage), start_(base::TimeTicks::Now()) {}
++  OhosStageTimer(const OhosStageTimer&) = delete;
++  OhosStageTimer& operator=(const OhosStageTimer&) = delete;
++  ~OhosStageTimer() {
++    const base::TimeDelta elapsed = base::TimeTicks::Now() - start_;
++    ++times_.calls;
++    times_.total += elapsed;
++    times_.max = std::max(times_.max, elapsed);
++    if (elapsed > base::Milliseconds(8)) {
++      ++times_.over_8ms;
++    }
++    if (times_.calls < 300) {
++      return;
++    }
++    LOG(WARNING) << "OHOS gpu stage " << stage_ << ": " << times_.calls
++                 << " calls, avg "
++                 << (times_.total / times_.calls).InMillisecondsF()
++                 << " ms, max " << times_.max.InMillisecondsF() << " ms, "
++                 << times_.over_8ms << " over 8 ms";
++    times_ = OhosStageTimes();
++  }
++
++ private:
++  OhosStageTimes& times_;
++  const char* const stage_;
++  const base::TimeTicks start_;
++};
++
++}  // namespace
++#endif  // BUILDFLAG(IS_OHOS)
++
+ namespace viz {
+ 
+ namespace {
+@@ -464,6 +522,10 @@ void SkiaOutputSurfaceImplOnGpu::FinishPaintCurrentFrame(
+     base::OnceClosure on_finished,
+     base::OnceCallback<void(gfx::GpuFenceHandle)> return_release_fence_cb) {
+   TRACE_EVENT0("viz", "SkiaOutputSurfaceImplOnGpu::FinishPaintCurrentFrame");
++#if BUILDFLAG(IS_OHOS)
++  static OhosStageTimes ohos_times;
++  OhosStageTimer ohos_timer(ohos_times, "FinishPaintCurrentFrame");
++#endif
+   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+   DCHECK(!scoped_output_device_paint_);
+ 
+@@ -589,6 +651,10 @@ void SkiaOutputSurfaceImplOnGpu::FinishPaintCurrentFrame(
+ 
+ void SkiaOutputSurfaceImplOnGpu::SwapBuffers(OutputSurfaceFrame frame) {
+   TRACE_EVENT0("viz", "SkiaOutputSurfaceImplOnGpu::SwapBuffers");
++#if BUILDFLAG(IS_OHOS)
++  static OhosStageTimes ohos_times;
++  OhosStageTimer ohos_timer(ohos_times, "SwapBuffers");
++#endif
+   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+ 
+   SwapBuffersInternal(std::move(frame));
+diff --git a/gpu/command_buffer/service/raster_decoder.cc b/gpu/command_buffer/service/raster_decoder.cc
+index eaa2741..19d0df2 100644
+--- a/gpu/command_buffer/service/raster_decoder.cc
++++ b/gpu/command_buffer/service/raster_decoder.cc
+@@ -35,6 +35,10 @@
+ #include "base/time/time.h"
+ #include "base/trace_event/trace_event.h"
+ #include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include <algorithm>
++#endif
+ #include "cc/paint/paint_cache.h"
+ #include "cc/paint/paint_op.h"
+ #include "cc/paint/paint_op_buffer.h"
+@@ -137,6 +141,58 @@
+   PerformanceWarning(__FILE__, __LINE__, msg)
+ #define LOCAL_RENDER_WARNING(msg) RenderWarning(__FILE__, __LINE__, msg)
+ 
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++// How long one stage of drawing takes, logged every 300 calls ("OHOS gpu
++// stage"). HDR 1080p60 video dropped a third of its frames on a Mate 70
++// Pro+ in the default power mode, SDR none: viz took 5-7 ms to acknowledge
++// an HDR video frame against about 1 ms for SDR, about half the drops went
++// with the system's HDR composition of the window, and this times the
++// rest -- the upload of each video frame's planes, viz's DrawAndSwap, and
++// the GPU thread's FinishPaintCurrentFrame and SwapBuffers. Each stage runs
++// on one thread, so the counts need no lock.
++struct OhosStageTimes {
++  int calls = 0;
++  int over_8ms = 0;
++  base::TimeDelta total;
++  base::TimeDelta max;
++};
++
++class OhosStageTimer {
++ public:
++  OhosStageTimer(OhosStageTimes& times, const char* stage)
++      : times_(times), stage_(stage), start_(base::TimeTicks::Now()) {}
++  OhosStageTimer(const OhosStageTimer&) = delete;
++  OhosStageTimer& operator=(const OhosStageTimer&) = delete;
++  ~OhosStageTimer() {
++    const base::TimeDelta elapsed = base::TimeTicks::Now() - start_;
++    ++times_.calls;
++    times_.total += elapsed;
++    times_.max = std::max(times_.max, elapsed);
++    if (elapsed > base::Milliseconds(8)) {
++      ++times_.over_8ms;
++    }
++    if (times_.calls < 300) {
++      return;
++    }
++    LOG(WARNING) << "OHOS gpu stage " << stage_ << ": " << times_.calls
++                 << " calls, avg "
++                 << (times_.total / times_.calls).InMillisecondsF()
++                 << " ms, max " << times_.max.InMillisecondsF() << " ms, "
++                 << times_.over_8ms << " over 8 ms";
++    times_ = OhosStageTimes();
++  }
++
++ private:
++  OhosStageTimes& times_;
++  const char* const stage_;
++  const base::TimeTicks start_;
++};
++
++}  // namespace
++#endif  // BUILDFLAG(IS_OHOS)
++
+ namespace gpu {
+ namespace raster {
+ 
+@@ -2070,6 +2126,10 @@ void RasterDecoderImpl::DoWritePixelsYUVINTERNAL(
+     GLuint plane4_offset,
+     const volatile GLbyte* mailbox) {
+   TRACE_EVENT0("gpu", "RasterDecoderImpl::DoWritePixelsYUVINTERNAL");
++#if BUILDFLAG(IS_OHOS)
++  static OhosStageTimes ohos_times;
++  OhosStageTimer ohos_timer(ohos_times, "WritePixelsYUV");
++#endif
+   if (src_yuv_plane_config < 0 ||
+       src_yuv_plane_config > static_cast<int>(SkYUVAInfo::PlaneConfig::kLast)) {
+     LOCAL_SET_GL_ERROR(GL_INVALID_ENUM, "WritePixelsYUV",

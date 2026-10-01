@@ -201,6 +201,7 @@ else
   retire_incremental_patch "${repo_root}/patches/ohos-video-compositor-qos.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-thread-qos.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-video-submit-diagnostics.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-gpu-stage-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-autocomplete-hints.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-context-menu.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-services.patch"
