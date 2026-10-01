@@ -1,0 +1,254 @@
+Let ANGLE's GLES backend import HarmonyOS native buffers as EGLImages.
+
+HarmonyOS shares GPU buffers as OH_NativeBuffer / OHNativeWindowBuffer, and
+its EGL imports one as an EGLImage with target EGL_NATIVE_BUFFER_OHOS
+(0x34E1, the client buffer being the OHNativeWindowBuffer) -- confirmed on a
+Mate 70 Pro+ for 1080p P010 and NV12 buffers. It has no
+EGL_EXT_image_dma_buf_import, and ANGLE's DisplayEGL imports nothing else,
+so Chromium had no way to sample a native buffer: software-decoded video is
+uploaded into textures every frame instead, which for 10-bit 1080p costs the
+GPU thread 5-6 ms a frame.
+
+This adds the passthrough, in the shape of DisplayEGL's dma-buf one:
+EGL_NATIVE_BUFFER_OHOS is an external image target; DisplayEGL advertises
+EGL_OHOS_image_native_buffer on OHOS (the system EGL lists no extension for
+the target it accepts) and validates the target; and
+NativeBufferImageSiblingOHOS tells the frontend the buffer's size and
+format from its BufferHandle, with YUV formats (NV12, NV21, P010) marked
+YUV for GL_TEXTURE_EXTERNAL_OES sampling. ImageEGL then creates the system
+image with the same target and buffer. The sibling holds a reference on the
+buffer for as long as the image exists.
+
+Generated against Chromium 154.0.8037.51 (ANGLE 5382ed03) after
+patches/deps/third_party_angle.patch.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-angle-native-buffer-image.patch
+
+diff --git a/third_party/angle/include/EGL/eglext_angle.h b/third_party/angle/include/EGL/eglext_angle.h
+index da3e47b..e05354a 100644
+--- a/third_party/angle/include/EGL/eglext_angle.h
++++ b/third_party/angle/include/EGL/eglext_angle.h
+@@ -477,6 +477,13 @@ EGLAPI void EGLAPIENTRY eglSetValidationEnabledANGLE(EGLBoolean validationState)
+ #define EGL_CONTEXT_PASSTHROUGH_SHADERS_ANGLE 0x3463
+ #endif /* EGL_ANGLE_create_context_passthrough_shaders */
+ 
++#ifndef EGL_OHOS_image_native_buffer
++#define EGL_OHOS_image_native_buffer 1
++// An OHNativeWindowBuffer (or an OH_NativeBuffer turned into one) as an
++// EGLImage source, the way HarmonyOS's EGL takes it.
++#define EGL_NATIVE_BUFFER_OHOS 0x34E1
++#endif /* EGL_OHOS_image_native_buffer */
++
+ // clang-format on
+ 
+ #endif  // INCLUDE_EGL_EGLEXT_ANGLE_
+diff --git a/third_party/angle/src/common/utilities.cpp b/third_party/angle/src/common/utilities.cpp
+index 465928c..3e5b262 100644
+--- a/third_party/angle/src/common/utilities.cpp
++++ b/third_party/angle/src/common/utilities.cpp
+@@ -1300,6 +1300,7 @@ bool IsExternalImageTarget(EGLenum target)
+         case EGL_LINUX_DMA_BUF_EXT:
+         case EGL_METAL_TEXTURE_ANGLE:
+         case EGL_VULKAN_IMAGE_ANGLE:
++        case EGL_NATIVE_BUFFER_OHOS:
+             return true;
+ 
+         default:
+diff --git a/third_party/angle/src/libANGLE/Caps.cpp b/third_party/angle/src/libANGLE/Caps.cpp
+index 072d13d..1742260 100644
+--- a/third_party/angle/src/libANGLE/Caps.cpp
++++ b/third_party/angle/src/libANGLE/Caps.cpp
+@@ -1235,6 +1235,7 @@ std::vector<std::string> DisplayExtensions::getStrings() const
+     InsertExtensionString("EGL_IMG_context_priority",                            contextPriority,                    &extensionStrings);
+     InsertExtensionString("EGL_KHR_create_context_no_error",                     createContextNoError,               &extensionStrings);
+     InsertExtensionString("EGL_EXT_image_dma_buf_import",                        imageDmaBufImportEXT,               &extensionStrings);
++    InsertExtensionString("EGL_OHOS_image_native_buffer",                        imageNativeBufferOHOS,              &extensionStrings);
+     InsertExtensionString("EGL_EXT_image_dma_buf_import_modifiers",              imageDmaBufImportModifiersEXT,      &extensionStrings);
+     InsertExtensionString("EGL_NOK_texture_from_pixmap",                         textureFromPixmapNOK,               &extensionStrings);
+     InsertExtensionString("EGL_NV_robustness_video_memory_purge",                robustnessVideoMemoryPurgeNV,       &extensionStrings);
+diff --git a/third_party/angle/src/libANGLE/Caps.h b/third_party/angle/src/libANGLE/Caps.h
+index 27df744..d46c4df 100644
+--- a/third_party/angle/src/libANGLE/Caps.h
++++ b/third_party/angle/src/libANGLE/Caps.h
+@@ -660,6 +660,9 @@ struct DisplayExtensions
+     // EGL_EXT_image_dma_buf_import
+     bool imageDmaBufImportEXT = false;
+ 
++    // EGL_OHOS_image_native_buffer
++    bool imageNativeBufferOHOS = false;
++
+     // EGL_EXT_image_dma_buf_import_modifiers
+     bool imageDmaBufImportModifiersEXT = false;
+ 
+diff --git a/third_party/angle/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp b/third_party/angle/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp
+index 3120510..97bd664 100644
+--- a/third_party/angle/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp
++++ b/third_party/angle/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp
+@@ -28,6 +28,10 @@
+ #include "libANGLE/renderer/gl/egl/WindowSurfaceEGL.h"
+ #include "libANGLE/renderer/gl/renderergl_utils.h"
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++#    include <native_window/external_window.h>
++#endif
++
+ namespace
+ {
+ 
+@@ -86,6 +90,81 @@ egl::AttributeMap MergeAttributeMaps(const egl::AttributeMap &a, Rest... rest)
+ namespace rx
+ {
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++namespace
++{
++
++// HarmonyOS's own buffer type, as the system EGL imports it with
++// EGL_NATIVE_BUFFER_OHOS. The image is created by ImageEGL with the target
++// and this buffer passed straight through; this only tells the frontend
++// what it is. YUV buffers (NV12, P010) are sampled through
++// GL_TEXTURE_EXTERNAL_OES with the driver converting them.
++class NativeBufferImageSiblingOHOS : public ExternalImageSiblingEGL
++{
++  public:
++    explicit NativeBufferImageSiblingOHOS(EGLClientBuffer buffer)
++        : mBuffer(static_cast<OHNativeWindowBuffer *>(buffer)), mFormat(GL_NONE)
++    {
++        OH_NativeWindow_NativeObjectReference(mBuffer);
++    }
++    ~NativeBufferImageSiblingOHOS() override
++    {
++        OH_NativeWindow_NativeObjectUnreference(mBuffer);
++    }
++
++    egl::Error initialize(const egl::Display *display) override
++    {
++        BufferHandle *handle = OH_NativeWindow_GetBufferHandleFromNative(mBuffer);
++        if (handle == nullptr)
++        {
++            return egl::Error(EGL_BAD_PARAMETER, "No BufferHandle for the OHNativeWindowBuffer.");
++        }
++        mSize = gl::Extents(handle->width, handle->height, 1);
++        // OH_NativeBuffer_Format values.
++        switch (handle->format)
++        {
++            case 11:  // NATIVEBUFFER_PIXEL_FMT_RGBX_8888
++                mFormat = gl::Format(GL_RGB8);
++                break;
++            case 12:  // NATIVEBUFFER_PIXEL_FMT_RGBA_8888
++                mFormat = gl::Format(GL_RGBA8);
++                break;
++            case 34:  // NATIVEBUFFER_PIXEL_FMT_RGBA_1010102
++                mFormat = gl::Format(GL_RGB10_A2);
++                break;
++            case 24:  // NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP
++            case 25:  // NATIVEBUFFER_PIXEL_FMT_YCRCB_420_SP
++            case 35:  // NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
++            case 36:  // NATIVEBUFFER_PIXEL_FMT_YCRCB_P010
++                mFormat = gl::Format(GL_RGB8);
++                mYUV    = true;
++                break;
++            default:
++                return egl::Error(EGL_BAD_PARAMETER, "Unsupported OH_NativeBuffer format.");
++        }
++        return egl::NoError();
++    }
++
++    gl::Format getFormat() const override { return mFormat; }
++    bool isRenderable(const gl::Context *context) const override { return !mYUV; }
++    bool isTexturable(const gl::Context *context) const override { return true; }
++    bool isYUV() const override { return mYUV; }
++    bool hasProtectedContent() const override { return false; }
++    gl::Extents getSize() const override { return mSize; }
++    size_t getSamples() const override { return 0; }
++
++    EGLClientBuffer getBuffer() const override { return static_cast<EGLClientBuffer>(mBuffer); }
++
++  private:
++    OHNativeWindowBuffer *mBuffer;
++    gl::Extents mSize;
++    gl::Format mFormat;
++    bool mYUV = false;
++};
++
++}  // namespace
++#endif  // defined(ANGLE_PLATFORM_OHOS)
++
+ DisplayEGL::DisplayEGL(const egl::DisplayState &state) : DisplayGL(state) {}
+ 
+ DisplayEGL::~DisplayEGL()
+@@ -923,6 +1002,12 @@ void DisplayEGL::generateExtensions(egl::DisplayExtensions *outExtensions) const
+ 
+     outExtensions->imageDmaBufImportEXT = mEGL->hasExtension("EGL_EXT_image_dma_buf_import");
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++    // HarmonyOS's EGL imports an OHNativeWindowBuffer with this target without
++    // listing an extension for it.
++    outExtensions->imageNativeBufferOHOS = true;
++#endif
++
+     outExtensions->imageDmaBufImportModifiersEXT = mSupportsDmaBufImportModifiers;
+ 
+     outExtensions->robustnessVideoMemoryPurgeNV = mHasNVRobustnessVideoMemoryPurge;
+@@ -1041,6 +1126,15 @@ egl::Error DisplayEGL::validateImageClientBuffer(const gl::Context *context,
+         case EGL_LINUX_DMA_BUF_EXT:
+             return egl::NoError();
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++        case EGL_NATIVE_BUFFER_OHOS:
++            if (clientBuffer == nullptr)
++            {
++                return egl::Error(EGL_BAD_PARAMETER, "No OHNativeWindowBuffer given.");
++            }
++            return egl::NoError();
++#endif
++
+         default:
+             return DisplayGL::validateImageClientBuffer(context, target, clientBuffer, attribs);
+     }
+@@ -1058,6 +1152,12 @@ ExternalImageSiblingImpl *DisplayEGL::createExternalImageSibling(const gl::Conte
+             ASSERT(buffer == nullptr);
+             return new DmaBufImageSiblingEGL(attribs);
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++        case EGL_NATIVE_BUFFER_OHOS:
++            ASSERT(context == nullptr);
++            return new NativeBufferImageSiblingOHOS(buffer);
++#endif
++
+         default:
+             return DisplayGL::createExternalImageSibling(context, target, buffer, attribs);
+     }
+diff --git a/third_party/angle/src/libANGLE/validationEGL.cpp b/third_party/angle/src/libANGLE/validationEGL.cpp
+index dd0a706..2020300 100644
+--- a/third_party/angle/src/libANGLE/validationEGL.cpp
++++ b/third_party/angle/src/libANGLE/validationEGL.cpp
+@@ -4335,6 +4335,27 @@ bool ValidateCreateImage(const ValidationContext *val,
+         }
+         break;
+ 
++        case EGL_NATIVE_BUFFER_OHOS:
++        {
++            if (!displayExtensions.imageNativeBufferOHOS)
++            {
++                val->setError(EGL_BAD_PARAMETER, "EGL_OHOS_image_native_buffer not supported.");
++                return false;
++            }
++
++            if (context != nullptr)
++            {
++                val->setError(EGL_BAD_CONTEXT, "ctx must be EGL_NO_CONTEXT.");
++                return false;
++            }
++
++            ANGLE_EGL_TRY_RETURN(
++                val->eglThread,
++                display->validateImageClientBuffer(context, target, buffer, attributes),
++                val->entryPoint, val->labeledObject, false);
++        }
++        break;
++
+         case EGL_D3D11_TEXTURE_ANGLE:
+             if (!displayExtensions.imageD3D11Texture)
+             {

@@ -312,6 +312,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-angle-gles-display.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-egl-client-extensions.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-null-gl-strings.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-angle-native-buffer-image.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-implementation.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-surface-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-compositor-diagnostics.patch"
