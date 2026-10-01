@@ -194,6 +194,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-webauthn-platform.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-video-codec.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vp9-row-threads.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-video-queue-depth.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-autocomplete-hints.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-context-menu.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-services.patch"
