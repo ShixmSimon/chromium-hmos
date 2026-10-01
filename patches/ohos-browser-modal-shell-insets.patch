@@ -1,0 +1,94 @@
+Keep browser-modal dialogs between the shell's top bar and dock.
+
+ohos-tab-modal-shell-insets.patch moved tab-modal dialogs below the shell's
+top bar, but a browser-modal dialog -- the extension install prompt for a
+.crx the shell asks to install -- is placed by BrowserViewLayout's own
+dialog host, below a Views toolbar this port does not show. On a Mate 70
+Pro+ it still opened under the status bar and the address bar, its title
+hidden.
+
+On OHOS BrowserModalDialogHostViews keeps the dialog's top at or below the
+shell's top bar and its maximum height within the room above the dock and
+gesture bar, from the insets the shell reported for the window, and logs
+where it put the dialog ("OHOS browser modal position").
+
+Generated against Chromium 154.0.8037.51.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-browser-modal-shell-insets.patch
+
+diff --git a/chrome/browser/ui/views/frame/layout/browser_view_layout.cc b/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
+index 778997a..9ddc92f 100644
+--- a/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
++++ b/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
+@@ -24,6 +24,15 @@
+ #include "ui/views/widget/widget.h"
+ #include "ui/views/widget/widget_observer.h"
+ 
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include <algorithm>
++
++#include "base/logging.h"
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
++
+ using web_modal::ModalDialogHostObserver;
+ using web_modal::WebContentsModalDialogHost;
+ 
+@@ -71,7 +80,24 @@ class BrowserViewLayout::BrowserModalDialogHostViews
+   }
+ 
+   gfx::Point GetDialogPosition(const gfx::Size& dialog_size) override {
++#if BUILDFLAG(IS_OHOS)
++    // The browser UI is the shell's, drawn in ArkTS over the window: the
++    // layout places a browser-modal dialog -- the extension install prompt
++    // for a downloaded .crx -- below a Views toolbar that is not on screen,
++    // so it went under the status bar and the shell's address bar. Keep it
++    // below the shell's top bar, as TabModalDialogHost does for tab-modal
++    // dialogs (ohos-tab-modal-shell-insets.patch).
++    gfx::Point position = browser_view_layout_->GetDialogPosition(dialog_size);
++    const gfx::Insets shell = ShellInsets();
++    const int layout_y = position.y();
++    position.set_y(std::max(position.y(), shell.top()));
++    LOG(WARNING) << "OHOS browser modal position: layout y " << layout_y
++                 << ", shell insets " << shell.ToString() << ", dialog "
++                 << dialog_size.ToString() << " at y " << position.y();
++    return position;
++#else
+     return browser_view_layout_->GetDialogPosition(dialog_size);
++#endif
+   }
+ 
+   bool ShouldActivateDialog() const override {
+@@ -87,9 +113,29 @@ class BrowserViewLayout::BrowserModalDialogHostViews
+   }
+ 
+   gfx::Size GetMaximumDialogSize() override {
++#if BUILDFLAG(IS_OHOS)
++    // Between the shell's top bar and its dock (see GetDialogPosition()).
++    gfx::Size size = browser_view_layout_->GetMaximumDialogSize();
++    if (views::View* view = browser_view_layout_->views().browser_view) {
++      size.set_height(std::max(
++          0, std::min(size.height(), view->height() - ShellInsets().height())));
++    }
++    return size;
++#else
+     return browser_view_layout_->GetMaximumDialogSize();
++#endif
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  gfx::Insets ShellInsets() const {
++    views::View* view = browser_view_layout_->views().browser_view;
++    views::Widget* widget = view ? view->GetWidget() : nullptr;
++    return widget ? chrome::ohos::GetAuraShellModalDialogInsetsForWindow(
++                        widget->GetNativeWindow())
++                  : gfx::Insets();
++  }
++#endif
++
+   views::Widget* GetHostWidget() const {
+     return views::Widget::GetWidgetForNativeView(
+         browser_view_layout_->delegate().GetHostViewForAnchoring());

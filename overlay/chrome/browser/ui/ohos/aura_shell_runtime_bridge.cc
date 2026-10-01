@@ -3959,8 +3959,9 @@ bool AreAuraShellBrowserControlsHidden(content::WebContents* contents) {
   return contents && BrowserControlsHidden::FromWebContents(contents);
 }
 
-gfx::Insets GetAuraShellModalDialogInsets(BrowserWindowInterface* browser) {
-  const gfx::AcceleratedWidget widget = GetBrowserWidget(browser);
+namespace {
+
+gfx::Insets ModalDialogInsetsForWidget(gfx::AcceleratedWidget widget) {
   RuntimeBridgeState& state = GetState();
   base::AutoLock lock(state.lock);
   int bottom = 0;
@@ -3973,6 +3974,18 @@ gfx::Insets GetAuraShellModalDialogInsets(BrowserWindowInterface* browser) {
   bottom += state.bottom_controls_height;
   return gfx::Insets::TLBR(std::max(0, state.top_controls_height), 0,
                            std::max(0, bottom), 0);
+}
+
+}  // namespace
+
+gfx::Insets GetAuraShellModalDialogInsets(BrowserWindowInterface* browser) {
+  return ModalDialogInsetsForWidget(GetBrowserWidget(browser));
+}
+
+gfx::Insets GetAuraShellModalDialogInsetsForWindow(gfx::NativeWindow window) {
+  return ModalDialogInsetsForWidget(
+      window && window->GetHost() ? window->GetHost()->GetAcceleratedWidget()
+                                  : gfx::kNullAcceleratedWidget);
 }
 
 void OnAuraShellWebContentsBlocked(content::WebContents* contents,

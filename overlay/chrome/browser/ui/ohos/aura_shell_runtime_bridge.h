@@ -194,6 +194,10 @@ bool AreAuraShellBrowserControlsHidden(content::WebContents* contents);
 // page scrolls (setViewportInsets), at the bottom. A tab-modal dialog is
 // kept between them (ohos-tab-modal-shell-insets.patch).
 gfx::Insets GetAuraShellModalDialogInsets(BrowserWindowInterface* browser);
+// The same for the browser window `window` belongs to, for code that has
+// the window but not the browser: browser-modal dialogs, which BrowserView
+// places through its layout rather than a tab's dialog host.
+gfx::Insets GetAuraShellModalDialogInsetsForWindow(gfx::NativeWindow window);
 
 // A tab-modal dialog started or stopped blocking `contents`. While one is up
 // the bars are held shown, so they cover exactly what the dialog avoids.
