@@ -23,6 +23,7 @@
 #include "ui/ozone/common/gl_ozone_egl.h"
 #include <native_window/external_window.h>
 
+#include "ui/ozone/platform/ohos/ohos_native_buffer_probe.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 #include "ui/ozone/platform/ohos/ohos_screen.h"
 #include "ui/ozone/platform/ohos/ohos_vsync_provider.h"
@@ -429,6 +430,7 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
     }
 
     LogTenBitConfigs(display->GetAs<gl::GLDisplayEGL>()->GetDisplay());
+    ProbeOhosNativeBufferImport(display->GetAs<gl::GLDisplayEGL>());
     auto vsync_provider = std::make_unique<OhosVSyncProvider>(
         GetOhosApplicationWindowIdForWidget(widget));
     auto gl_surface = base::MakeRefCounted<OhosNativeViewGLSurfaceEGL>(
