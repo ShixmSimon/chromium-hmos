@@ -19,6 +19,14 @@ two APIs synchronise with sync fds: VK_KHR_external_semaphore_fd on Dawn's
 side, EGL_ANDROID_native_fence_sync on ANGLE's. libsync is not built here,
 so the one sync_merge() needed is the SYNC_IOC_MERGE ioctl.
 
+Video frames reach importExternalTexture zero-copy the same way: with
+--enable-unsafe-webgpu the frame pool gives its NV12 OH_NativeBuffers
+WebGPU read usage and marks the frames WebGPU-compatible, and Dawn imports
+two-plane formats as one non-disjoint image sampled through plane views.
+Images keep the mutable-format bit Dawn wants (-srgb and plane views); the
+driver's import format query fails for every OH_NativeBuffer, so it is
+only a hint here.
+
 Experimental and behind --enable-unsafe-webgpu.
 
 Generated against Chromium 154.0.8037.51 (Dawn 8597a1aaec54).
@@ -122,6 +130,28 @@ index b1cf891..47762db 100644
  
    if (!shared_texture_memory_) {
      shared_texture_memory_ = device_.ImportSharedTextureMemory(&desc);
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+index 2e64a7f..86eb608 100644
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+@@ -161,7 +161,17 @@ std::unique_ptr<DawnImageRepresentation> OzoneImageBacking::ProduceDawn(
+   CHECK(!(usage().Has(SHARED_IMAGE_USAGE_CPU_ONLY_READ_WRITE)));
+ 
+ #if BUILDFLAG(USE_DAWN)
++#if BUILDFLAG(IS_OHOS)
++  // Video frames prefer the external sampler, which ToDawnFormat does not
++  // know about; Dawn samples them plane by plane (importExternalTexture).
++  viz::SharedImageFormat dawn_format = format();
++  if (dawn_format.is_multi_plane() && dawn_format.PrefersExternalSampler()) {
++    dawn_format.ClearPrefersExternalSampler();
++  }
++  wgpu::TextureFormat webgpu_format = ToDawnFormat(dawn_format);
++#else
+   wgpu::TextureFormat webgpu_format = ToDawnFormat(format());
++#endif
+   if (webgpu_format == wgpu::TextureFormat::Undefined) {
+     return nullptr;
+   }
 diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
 index 9388305..3a71859 100644
 --- a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
@@ -192,6 +222,38 @@ index a7f3698..c738be2 100644
  #else
      // Chromium is in the midst of being transitioned to SharedTextureMemory
      // platform by platform. On platforms that have not yet been transitioned,
+diff --git a/media/video/mappable_shared_image_video_frame_pool.cc b/media/video/mappable_shared_image_video_frame_pool.cc
+index e15a39a..b99d14b 100644
+--- a/media/video/mappable_shared_image_video_frame_pool.cc
++++ b/media/video/mappable_shared_image_video_frame_pool.cc
+@@ -1101,6 +1101,14 @@ scoped_refptr<VideoFrame> MappableSharedImageVideoFramePool::PoolImpl::
+       gpu::SHARED_IMAGE_USAGE_WEBGPU_READ);
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++  // An OH_NativeBuffer holding both planes, which Dawn imports whole.
++  is_webgpu_compatible =
++      gmb_type == gfx::GpuMemoryBufferType::NATIVE_PIXMAP &&
++      frame_resource->shared_image->usage().Has(
++          gpu::SHARED_IMAGE_USAGE_WEBGPU_READ);
++#endif
++
+ #if BUILDFLAG(IS_CHROMEOS)
+   // Gate this on SharedImage usage as ScopedAccess now CHECKs for it.
+   // TOOD(crbug.com/425634684, crbug.com/413659843): Check for webgpu support
+@@ -1273,10 +1281,11 @@ MappableSharedImageVideoFramePool::PoolImpl::GetOrCreateFrameResource(
+ 
+   // TODO(crbug.com/425634684): Check for webgpu support from
+   // SharedImageCapabilities, once this metadata is compatible.
+-#if BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
+   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+           switches::kEnableUnsafeWebGPU)) {
+     // This SharedImage may be used for zero-copy import into WebGPU.
++    // OHOS: an OH_NativeBuffer that Dawn imports with VK_OHOS_external_memory.
+     si_usage |= gpu::SHARED_IMAGE_USAGE_WEBGPU_READ;
+   }
+ #elif BUILDFLAG(IS_MAC)
 diff --git a/third_party/dawn/scripts/dawn_features.gni b/third_party/dawn/scripts/dawn_features.gni
 index b443750..84f6c9f 100644
 --- a/third_party/dawn/scripts/dawn_features.gni
@@ -263,7 +325,7 @@ index 361b1d4..3f6cb79 100644
      if (CheckSemaphoreSupport(DeviceExt::ExternalSemaphoreZirconHandle,
                                VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_ZIRCON_EVENT_BIT_FUCHSIA)) {
 diff --git a/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
-index 80150e6..b8c9f47 100644
+index 80150e6..dded980 100644
 --- a/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
 +++ b/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
 @@ -55,6 +55,10 @@
@@ -323,15 +385,15 @@ index 80150e6..b8c9f47 100644
  template <typename... AdditionalChains>
  ResultOrError<VkImage> CreateExternalVkImage(
      Device* device,
-@@ -770,6 +813,164 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
+@@ -770,6 +813,179 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
          }
      }
      return sharedTextureMemory;
 +#elif defined(__OHOS__)
 +    // HarmonyOS: the descriptor's handle is an OH_NativeBuffer, imported
 +    // through VK_OHOS_external_memory -- Android's AHardwareBuffer import with
-+    // the names changed. Only single-plane formats so far: no external
-+    // (YCbCr) formats.
++    // the names changed. Formats the driver names a VkFormat for, including
++    // two-plane YUV; no opaque external (YCbCr) formats.
 +    VkDevice vkDevice = device->GetVkDevice();
 +    auto* nativeBuffer = static_cast<OH_NativeBuffer*>(descriptor->handle);
 +
@@ -369,13 +431,18 @@ index 80150e6..b8c9f47 100644
 +        "vkGetNativeBufferPropertiesOHOS"));
 +    const VkFormat vkFormat = formatProperties.format;
 +    DAWN_INVALID_IF(vkFormat == VK_FORMAT_UNDEFINED,
-+                    "OH_NativeBuffer with an external format is not supported yet.");
++                    "OH_NativeBuffer with an external format (%x) is not supported.",
++                    formatProperties.externalFormat);
 +    DAWN_TRY_ASSIGN(properties.format, FormatFromVkFormat(device, vkFormat));
 +
 +    const Format* internalFormat = nullptr;
 +    DAWN_TRY_ASSIGN(internalFormat, device->GetInternalFormat(properties.format));
-+    DAWN_INVALID_IF(internalFormat->IsMultiPlanar(),
-+                    "Multi-planar OH_NativeBuffer not supported yet.");
++    if (internalFormat->IsMultiPlanar()) {
++        // A video frame (NV12) for importExternalTexture: sampled plane by
++        // plane, through views that need the mutable-format bit. The image is
++        // not disjoint -- one OH_NativeBuffer holds both planes.
++        properties.usage = wgpu::TextureUsage::TextureBinding;
++    }
 +
 +    Ref<SharedTextureMemory> sharedTextureMemory = SharedTextureMemory::Create(
 +        device, label, properties, VK_QUEUE_FAMILY_FOREIGN_EXT, YCbCrVkDescriptor{});
@@ -432,16 +499,26 @@ index 80150e6..b8c9f47 100644
 +        // query for either handle type, whatever the flags, while importing
 +        // OH_NativeBuffers is what HarmonyOS's own graphics stack does. The
 +        // query is only a check before the import: go on with the current
-+        // handle type and let vkCreateImage and vkAllocateMemory decide.
++        // handle type and the flags Dawn wants (mutable format for -srgb and
++        // plane views), and let vkCreateImage and vkAllocateMemory decide.
 +        handleType =
 +            static_cast<VkExternalMemoryHandleTypeFlagBits>(kOhosNativeBufferHandleType);
-+        imageFormatInfo.flags = vkCreateFlags & ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
++        imageFormatInfo.flags = vkCreateFlags;
 +    }
 +
 +    {
++        ResultOrError<VkImage> created =
++            CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
++        if (created.IsError() && !internalFormat->IsMultiPlanar() &&
++            (imageFormatInfo.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)) {
++            // Last resort for a single-plane image: no view reinterpretation
++            // (-srgb views), but the texture itself still works.
++            std::ignore = created.AcquireError();
++            imageFormatInfo.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
++            created = CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
++        }
 +        VkImage vkImage;
-+        DAWN_TRY_ASSIGN(vkImage,
-+                        CreateExternalVkImage(device, properties, imageFormatInfo, handleType));
++        DAWN_TRY_ASSIGN(vkImage, std::move(created));
 +        sharedTextureMemory->mVkImage =
 +            AcquireRef(new RefCountedVkHandle<VkImage>(device, vkImage));
 +    }
