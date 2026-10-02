@@ -26,9 +26,9 @@ class NativePixmapGLBinding;
 //
 // Software-decoded video is written into these by the renderer and sampled
 // by the GPU without a per-frame texture upload, which for 10-bit 1080p had
-// cost the GPU thread 5-6 ms a frame. Only the YUV formats video uses are
-// offered: NV12 and P010, sampled as one external texture with the driver
-// converting them, since GLES here has no R16 for per-plane P010.
+// cost the GPU thread 5-6 ms a frame. Only the format 10-bit video uses is
+// offered -- P010 -- sampled as one external texture with the driver
+// converting it, since GLES here has no R16 for per-plane P010.
 //
 // HarmonyOS has no public way back from a dma-buf fd to its OH_NativeBuffer,
 // which EGL_NATIVE_BUFFER_OHOS needs. The GPU process allocates the buffers

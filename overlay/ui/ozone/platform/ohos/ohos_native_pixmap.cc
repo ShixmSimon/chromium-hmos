@@ -425,7 +425,10 @@ class OhosNativePixmapGLBinding : public NativePixmapGLBinding {
 }  // namespace
 
 bool IsOhosNativePixmapFormat(viz::SharedImageFormat format) {
-  return OhosFormatFor(format).has_value();
+  // Not NV12, though it allocates and imports the same way: 8-bit video
+  // already goes to the GPU as NV12 shared memory, sampled plane by plane,
+  // and offering native NV12 would move it here with nothing to gain.
+  return format == viz::MultiPlaneFormat::kP010;
 }
 
 scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmap(

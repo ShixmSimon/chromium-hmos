@@ -532,10 +532,7 @@ OhosSurfaceFactory::CreateNativePixmapFromHandle(
 
 bool OhosSurfaceFactory::IsFormatSupportedForTexturing(
     viz::SharedImageFormat format) const {
-  // P010 only, for now: it is what 10-bit video needed this path for, and
-  // 8-bit video uploads cheaply enough as it is. NV12 is allocated and
-  // imported the same way should it be wanted.
-  return format == viz::MultiPlaneFormat::kP010;
+  return IsOhosNativePixmapFormat(format);
 }
 
 #if BUILDFLAG(ENABLE_VULKAN)
