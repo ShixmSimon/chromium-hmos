@@ -25,6 +25,11 @@ patches/deps/third_party_angle.patch.
 Apply with:
   git -C /path/to/chromium/src apply /path/to/patches/ohos-angle-native-buffer-image.patch
 
+The image entry points themselves come from the system wrapper's exports
+(FunctionsEGLDL): the eglCreateImageKHR that eglGetProcAddress returns
+bypasses the wrapper and refused the wrapper's display with
+EGL_BAD_DISPLAY when the GPU ran in the browser process.
+
 diff --git a/third_party/angle/include/EGL/eglext_angle.h b/third_party/angle/include/EGL/eglext_angle.h
 index da3e47b..e05354a 100644
 --- a/third_party/angle/include/EGL/eglext_angle.h
@@ -252,3 +257,46 @@ index dd0a706..2020300 100644
          case EGL_D3D11_TEXTURE_ANGLE:
              if (!displayExtensions.imageD3D11Texture)
              {
+diff --git a/third_party/angle/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp b/third_party/angle/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp
+--- a/third_party/angle/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp
++++ b/third_party/angle/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp
+@@ -66,6 +66,39 @@ egl::Error FunctionsEGLDL::initialize(EGLAttrib platformType,
+ 
+ void *FunctionsEGLDL::getProcAddress(const char *name) const
+ {
++#if defined(ANGLE_PLATFORM_OHOS)
++    // EGLImages of HarmonyOS native buffers (EGL_NATIVE_BUFFER_OHOS) have to
++    // be made by the wrapper's own eglCreateImageKHR. The entry point
++    // eglGetProcAddress hands back goes past the wrapper, does not know the
++    // display the wrapper gave out, and fails with EGL_BAD_DISPLAY -- in
++    // every process, not only where OHOS_ANGLE_WRAPPER_EXPORTS is set. So the
++    // image functions, and binding an image to a texture, always come from
++    // the wrapper's exports, the way an NDK app reaches them.
++    static const char *const kImageEntryPoints[] = {
++        "eglCreateImage", "eglCreateImageKHR", "eglDestroyImage", "eglDestroyImageKHR"};
++    for (const char *imageEntryPoint : kImageEntryPoints)
++    {
++        if (strcmp(name, imageEntryPoint) == 0)
++        {
++            if (void *exported = dlsym(nativeEGLHandle, name))
++            {
++                return exported;
++            }
++        }
++    }
++    if (strcmp(name, "glEGLImageTargetTexture2DOES") == 0 ||
++        strcmp(name, "glEGLImageTargetRenderbufferStorageOES") == 0)
++    {
++        static void *glesForImages = dlopen("libGLESv3.so", RTLD_NOW | RTLD_LOCAL);
++        if (glesForImages != nullptr)
++        {
++            if (void *exported = dlsym(glesForImages, name))
++            {
++                return exported;
++            }
++        }
++    }
++#endif
+ #if defined(ANGLE_PLATFORM_OHOS)
+     // HarmonyOS's libEGL.so and libGLESv3.so are a wrapper over the vendor
+     // driver. A GLES call is dispatched through the table the wrapper's own
