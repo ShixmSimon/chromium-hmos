@@ -106,6 +106,8 @@ class BufferRegistry {
   std::optional<ino_t> Allocate(gfx::Size size, viz::SharedImageFormat format) {
     const std::optional<int32_t> ohos_format = OhosFormatFor(format);
     if (!ohos_format || size.IsEmpty()) {
+      LOG(ERROR) << "OHOS native pixmap: not allocating " << format.ToString()
+                 << " " << size.ToString();
       return std::nullopt;
     }
     OH_NativeBuffer_Config config = {};
@@ -157,6 +159,8 @@ class BufferRegistry {
     entry->fd.reset(HANDLE_EINTR(dup(handle->fd)));
     const ino_t key = entry->fd.is_valid() ? InodeOf(entry->fd.get()) : 0;
     if (!key) {
+      PLOG(ERROR) << "OHOS native pixmap: no inode for fd " << handle->fd
+                  << " (dup " << entry->fd.get() << ")";
       ReleaseEntry(*entry);
       return std::nullopt;
     }
@@ -455,7 +459,13 @@ scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmap(
   if (!key) {
     return nullptr;
   }
-  return base::MakeRefCounted<OhosNativePixmap>(*key, size, format);
+  auto pixmap = base::MakeRefCounted<OhosNativePixmap>(*key, size, format);
+  if (requests % 100 == 1) {
+    LOG(WARNING) << "OHOS native pixmap: created, fd valid "
+                 << pixmap->AreDmaBufFdsValid() << ", planes "
+                 << pixmap->GetNumberOfPlanes();
+  }
+  return pixmap;
 }
 
 scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmapFromHandle(
