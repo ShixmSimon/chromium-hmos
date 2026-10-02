@@ -290,7 +290,6 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-save-as-no-prompt.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-single-process-discardable.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-pdf-single-process.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-extension-context-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-use-shell-ui-menu.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-emulator-gpu-rasterization.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-new-tab-focuses-omnibox.patch"
@@ -303,6 +302,19 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-extension-installed-bubble.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-crx-download-kept.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-single-process-commit-checks.patch"
+  # The extension context diagnostics are done. This patch was made on top
+  # of them, so while their log is in the tree, back out this patch as it
+  # was then and them under it; it goes back in without them.
+  if grep -q 'OHOS extension context: allowed' \
+      "${src}/extensions/browser/process_map.cc"; then
+    git -C "$repo_root" show 5ad1f972:patches/ohos-single-process-extensions.patch |
+      git -C "$src" apply --reverse ||
+      die "failed to back out the old ohos-single-process-extensions.patch"
+    git -C "$repo_root" show 2d38775:patches/ohos-extension-context-diagnostics.patch |
+      git -C "$src" apply --reverse ||
+      die "failed to retire ohos-extension-context-diagnostics.patch"
+    say "retired incremental patch ohos-extension-context-diagnostics.patch"
+  fi
   apply_incremental_patch "${repo_root}/patches/ohos-single-process-extensions.patch"
   # Answered: the channel was a user script's and reached the worker.
   retire_incremental_patch "${repo_root}/patches/ohos-extension-messaging-diagnostics.patch"

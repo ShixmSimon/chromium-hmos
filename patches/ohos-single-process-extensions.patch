@@ -40,10 +40,10 @@ extension's; WebUI pages, which have none, are still WebUI.
 Tablets and 2in1s run renderers in processes of their own and none of
 this applies to them.
 
-Generated for Chromium 154.0.8037.51 after
-ohos-extension-context-diagnostics.patch.
+Generated for Chromium 154.0.8037.51.
 
 diff --git a/extensions/browser/extension_protocols.cc b/extensions/browser/extension_protocols.cc
+index e07e1fd..90f96d9 100644
 --- a/extensions/browser/extension_protocols.cc
 +++ b/extensions/browser/extension_protocols.cc
 @@ -279,6 +279,13 @@ bool AllowExtensionResourceLoad(const network::ResourceRequest& request,
@@ -61,17 +61,18 @@ diff --git a/extensions/browser/extension_protocols.cc b/extensions/browser/exte
    return false;
  }
 diff --git a/extensions/browser/process_map.cc b/extensions/browser/process_map.cc
+index 4fa7251..511973e 100644
 --- a/extensions/browser/process_map.cc
 +++ b/extensions/browser/process_map.cc
-@@ -11,6 +11,7 @@
+@@ -10,6 +10,7 @@
+ 
  #include "base/containers/map_util.h"
- #include "base/logging.h"
  #include "base/types/optional_util.h"
 +#include "build/build_config.h"
  #include "components/guest_view/buildflags/buildflags.h"
  #include "content/public/browser/child_process_security_policy.h"
  #include "content/public/browser/render_process_host.h"
-@@ -98,11 +99,27 @@ int ProcessMap::Remove(content::ChildProcessId process_id) {
+@@ -97,11 +98,27 @@ int ProcessMap::Remove(content::ChildProcessId process_id) {
  
  bool ProcessMap::Contains(const ExtensionId& extension_id_in,
                            content::ChildProcessId process_id) const {
@@ -99,7 +100,7 @@ diff --git a/extensions/browser/process_map.cc b/extensions/browser/process_map.
    return items_.contains(process_id);
  }
  
-@@ -214,9 +231,24 @@ mojom::ContextType ProcessMap::GetMostLikelyContextType(
+@@ -201,9 +218,24 @@ mojom::ContextType ProcessMap::GetMostLikelyContextType(
    // TODO(crbug.com/40676105): Move this into the !extension if statement below
    // or document why we want to return WEBUI_CONTEXT for content scripts in
    // WebUIs.
@@ -124,7 +125,7 @@ diff --git a/extensions/browser/process_map.cc b/extensions/browser/process_map.
  
    if (!extension) {
      // Note that blob/filesystem schemes associated with an inner URL of
-@@ -229,6 +261,18 @@ mojom::ContextType ProcessMap::GetMostLikelyContextType(
+@@ -216,6 +248,18 @@ mojom::ContextType ProcessMap::GetMostLikelyContextType(
    }
  
    const ExtensionId& extension_id = extension->id();
