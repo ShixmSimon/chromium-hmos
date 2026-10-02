@@ -183,7 +183,15 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
         hdr_panel_(OhosDisplaySupportsHdr()),
         // Whether the window has alpha is only known at the first Resize;
         // until then, a popup is the window that draws it.
-        ten_bit_(hdr_panel_ && !IsOhosAnchoredWindow(widget)) {}
+        ten_bit_(hdr_panel_ && !IsOhosAnchoredWindow(widget)) {
+    HoldWindow(window);
+  }
+
+  // The EGL surface goes first, then the window it was made on.
+  ~OhosNativeViewGLSurfaceEGL() override {
+    Destroy();
+    HoldWindow(nullptr);
+  }
 
   // On an HDR panel the screen tells the compositor an opaque window is
   // RGBA_1010102 (ReadDisplayColorSpaces), and Skia takes that as what the
@@ -248,7 +256,8 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
               bool has_alpha) override {
     const WindowRefreshResult refresh = RefreshNativeWindow();
     if (refresh == WindowRefreshResult::kUnavailable) {
-      return false;
+      // The shell took the window away; keep the size until it is back.
+      return true;
     }
     pq_output_ =
         color_space.GetTransferID() == gfx::ColorSpace::TransferID::PQ;
@@ -261,7 +270,11 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
     }
     if (refresh == WindowRefreshResult::kChanged || config_changed) {
       size_ = size;
-      return Recreate();
+      if (!Recreate()) {
+        return false;
+      }
+      HoldWindow(window_);
+      return true;
     }
     return gl::NativeViewGLSurfaceEGL::Resize(size, scale_factor, color_space,
                                               has_alpha);
@@ -269,6 +282,9 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
 
   gfx::SwapResult SwapBuffers(PresentationCallback callback,
                               gfx::FrameData data) override {
+    if (WindowGone()) {
+      return DropFrame(std::move(callback));
+    }
     if (!RefreshAndRecreateNativeWindow()) {
       std::move(callback).Run(gfx::PresentationFeedback::Failure());
       return gfx::SwapResult::SWAP_FAILED;
@@ -283,6 +299,9 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
                                 int height,
                                 PresentationCallback callback,
                                 gfx::FrameData data) override {
+    if (WindowGone()) {
+      return DropFrame(std::move(callback));
+    }
     if (!RefreshAndRecreateNativeWindow()) {
       std::move(callback).Run(gfx::PresentationFeedback::Failure());
       return gfx::SwapResult::SWAP_FAILED;
@@ -392,8 +411,52 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
     if (refresh == WindowRefreshResult::kUnavailable) {
       return false;
     }
-    return refresh != WindowRefreshResult::kChanged || Recreate();
+    if (refresh == WindowRefreshResult::kChanged) {
+      if (!Recreate()) {
+        return false;
+      }
+      HoldWindow(window_);
+    }
+    return true;
   }
+
+  // Whether the shell has taken this window's XComponent away -- a second
+  // browser window the phone shell tore down 10 ms after making it. Its
+  // frames go nowhere until a surface is back. Failing the swap instead made
+  // viz treat it as a lost context: every context in the process was lost
+  // with it, and WebGL was blocked for each page as having caused a GPU
+  // reset.
+  bool WindowGone() {
+    std::optional<OhosNativeSurface> surface = GetOhosNativeSurface(widget_);
+    return !surface || !surface->window;
+  }
+
+  gfx::SwapResult DropFrame(PresentationCallback callback) {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback),
+                                  gfx::PresentationFeedback::Failure()));
+    return gfx::SwapResult::SWAP_ACK;
+  }
+
+  // Keeps the window the EGL surface is made on alive while the surface is:
+  // the shell's XComponent releases it when it goes, and drawing to a freed
+  // window is the driver's to get wrong.
+  void HoldWindow(EGLNativeWindowType window) {
+    if (held_window_ == window) {
+      return;
+    }
+    if (held_window_) {
+      OH_NativeWindow_NativeObjectUnreference(
+          reinterpret_cast<void*>(held_window_));
+    }
+    held_window_ = window;
+    if (held_window_) {
+      OH_NativeWindow_NativeObjectReference(
+          reinterpret_cast<void*>(held_window_));
+    }
+  }
+
+  EGLNativeWindowType held_window_ = 0;
 
   const gfx::AcceleratedWidget widget_;
   const bool hdr_panel_;
