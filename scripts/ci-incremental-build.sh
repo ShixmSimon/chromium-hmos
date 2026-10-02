@@ -195,12 +195,16 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-webauthn-platform.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-video-codec.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vp9-row-threads.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-video-queue-depth.patch"
+  # Video frames reach the GPU in native buffers now, and the deeper queue
+  # is tried without; it goes back if 1080p60 HDR drops more.
+  retire_incremental_patch "${repo_root}/patches/ohos-video-queue-depth.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-video-render-diagnostics.patch"
   # Folded into ohos-thread-qos.patch, which raises every kPresentation
   # thread the VideoFrameCompositor is one of.
   retire_incremental_patch "${repo_root}/patches/ohos-video-compositor-qos.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-thread-qos.patch"
+  # Raising display-paced threads' QoS never moved the drops it was written
+  # for; the native-buffer video path removed what did.
+  retire_incremental_patch "${repo_root}/patches/ohos-thread-qos.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-video-submit-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-stage-diagnostics.patch"
   # The Mate 70 Pro+ has neither GL_EXT_texture_norm16 nor Skia R16 on GLES,
