@@ -1,0 +1,47 @@
+Register the geolocation system permission manager before the first profile.
+
+Turning on os_level_geolocation_permission_supported made the browser die
+during startup with SIGSEGV on CrBrowserMain, on a device where geolocation
+had been working.
+
+Building a profile builds its PermissionManager, and with the flag on
+embedder_support hands geolocation to GeolocationPermissionContextSystem,
+whose constructor does
+
+  auto* m = device::GeolocationSystemPermissionManager::GetInstance();
+  DCHECK(m);
+  m->AddObserver(this);
+
+with nothing but that DCHECK, which this build compiles out. The manager was
+being registered from NotifyAuraShellBrowserStarted, which the adapter calls
+from PostBrowserStart -- after profiles exist. So GetInstance() returned null
+and AddObserver dereferenced it.
+
+The constraint is tighter than "before anything asks for a position", which is
+what the earlier comment claimed: it is before the first PermissionManager.
+PreProfileInit is the hook that satisfies it, and it is where the equivalent
+registration happens on the platforms that already had this flag.
+
+The adapter's own entry point is split so that this happens on its own rather
+than pulling the rest of PostBrowserStart forward with it.
+
+Generated against Chromium 154.0.8037.51; chromium-154-harmonyos.patch does
+not touch PreProfileInit, so the context is the pristine one.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-geolocation-manager-init.patch
+
+diff --git a/chrome/browser/chrome_browser_main.cc b/chrome/browser/chrome_browser_main.cc
+--- a/chrome/browser/chrome_browser_main.cc
++++ b/chrome/browser/chrome_browser_main.cc
+@@ -1506,6 +1506,10 @@
+ 
+ void ChromeBrowserMainParts::PreProfileInit() {
+   TRACE_EVENT0("startup", "ChromeBrowserMainParts::PreProfileInit");
++
++#if BUILDFLAG(IS_OHOS)
++  chrome::ohos::EnsureAuraShellSystemPermissions();
++#endif
+ 
+   media::AudioManager::SetGlobalAppName(
+       l10n_util::GetStringUTF8(IDS_SHORT_PRODUCT_NAME));

@@ -1,0 +1,121 @@
+Route HarmonyOS video decode and encode through AVCodecKit hardware codecs.
+
+The implementation is new code under overlay/media/gpu/ohos/ and
+overlay/media/mojo/services/gpu_mojo_media_client_ohos.cc, so this patch only
+changes the upstream-owned integration points:
+
+  * media/media_options.gni hosts the mojo "video_decoder" service in the GPU
+    process on OHOS, which turns on ENABLE_MOJO_VIDEO_DECODER and
+    ENABLE_MOJO_MEDIA_IN_GPU_PROCESS. Without it the renderer only ever builds
+    FFmpeg/libvpx/dav1d decoders.
+  * media/mojo/services/BUILD.gn compiles GpuMojoMediaClientOhos instead of
+    the stub client.
+  * media/gpu/BUILD.gn compiles the AVCodecKit decoder, encoder and capability
+    helpers, and links the AVCodecKit NDK libraries.
+  * gpu_video_encode_accelerator_factory.cc registers the AVCodecKit H.264
+    encoder, which WebCodecs, WebRTC and MediaRecorder discover through the
+    GPU process's supported encode profiles.
+
+The media_options.gni change rewrites media/mojo/buildflags.h, so every file
+that includes it rebuilds (content/renderer, content/gpu, content/browser/media,
+media/mojo); it does not change global defines.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch, which
+also edits media/media_options.gni (enable_gpu_channel_media_capture); this
+patch's hunk there is independent of that one.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-video-codec.patch
+
+diff --git a/media/gpu/BUILD.gn b/media/gpu/BUILD.gn
+--- a/media/gpu/BUILD.gn
++++ b/media/gpu/BUILD.gn
+@@ -197,6 +197,23 @@ component("gpu") {
+     public_deps += [ "//media/fuchsia/video" ]
+   }
+ 
++  if (is_ohos) {
++    sources += [
++      "ohos/ohos_codec_util.cc",
++      "ohos/ohos_codec_util.h",
++      "ohos/ohos_video_decoder.cc",
++      "ohos/ohos_video_decoder.h",
++      "ohos/ohos_video_encode_accelerator.cc",
++      "ohos/ohos_video_encode_accelerator.h",
++    ]
++    libs += [
++      "native_media_codecbase",
++      "native_media_core",
++      "native_media_vdec",
++      "native_media_venc",
++    ]
++  }
++
+   if (is_win) {
+     sources += [
+       "windows/av1_guids.h",
+diff --git a/media/gpu/gpu_video_encode_accelerator_factory.cc b/media/gpu/gpu_video_encode_accelerator_factory.cc
+--- a/media/gpu/gpu_video_encode_accelerator_factory.cc
++++ b/media/gpu/gpu_video_encode_accelerator_factory.cc
+@@ -52,6 +52,9 @@
+ #if BUILDFLAG(IS_FUCHSIA)
+ #include "media/fuchsia/video/fuchsia_video_encode_accelerator.h"
+ #endif
++#if BUILDFLAG(IS_OHOS)
++#include "media/gpu/ohos/ohos_video_encode_accelerator.h"
++#endif
+ 
+ namespace media {
+ 
+@@ -163,6 +166,14 @@ std::unique_ptr<VideoEncodeAccelerator> CreateFuchsiaVEA() {
+ }
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++std::unique_ptr<VideoEncodeAccelerator> CreateOhosVEA() {
++  return base::WrapUnique<VideoEncodeAccelerator>(
++      new OhosVideoEncodeAccelerator(
++          base::SequencedTaskRunner::GetCurrentDefault()));
++}
++#endif
++
+ using VEAFactoryFunction =
+     base::RepeatingCallback<std::unique_ptr<VideoEncodeAccelerator>()>;
+ 
+@@ -204,6 +215,9 @@ std::vector<VEAFactoryFunction> CreateVEAFactoryFunctions(
+ #endif
+ #if BUILDFLAG(IS_FUCHSIA)
+   funcs.push_back(base::BindRepeating(&CreateFuchsiaVEA));
++#endif
++#if BUILDFLAG(IS_OHOS)
++  funcs.push_back(base::BindRepeating(&CreateOhosVEA));
+ #endif
+   return funcs;
+ }
+diff --git a/media/media_options.gni b/media/media_options.gni
+--- a/media/media_options.gni
++++ b/media/media_options.gni
+@@ -336,6 +336,11 @@ if (is_cast_media_device) {
+ } else if (use_linux_video_acceleration) {
+   _default_mojo_media_services = [ "video_decoder" ]
+   _default_mojo_media_host = "gpu"
++} else if (is_ohos) {
++  # Hardware decoding goes through AVCodecKit in the GPU process
++  # (media/gpu/ohos). Audio stays on the renderer's software decoders.
++  _default_mojo_media_services = [ "video_decoder" ]
++  _default_mojo_media_host = "gpu"
+ }
+ 
+ # When |enable_library_cdms| is true, the "cdm" service will run in a separate
+diff --git a/media/mojo/services/BUILD.gn b/media/mojo/services/BUILD.gn
+--- a/media/mojo/services/BUILD.gn
++++ b/media/mojo/services/BUILD.gn
+@@ -119,6 +119,8 @@ component("services") {
+     } else {
+       sources += [ "gpu_mojo_media_client_cros.cc" ]
+     }
++  } else if (is_ohos) {
++    sources += [ "gpu_mojo_media_client_ohos.cc" ]
+   } else {
+     sources += [ "gpu_mojo_media_client_stubs.cc" ]
+   }

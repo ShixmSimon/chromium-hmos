@@ -1,0 +1,118 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 0b6b06d..29d64a7 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -736,7 +736,7 @@ angle_static_library("angle_gpu_info_util") {
+     libs += [ "dxgi.lib" ]
+   }
+ 
+-  if (is_linux || is_chromeos) {
++  if (is_linux || is_chromeos || is_ohos) {
+     sources += libangle_gpu_info_util_linux_sources
+ 
+     if (angle_use_x11 && angle_has_build) {
+diff --git a/gni/angle.gni b/gni/angle.gni
+index bde26da..c1a195e 100644
+--- a/gni/angle.gni
++++ b/gni/angle.gni
+@@ -97,7 +97,7 @@ if (angle_has_build) {
+     angle_use_gbm = ozone_platform_drm
+     angle_use_x11 = ozone_platform_x11 && (is_linux || is_chromeos)
+     angle_use_wayland = ozone_platform_wayland && is_linux && !is_castos
+-    angle_use_vulkan_display = is_linux || is_chromeos
++    angle_use_vulkan_display = is_linux || is_chromeos || is_ohos
+   }
+ } else {
+   declare_args() {
+@@ -120,7 +120,7 @@ if (angle_has_build) {
+   }
+ 
+   declare_args() {
+-    angle_use_vulkan_display = is_linux || is_chromeos
++    angle_use_vulkan_display = is_linux || is_chromeos || is_ohos
+   }
+ }
+ 
+diff --git a/src/libANGLE/renderer/driver_utils.cpp b/src/libANGLE/renderer/driver_utils.cpp
+index e676a41..3ae9d3e 100644
+--- a/src/libANGLE/renderer/driver_utils.cpp
++++ b/src/libANGLE/renderer/driver_utils.cpp
+@@ -395,7 +395,11 @@ OSVersion GetLinuxOSVersion()
+ 
+ bool IsXWayland()
+ {
+-#if defined(ANGLE_PLATFORM_LINUX)
++// HarmonyOS (OHOS) compiles as ANGLE_PLATFORM_LINUX (it's a Linux-kernel,
++// __linux__-defining target) but has no Wayland session and does not build
++// angle::IsWaylandSession() (see is_linux || is_chromeos gating in
++// libGLESv2.gni), so it must be excluded here to avoid an undefined symbol.
++#if defined(ANGLE_PLATFORM_LINUX) && !defined(OS_OHOS) && !defined(__OHOS__)
+     // Detects the Wayland session rather than the connection, so callers must be
+     // on an X11 code path for this to mean XWayland. Cached: the session type is
+     // fixed for the life of the process.
+diff --git a/src/libANGLE/renderer/gl/BUILD.gn b/src/libANGLE/renderer/gl/BUILD.gn
+index 6be9490..b2869f8 100644
+--- a/src/libANGLE/renderer/gl/BUILD.gn
++++ b/src/libANGLE/renderer/gl/BUILD.gn
+@@ -61,7 +61,7 @@ angle_source_set("angle_gl_backend") {
+       "Xext",
+     ]
+   }
+-  if (is_android || is_linux || is_chromeos) {
++  if (is_android || is_linux || is_chromeos || is_ohos) {
+     deps += [ "$angle_root/src/common/linux:angle_dma_buf" ]
+   }
+   if (is_apple) {
+diff --git a/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp b/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp
+index 63fc465..3120510 100644
+--- a/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp
++++ b/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp
+@@ -116,6 +116,9 @@ const char *DisplayEGL::getEGLPath() const
+ #    else
+     return "/system/lib/libEGL.so";
+ #    endif
++#elif defined(OS_OHOS) || defined(__OHOS__)
++    // HarmonyOS exposes the system EGL to apps as an NDK library.
++    return "libEGL.so";
+ #else
+     return "libEGL.so.1";
+ #endif
+diff --git a/src/libANGLE/renderer/gl/gl_backend.gni b/src/libANGLE/renderer/gl/gl_backend.gni
+index 1d89bf7..09a4644 100644
+--- a/src/libANGLE/renderer/gl/gl_backend.gni
++++ b/src/libANGLE/renderer/gl/gl_backend.gni
+@@ -118,7 +118,7 @@ if (angle_use_x11) {
+   ]
+ }
+ 
+-if (is_android || is_linux || is_chromeos) {
++if (is_android || is_linux || is_chromeos || is_ohos) {
+   gl_backend_sources += [
+     "egl/ContextEGL.cpp",
+     "egl/ContextEGL.h",
+diff --git a/src/libANGLE/renderer/vulkan/vulkan_backend.gni b/src/libANGLE/renderer/vulkan/vulkan_backend.gni
+index f29c808..57fc22c 100644
+--- a/src/libANGLE/renderer/vulkan/vulkan_backend.gni
++++ b/src/libANGLE/renderer/vulkan/vulkan_backend.gni
+@@ -164,7 +164,7 @@ vulkan_backend_dma_buf_sources = [
+   "linux/headless/WindowSurfaceVkHeadless.h",
+ ]
+ 
+-if (is_linux || is_chromeos) {
++if (is_linux || is_chromeos || is_ohos) {
+   vulkan_backend_sources += vulkan_backend_dma_buf_sources
+ }
+ 
+diff --git a/src/libGLESv2.gni b/src/libGLESv2.gni
+index edd1e0b..4bd0ddc 100644
+--- a/src/libGLESv2.gni
++++ b/src/libGLESv2.gni
+@@ -119,7 +119,7 @@ if (is_android && angle_enable_unwind_backtrace_support) {
+   libangle_common_sources += [ "src/common/backtrace_utils_noop.cpp" ]
+ }
+ 
+-if (is_linux || is_chromeos || is_android || is_fuchsia) {
++if (is_linux || is_chromeos || is_android || is_fuchsia || is_ohos) {
+   libangle_common_sources += [
+     "src/common/system_utils_linux.cpp",
+     "src/common/system_utils_posix.cpp",

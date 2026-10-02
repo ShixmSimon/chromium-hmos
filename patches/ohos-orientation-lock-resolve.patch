@@ -1,0 +1,27 @@
+Resolve screen.orientation.lock() when the screen turns on OHOS.
+
+ScreenOrientationProvider resolves a pending lock only from
+WebContentsImpl::OnScreenOrientationChange(), which Android and ChromeOS call
+from platform code. On OHOS the renderer saw the new orientation but the lock
+promise stayed pending; resolve it when the widget reports the change.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/content/browser/web_contents/web_contents_impl.cc b/content/browser/web_contents/web_contents_impl.cc
+index dfb34cb..5bf8e05 100644
+--- a/content/browser/web_contents/web_contents_impl.cc
++++ b/content/browser/web_contents/web_contents_impl.cc
+@@ -12485,6 +12485,13 @@ FrameTree* WebContentsImpl::LoadingTree() {
+ 
+ void WebContentsImpl::DidChangeScreenOrientation() {
+   last_screen_orientation_change_time_ = ui::EventTimeForNow();
++#if BUILDFLAG(IS_OHOS)
++  // Android and ChromeOS call OnScreenOrientationChange() from their own
++  // platform code; nothing does on OHOS, so a pending
++  // screen.orientation.lock() never resolved. This runs once the widget's new
++  // screen info is in place, which is what the provider checks against.
++  screen_orientation_provider_->OnOrientationChange();
++#endif
+ }
+ 
+ void WebContentsImpl::UpdateWebContentsVisibility(Visibility visibility) {

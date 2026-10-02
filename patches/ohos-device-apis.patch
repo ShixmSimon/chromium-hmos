@@ -1,0 +1,288 @@
+Wire WebUSB, WebHID and Web Serial to HarmonyOS.
+
+Absorbs, in this order: ohos-web-usb.patch, ohos-web-hid.patch, ohos-web-serial.patch. Their descriptions follow.
+
+--- ohos-web-usb.patch
+
+(no description)
+
+--- ohos-web-hid.patch
+
+(no description)
+
+--- ohos-web-serial.patch
+
+(no description)
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+Apply with:
+
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-device-apis.patch
+
+diff --git a/services/device/usb/BUILD.gn b/services/device/usb/BUILD.gn
+--- a/services/device/usb/BUILD.gn
++++ b/services/device/usb/BUILD.gn
+@@ -78,6 +78,19 @@ static_library("usb") {
+     deps += [ ":jni_headers" ]
+   }
+ 
++  if (is_ohos) {
++    sources += [
++      "ohos/usb_bridge_ohos.cc",
++      "ohos/usb_bridge_ohos.h",
++      "ohos/usb_device_handle_ohos.cc",
++      "ohos/usb_device_handle_ohos.h",
++      "ohos/usb_device_ohos.cc",
++      "ohos/usb_device_ohos.h",
++      "ohos/usb_service_ohos.cc",
++      "ohos/usb_service_ohos.h",
++    ]
++  }
++
+   if (is_win) {
+     sources += [
+       "scoped_winusb_handle.cc",
+@@ -141,7 +153,7 @@ static_library("usb") {
+     deps += [ "//device/udev_linux" ]
+   }
+ 
+-  if (is_android || is_chromeos || is_linux) {
++  if (is_android || is_chromeos || is_linux || is_ohos) {
+     sources += [
+       "usb_device_handle_usbfs.cc",
+       "usb_device_handle_usbfs.h",
+diff --git a/services/device/usb/usb_device.h b/services/device/usb/usb_device.h
+--- a/services/device/usb/usb_device.h
++++ b/services/device/usb/usb_device.h
+@@ -157,6 +157,7 @@ class UsbDevice : public base::RefCountedThreadSafe<UsbDevice> {
+   friend class UsbServiceAndroid;
+   friend class UsbServiceImpl;
+   friend class UsbServiceLinux;
++  friend class UsbServiceOhos;
+   friend class UsbServiceMac;
+   friend class UsbServiceWin;
+ 
+diff --git a/services/device/usb/usb_service.cc b/services/device/usb/usb_service.cc
+--- a/services/device/usb/usb_service.cc
++++ b/services/device/usb/usb_service.cc
+@@ -18,6 +18,8 @@
+ 
+ #if BUILDFLAG(IS_ANDROID)
+ #include "services/device/usb/usb_service_android.h"
++#elif BUILDFLAG(IS_OHOS)
++#include "services/device/usb/ohos/usb_service_ohos.h"
+ #elif defined(USE_UDEV)
+ #include "services/device/usb/usb_service_linux.h"
+ #elif BUILDFLAG(IS_MAC)
+@@ -48,6 +50,8 @@ constexpr base::TaskTraits UsbService::kBlockingTaskTraits;
+ std::unique_ptr<UsbService> UsbService::Create() {
+ #if BUILDFLAG(IS_ANDROID)
+   return base::WrapUnique(new UsbServiceAndroid());
++#elif BUILDFLAG(IS_OHOS)
++  return base::WrapUnique(new UsbServiceOhos());
+ #elif defined(USE_UDEV)
+   return base::WrapUnique(new UsbServiceLinux());
+ #elif BUILDFLAG(IS_WIN)
+diff --git a/services/device/hid/BUILD.gn b/services/device/hid/BUILD.gn
+--- a/services/device/hid/BUILD.gn
++++ b/services/device/hid/BUILD.gn
+@@ -39,1 +39,12 @@ source_set("hid") {
++  if (is_ohos) {
++    sources += [
++      "hid_connection_ohos.cc",
++      "hid_connection_ohos.h",
++      "hid_service_ohos.cc",
++      "hid_service_ohos.h",
++    ]
++
++    deps += [ "//services/device/usb" ]
++  }
++
+   if ((is_linux || is_chromeos) && use_udev) {
+diff --git a/services/device/hid/hid_service.cc b/services/device/hid/hid_service.cc
+--- a/services/device/hid/hid_service.cc
++++ b/services/device/hid/hid_service.cc
+@@ -21,2 +21,4 @@
+-#if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)
++#if BUILDFLAG(IS_OHOS)
++#include "services/device/hid/hid_service_ohos.h"
++#elif (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)
+ #include "services/device/hid/hid_service_linux.h"
+@@ -71,2 +73,4 @@ std::unique_ptr<HidService> HidService::Create() {
+-#if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)
++#if BUILDFLAG(IS_OHOS)
++  return std::make_unique<HidServiceOhos>();
++#elif (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)
+   return std::make_unique<HidServiceLinux>();
+@@ -87,4 +91,6 @@ std::unique_ptr<HidService> HidService::Create() {
+ // static
+ bool HidService::IsSupported() {
+-#if ((BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)) ||     BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) ||           BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_OHOS)
++  return true;
++#elif ((BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)) ||   BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) ||         BUILDFLAG(IS_ANDROID)
+   return true;
+diff --git a/services/device/usb/BUILD.gn b/services/device/usb/BUILD.gn
+--- a/services/device/usb/BUILD.gn
++++ b/services/device/usb/BUILD.gn
+@@ -20,2 +20,3 @@ static_library("usb") {
+     "//services/device/serial:*",
++    "//services/device/hid:*",
+     "//services/device/usb/mojo:*",
+diff --git a/services/device/BUILD.gn b/services/device/BUILD.gn
+--- a/services/device/BUILD.gn
++++ b/services/device/BUILD.gn
+@@ -17,7 +17,7 @@ if (is_ios) {
+ }
+ 
+ is_serial_enabled_platform =
+-    is_win || ((is_linux || is_chromeos) && use_udev) || is_mac || is_android
++    is_win || ((is_linux || is_chromeos) && use_udev) || is_mac || is_android || is_ohos
+ 
+ source_set("lib") {
+   # This should be visible only to embedders of the Device Service, and the
+@@ -332,7 +332,7 @@ source_set("tests") {
+       sources += [ "serial/serial_device_enumerator_linux_unittest.cc" ]
+     }
+ 
+-    if (is_posix) {
++    if (is_posix && !is_ohos) {
+       sources += [ "serial/serial_io_handler_posix_unittest.cc" ]
+     }
+ 
+diff --git a/services/device/serial/BUILD.gn b/services/device/serial/BUILD.gn
+--- a/services/device/serial/BUILD.gn
++++ b/services/device/serial/BUILD.gn
+@@ -7,7 +7,7 @@ if (is_android) {
+   import("//third_party/jni_zero/jni_zero.gni")
+ }
+ 
+-if (is_win || ((is_linux || is_chromeos) && use_udev) || is_mac || is_android) {
++if (is_win || ((is_linux || is_chromeos) && use_udev) || is_mac || is_android || is_ohos) {
+   config("platform_support") {
+     visibility = [ ":serial" ]
+     if (is_win) {
+@@ -101,7 +101,17 @@ if (is_win || ((is_linux || is_chromeos) && use_udev) || is_mac || is_android) {
+       ]
+     }
+ 
+-    if (is_posix) {
++    if (is_ohos) {
++      sources += [
++        "serial_device_enumerator_ohos.cc",
++        "serial_device_enumerator_ohos.h",
++        "serial_io_handler_ohos.cc",
++        "serial_io_handler_ohos.h",
++      ]
++      deps += [ "//services/device/usb" ]
++    }
++
++    if (is_posix && !is_ohos) {
+       sources += [
+         "serial_io_handler_posix.cc",
+         "serial_io_handler_posix.h",
+diff --git a/services/device/serial/serial_device_enumerator.cc b/services/device/serial/serial_device_enumerator.cc
+--- a/services/device/serial/serial_device_enumerator.cc
++++ b/services/device/serial/serial_device_enumerator.cc
+@@ -19,6 +19,8 @@
+ #include "services/device/serial/serial_device_enumerator_win.h"
+ #elif BUILDFLAG(IS_ANDROID)
+ #include "services/device/serial/serial_device_enumerator_android.h"
++#elif BUILDFLAG(IS_OHOS)
++#include "services/device/serial/serial_device_enumerator_ohos.h"
+ #endif
+ 
+ namespace device {
+@@ -37,6 +39,8 @@ std::unique_ptr<SerialDeviceEnumerator> SerialDeviceEnumerator::Create(
+   auto instance = std::make_unique<SerialDeviceEnumeratorAndroid>();
+   instance->Initialize();
+   return instance;
++#elif BUILDFLAG(IS_OHOS)
++  return std::make_unique<SerialDeviceEnumeratorOhos>();
+ #else
+ #error "No implementation of SerialDeviceEnumerator on this platform."
+ #endif
+diff --git a/services/device/serial/serial_io_handler.cc b/services/device/serial/serial_io_handler.cc
+--- a/services/device/serial/serial_io_handler.cc
++++ b/services/device/serial/serial_io_handler.cc
+@@ -84,6 +84,12 @@ void SerialIoHandler::OpenImpl() {
+ #endif  // BUILDFLAG(IS_CHROMEOS)
+ }
+ 
++void SerialIoHandler::CompleteOpen(bool success) {
++  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
++  DCHECK(open_complete_);
++  std::move(open_complete_).Run(success);
++}
++
+ #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
+ 
+ void SerialIoHandler::OnPathOpened(
+@@ -174,19 +180,27 @@ bool SerialIoHandler::PostOpen() {
+ 
+ void SerialIoHandler::PreClose() {}
+ 
++bool SerialIoHandler::IsOpen() const {
++  return file_.IsValid();
++}
++
+ void SerialIoHandler::Close(base::OnceClosure callback) {
+-  if (file_.IsValid()) {
++  if (IsOpen()) {
+     CancelRead(mojom::SerialReceiveError::DISCONNECTED);
+     CancelWrite(mojom::SerialSendError::DISCONNECTED);
+     PreClose();
+-    base::ThreadPool::PostTaskAndReply(
++    CloseImpl(std::move(callback));
++  } else {
++    std::move(callback).Run();
++  }
++}
++
++void SerialIoHandler::CloseImpl(base::OnceClosure callback) {
++  base::ThreadPool::PostTaskAndReply(
+         FROM_HERE,
+         {base::MayBlock(), base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN},
+         base::BindOnce(&SerialIoHandler::DoClose, std::move(file_)),
+         std::move(callback));
+-  } else {
+-    std::move(callback).Run();
+-  }
+ }
+ 
+ // static
+@@ -205,7 +219,7 @@ void SerialIoHandler::Read(base::span<uint8_t> buffer,
+   read_canceled_ = false;
+   AddRef();
+ 
+-  if (!file().IsValid()) {
++  if (!IsOpen()) {
+     ReadCompleted(0, mojom::SerialReceiveError::DISCONNECTED);
+     return;
+   }
+@@ -223,7 +237,7 @@ void SerialIoHandler::Write(base::span<const uint8_t> buffer,
+   write_canceled_ = false;
+   AddRef();
+ 
+-  if (!file().IsValid()) {
++  if (!IsOpen()) {
+     WriteCompleted(0, mojom::SerialSendError::DISCONNECTED);
+     return;
+   }
+diff --git a/services/device/serial/serial_io_handler.h b/services/device/serial/serial_io_handler.h
+--- a/services/device/serial/serial_io_handler.h
++++ b/services/device/serial/serial_io_handler.h
+@@ -134,7 +134,13 @@ class SerialIoHandler : public base::RefCountedThreadSafe<SerialIoHandler> {
+ 
+   // Open the device.
+   virtual void OpenImpl();
++  void CompleteOpen(bool success);
++
++  // Platform hooks for implementations such as HarmonyOS whose serial API
++  // does not expose a file descriptor.
++  virtual bool IsOpen() const;
++  virtual void CloseImpl(base::OnceClosure callback);
+ 
+   // Performs a platform-specific read operation. This must guarantee that
+   // ReadCompleted is called when the underlying async operation is completed
+   // or the SerialIoHandler instance will leak.

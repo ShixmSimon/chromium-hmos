@@ -1,0 +1,57 @@
+Do not open the side panel when the shell draws the browser.
+
+The side panel is part of the frame the shell replaced. Opened, it takes a
+slice of the window beside a toolbar that is not drawn, and the page it pushes
+aside is the only thing Chromium is supposed to be showing.
+
+Both Show() overloads are guarded rather than one: the Id form does not always
+route through the Key form in callers' eyes, and a panel opened by either is
+equally wrong here. Guarding Show rather than the layout means the entry is
+never created, so nothing observes a panel that will not appear.
+
+Chromium 154 moved the side panel out of BrowserView into
+chrome/browser/ui/side_panel/, which is why this is not in
+ohos-browser-chrome-shell.patch with the rest of the frame.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/ui/side_panel/side_panel_ui_base.cc b/chrome/browser/ui/side_panel/side_panel_ui_base.cc
+--- a/chrome/browser/ui/side_panel/side_panel_ui_base.cc
++++ b/chrome/browser/ui/side_panel/side_panel_ui_base.cc
+@@ -3,6 +3,11 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/side_panel/side_panel_ui_base.h"
++
++#include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
+ 
+ #include "base/functional/callback_forward.h"
+ #include "chrome/browser/tab_list/tab_list_interface.h"
+@@ -49,12 +54,24 @@
+ void SidePanelUIBase::Show(SidePanelEntry::Id entry_id,
+                            std::optional<SidePanelOpenTrigger> open_trigger,
+                            bool suppress_animations) {
++#if BUILDFLAG(IS_OHOS)
++  // The side panel is part of the frame the shell replaced. It would open
++  // beside a toolbar that is not drawn, taking a slice of the page with it.
++  if (chrome::ohos::IsAuraShellChromeHiddenByShell()) {
++    return;
++  }
++#endif
+   Show(SidePanelEntry::Key(entry_id), open_trigger, suppress_animations);
+ }
+ 
+ void SidePanelUIBase::Show(SidePanelEntry::Key entry_key,
+                            std::optional<SidePanelOpenTrigger> open_trigger,
+                            bool suppress_animations) {
++#if BUILDFLAG(IS_OHOS)
++  if (chrome::ohos::IsAuraShellChromeHiddenByShell()) {
++    return;
++  }
++#endif
+   std::optional<UniqueKey> unique_key = GetUniqueKeyForKey(entry_key);
+   CHECK(unique_key.has_value());
+   Show(unique_key.value(), open_trigger, suppress_animations);

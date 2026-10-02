@@ -1,0 +1,82 @@
+Stop the permission prompt from re-anchoring itself to the same place.
+
+The geolocation prompt could not be answered on device. Every button --
+"allow while visiting", "allow this time", "never allow" and the close X --
+did nothing, and the page's getCurrentPosition() sat there until it failed
+with TIMEOUT rather than PERMISSION_DENIED.
+
+The input path was not at fault. Device traces showed the press reaching the
+bubble's aura window with the right local coordinates and no capture held, the
+gesture recognizer producing the full BEGIN/TAP_DOWN/SHOW_PRESS/TAP/END
+sequence against that window, the Views hit test resolving the point to the
+MdTextButton, and the button's own state going NORMAL -> PRESSED -> HOVERED.
+That last step only happens inside views::Button::OnGestureEvent, so the
+button's callback did run.
+
+The callback is PermissionPromptBaseView::FilterUnintenedEventsAndRunCallbacks,
+whose first act is a clickjacking check. It was rejecting every press:
+
+  OHOS inputprot since_protect_ms=96 cooldown_ms=500 too_soon=1
+
+The bubble had been on screen for seconds, yet its protection clock had been
+restarted 96ms earlier -- between the press and the release of the very tap
+being judged. Four restarts arrive together on each press, from two anchor
+changes feeding two protectors:
+
+  OHOS browserview layout bounds=0,0 377x810
+  OHOS anchorchg rect=0,0 0x0
+  OHOS anchorchg rect=40,0 0x0
+
+BrowserView::Layout() calls PermissionRequestManager::UpdateAnchor(), which
+lands in AnchorToPageInfoOrChip(). With no Views toolbar to anchor to -- this
+port draws its browser UI in ArkTS -- the anchor configuration is null, so that
+function clears the anchor and then sets a rect. BubbleDialogDelegate has no
+"did it actually move" guard on either step: SetAnchorRect() notifies
+unconditionally, so a stationary anchor still reports two moves, and each one
+restarts the cooldown via UpdateInputProtectorsTimeStamp().
+
+Upstream platforms never see this because they have a real location-bar anchor
+view; SetAnchorView() with the same view returns early and nothing is reported.
+The deadlock needs both halves -- a null anchor and a layout while the finger
+is down -- and this port has both.
+
+The fix makes the no-op case a no-op: if the prompt is already anchored to
+nothing and the page-info rect it would compute is the rect it already has,
+leave the anchor alone.
+
+Verified on device (Huawei, HarmonyOS 7.0, 1316x2832): tapping "allow while
+visiting" now closes the bubble, navigator.permissions reports granted, and
+getCurrentPosition() returns a fix (39.88053, 116.59810, accuracy 23.5m) in
+8.2s.
+
+diff --git a/chrome/browser/ui/views/permissions/permission_prompt_base_view.cc b/chrome/browser/ui/views/permissions/permission_prompt_base_view.cc
+--- a/chrome/browser/ui/views/permissions/permission_prompt_base_view.cc
++++ b/chrome/browser/ui/views/permissions/permission_prompt_base_view.cc
+@@ -135,6 +135,27 @@ void PermissionPromptBaseView::AnchorToPageInfoOrChip() {
+   bubble_anchor_util::AnchorConfiguration configuration =
+       bubble_anchor_util::GetPermissionPromptBubbleAnchorConfiguration(
+           web_contents());
++
++  // Re-anchoring the bubble to where it already is has to be a no-op.
++  //
++  // When there is no toolbar to anchor to -- the case on HarmonyOS, where the
++  // browser UI is not built out of Views -- the code below clears the anchor
++  // and then sets a rect. BubbleDialogDelegate reports each of those as the
++  // anchor having moved, and every report restarts this prompt's clickjacking
++  // cooldown through UpdateInputProtectorsTimeStamp(). BrowserView::Layout()
++  // reaches here via PermissionRequestManager::UpdateAnchor(), so a layout
++  // that runs between a button's press and its release restarts the cooldown
++  // inside the ~100ms gap between the two, and
++  // FilterUnintenedEventsAndRunCallbacks() then discards the resulting tap as
++  // unintended. The prompt cannot be answered at all: not accepted, not
++  // denied, not dismissed.
++  if (configuration.anchor.IsNull() && GetAnchor().IsNull() &&
++      bubble_anchor_util::GetPageInfoAnchorRect(GetBrowser()) ==
++          GetAnchorRect()) {
++    SetArrow(configuration.bubble_arrow);
++    return;
++  }
++
+   SetAnchor(configuration.anchor);
+   // In fullscreen, `anchor` may be nullptr because the toolbar is hidden,
+   // therefore anchor to the browser window instead.

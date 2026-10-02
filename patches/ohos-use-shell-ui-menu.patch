@@ -1,0 +1,118 @@
+Give the native UI a way back to the shell's.
+
+A tablet or a 2in1 can switch from the shell's browser to Chromium's own
+from the shell's settings. Switching back needs that settings page, which
+the shell is no longer drawing -- and the choice is remembered, so a
+restart comes back to the native UI too. The way out has to be inside the
+UI the reader is now looking at.
+
+An item above Settings, in the same group, shown when the native UI is
+there because someone asked for it and the shell has given the item a
+name. The name is also how the shell says it wants the item: a phone,
+where the native UI is simply what there is and there is no setting to
+come back to, sends none, and neither does a shell that is drawing the
+browser itself.
+
+The words come from the shell rather than from generated_resources.grd.
+Compiled in, the string came out in English on a Chinese device -- a new
+message has no translations until they are supplied, and a product's own
+name is not the engine's to translate. Now renaming it or adding a
+language does not mean rebuilding the engine.
+
+This also carries the task runner header that
+ohos-new-tab-focuses-omnibox.patch needs in the same file. Two patches
+adding includes a few lines apart is how the second one ended up with a
+hunk that no amount of context would anchor; one block for both is
+steadier, and they are never applied apart.
+
+Choosing it does not switch anything here. It closes the menu and tells the
+shell, which saves the setting and calls setBrowserChrome itself. The shell
+owns that setting -- it is what writes browserChrome at the next launch --
+so switching here as well would leave the two disagreeing after a restart.
+
+diff --git a/chrome/app/chrome_command_ids.h b/chrome/app/chrome_command_ids.h
+--- a/chrome/app/chrome_command_ids.h
++++ b/chrome/app/chrome_command_ids.h
+@@ -596,5 +596,17 @@
+ // Context Menu submenus
+ #define IDC_SPELLCHECK_MENU 57329
+ #define IDC_WRITING_DIRECTION_MENU 57328
+
++// OHOS: back to the shell's browser from Chromium's own UI. Not in the
++// actions framework: it is reachable only from the app menu, on a platform
++// with no other menu bars to carry it.
++//
++// Below COMMAND_ID_FIRST_UNBOUNDED, which every bounded command has to be.
++// The first attempt took one past the highest number in this file, which
++// was 0xE000 exactly -- the start of the app menu's bookmark range, whose
++// members are 0xE000 + a multiple of five. The menu read the item as a
++// bookmark and asked a delegate that only exists once the bookmark
++// submenu has been opened, so hovering the item dereferenced null.
++#define IDC_OHOS_USE_SHELL_UI 57331
++
+ // macOS Top-Level Menu Bar containers
+diff --git a/chrome/browser/ui/toolbar/app_menu_model.cc b/chrome/browser/ui/toolbar/app_menu_model.cc
+--- a/chrome/browser/ui/toolbar/app_menu_model.cc
++++ b/chrome/browser/ui/toolbar/app_menu_model.cc
+@@ -86,3 +86,6 @@
+ #include "chrome/browser/ui/toolbar/app_menu_icon_controller.h"
+ #include "chrome/browser/ui/toolbar/bookmark_sub_menu_model.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
+ #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
+@@ -2478,6 +2478,19 @@
+ #endif
+ #endif
+
++#if BUILDFLAG(IS_OHOS)
++  // Above Settings and in its group, because it is the same kind of choice
++  // and whoever needs it is looking for where the settings went.
++  static_assert(IDC_OHOS_USE_SHELL_UI < COMMAND_ID_FIRST_UNBOUNDED,
++                "a bounded command must stay below the unbounded range, "
++                "which this menu hands out to bookmarks");
++  const std::u16string shell_ui_label = chrome::ohos::AuraShellUiMenuLabel();
++  if (!shell_ui_label.empty() &&
++      chrome::ohos::IsAuraShellNativeChromeChosen()) {
++    AddItem(IDC_OHOS_USE_SHELL_UI, shell_ui_label);
++  }
++#endif
++
+   AddItemWithStringIdAndVectorIcon(
+       this, IDC_OPTIONS, IDS_SETTINGS,
+       features::IsRoundedIconsEnabled() ? kSettingsIcon : kSettingsMenuOldIcon);
+diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
+--- a/chrome/browser/ui/browser_command_controller.cc
++++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -60,3 +60,7 @@
+ #include "chrome/browser/ui/browser_commands.h"
+ #include "chrome/browser/ui/browser_element_identifiers.h"
++#if BUILDFLAG(IS_OHOS)
++#include "base/task/single_thread_task_runner.h"
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
+ #include "chrome/browser/ui/browser_select_file_dialog_controller.h"
+@@ -1285,7 +1285,14 @@
+     case IDC_PERFORMANCE:
+       ShowSettingsSubPage(webui::GetBrowserForOpeningWebUi(browser_),
+                           chrome::kPerformanceSubPage);
+       break;
++#if BUILDFLAG(IS_OHOS)
++    case IDC_OHOS_USE_SHELL_UI:
++      // Asked for, not done here: the shell keeps this setting and writes it
++      // back at the next launch, so it has to be the one that changes it.
++      chrome::ohos::RequestAuraShellBrowserChrome("shell");
++      break;
++#endif
+     case IDC_OPTIONS:
+       ShowSettings(webui::GetBrowserForOpeningWebUi(browser_));
+       break;
+@@ -2090,5 +2097,8 @@
+   command_updater->UpdateCommandEnabled(IDC_IMPORT_SETTINGS,
+                                         !forced_incognito && !is_guest);
++#if BUILDFLAG(IS_OHOS)
++  command_updater->UpdateCommandEnabled(IDC_OHOS_USE_SHELL_UI, true);
++#endif
+   command_updater->UpdateCommandEnabled(IDC_OPTIONS,
+                                         !forced_incognito || is_guest);
+   command_updater->UpdateCommandEnabled(IDC_PERFORMANCE,

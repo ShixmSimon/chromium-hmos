@@ -1,0 +1,56 @@
+Let the ArkUI shell draw long-press menus on HarmonyOS phones.
+
+Chromium still builds the RenderViewContextMenu -- which items apply and
+whether they are enabled -- and ShowMenu hands it to
+chrome/browser/ui/ohos/shell_context_menu_ohos.cc (overlay) instead of
+showing the desktop menu. The shell gets a contextMenuRequested event and
+answers with contextMenuAction or contextMenuDismissed.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch,
+ohos-system-geolocation-permission.patch and ohos-screen-orientation.patch.
+
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+index 5a3f444..889a6f8 100644
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -887,6 +887,8 @@ source_set("core") {
+       "ui/ohos/aura_shell_runtime_bridge.h",
+       "ui/ohos/screen_orientation_delegate_ohos.cc",
+       "ui/ohos/screen_orientation_delegate_ohos.h",
++      "ui/ohos/shell_context_menu_ohos.cc",
++      "ui/ohos/shell_context_menu_ohos.h",
+       "ui/ohos/system_geolocation_source_ohos.cc",
+       "ui/ohos/system_geolocation_source_ohos.h",
+     ]
+diff --git a/chrome/browser/ui/views/tab_contents/chrome_web_contents_view_delegate_views.cc b/chrome/browser/ui/views/tab_contents/chrome_web_contents_view_delegate_views.cc
+index fdefbf5..d33c658 100644
+--- a/chrome/browser/ui/views/tab_contents/chrome_web_contents_view_delegate_views.cc
++++ b/chrome/browser/ui/views/tab_contents/chrome_web_contents_view_delegate_views.cc
+@@ -4,6 +4,12 @@
+ 
+ #include "chrome/browser/ui/views/tab_contents/chrome_web_contents_view_delegate_views.h"
+ 
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/shell_context_menu_ohos.h"
++#endif
++
+ #include <memory>
+ #include <utility>
+ 
+@@ -98,6 +104,14 @@ void ChromeWebContentsViewDelegateViews::ShowMenu(
+     return;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // On phones the ArkUI shell draws long-press menus; the menu built here
++  // still decides what is offered and runs the chosen item.
++  if (chrome::ohos::HandOffContextMenuToShell(web_contents_, context_menu_)) {
++    return;
++  }
++#endif
++
+   context_menu_->Show();
+ }
+ 

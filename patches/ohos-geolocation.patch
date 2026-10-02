@@ -1,0 +1,94 @@
+Wire the HarmonyOS LocationKit provider into the device service.
+
+The provider itself is new code and lives in the overlay, at
+overlay/services/device/geolocation/ohos/, so it needs no patch. What follows
+is only the part that has to change in files upstream already tracks:
+
+  * services/device/geolocation/BUILD.gn builds the provider and links
+    LocationKit (liblocation_ndk.so). It is a standalone is_ohos block rather
+    than a branch of the WifiDataProvider chain below it, because OHOS still
+    needs that chain's empty fallback to define WifiDataProviderHandle's
+    static factory.
+
+  * LocationProviderManager defaults OHOS to kPlatformOnly. The network
+    provider it would otherwise select needs a Google API key that this build
+    does not carry, so falling back to it would fail silently.
+
+  * NewSystemLocationProvider() gains an OHOS arm. This is the line that
+    actually reaches device::NewSystemLocationProvider(), defined in
+    overlay/services/device/geolocation/ohos/location_provider_ohos.cc.
+
+  * services/device/BUILD.gn compiles the conversion unit test.
+
+Generated against Chromium 154.0.8037.51. Verified to apply cleanly to a
+pristine tree at that tag; chromium-154-harmonyos.patch touches none of these
+three files, so it should apply to an already-patched tree too.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-geolocation.patch
+
+diff --git a/services/device/BUILD.gn b/services/device/BUILD.gn
+--- a/services/device/BUILD.gn
++++ b/services/device/BUILD.gn
+@@ -258,6 +258,12 @@
+       "//services/device/fingerprint",
+       "//third_party/protobuf:protobuf_lite",
+     ]
++  }
++
++  if (is_ohos) {
++    # Only the LocationKit-to-geoposition translation is covered: it is the
++    # part with no device dependency, so it is the part a host run can check.
++    sources += [ "geolocation/ohos/geoposition_ohos_unittest.cc" ]
+   }
+ 
+   if (is_android) {
+diff --git a/services/device/geolocation/BUILD.gn b/services/device/geolocation/BUILD.gn
+--- a/services/device/geolocation/BUILD.gn
++++ b/services/device/geolocation/BUILD.gn
+@@ -100,6 +100,20 @@
+     deps += [ "//services/device/public/cpp:device_features" ]
+   }
+ 
++  if (is_ohos) {
++    sources += [
++      "ohos/geoposition_ohos.cc",
++      "ohos/geoposition_ohos.h",
++      "ohos/location_provider_ohos.cc",
++      "ohos/location_provider_ohos.h",
++    ]
++
++    # LocationKit supplies the platform location provider only. The Wi-Fi data
++    # provider still comes from the empty fallback below, because OHOS exposes
++    # no scan API that WifiDataProviderCommon could drive.
++    libs = [ "location_ndk" ]
++  }
++
+   # Platform-specific WifiDataProvider implementations.
+   if (is_chromeos) {
+     sources += [
+diff --git a/services/device/geolocation/location_provider_manager.cc b/services/device/geolocation/location_provider_manager.cc
+--- a/services/device/geolocation/location_provider_manager.cc
++++ b/services/device/geolocation/location_provider_manager.cc
+@@ -89,8 +89,10 @@
+       internals_updated_closure_(std::move(internals_updated_closure)),
+       network_request_callback_(std::move(network_request_callback)),
+       network_response_callback_(std::move(network_response_callback)) {
+-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+-  // On Android and iOS, default to using the platform location provider.
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || BUILDFLAG(IS_OHOS)
++  // On Android, iOS and HarmonyOS, default to using the platform location
++  // provider. On HarmonyOS the network provider is not an alternative: it
++  // needs a Google API key this build does not carry.
+   provider_manager_mode_ = kPlatformOnly;
+ #elif BUILDFLAG(IS_CHROMEOS)
+   // On Ash / Lacros, default to using the network location provider.
+@@ -391,7 +393,7 @@
+   CHECK(geolocation_system_permission_manager_);
+   return device::NewSystemLocationProvider(
+       geolocation_system_permission_manager_->GetSystemGeolocationSource());
+-#elif BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID) || \
++#elif BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS) || \
+     (BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DBUS))
+   return device::NewSystemLocationProvider();
+ #else

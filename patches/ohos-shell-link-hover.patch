@@ -1,0 +1,40 @@
+Tell the shell which link the pointer is over.
+
+Chromium writes the hovered URL into the status bubble at the bottom of the
+window. With the frame hidden there is no status bubble, the loop finds no
+anchor and the hover is simply dropped, so a shell drawing its own corner
+label has nothing to put in it.
+
+Only taken when the shell draws that label; otherwise Chromium's bubble is
+still there and still right.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+@@ -35,6 +35,9 @@
+ #include "chrome/browser/ui/browser_window.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
+ #include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
+ #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
+ #include "chrome/browser/ui/exclusive_access/keyboard_lock_controller.h"
+@@ -825,6 +828,14 @@
+ 
+ void BrowserWebContentsDelegate::UpdateTargetURL(content::WebContents* source,
+                                                  const GURL& url) {
++#if BUILDFLAG(IS_OHOS)
++  // With the frame hidden there is no status bubble to write into, and the
++  // loop below would find no anchor and do nothing. Tell the shell, which
++  // draws its own in the corner of the page.
++  if (chrome::ohos::DispatchAuraShellLinkHovered(source, url)) {
++    return;
++  }
++#endif
+   std::vector<StatusBubble*> status_bubbles =
+       browser_ui_controller_->GetStatusBubbles();
+   for (StatusBubble* status_bubble : status_bubbles) {

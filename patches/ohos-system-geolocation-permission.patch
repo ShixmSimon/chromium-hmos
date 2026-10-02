@@ -1,0 +1,56 @@
+Let HarmonyOS report its location permission to Chromium's system layer.
+
+A site granted geolocation while the app itself holds no location permission
+gets a prompt it cannot act on: the page is told yes, and the platform then
+refuses. Chromium already handles this -- GeolocationPermissionContextSystem
+resolves such a request to CONTENT_SETTING_BLOCK before any prompt is shown --
+but only where os_level_geolocation_permission_supported is set, which was
+ChromeOS, Apple and Windows.
+
+Turning it on for OHOS also brings in GeolocationSystemPermissionManager, whose
+constructor and observer are themselves behind the flag; there is no way to
+register the manager first and enable the behaviour afterwards. So both land
+together, and rolling back means reverting the one GN condition rather than
+code. GeolocationProviderImpl reads the manager under the same flag, which is
+why the manager is created in NotifyAuraShellBrowserStarted, before anything
+can ask for a position.
+
+The source implementation itself is new and lives in the overlay, at
+chrome/browser/ui/ohos/system_geolocation_source_ohos.{h,cc}; only its entry in
+the sources list needs a patch. That hunk is anchored on the is_ohos block
+chromium-154-harmonyos.patch adds, so it applies to the tree as that patch
+leaves it, not to a pristine one.
+
+The permission state comes from the shell over the existing command channel.
+The NDK can read it, but only through libability_runtime, which
+//chrome/browser does not link, while ArkTS already has abilityAccessCtrl.
+
+Generated against Chromium 154.0.8037.51.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-system-geolocation-permission.patch
+
+diff --git a/services/device/public/cpp/geolocation/buildflags.gni b/services/device/public/cpp/geolocation/buildflags.gni
+--- a/services/device/public/cpp/geolocation/buildflags.gni
++++ b/services/device/public/cpp/geolocation/buildflags.gni
+@@ -9,5 +9,6 @@
+   # Specifies if we support the OS level global geolocation permission for the
+   # current platform. This is exposed with the macro
+   # OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED.
+-  os_level_geolocation_permission_supported = is_chromeos || is_apple || is_win
++  os_level_geolocation_permission_supported =
++      is_chromeos || is_apple || is_win || is_ohos
+ }
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -881,6 +881,8 @@ source_set("core") {
+   if (is_ohos) {
+     sources += [
+       "ui/ohos/aura_shell_runtime_bridge.cc",
+       "ui/ohos/aura_shell_runtime_bridge.h",
++      "ui/ohos/system_geolocation_source_ohos.cc",
++      "ui/ohos/system_geolocation_source_ohos.h",
+     ]
+   }
+ 

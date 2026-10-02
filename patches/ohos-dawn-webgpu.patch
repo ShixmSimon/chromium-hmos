@@ -1,0 +1,661 @@
+WebGPU on HarmonyOS: Dawn's Vulkan backend, sharing OH_NativeBuffers.
+
+use_dawn and dawn_enable_vulkan left OHOS out, so the GPU process had no
+WebGPU decoder and every WebGPU context failed ("Failed to create WebGPU
+Context Provider") even with --enable-unsafe-webgpu. Dawn's Vulkan backend
+then loads libvulkan.so, as on Android, and is built with the Linux external
+memory and semaphore services its C++ calls, since OHOS compiles as Linux in
+Dawn.
+
+Textures are shared with the GLES compositor as OH_NativeBuffers, zero-copy.
+VK_OHOS_external_memory is Android's AHardwareBuffer import with the names
+changed, so on OHOS the AHardwareBuffer SharedTextureMemory descriptor and
+feature carry an OH_NativeBuffer, imported with vkGetNativeBufferPropertiesOHOS
+and VkImportNativeBufferInfoOHOS (declared in Dawn, as Chromium's Vulkan
+headers lack them). Adapters must have that feature. OzoneImageBacking takes
+WebGPU's single-plane images (other single-plane images stay GL textures),
+DawnOzoneImageRepresentation imports its pixmap's OH_NativeBuffer, and the
+two APIs synchronise with sync fds: VK_KHR_external_semaphore_fd on Dawn's
+side, EGL_ANDROID_native_fence_sync on ANGLE's. libsync is not built here,
+so the one sync_merge() needed is the SYNC_IOC_MERGE ioctl.
+
+Video frames reach importExternalTexture zero-copy the same way: with
+--enable-unsafe-webgpu the frame pool gives its NV12 OH_NativeBuffers
+WebGPU read usage and marks the frames WebGPU-compatible, and Dawn imports
+two-plane formats as one non-disjoint image sampled through plane views.
+Images keep the mutable-format bit Dawn wants (-srgb and plane views); the
+driver's import format query fails for every OH_NativeBuffer, so it is
+only a hint here.
+
+Experimental and behind --enable-unsafe-webgpu.
+
+Generated against Chromium 154.0.8037.51 (Dawn 8597a1aaec54).
+
+diff --git a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc b/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
+index b1cf891..47762db 100644
+--- a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
++++ b/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
+@@ -5,8 +5,20 @@
+ #include "gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.h"
+ 
+ #include <dawn/native/VulkanBackend.h>
+-#include <sync/sync.h>
+ #include <vulkan/vulkan.h>
++
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include <linux/sync_file.h>
++#include <sys/ioctl.h>
++
++#include <cstring>
++
++#include "ui/ozone/platform/ohos/ohos_native_pixmap.h"  // nogncheck
++#else
++#include <sync/sync.h>
++#endif
+ // X11 Xlib.h defines Status as int and X.h defines Success as 0, both
+ // conflicting with wgpu::Status::Success.
+ #undef Status
+@@ -23,11 +35,31 @@
+ #include "gpu/config/gpu_finch_features.h"
+ #include "ui/gfx/geometry/size.h"
+ #include "ui/gfx/gpu_fence_handle.h"
++#if !BUILDFLAG(IS_OHOS)
+ #include "ui/gfx/linux/drm_util_linux.h"  // nogncheck
++#endif
+ #include "ui/gfx/native_pixmap.h"
+ 
+ namespace gpu {
+ 
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++// libsync's sync_merge(), which this port does not build: a new sync file
++// that signals when both do, or -1.
++int sync_merge(const char* name, int fd1, int fd2) {
++  struct sync_merge_data data = {};
++  strncpy(data.name, name, sizeof(data.name) - 1);
++  data.fd2 = fd2;
++  if (ioctl(fd1, SYNC_IOC_MERGE, &data) < 0) {
++    return -1;
++  }
++  return data.fence;
++}
++
++}  // namespace
++#endif  // BUILDFLAG(IS_OHOS)
++
+ DawnOzoneImageRepresentation::DawnOzoneImageRepresentation(
+     SharedImageManager* manager,
+     SharedImageBacking* backing,
+@@ -125,7 +157,9 @@ wgpu::Texture DawnOzoneImageRepresentation::BeginAccess(
+     begin_access_desc.fences = shared_fences.data();
+     begin_access_desc.signaledValues = shared_fence_signals.data();
+   }
++#if !BUILDFLAG(IS_OHOS)
+   gfx::Size pixmap_size = pixmap_->GetBufferSize();
++#endif
+ 
+   wgpu::DawnTextureInternalUsageDescriptor internalDesc;
+   internalDesc.internalUsage = internal_usage;
+@@ -143,6 +177,22 @@ wgpu::Texture DawnOzoneImageRepresentation::BeginAccess(
+   texture_descriptor.viewFormats = view_formats_.data();
+   texture_descriptor.nextInChain = &internalDesc;
+ 
++#if BUILDFLAG(IS_OHOS)
++  // The pixmap is an OH_NativeBuffer, which Dawn imports through the
++  // AHardwareBuffer descriptor with VK_OHOS_external_memory.
++  wgpu::SharedTextureMemoryAHardwareBufferDescriptor native_buffer_desc;
++  native_buffer_desc.handle = ui::GetOhosNativeBuffer(*pixmap_);
++  if (!native_buffer_desc.handle) {
++    LOG(ERROR) << "No OH_NativeBuffer behind this pixmap.";
++    ozone_backing()->EndAccess(
++        is_readonly_, OzoneImageBacking::AccessStream::kWebGPU,
++        fences.empty() ? gfx::GpuFenceHandle() : std::move(fences[0]));
++    return nullptr;
++  }
++  wgpu::SharedTextureMemoryDescriptor desc;
++  desc.label = "DawnOzoneImageRepresentation";
++  desc.nextInChain = &native_buffer_desc;
++#else
+   wgpu::SharedTextureMemoryDmaBufDescriptor dmaBufDesc;
+   dmaBufDesc.size = {static_cast<uint32_t>(pixmap_size.width()),
+                      static_cast<uint32_t>(pixmap_size.height())};
+@@ -172,6 +222,7 @@ wgpu::Texture DawnOzoneImageRepresentation::BeginAccess(
+   wgpu::SharedTextureMemoryDescriptor desc;
+   desc.label = "DawnOzoneImageRepresentation";
+   desc.nextInChain = &dmaBufDesc;
++#endif  // BUILDFLAG(IS_OHOS)
+ 
+   if (!shared_texture_memory_) {
+     shared_texture_memory_ = device_.ImportSharedTextureMemory(&desc);
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+index 2e64a7f..86eb608 100644
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+@@ -161,7 +161,17 @@ std::unique_ptr<DawnImageRepresentation> OzoneImageBacking::ProduceDawn(
+   CHECK(!(usage().Has(SHARED_IMAGE_USAGE_CPU_ONLY_READ_WRITE)));
+ 
+ #if BUILDFLAG(USE_DAWN)
++#if BUILDFLAG(IS_OHOS)
++  // Video frames prefer the external sampler, which ToDawnFormat does not
++  // know about; Dawn samples them plane by plane (importExternalTexture).
++  viz::SharedImageFormat dawn_format = format();
++  if (dawn_format.is_multi_plane() && dawn_format.PrefersExternalSampler()) {
++    dawn_format.ClearPrefersExternalSampler();
++  }
++  wgpu::TextureFormat webgpu_format = ToDawnFormat(dawn_format);
++#else
+   wgpu::TextureFormat webgpu_format = ToDawnFormat(format());
++#endif
+   if (webgpu_format == wgpu::TextureFormat::Undefined) {
+     return nullptr;
+   }
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+index 9388305..3a71859 100644
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+@@ -252,6 +252,17 @@ bool OzoneImageBackingFactory::IsSupported(
+     return false;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // OH_NativeBuffers back video frames (NV12, P010) and WebGPU's textures;
++  // every other single-plane image stays where it was, a GL texture.
++  if (format.is_single_plane() &&
++      !usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_WEBGPU_WRITE |
++                      SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE |
++                      SHARED_IMAGE_USAGE_WEBGPU_STORAGE_TEXTURE)) {
++    return false;
++  }
++#endif
++
+   bool used_by_skia = usage.HasAny(
+       SHARED_IMAGE_USAGE_RASTER_READ | SHARED_IMAGE_USAGE_RASTER_WRITE |
+       SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_DISPLAY_WRITE);
+@@ -369,7 +380,9 @@ bool OzoneImageBackingFactory::CanVulkanSynchronizeGpuFence() {
+ }
+ 
+ bool OzoneImageBackingFactory::CanImportNativePixmapToWebGPU() {
+-#if BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
++  // OHOS: adapters are only taken when they can import OH_NativeBuffers
++  // (webgpu_decoder_impl.cc), so the same holds there.
+   // Safe to always return true here, as it's not possible to create a WebGPU
+   // adapter that doesn't support importing native pixmaps:
+   // https://source.chromium.org/chromium/chromium/src/+/main:gpu/command_buffer/service/webgpu_decoder_impl.cc;drc=daed597d580d450d36578c0cc53b4f72d3b507da;l=1291
+@@ -393,7 +406,9 @@ bool OzoneImageBackingFactory::CanImportNativePixmapToWebGPU() {
+ }
+ 
+ bool OzoneImageBackingFactory::CanWebGPUSynchronizeGpuFence() {
+-#if BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
++  // OHOS: Dawn's Vulkan backend exchanges sync fds there too
++  // (VK_KHR_external_semaphore_fd), and EGL has EGL_ANDROID_native_fence_sync.
+   // Dawn always use sync files on ChromeOS so it's safe to unconditionally
+   // return true here.
+   return true;
+diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buffer/service/webgpu_decoder_impl.cc
+index a7f3698..c738be2 100644
+--- a/gpu/command_buffer/service/webgpu_decoder_impl.cc
++++ b/gpu/command_buffer/service/webgpu_decoder_impl.cc
+@@ -1499,7 +1499,8 @@ WGPUFuture WebGPUDecoderImpl::RequestDeviceImpl(
+       wgpu::FeatureName::SharedFenceSyncFD,
+ #endif
+ 
+-#if BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
++      // OHOS: OH_NativeBuffers travel as AHardwareBuffers (see above).
+       wgpu::FeatureName::SharedTextureMemoryAHardwareBuffer,
+       wgpu::FeatureName::SharedFenceSyncFD,
+ #endif
+@@ -1809,6 +1810,11 @@ wgpu::Adapter WebGPUDecoderImpl::CreatePreferredAdapter(
+       supports_external_textures = adapter.HasFeature(
+           wgpu::FeatureName::SharedTextureMemoryAHardwareBuffer);
+     }
++#elif BUILDFLAG(IS_OHOS)
++    // OH_NativeBuffers come into Dawn through the AHardwareBuffer
++    // SharedTextureMemory path, imported with VK_OHOS_external_memory.
++    supports_external_textures = adapter.HasFeature(
++        wgpu::FeatureName::SharedTextureMemoryAHardwareBuffer);
+ #else
+     // Chromium is in the midst of being transitioned to SharedTextureMemory
+     // platform by platform. On platforms that have not yet been transitioned,
+diff --git a/media/video/mappable_shared_image_video_frame_pool.cc b/media/video/mappable_shared_image_video_frame_pool.cc
+index e15a39a..b99d14b 100644
+--- a/media/video/mappable_shared_image_video_frame_pool.cc
++++ b/media/video/mappable_shared_image_video_frame_pool.cc
+@@ -1101,6 +1101,14 @@ scoped_refptr<VideoFrame> MappableSharedImageVideoFramePool::PoolImpl::
+       gpu::SHARED_IMAGE_USAGE_WEBGPU_READ);
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++  // An OH_NativeBuffer holding both planes, which Dawn imports whole.
++  is_webgpu_compatible =
++      gmb_type == gfx::GpuMemoryBufferType::NATIVE_PIXMAP &&
++      frame_resource->shared_image->usage().Has(
++          gpu::SHARED_IMAGE_USAGE_WEBGPU_READ);
++#endif
++
+ #if BUILDFLAG(IS_CHROMEOS)
+   // Gate this on SharedImage usage as ScopedAccess now CHECKs for it.
+   // TOOD(crbug.com/425634684, crbug.com/413659843): Check for webgpu support
+@@ -1273,10 +1281,11 @@ MappableSharedImageVideoFramePool::PoolImpl::GetOrCreateFrameResource(
+ 
+   // TODO(crbug.com/425634684): Check for webgpu support from
+   // SharedImageCapabilities, once this metadata is compatible.
+-#if BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
+   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+           switches::kEnableUnsafeWebGPU)) {
+     // This SharedImage may be used for zero-copy import into WebGPU.
++    // OHOS: an OH_NativeBuffer that Dawn imports with VK_OHOS_external_memory.
+     si_usage |= gpu::SHARED_IMAGE_USAGE_WEBGPU_READ;
+   }
+ #elif BUILDFLAG(IS_MAC)
+diff --git a/third_party/dawn/scripts/dawn_features.gni b/third_party/dawn/scripts/dawn_features.gni
+index b443750..84f6c9f 100644
+--- a/third_party/dawn/scripts/dawn_features.gni
++++ b/third_party/dawn/scripts/dawn_features.gni
+@@ -132,7 +132,7 @@ declare_args() {
+   # Disables vulkan when compiling for UWP, since UWP only supports d3d
+   dawn_enable_vulkan =
+       dawn_maximal || is_linux || is_chromeos || (is_win && !dawn_is_winuwp) ||
+-      is_fuchsia || is_android || dawn_use_swiftshader
++      is_fuchsia || is_android || is_ohos || dawn_use_swiftshader
+ 
+   # Enables error injection for faking failures to native API calls
+   dawn_enable_error_injection =
+diff --git a/third_party/dawn/src/dawn/native/BUILD.gn b/third_party/dawn/src/dawn/native/BUILD.gn
+index c5a8679..08eba71 100644
+--- a/third_party/dawn/src/dawn/native/BUILD.gn
++++ b/third_party/dawn/src/dawn/native/BUILD.gn
+@@ -1021,7 +1021,8 @@ source_set("sources") {
+       "vulkan/external_semaphore/SemaphoreServiceImplementation.h",
+     ]
+ 
+-    if (is_android || is_linux || is_chromeos) {
++    # OHOS compiles as Linux here (__linux__), so it takes Linux's services.
++    if (is_android || is_linux || is_chromeos || is_ohos) {
+       sources += [
+         "vulkan/external_semaphore/SemaphoreServiceImplementationFD.cpp",
+         "vulkan/external_semaphore/SemaphoreServiceImplementationFD.h",
+@@ -1032,7 +1033,7 @@ source_set("sources") {
+           "vulkan/external_memory/MemoryServiceImplementationAHardwareBuffer.cpp",
+           "vulkan/external_memory/MemoryServiceImplementationAHardwareBuffer.h",
+         ]
+-      } else if (is_linux || is_chromeos) {
++      } else if (is_linux || is_chromeos || is_ohos) {
+         sources += [
+           "vulkan/external_memory/MemoryServiceImplementationDmaBuf.cpp",
+           "vulkan/external_memory/MemoryServiceImplementationDmaBuf.h",
+diff --git a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp b/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
+index a93ea4f..2c38742 100644
+--- a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
++++ b/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
+@@ -58,7 +58,9 @@ constexpr char kSwiftshaderLibName[] = "libvk_swiftshader.dylib";
+ #endif
+ 
+ #if DAWN_PLATFORM_IS(LINUX)
+-#if DAWN_PLATFORM_IS(ANDROID)
++#if DAWN_PLATFORM_IS(ANDROID) || defined(__OHOS__)
++// HarmonyOS, like Android, ships its loader as libvulkan.so with no
++// versioned name.
+ constexpr char kVulkanLibName[] = "libvulkan.so";
+ #else
+ constexpr char kVulkanLibName[] = "libvulkan.so.1";
+diff --git a/third_party/dawn/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/third_party/dawn/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+index 361b1d4..3f6cb79 100644
+--- a/third_party/dawn/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
++++ b/third_party/dawn/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+@@ -641,6 +641,14 @@ void PhysicalDevice::InitializeSupportedFeaturesImpl() {
+         }
+     }
+ #endif  // DAWN_PLATFORM_IS(ANDROID)
++#if defined(__OHOS__)
++    // HarmonyOS: OH_NativeBuffers come in through the AHardwareBuffer
++    // descriptor and feature (SharedTextureMemory::Create), imported with
++    // VK_OHOS_external_memory.
++    if (mDeviceInfo.HasExt(DeviceExt::ExternalMemoryOHOSNativeBuffer)) {
++        EnableFeature(Feature::SharedTextureMemoryAHardwareBuffer);
++    }
++#endif  // defined(__OHOS__)
+ 
+     if (CheckSemaphoreSupport(DeviceExt::ExternalSemaphoreZirconHandle,
+                               VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_ZIRCON_EVENT_BIT_FUCHSIA)) {
+diff --git a/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
+index 80150e6..159e433 100644
+--- a/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
++++ b/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
+@@ -55,6 +55,10 @@
+ #include "src/dawn/native/AHBFunctions.h"
+ #endif  // DAWN_PLATFORM_IS(ANDROID)
+ 
++#if defined(__OHOS__)
++#include <native_buffer/native_buffer.h>
++#endif  // defined(__OHOS__)
++
+ namespace dawn::native::vulkan {
+ 
+ namespace {
+@@ -117,6 +121,45 @@ ResultOrError<wgpu::TextureFormat> FormatFromDrmFormat(uint32_t drmFormat) {
+ // `externalMemoryHandleTypeFlagBits`. The rest of the parameters are computed from `properties`
+ // and `imageFormatInfo`. Additional structs may be chained by passing them in the varardic
+ // parameter args.
++#if defined(__OHOS__)
++// VK_OHOS_external_memory, as the HarmonyOS SDK's vulkan_ohos.h declares it.
++// Declared here because Chromium's Vulkan headers do not have it.
++constexpr uint32_t kOhosNativeBufferHandleType = 0x00008000;  // OH_NATIVE_BUFFER_BIT
++constexpr uint32_t kOhosNativeBufferHandleTypeDeprecated = 0x00002000;  // OHOS_NATIVE_BUFFER_BIT
++constexpr VkStructureType kOhosStructureTypeNativeBufferProperties =
++    static_cast<VkStructureType>(1000452001);
++constexpr VkStructureType kOhosStructureTypeNativeBufferFormatProperties =
++    static_cast<VkStructureType>(1000452002);
++constexpr VkStructureType kOhosStructureTypeImportNativeBufferInfo =
++    static_cast<VkStructureType>(1000452003);
++
++struct OhosNativeBufferProperties {
++    VkStructureType sType;
++    void* pNext;
++    VkDeviceSize allocationSize;
++    uint32_t memoryTypeBits;
++};
++
++struct OhosNativeBufferFormatProperties {
++    VkStructureType sType;
++    void* pNext;
++    VkFormat format;
++    uint64_t externalFormat;
++    VkFormatFeatureFlags formatFeatures;
++    VkComponentMapping samplerYcbcrConversionComponents;
++    VkSamplerYcbcrModelConversion suggestedYcbcrModel;
++    VkSamplerYcbcrRange suggestedYcbcrRange;
++    VkChromaLocation suggestedXChromaOffset;
++    VkChromaLocation suggestedYChromaOffset;
++};
++
++struct OhosImportNativeBufferInfo {
++    VkStructureType sType;
++    const void* pNext;
++    OH_NativeBuffer* buffer;
++};
++#endif  // defined(__OHOS__)
++
+ template <typename... AdditionalChains>
+ ResultOrError<VkImage> CreateExternalVkImage(
+     Device* device,
+@@ -770,6 +813,186 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
+         }
+     }
+     return sharedTextureMemory;
++#elif defined(__OHOS__)
++    // HarmonyOS: the descriptor's handle is an OH_NativeBuffer, imported
++    // through VK_OHOS_external_memory -- Android's AHardwareBuffer import with
++    // the names changed. Formats the driver names a VkFormat for, including
++    // two-plane YUV; no opaque external (YCbCr) formats.
++    VkDevice vkDevice = device->GetVkDevice();
++    auto* nativeBuffer = static_cast<OH_NativeBuffer*>(descriptor->handle);
++
++    OH_NativeBuffer_Config config = {};
++    OH_NativeBuffer_GetConfig(nativeBuffer, &config);
++
++    SharedTextureMemoryProperties properties;
++    properties.size = {static_cast<uint32_t>(config.width),
++                       static_cast<uint32_t>(config.height), 1};
++    properties.usage = wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::CopyDst;
++    if (config.usage & NATIVEBUFFER_USAGE_HW_RENDER) {
++        properties.usage |= wgpu::TextureUsage::RenderAttachment;
++    }
++    if (config.usage & NATIVEBUFFER_USAGE_HW_TEXTURE) {
++        properties.usage |= wgpu::TextureUsage::TextureBinding;
++    }
++
++    const CombinedLimits& limits = device->GetLimits();
++    DAWN_INVALID_IF(properties.size.width == 0 ||
++                        properties.size.width > limits.v1.maxTextureDimension2D,
++                    "Resource width (%u) is zero or exceeds maxTextureDimension2D (%u).",
++                    properties.size.width, limits.v1.maxTextureDimension2D);
++    DAWN_INVALID_IF(properties.size.height == 0 ||
++                        properties.size.height > limits.v1.maxTextureDimension2D,
++                    "Resource height (%u) is zero or exceeds maxTextureDimension2D (%u).",
++                    properties.size.height, limits.v1.maxTextureDimension2D);
++
++    OhosNativeBufferFormatProperties formatProperties = {};
++    formatProperties.sType = kOhosStructureTypeNativeBufferFormatProperties;
++    OhosNativeBufferProperties bufferProperties = {};
++    bufferProperties.sType = kOhosStructureTypeNativeBufferProperties;
++    bufferProperties.pNext = &formatProperties;
++    DAWN_TRY(CheckVkSuccess(
++        device->fn.GetNativeBufferPropertiesOHOS(vkDevice, nativeBuffer, &bufferProperties),
++        "vkGetNativeBufferPropertiesOHOS"));
++    VkFormat vkFormat = formatProperties.format;
++    if (vkFormat == VK_FORMAT_UNDEFINED &&
++        config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP) {
++        // The Maleoon driver names no VkFormat for NV12, only an opaque
++        // external one. These buffers are allocated CPU-writable and so laid
++        // out as plain NV12, which is what G8_B8R8_2PLANE_420 describes.
++        vkFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
++    }
++    DAWN_INVALID_IF(vkFormat == VK_FORMAT_UNDEFINED,
++                    "OH_NativeBuffer with an external format (%x) is not supported.",
++                    formatProperties.externalFormat);
++    DAWN_TRY_ASSIGN(properties.format, FormatFromVkFormat(device, vkFormat));
++
++    const Format* internalFormat = nullptr;
++    DAWN_TRY_ASSIGN(internalFormat, device->GetInternalFormat(properties.format));
++    if (internalFormat->IsMultiPlanar()) {
++        // A video frame (NV12) for importExternalTexture: sampled plane by
++        // plane, through views that need the mutable-format bit. The image is
++        // not disjoint -- one OH_NativeBuffer holds both planes.
++        properties.usage = wgpu::TextureUsage::TextureBinding;
++    }
++
++    Ref<SharedTextureMemory> sharedTextureMemory = SharedTextureMemory::Create(
++        device, label, properties, VK_QUEUE_FAMILY_FOREIGN_EXT, YCbCrVkDescriptor{});
++    sharedTextureMemory->APIGetProperties(&properties);
++
++    VkImageUsageFlags vkUsageFlags = VulkanImageUsage(device, properties.usage, *internalFormat);
++    VkImageCreateFlags vkCreateFlags =
++        VulkanImageCreateFlags(device, properties.usage, *internalFormat, /*sampleCount=*/1);
++    if (properties.format == wgpu::TextureFormat::BGRA8Unorm &&
++        (properties.usage & wgpu::TextureUsage::StorageBinding)) {
++        vkCreateFlags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
++    }
++    if (!device->GetCompatibleViewFormats(*internalFormat).empty()) {
++        // View reinterpretation (an -srgb view): no format list, as for a
++        // storage-capable AHardwareBuffer import.
++        vkCreateFlags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
++    }
++
++    // Which handle type the driver takes the import as, and whether it can
++    // make the image mutable-format: the SDK's current
++    // VK_EXTERNAL_MEMORY_HANDLE_TYPE_OH_NATIVE_BUFFER_BIT_OHOS or the
++    // deprecated value older drivers know, each first with and then without
++    // VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT (without it, no -srgb views).
++    VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {};
++    imageFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
++    imageFormatInfo.format = vkFormat;
++    imageFormatInfo.type = VK_IMAGE_TYPE_2D;
++    imageFormatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
++    imageFormatInfo.usage = vkUsageFlags;
++    VkExternalMemoryHandleTypeFlagBits handleType = {};
++    bool importable = false;
++    for (uint32_t candidateType :
++         {kOhosNativeBufferHandleType, kOhosNativeBufferHandleTypeDeprecated}) {
++        for (VkImageCreateFlags candidateFlags :
++             {vkCreateFlags, vkCreateFlags & ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT}) {
++            imageFormatInfo.pNext = nullptr;
++            imageFormatInfo.flags = candidateFlags;
++            handleType = static_cast<VkExternalMemoryHandleTypeFlagBits>(candidateType);
++            MaybeError supported =
++                CheckExternalImageFormatSupport(device, properties, &imageFormatInfo, handleType);
++            imageFormatInfo.pNext = nullptr;
++            if (!supported.IsError()) {
++                importable = true;
++                break;
++            }
++            std::ignore = supported.AcquireError();
++        }
++        if (importable) {
++            break;
++        }
++    }
++    if (!importable) {
++        // The Maleoon driver answers VK_ERROR_FORMAT_NOT_SUPPORTED to this
++        // query for either handle type, whatever the flags, while importing
++        // OH_NativeBuffers is what HarmonyOS's own graphics stack does. The
++        // query is only a check before the import: go on with the current
++        // handle type and the flags Dawn wants (mutable format for -srgb and
++        // plane views), and let vkCreateImage and vkAllocateMemory decide.
++        handleType =
++            static_cast<VkExternalMemoryHandleTypeFlagBits>(kOhosNativeBufferHandleType);
++        imageFormatInfo.flags = vkCreateFlags;
++    }
++
++    {
++        ResultOrError<VkImage> created =
++            CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
++        if (created.IsError() && !internalFormat->IsMultiPlanar() &&
++            (imageFormatInfo.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)) {
++            // Last resort for a single-plane image: no view reinterpretation
++            // (-srgb views), but the texture itself still works.
++            std::ignore = created.AcquireError();
++            imageFormatInfo.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
++            created = CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
++        }
++        VkImage vkImage;
++        DAWN_TRY_ASSIGN(vkImage, std::move(created));
++        sharedTextureMemory->mVkImage =
++            AcquireRef(new RefCountedVkHandle<VkImage>(device, vkImage));
++    }
++
++    {
++        VkMemoryRequirements memoryRequirements;
++        memoryRequirements.memoryTypeBits = bufferProperties.memoryTypeBits;
++        auto maybeMemoryTypeIndex = device->GetResourceMemoryAllocator()->FindBestTypeIndex(
++            memoryRequirements, MemoryKind::DeviceLocal);
++        DAWN_INVALID_IF(!maybeMemoryTypeIndex.has_value(),
++                        "Unable to find an appropriate memory type for import.");
++
++        // OH_NativeBuffer imports use dedicated allocations, as AHardwareBuffer
++        // ones must. The chain is built by hand: these structs are declared
++        // here, not in the Vulkan headers PNextChainBuilder knows.
++        OhosImportNativeBufferInfo importInfo = {};
++        importInfo.sType = kOhosStructureTypeImportNativeBufferInfo;
++        importInfo.buffer = nativeBuffer;
++
++        VkMemoryDedicatedAllocateInfo dedicatedAllocateInfo = {};
++        dedicatedAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
++        dedicatedAllocateInfo.pNext = &importInfo;
++        dedicatedAllocateInfo.image = sharedTextureMemory->mVkImage->Get();
++
++        VkMemoryAllocateInfo memoryAllocateInfo = {};
++        memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
++        memoryAllocateInfo.pNext = &dedicatedAllocateInfo;
++        memoryAllocateInfo.allocationSize = bufferProperties.allocationSize;
++        memoryAllocateInfo.memoryTypeIndex = maybeMemoryTypeIndex.value();
++
++        VkDeviceMemory vkDeviceMemory;
++        DAWN_TRY(CheckVkSuccess(device->fn.AllocateMemory(vkDevice, &memoryAllocateInfo,
++                                                          nullptr, &*vkDeviceMemory),
++                                "vkAllocateMemory"));
++        sharedTextureMemory->mVkDeviceMemory =
++            AcquireRef(new RefCountedVkHandle<VkDeviceMemory>(device, vkDeviceMemory));
++
++        DAWN_TRY(CheckVkSuccess(
++            device->fn.BindImageMemory(vkDevice, sharedTextureMemory->mVkImage->Get(),
++                                       sharedTextureMemory->mVkDeviceMemory->Get(), 0),
++            "vkBindImageMemory"));
++    }
++    return sharedTextureMemory;
+ #else
+     DAWN_UNREACHABLE();
+ #endif  // DAWN_PLATFORM_IS(ANDROID)
+diff --git a/third_party/dawn/src/dawn/native/vulkan/VulkanExtensions.cpp b/third_party/dawn/src/dawn/native/vulkan/VulkanExtensions.cpp
+index 8ce610d..e993c18 100644
+--- a/third_party/dawn/src/dawn/native/vulkan/VulkanExtensions.cpp
++++ b/third_party/dawn/src/dawn/native/vulkan/VulkanExtensions.cpp
+@@ -161,6 +161,7 @@ static constexpr std::array<DeviceExtInfo, kDeviceExtCount> sDeviceExtInfos{{
+ 
+     {DeviceExt::ExternalMemoryAndroidHardwareBuffer,
+      "VK_ANDROID_external_memory_android_hardware_buffer"},
++    {DeviceExt::ExternalMemoryOHOSNativeBuffer, "VK_OHOS_external_memory"},
+     {DeviceExt::ExternalMemoryFD, "VK_KHR_external_memory_fd"},
+     {DeviceExt::ExternalMemoryDmaBuf, "VK_EXT_external_memory_dma_buf"},
+     {DeviceExt::ExternalMemoryZirconHandle, "VK_FUCHSIA_external_memory"},
+@@ -254,6 +255,7 @@ DeviceExtSet EnsureDependencies(const DeviceExtSet& advertisedExts,
+                 break;
+ 
+             case DeviceExt::ExternalMemoryAndroidHardwareBuffer:
++            case DeviceExt::ExternalMemoryOHOSNativeBuffer:
+                 hasDependencies = HasDep(DeviceExt::QueueFamilyForeign);
+                 break;
+ 
+diff --git a/third_party/dawn/src/dawn/native/vulkan/VulkanExtensions.h b/third_party/dawn/src/dawn/native/vulkan/VulkanExtensions.h
+index 78d79a4..acf1e61 100644
+--- a/third_party/dawn/src/dawn/native/vulkan/VulkanExtensions.h
++++ b/third_party/dawn/src/dawn/native/vulkan/VulkanExtensions.h
+@@ -120,6 +120,7 @@ enum class DeviceExt : uint32_t {
+ 
+     // External* extensions
+     ExternalMemoryAndroidHardwareBuffer,
++    ExternalMemoryOHOSNativeBuffer,
+     ExternalMemoryFD,
+     ExternalMemoryDmaBuf,
+     ExternalMemoryZirconHandle,
+diff --git a/third_party/dawn/src/dawn/native/vulkan/VulkanFunctions.cpp b/third_party/dawn/src/dawn/native/vulkan/VulkanFunctions.cpp
+index 60b075d..5904679 100644
+--- a/third_party/dawn/src/dawn/native/vulkan/VulkanFunctions.cpp
++++ b/third_party/dawn/src/dawn/native/vulkan/VulkanFunctions.cpp
+@@ -470,6 +470,16 @@ MaybeError VulkanFunctions::LoadDeviceProcs(VkInstance instance,
+     }
+ #endif  // DAWN_PLATFORM_IS(ANDROID)
+ 
++#if defined(__OHOS__)
++    if (deviceInfo.HasExt(DeviceExt::ExternalMemoryOHOSNativeBuffer)) {
++        GetNativeBufferPropertiesOHOS = AsVkFn<GetNativeBufferPropertiesOHOSFn>(
++            GetDeviceProcAddr(device, "vkGetNativeBufferPropertiesOHOS"));
++        if (GetNativeBufferPropertiesOHOS == nullptr) {
++            return DAWN_INTERNAL_ERROR("Couldn't get proc vkGetNativeBufferPropertiesOHOS");
++        }
++    }
++#endif  // defined(__OHOS__)
++
+     return {};
+ }
+ 
+diff --git a/third_party/dawn/src/dawn/native/vulkan/VulkanFunctions.h b/third_party/dawn/src/dawn/native/vulkan/VulkanFunctions.h
+index 5f50822..f59a15d 100644
+--- a/third_party/dawn/src/dawn/native/vulkan/VulkanFunctions.h
++++ b/third_party/dawn/src/dawn/native/vulkan/VulkanFunctions.h
+@@ -191,6 +191,16 @@ struct VulkanFunctions {
+         nullptr;
+ #endif  // DAWN_PLATFORM_IS(ANDROID)
+ 
++#if defined(__OHOS__)
++    // VK_OHOS_external_memory's vkGetNativeBufferPropertiesOHOS, typed here
++    // (an OH_NativeBuffer and a VkNativeBufferPropertiesOHOS chain) because
++    // Chromium's Vulkan headers do not declare it.
++    using GetNativeBufferPropertiesOHOSFn = VkResult(VKAPI_PTR*)(VkDevice,
++                                                                 const void*,
++                                                                 void*);
++    VkFn<GetNativeBufferPropertiesOHOSFn> GetNativeBufferPropertiesOHOS = nullptr;
++#endif  // defined(__OHOS__)
++
+ #if defined(DAWN_USE_X11)
+     // KHR_xlib_surface
+     VkFn<PFN_vkCreateXlibSurfaceKHR> CreateXlibSurfaceKHR = nullptr;
+diff --git a/ui/gl/features.gni b/ui/gl/features.gni
+index 7a788bd..a46ef2c 100644
+--- a/ui/gl/features.gni
++++ b/ui/gl/features.gni
+@@ -14,7 +14,7 @@ declare_args() {
+   # Vulkan Validation Layers.
+   use_dawn = is_apple || is_win || is_chromeos || (is_linux && !is_castos) ||
+              (is_android && target_cpu != "x86" && target_cpu != "x64") ||
+-             is_desktop_android
++             is_desktop_android || is_ohos
+ 
+   # Should Dawn test binaries (unittests, end2end_tests, perf_tests) be built?
+   # Independent of use_dawn, which controls whether Dawn is used in Chromium.

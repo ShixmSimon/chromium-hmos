@@ -1,0 +1,56 @@
+Tell the HarmonyOS input method what a field is for.
+
+The system keyboard offers a user-name keyboard, a new-password keyboard with
+strong-password suggestions, and one-time-code autofill, and Password Vault
+only offers to fill or save when it sees a user-name field and a password
+field. The web states this with autocomplete tokens, which no TextInputType
+carries. On OHOS, InputMethodController::TextInputFlags() adds three bits for
+username, new-password and one-time-code, above the shared flags. The OHOS
+input method (overlay) maps them to IME_TEXT_INPUT_TYPE_USER_NAME,
+NEW_PASSWORD and ONE_TIME_CODE.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/third_party/blink/renderer/core/editing/ime/input_method_controller.cc b/third_party/blink/renderer/core/editing/ime/input_method_controller.cc
+index d1785e5..7ab8765 100644
+--- a/third_party/blink/renderer/core/editing/ime/input_method_controller.cc
++++ b/third_party/blink/renderer/core/editing/ime/input_method_controller.cc
+@@ -30,6 +30,7 @@
+ #include <tuple>
+ 
+ #include "base/feature_list.h"
++#include "build/build_config.h"
+ #include "third_party/blink/public/common/features.h"
+ #include "third_party/blink/public/mojom/input/focus_type.mojom-blink.h"
+ #include "third_party/blink/public/web/web_frame_widget.h"
+@@ -1862,6 +1863,30 @@ int InputMethodController::TextInputFlags() const {
+     flags |= kWebTextInputFlagHasBeenCustomPassword;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // HarmonyOS keyboards and Password Vault act on what a field is for -- a
++  // user name, a password being chosen, a one-time code -- which the web says
++  // with autocomplete tokens and no TextInputType carries. Pass the three the
++  // platform distinguishes as bits well above the shared flags; they travel
++  // with the flags as an int and only the OHOS input method reads them
++  // (ui/ozone/platform/ohos/ohos_input_method.cc, same values).
++  constexpr int kOhosAutocompleteUsername = 1 << 24;
++  constexpr int kOhosAutocompleteNewPassword = 1 << 25;
++  constexpr int kOhosAutocompleteOneTimeCode = 1 << 26;
++  if (const AtomicString& autocomplete =
++          element->FastGetAttribute(html_names::kAutocompleteAttr)) {
++    for (const String& token : autocomplete.GetString().Split(' ')) {
++      if (EqualIgnoringAsciiCase(token, "username")) {
++        flags |= kOhosAutocompleteUsername;
++      } else if (EqualIgnoringAsciiCase(token, "new-password")) {
++        flags |= kOhosAutocompleteNewPassword;
++      } else if (EqualIgnoringAsciiCase(token, "one-time-code")) {
++        flags |= kOhosAutocompleteOneTimeCode;
++      }
++    }
++  }
++#endif
++
+   if (auto* text_control = DynamicTo<TextControlElement>(element)) {
+     if (text_control->HasBeenHeuristicCustomPasswordJS()) {
+       flags |= kWebTextInputFlagHasBeenCustomPassword;

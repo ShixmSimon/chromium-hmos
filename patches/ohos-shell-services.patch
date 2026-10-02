@@ -1,0 +1,94 @@
+Build the shell's profile-data services on HarmonyOS.
+
+The ArkUI shell draws its own bookmark, history, download and settings
+pages; chrome/browser/ui/ohos/shell_*_ohos.cc (overlay) answer its
+commands from the profile. This registers those files in
+//chrome/browser:core with the two deps they read directly, and hides
+Chromium's download bubble when the shell draws download UI -- the same
+switch an extension uses to disable download UI.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch,
+ohos-system-geolocation-permission.patch, ohos-screen-orientation.patch and
+ohos-shell-context-menu.patch.
+
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+index 889a6f8..da8b5f6 100644
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -889,6 +889,25 @@ source_set("core") {
+       "ui/ohos/screen_orientation_delegate_ohos.h",
+       "ui/ohos/shell_context_menu_ohos.cc",
+       "ui/ohos/shell_context_menu_ohos.h",
++      "ui/ohos/shell_bookmarks_ohos.cc",
++      "ui/ohos/shell_browsing_data_counts_ohos.cc",
++      "ui/ohos/shell_browsing_data_ohos.cc",
++      "ui/ohos/shell_downloads_item_ohos.cc",
++      "ui/ohos/shell_downloads_item_ohos.h",
++      "ui/ohos/shell_downloads_ohos.cc",
++      "ui/ohos/shell_downloads_ohos.h",
++      "ui/ohos/shell_downloads_prefs_ohos.cc",
++      "ui/ohos/shell_favicons_ohos.cc",
++      "ui/ohos/shell_history_ohos.cc",
++      "ui/ohos/shell_omnibox_ohos.cc",
++      "ui/ohos/shell_omnibox_ohos.h",
++      "ui/ohos/shell_prefs_ohos.cc",
++      "ui/ohos/shell_search_engines_ohos.cc",
++      "ui/ohos/shell_services_ohos.cc",
++      "ui/ohos/shell_services_ohos.h",
++      "ui/ohos/shell_settings_ohos.cc",
++      "ui/ohos/shell_settings_ohos_internal.h",
++      "ui/ohos/shell_site_settings_ohos.cc",
+       "ui/ohos/system_geolocation_source_ohos.cc",
+       "ui/ohos/system_geolocation_source_ohos.h",
+     ]
+@@ -1418,6 +1437,14 @@ source_set("core") {
+       "//chrome/browser/security_events",
+       "//chrome/browser/sensor",
+     ]
++
++    # The shell's bookmark, history and address-bar pages
++    # (ui/ohos/shell_*_ohos.cc) read these directly; elsewhere only :browser
++    # (bookmarks) and Android (autocomplete) depend on them.
++    deps += [
++      "//chrome/browser/autocomplete",
++      "//chrome/browser/bookmarks",
++    ]
+   }
+ 
+   if (!is_android || is_desktop_android) {
+diff --git a/chrome/browser/download/bubble/download_bubble_prefs.cc b/chrome/browser/download/bubble/download_bubble_prefs.cc
+index e1ad7a5..ab1abc9 100644
+--- a/chrome/browser/download/bubble/download_bubble_prefs.cc
++++ b/chrome/browser/download/bubble/download_bubble_prefs.cc
+@@ -4,12 +4,17 @@
+ 
+ #include "chrome/browser/download/bubble/download_bubble_prefs.h"
+ 
++#include "build/build_config.h"
+ #include "chrome/browser/download/download_core_service.h"
+ #include "chrome/browser/download/download_core_service_factory.h"
+ #include "chrome/browser/headless/headless_mode_util.h"
+ #include "chrome/common/pref_names.h"
+ #include "components/prefs/pref_service.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/shell_downloads_ohos.h"
++#endif
++
+ namespace download {
+ 
+ bool ShouldShowDownloadBubble(Profile* profile) {
+@@ -18,6 +23,13 @@ bool ShouldShowDownloadBubble(Profile* profile) {
+   if (headless::IsHeadlessMode()) {
+     return false;
+   }
++#if BUILDFLAG(IS_OHOS)
++  // The ArkUI shell draws download UI on phones; the toolbar button and its
++  // bubble stay hidden, as when an extension disables download UI.
++  if (chrome::ohos::ShouldShellDrawDownloadUi()) {
++    return false;
++  }
++#endif
+   // If the download UI is disabled by at least one extension, do not show the
+   // bubble and the toolbar icon.
+   return DownloadCoreServiceFactory::GetForBrowserContext(

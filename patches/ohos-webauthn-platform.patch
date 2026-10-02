@@ -1,0 +1,197 @@
+Offer a HarmonyOS platform authenticator to WebAuthn.
+
+isUserVerifyingPlatformAuthenticatorAvailable() was always false on OHOS and
+create()/get() could only use a phone or a security key. The authenticator
+itself is new code under overlay/device/fido/ohos/: passkeys are P-256 keys in
+HUKS that sign only with an AuthToken from UserAuthenticationKit (face,
+fingerprint or lock-screen PIN), reached through the ArkTS "userauth" service.
+This patch only changes upstream-owned files:
+
+  * device/fido/BUILD.gn builds device/fido/ohos/, depends on
+    //components/ohos_system_service and links libhuks_ndk.z.so.
+  * FidoDiscoveryFactory creates the OHOS platform discovery for the
+    kInternal transport when it has been given a per-profile config, the way
+    it does for Touch ID on macOS.
+  * AuthenticatorCommonImpl gives the factory that config (the profile
+    directory, which holds the passkey metadata) and answers IsUVPAA from the
+    authenticator. Both are off for off-the-record profiles.
+
+No chrome/ changes are needed: the desktop WebAuthn dialog already dispatches
+to any kInternal authenticator, and ChromeWebAuthenticationDelegate already
+turns platform authenticators off in Guest sessions.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch, which
+does not touch these files. Apply this patch once to a persistent runner whose
+main adapter patch is already present:
+
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-webauthn-platform.patch
+
+diff --git a/content/browser/webauth/authenticator_common_impl.cc b/content/browser/webauth/authenticator_common_impl.cc
+--- a/content/browser/webauth/authenticator_common_impl.cc
++++ b/content/browser/webauth/authenticator_common_impl.cc
+@@ -114,6 +114,11 @@
+ #include "device/fido/cros/authenticator.h"
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "device/fido/ohos/authenticator.h"
++#include "device/fido/ohos/authenticator_config.h"
++#endif
++
+ #if BUILDFLAG(IS_WIN)
+ #include "base/strings/utf_string_conversions.h"
+ #include "device/fido/win/authenticator.h"
+@@ -372,6 +377,18 @@ std::unique_ptr<device::FidoDiscoveryFactory> MakeDiscoveryFactory(
+           render_frame_host->GetBrowserContext()));
+ #endif  // BUILDFLAG(IS_MAC)
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Passkeys are stored per profile. Off the record there is no platform
++  // authenticator, so nothing an incognito session creates outlives it.
++  content::BrowserContext* browser_context =
++      render_frame_host->GetBrowserContext();
++  if (!browser_context->IsOffTheRecord()) {
++    discovery_factory->set_ohos_platform_authenticator_config(
++        device::fido::ohos::AuthenticatorConfig{
++            .profile_path = browser_context->GetPath()});
++  }
++#endif  // BUILDFLAG(IS_OHOS)
++
+ #if BUILDFLAG(IS_CHROMEOS)
+   // Ignore the ChromeOS u2fd virtual U2F HID device so that it doesn't collide
+   // with the ChromeOS platform authenticator, also implemented in u2fd.
+@@ -2292,6 +2309,14 @@ void AuthenticatorCommonImpl::ContinueIsUvpaaAfterOverrideCheck(
+                                      std::move(uma_decorated_callback));
+ #elif BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
+   IsUVPlatformAuthenticatorAvailable(std::move(uma_decorated_callback));
++#elif BUILDFLAG(IS_OHOS)
++  // Matches MakeDiscoveryFactory(): no platform authenticator off the record.
++  if (GetBrowserContext()->IsOffTheRecord()) {
++    std::move(uma_decorated_callback).Run(false);
++  } else {
++    device::fido::ohos::OhosPlatformAuthenticator::IsAvailable(
++        std::move(uma_decorated_callback));
++  }
+ #else
+   std::move(uma_decorated_callback).Run(false);
+ #endif
+diff --git a/device/fido/BUILD.gn b/device/fido/BUILD.gn
+--- a/device/fido/BUILD.gn
++++ b/device/fido/BUILD.gn
+@@ -295,6 +295,27 @@ component("fido") {
+         "//dbus",
+       ]
+     }
++
++    # The HarmonyOS platform authenticator: passkeys in HUKS, unlocked by
++    # UserAuthenticationKit, which is reached through the ArkTS service
++    # channel.
++    if (is_ohos) {
++      sources += [
++        "ohos/authenticator.cc",
++        "ohos/authenticator.h",
++        "ohos/authenticator_config.h",
++        "ohos/credential_store.cc",
++        "ohos/credential_store.h",
++        "ohos/discovery.cc",
++        "ohos/discovery.h",
++        "ohos/huks_signing_key.cc",
++        "ohos/huks_signing_key.h",
++        "ohos/user_auth.cc",
++        "ohos/user_auth.h",
++      ]
++      deps += [ "//components/ohos_system_service" ]
++      libs = [ "huks_ndk.z" ]
++    }
+   }
+ }
+ 
+diff --git a/device/fido/fido_discovery_factory.cc b/device/fido/fido_discovery_factory.cc
+--- a/device/fido/fido_discovery_factory.cc
++++ b/device/fido/fido_discovery_factory.cc
+@@ -38,6 +38,10 @@
+ #include "device/fido/cros/discovery.h"
+ #endif  // BUILDFLAG(IS_CHROMEOS)
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "device/fido/ohos/discovery.h"
++#endif  // BUILDFLAG(IS_OHOS)
++
+ namespace device {
+ 
+ FidoDiscoveryFactory::FidoDiscoveryFactory() = default;
+@@ -100,7 +104,7 @@ std::vector<std::unique_ptr<FidoDiscoveryBase>> FidoDiscoveryFactory::Create(
+       return {};
+     case FidoTransportProtocol::kInternal: {
+       std::vector<std::unique_ptr<FidoDiscoveryBase>> discoveries;
+-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
+       discoveries = MaybeCreatePlatformDiscovery();
+ #endif
+       return discoveries;
+@@ -215,6 +219,18 @@ FidoDiscoveryFactory::MaybeCreatePlatformDiscovery() const {
+ }
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++std::vector<std::unique_ptr<FidoDiscoveryBase>>
++FidoDiscoveryFactory::MaybeCreatePlatformDiscovery() const {
++  if (!ohos_platform_authenticator_config_) {
++    return {};
++  }
++  return SingleDiscovery(
++      std::make_unique<fido::ohos::FidoOhosPlatformDiscovery>(
++          *ohos_platform_authenticator_config_));
++}
++#endif  // BUILDFLAG(IS_OHOS)
++
+ #if BUILDFLAG(IS_CHROMEOS)
+ std::vector<std::unique_ptr<FidoDiscoveryBase>>
+ FidoDiscoveryFactory::MaybeCreatePlatformDiscovery() const {
+diff --git a/device/fido/fido_discovery_factory.h b/device/fido/fido_discovery_factory.h
+--- a/device/fido/fido_discovery_factory.h
++++ b/device/fido/fido_discovery_factory.h
+@@ -31,6 +31,10 @@
+ #include "device/fido/mac/authenticator_config.h"
+ #endif  // BUILDFLAG(IS_MAC)
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "device/fido/ohos/authenticator_config.h"
++#endif  // BUILDFLAG(IS_OHOS)
++
+ namespace device {
+ 
+ namespace cablev2 {
+@@ -117,6 +121,15 @@ class COMPONENT_EXPORT(DEVICE_FIDO) FidoDiscoveryFactory {
+   }
+ #endif  // BUILDFLAG(IS_MAC)
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Configures the HarmonyOS platform authenticator. Set to std::nullopt to
++  // disable it, as for an off-the-record profile.
++  void set_ohos_platform_authenticator_config(
++      std::optional<fido::ohos::AuthenticatorConfig> config) {
++    ohos_platform_authenticator_config_ = std::move(config);
++  }
++#endif  // BUILDFLAG(IS_OHOS)
++
+ #if BUILDFLAG(IS_WIN)
+   // Instantiates a FidoDiscovery for the native Windows WebAuthn API where
+   // available. Returns nullptr otherwise.
+@@ -146,11 +159,15 @@ class COMPONENT_EXPORT(DEVICE_FIDO) FidoDiscoveryFactory {
+       std::unique_ptr<FidoDiscoveryBase> discovery);
+ 
+  private:
+-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
+   std::vector<std::unique_ptr<FidoDiscoveryBase>> MaybeCreatePlatformDiscovery()
+       const;
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++  std::optional<fido::ohos::AuthenticatorConfig>
++      ohos_platform_authenticator_config_;
++#endif  // BUILDFLAG(IS_OHOS)
+ #if BUILDFLAG(IS_MAC)
+   std::optional<fido::mac::AuthenticatorConfig> mac_touch_id_config_;
+   base::apple::WeakNSWindow nswindow_;

@@ -1,0 +1,49 @@
+Do not dereference a frame's fence when GLFence::Create() returned null.
+
+The browser dies on the HarmonyOS emulator before it can paint: SIGSEGV at
+address 0 on the Chrome_InProcGp thread, inside
+
+  gl::GLSurfacePresentationHelper::GetFrameTimestampInfoIfAvailable
+  gl::GLSurfacePresentationHelper::CheckPendingFrames
+  gl::GLSurfacePresentationHelper::ScheduleCheckPendingFrames
+
+PreSwapBuffers takes the fence branch on gl_fence_supported_ and stores
+whatever GLFence::Create() returns, without checking it. The emulator
+advertises the extension, so IsSupported() is true, but Create() fails at
+runtime and the frame is queued with a null fence.
+
+CheckPendingFrames already handles frames with no timing source, but its
+early-out tests gl_fence_supported_, not the frame, so it does not fire here.
+The frame reaches GetFrameTimestampInfoIfAvailable, whose only protection is a
+DCHECK that this build compiles out, and the final branch dereferences the
+null fence.
+
+Generated against Chromium 154.0.8037.51.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/gl-null-fence.patch
+
+diff --git a/ui/gl/gl_surface_presentation_helper.cc b/ui/gl/gl_surface_presentation_helper.cc
+--- a/ui/gl/gl_surface_presentation_helper.cc
++++ b/ui/gl/gl_surface_presentation_helper.cc
+@@ -97,10 +97,19 @@
+     int64_t end = 0;
+     frame.timer->GetStartEndTimestamps(&start, &end);
+     *timestamp = base::TimeTicks() + base::Microseconds(start);
+-  } else {
++  } else if (frame.fence) {
+     if (!frame.fence->HasCompleted())
+       return false;
+     *timestamp = base::TimeTicks::Now();
++  } else {
++    // GLFence::IsSupported() can report true while GLFence::Create() still
++    // fails, and PreSwapBuffers stores the null it hands back. The early-out
++    // in CheckPendingFrames tests gl_fence_supported_ rather than the frame,
++    // so such a frame arrives here with nothing to wait on. The DCHECK above
++    // catches it in a debug build; a release build dereferenced the null and
++    // took down the GPU thread on the first swap. Report the frame as
++    // presented now instead -- there is no timing source to do better with.
++    *timestamp = base::TimeTicks::Now();
+   }
+   // Below logic is used to calculate final values of timestamp, interval and
+   // flags when using timer/fence to report the timestamps.

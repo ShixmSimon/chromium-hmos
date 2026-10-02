@@ -1,0 +1,53 @@
+Give OHOS its own system permission PlatformHandle.
+
+Turning on os_level_geolocation_permission_supported for OHOS left the port on
+system_permission_settings_default.cc, whose handle answers every question
+wrong in a way that is worse than it looks:
+
+  bool IsAllowed(ContentSettingsType) override { return true; }
+  void OpenSystemSettings(...) override { NOTREACHED(); }
+  void Request(...) override { NOTREACHED(); }
+  std::unique_ptr<ScopedObservation> Observe(...) override { return nullptr; }
+
+The two NOTREACHED()s are traps in this build. Request() is reachable from the
+<permission> element with no platform gating in front of it, so a page can take
+the browser down. OpenSystemSettings() backs the content-settings bubble's
+primary button.
+
+The ordering matters and is not obvious. IsAllowed() returning true
+unconditionally is what currently keeps the bubble from ever being built --
+InitializeSystemGeolocationPermissionBubble() runs only when IsAllowed() is
+false -- so it is the door in front of that trap. Making IsAllowed() tell the
+truth on its own would promote a quiet wrong answer into a reliable crash.
+Both change here, together.
+
+The OHOS handle answers from the state the shell reports, and only for the
+permissions the shell actually manages: for anything else it defers to the
+default's answers, because claiming a capability is blocked when nothing has
+established that would suppress prompts the user should still see.
+OpenSystemSettings and Request go back to the shell through closures the
+runtime bridge installs, since PlatformHandle is built below
+//chrome/browser:core and cannot call up into it. Observe returns the
+GeolocationObservation that the buildflag already brings into this target.
+
+Generated against Chromium 154.0.8037.51.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-system-permission-handle.patch
+
+diff --git a/chrome/browser/permissions/system/BUILD.gn b/chrome/browser/permissions/system/BUILD.gn
+--- a/chrome/browser/permissions/system/BUILD.gn
++++ b/chrome/browser/permissions/system/BUILD.gn
+@@ -71,6 +71,12 @@
+       "system_permission_settings_win.cc",
+     ]
+     deps += [ "//chrome/browser:browser_public_dependencies" ]
++  } else if (is_ohos) {
++    sources += [
++      "system_permission_settings_ohos.cc",
++      "system_permission_settings_ohos.h",
++    ]
++    deps += [ "//chrome/browser:browser_public_dependencies" ]
+   } else {
+     sources += [ "system_permission_settings_default.cc" ]
+   }

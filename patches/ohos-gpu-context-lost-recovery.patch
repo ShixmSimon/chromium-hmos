@@ -1,0 +1,73 @@
+Recover from a lost GPU context where there is no GPU process to restart.
+
+Losing the context is handled by restarting the GPU process. On a phone
+the GPU runs inside the browser process, MaybeExitOnContextLost returns
+having done nothing, and nothing else happens either: the window keeps
+showing the last frame it drew. That is what "the picture froze and only
+restarting the app brings it back" was.
+
+Telling every client the context is gone is the recovery that remains.
+Each rebuilds and repaints, which is what a restart would have produced,
+without the restart. A line either way says which happened, because from
+outside a recovery and a freeze look the same until the next frame.
+
+The shell is told through the ozone registry, which is where this port
+already puts a signal that starts below and is wanted above -- the drag
+callbacks work the same way. gpu/ cannot include chrome/, and chrome/
+cannot see into gpu/, but both can see ozone.
+
+diff --git a/gpu/ipc/service/gpu_channel_manager.cc b/gpu/ipc/service/gpu_channel_manager.cc
+index 3b96443999..9dc0bdb0cc 100644
+--- a/gpu/ipc/service/gpu_channel_manager.cc
++++ b/gpu/ipc/service/gpu_channel_manager.cc
+@@ -53,9 +53,11 @@
+ #include "third_party/skia/include/gpu/ganesh/GrDirectContext.h"
+ #include "third_party/skia/include/gpu/ganesh/GrTypes.h"
+ #include "ui/gl/gl_bindings.h"
++#include "ui/gl/gl_context.h"
+ #include "ui/gl/gl_enums.h"
+ #include "ui/gl/gl_features.h"
+ #include "ui/gl/gl_share_group.h"
++#include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
+ #include "ui/gl/gl_surface_egl.h"
+ #include "ui/gl/gl_version_info.h"
+ #include "ui/gl/init/gl_factory.h"
+@@ -1089,6 +1091,38 @@ void GpuChannelManager::OnContextLost(
+   if (force_restart || gpu_driver_bug_workarounds_.exit_on_context_lost ||
+       (shared_context_state_ && !shared_context_state_->GrContextIsGL())) {
+     delegate_->MaybeExitOnContextLost(context_lost_reason);
++
++#if BUILDFLAG(IS_OHOS)
++    // On a phone the GPU runs inside the browser process, and that call
++    // returns having done nothing: there is no GPU process to restart.
++    // Nothing else then happens either, and the window keeps showing the
++    // last frame it managed to draw -- which is what "the page froze and
++    // only restarting the app brings it back" looked like.
++    //
++    // Telling every client the context is gone is the recovery that is
++    // left. Each one rebuilds and repaints, which is what would have
++    // happened after a restart, without the restart.
++    bool recovered = false;
++    if (gl::GLSurfaceEGL::GetGLDisplayEGL() &&
++        !gl::GLContext::LosesAllContextsOnContextLost()) {
++      LOG(WARNING) << "OHOS gpu context lost: reason="
++                   << static_cast<int>(context_lost_reason)
++                   << " count=" << context_lost_count_
++                   << ", losing all contexts so clients rebuild";
++      delegate_->LoseAllContexts();
++      recovered = true;
++    } else {
++      LOG(WARNING) << "OHOS gpu context lost: reason="
++                   << static_cast<int>(context_lost_reason)
++                   << " count=" << context_lost_count_
++                   << ", contexts already lost together";
++      recovered = true;
++    }
++    // Out to the shell, through the one place both sides can see. After
++    // the recovery rather than before, so what it reports is what
++    // happened.
++    ui::NotifyOhosGpuContextLost(recovered);
++#endif
+   }
+ }
+ 

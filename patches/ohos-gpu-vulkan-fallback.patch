@@ -1,0 +1,503 @@
+Run Skia on GL when it cannot make a Vulkan GrContext, and keep GPU channel
+retries from spinning.
+
+Split out of ohos-gpu-startup-diagnostics.patch once the diagnosis it was
+written for was done; its step-by-step start-up logging is gone.
+
+On the 2in1 emulator (Vulkan 1.1 translated from the host's GPU) Skia's
+Vulkan GrContext failed although the instance, device queue and context
+provider came up. It failed only when the first channel asked for a shared
+context, long after the GPU process told the browser it was up, so the
+process refused every channel and the window stayed black. On OHOS the GPU
+service now asks Skia for a GrContext as soon as the Vulkan context provider
+exists; if Skia says no it drops the provider, runs Skia on GL and reports
+Vulkan disabled, and the browser records the GPU mode as GL. GpuServiceImpl's
+preferences and feature info stop being const on OHOS for it. When Skia does
+fail, the context provider says what it was given -- versions, allocator,
+extensions, and any function Skia requires that cannot be found -- which a
+tablet's Vulkan will need.
+
+A failed channel is asked for again after a growing pause (100 ms more each
+time, at most 2 s) instead of at once, dozens of times a second, for as long
+as the app runs.
+
+And the GPU process's own log reaches hilog again: VizMainImpl replaces the
+handler that wrote it there with one that forwards it to the browser for
+chrome://gpu, so the browser writes what it is forwarded, WARNING and above,
+as "OHOS GPU process says:".
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch
+and ohos-gpu-lose-context-debug-url.patch.
+
+diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/components/viz/common/gpu/vulkan_in_process_context_provider.cc
+index 620d83c..812c6c4 100644
+--- a/components/viz/common/gpu/vulkan_in_process_context_provider.cc
++++ b/components/viz/common/gpu/vulkan_in_process_context_provider.cc
+@@ -5,16 +5,19 @@
+ #include "components/viz/common/gpu/vulkan_in_process_context_provider.h"
+ 
+ #include <algorithm>
++#include <string>
+ #include <string_view>
+ #include <utility>
+ 
+ #include "base/compiler_specific.h"
++#include "base/logging.h"
+ #include "base/memory_coordinator/memory_consumer.h"
+ #include "base/memory_coordinator/memory_coordinator_features.h"
+ #include "base/memory_coordinator/memory_limit.h"
+ #include "base/memory_coordinator/traits.h"
+ #include "base/memory_coordinator/utils.h"
+ #include "base/numerics/safe_conversions.h"
++#include "build/build_config.h"
+ #include "gpu/vulkan/buildflags.h"
+ #include "gpu/vulkan/vma_wrapper.h"
+ #include "gpu/vulkan/vulkan_device_queue.h"
+@@ -29,6 +32,10 @@
+ #include "third_party/skia/include/gpu/vk/VulkanExtensions.h"
+ #include "third_party/skia/include/gpu/vk/VulkanTypes.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "base/strings/stringprintf.h"
++#endif
++
+ namespace {
+ 
+ // Setting this limit to 0 practically forces sync at every submit.
+@@ -48,6 +55,242 @@ constexpr base::MemoryConsumerTraits kMemoryConsumerTraits(
+ 
+ namespace viz {
+ 
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++// The Vulkan functions skgpu::VulkanInterface::validate() insists on, as of
++// Skia 2466dcf, by the level Skia looks them up at. GrDirectContexts::
++// MakeVulkan returns null without a word when any is missing, and a device
++// translated from another GPU is where one would be.
++constexpr const char* kOhosSkiaGlobalProcs[] = {
++    "vkCreateInstance",
++    "vkEnumerateInstanceExtensionProperties",
++    "vkEnumerateInstanceLayerProperties",
++};
++constexpr const char* kOhosSkiaInstanceProcs[] = {
++    "vkDestroyInstance",
++    "vkEnumeratePhysicalDevices",
++    "vkGetPhysicalDeviceFeatures",
++    "vkGetPhysicalDeviceFormatProperties",
++    "vkGetPhysicalDeviceImageFormatProperties",
++    "vkGetPhysicalDeviceProperties",
++    "vkGetPhysicalDeviceQueueFamilyProperties",
++    "vkGetPhysicalDeviceMemoryProperties",
++    "vkCreateDevice",
++    "vkEnumerateDeviceExtensionProperties",
++    "vkEnumerateDeviceLayerProperties",
++    "vkGetPhysicalDeviceSparseImageFormatProperties",
++    "vkGetPhysicalDeviceFeatures2",
++    "vkGetPhysicalDeviceProperties2",
++    "vkGetPhysicalDeviceFormatProperties2",
++    "vkGetPhysicalDeviceImageFormatProperties2",
++    "vkGetPhysicalDeviceQueueFamilyProperties2",
++    "vkGetPhysicalDeviceMemoryProperties2",
++    "vkGetPhysicalDeviceSparseImageFormatProperties2",
++    "vkGetPhysicalDeviceExternalBufferProperties",
++};
++constexpr const char* kOhosSkiaDeviceProcs[] = {
++    "vkDestroyDevice",
++    "vkGetDeviceQueue",
++    "vkQueueSubmit",
++    "vkQueueWaitIdle",
++    "vkDeviceWaitIdle",
++    "vkAllocateMemory",
++    "vkFreeMemory",
++    "vkMapMemory",
++    "vkUnmapMemory",
++    "vkFlushMappedMemoryRanges",
++    "vkInvalidateMappedMemoryRanges",
++    "vkGetDeviceMemoryCommitment",
++    "vkBindBufferMemory",
++    "vkBindImageMemory",
++    "vkGetBufferMemoryRequirements",
++    "vkGetImageMemoryRequirements",
++    "vkGetImageSparseMemoryRequirements",
++    "vkQueueBindSparse",
++    "vkCreateFence",
++    "vkDestroyFence",
++    "vkResetFences",
++    "vkGetFenceStatus",
++    "vkWaitForFences",
++    "vkCreateSemaphore",
++    "vkDestroySemaphore",
++    "vkCreateEvent",
++    "vkDestroyEvent",
++    "vkGetEventStatus",
++    "vkSetEvent",
++    "vkResetEvent",
++    "vkCreateQueryPool",
++    "vkDestroyQueryPool",
++    "vkGetQueryPoolResults",
++    "vkCreateBuffer",
++    "vkDestroyBuffer",
++    "vkCreateBufferView",
++    "vkDestroyBufferView",
++    "vkCreateImage",
++    "vkDestroyImage",
++    "vkGetImageSubresourceLayout",
++    "vkCreateImageView",
++    "vkDestroyImageView",
++    "vkCreateShaderModule",
++    "vkDestroyShaderModule",
++    "vkCreatePipelineCache",
++    "vkDestroyPipelineCache",
++    "vkGetPipelineCacheData",
++    "vkMergePipelineCaches",
++    "vkCreateGraphicsPipelines",
++    "vkCreateComputePipelines",
++    "vkDestroyPipeline",
++    "vkCreatePipelineLayout",
++    "vkDestroyPipelineLayout",
++    "vkCreateSampler",
++    "vkDestroySampler",
++    "vkCreateDescriptorSetLayout",
++    "vkDestroyDescriptorSetLayout",
++    "vkCreateDescriptorPool",
++    "vkDestroyDescriptorPool",
++    "vkResetDescriptorPool",
++    "vkAllocateDescriptorSets",
++    "vkFreeDescriptorSets",
++    "vkUpdateDescriptorSets",
++    "vkCreateFramebuffer",
++    "vkDestroyFramebuffer",
++    "vkCreateRenderPass",
++    "vkDestroyRenderPass",
++    "vkGetRenderAreaGranularity",
++    "vkCreateCommandPool",
++    "vkDestroyCommandPool",
++    "vkResetCommandPool",
++    "vkAllocateCommandBuffers",
++    "vkFreeCommandBuffers",
++    "vkBeginCommandBuffer",
++    "vkEndCommandBuffer",
++    "vkResetCommandBuffer",
++    "vkCmdBindPipeline",
++    "vkCmdSetViewport",
++    "vkCmdSetScissor",
++    "vkCmdSetLineWidth",
++    "vkCmdSetDepthBias",
++    "vkCmdSetBlendConstants",
++    "vkCmdSetDepthBounds",
++    "vkCmdSetStencilCompareMask",
++    "vkCmdSetStencilWriteMask",
++    "vkCmdSetStencilReference",
++    "vkCmdBindDescriptorSets",
++    "vkCmdBindIndexBuffer",
++    "vkCmdBindVertexBuffers",
++    "vkCmdDraw",
++    "vkCmdDrawIndexed",
++    "vkCmdDrawIndirect",
++    "vkCmdDrawIndexedIndirect",
++    "vkCmdDispatch",
++    "vkCmdDispatchIndirect",
++    "vkCmdCopyBuffer",
++    "vkCmdCopyImage",
++    "vkCmdBlitImage",
++    "vkCmdCopyBufferToImage",
++    "vkCmdCopyImageToBuffer",
++    "vkCmdUpdateBuffer",
++    "vkCmdFillBuffer",
++    "vkCmdClearColorImage",
++    "vkCmdClearDepthStencilImage",
++    "vkCmdClearAttachments",
++    "vkCmdResolveImage",
++    "vkCmdSetEvent",
++    "vkCmdResetEvent",
++    "vkCmdWaitEvents",
++    "vkCmdPipelineBarrier",
++    "vkCmdBeginQuery",
++    "vkCmdEndQuery",
++    "vkCmdResetQueryPool",
++    "vkCmdWriteTimestamp",
++    "vkCmdCopyQueryPoolResults",
++    "vkCmdPushConstants",
++    "vkCmdBeginRenderPass",
++    "vkCmdNextSubpass",
++    "vkCmdEndRenderPass",
++    "vkCmdExecuteCommands",
++    "vkGetImageMemoryRequirements2",
++    "vkGetBufferMemoryRequirements2",
++    "vkGetImageSparseMemoryRequirements2",
++    "vkBindBufferMemory2",
++    "vkBindImageMemory2",
++    "vkTrimCommandPool",
++    "vkGetDescriptorSetLayoutSupport",
++    "vkCreateSamplerYcbcrConversion",
++    "vkDestroySamplerYcbcrConversion",
++};
++
++std::string OhosVulkanVersion(uint32_t version) {
++  return base::StringPrintf("%u.%u.%u", VK_API_VERSION_MAJOR(version),
++                            VK_API_VERSION_MINOR(version),
++                            VK_API_VERSION_PATCH(version));
++}
++
++// Says what Skia was given when it would not make a GrContext: the versions
++// it compares, whether it has a memory allocator, the extensions, and any
++// function it requires that the lookup Skia uses cannot find.
++void DescribeOhosSkiaVulkanFailure(
++    const skgpu::VulkanBackendContext& context,
++    const std::vector<const char*>& instance_extensions,
++    const std::vector<const char*>& device_extensions) {
++  uint32_t instance_version = 0;
++  auto enumerate_instance_version =
++      reinterpret_cast<PFN_vkEnumerateInstanceVersion>(context.fGetProc(
++          "vkEnumerateInstanceVersion", VK_NULL_HANDLE, VK_NULL_HANDLE));
++  if (enumerate_instance_version) {
++    enumerate_instance_version(&instance_version);
++  }
++  VkPhysicalDeviceProperties properties = {};
++  auto get_properties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(
++      context.fGetProc("vkGetPhysicalDeviceProperties", context.fInstance,
++                       VK_NULL_HANDLE));
++  if (get_properties) {
++    get_properties(context.fPhysicalDevice, &properties);
++  }
++  LOG(ERROR) << "OHOS Vulkan: Skia made no GrContext. Instance "
++             << OhosVulkanVersion(instance_version) << ", device "
++             << OhosVulkanVersion(properties.apiVersion) << " ("
++             << properties.deviceName << "), max asked "
++             << OhosVulkanVersion(context.fMaxAPIVersion)
++             << ", memory allocator "
++             << (context.fMemoryAllocator ? "present" : "MISSING")
++             << ", features2 "
++             << (context.fDeviceFeatures2 ? "present" : "MISSING");
++  std::string extensions;
++  for (const char* name : instance_extensions) {
++    extensions += std::string(" ") + name;
++  }
++  LOG(ERROR) << "OHOS Vulkan: instance extensions:" << extensions;
++  extensions.clear();
++  for (const char* name : device_extensions) {
++    extensions += std::string(" ") + name;
++  }
++  LOG(ERROR) << "OHOS Vulkan: device extensions:" << extensions;
++
++  std::string missing;
++  for (const char* name : kOhosSkiaGlobalProcs) {
++    if (!context.fGetProc(name, VK_NULL_HANDLE, VK_NULL_HANDLE)) {
++      missing += std::string(" ") + name;
++    }
++  }
++  for (const char* name : kOhosSkiaInstanceProcs) {
++    if (!context.fGetProc(name, context.fInstance, VK_NULL_HANDLE)) {
++      missing += std::string(" ") + name;
++    }
++  }
++  for (const char* name : kOhosSkiaDeviceProcs) {
++    if (!context.fGetProc(name, VK_NULL_HANDLE, context.fDevice)) {
++      missing += std::string(" ") + name;
++    }
++  }
++  LOG(ERROR) << "OHOS Vulkan: functions Skia requires and cannot find:"
++             << (missing.empty() ? std::string(" none") : missing);
++}
++
++}  // namespace
++#endif  // BUILDFLAG(IS_OHOS)
++
+ // static
+ scoped_refptr<VulkanInProcessContextProvider>
+ VulkanInProcessContextProvider::Create(
+@@ -203,6 +446,12 @@ bool VulkanInProcessContextProvider::InitializeGrContext(
+   backend_context.fProtectedContext = GrProtected::kNo;
+ 
+   gr_context_ = GrDirectContexts::MakeVulkan(backend_context, context_options);
++#if BUILDFLAG(IS_OHOS)
++  if (!gr_context_) {
++    DescribeOhosSkiaVulkanFailure(backend_context, instance_extensions,
++                                  device_extensions);
++  }
++#endif
+ 
+   return gr_context_ != nullptr;
+ }
+diff --git a/components/viz/host/gpu_host_impl.cc b/components/viz/host/gpu_host_impl.cc
+index 7ddfa11..059482b 100644
+--- a/components/viz/host/gpu_host_impl.cc
++++ b/components/viz/host/gpu_host_impl.cc
+@@ -9,6 +9,7 @@
+ #include "base/feature_list.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback_helpers.h"
++#include "base/logging.h"
+ #include "base/no_destructor.h"
+ #include "base/process/process_handle.h"
+ #include "base/strings/strcat.h"
+@@ -893,6 +894,16 @@ void GpuHostImpl::CreateWebNNWeightsFile(CreateWebNNWeightsFileCallback cb) {
+ void GpuHostImpl::RecordLogMessage(int32_t severity,
+                                    const std::string& header,
+                                    const std::string& message) {
++#if BUILDFLAG(IS_OHOS)
++  // Once the GPU service exists, VizMainImpl::CreateGpuService installs the
++  // handler that sends the GPU process's log here, and it replaces the one
++  // that wrote it to hilog: from then on nothing the GPU process says --
++  // not even at ERROR -- reaches hilog, only chrome://gpu, which a black
++  // window cannot show. Say it again from here, WARNING and above.
++  if (severity >= logging::LOGGING_WARNING) {
++    LOG(ERROR) << "OHOS GPU process says: " << header << message;
++  }
++#endif
+   delegate_->RecordLogMessage(severity, header, message);
+ }
+ 
+diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/service/gl/gpu_service_impl.cc
+index 39a9e18..cc7e8b0 100644
+--- a/components/viz/service/gl/gpu_service_impl.cc
++++ b/components/viz/service/gl/gpu_service_impl.cc
+@@ -71,6 +71,7 @@
+ #include "services/webnn/webnn_context_provider_impl.h"
+ #include "skia/buildflags.h"
+ #include "third_party/perfetto/include/perfetto/tracing/track.h"
++#include "third_party/skia/include/gpu/ganesh/GrContextOptions.h"
+ #include "third_party/skia/include/gpu/ganesh/GrDirectContext.h"
+ #include "third_party/skia/include/gpu/ganesh/gl/GrGLAssembleInterface.h"
+ #include "third_party/skia/include/gpu/ganesh/gl/GrGLInterface.h"
+@@ -256,6 +257,33 @@ GpuServiceImpl::GpuServiceImpl(
+     if (!vulkan_context_provider_) {
+       DLOG(ERROR) << "Failed to create Vulkan context provider.";
+     }
++#if BUILDFLAG(IS_OHOS)
++    // A Vulkan device is not yet one Skia can draw with. On the 2in1
++    // emulator -- Vulkan 1.1 translated from the host's GPU -- the instance,
++    // the device queue and the context provider all came up, and then
++    // every GrContext Skia was asked for failed. That happens only when the
++    // first channel asks for a shared context, long after this process told
++    // the browser it was up: the process stayed, refused every channel, and
++    // the window stayed black for as long as the app ran.
++    //
++    // So ask Skia once, here, before anything is built on it and before
++    // the browser is told what this process can do. If it says no, run
++    // Skia on GL instead, which is what this process would have done had
++    // Vulkan not been asked for, and report Vulkan as disabled: the browser
++    // then records the GPU mode as GL, as it does for any other fallback.
++    // The GrContext made here is replaced by the one SharedContextState
++    // asks for with its own options.
++    if (vulkan_context_provider_ &&
++        gpu_preferences_.gr_context_type == gpu::GrContextType::kVulkan &&
++        !vulkan_context_provider_->InitializeGrContext(GrContextOptions())) {
++      LOG(ERROR) << "OHOS Vulkan: Skia cannot make a GrContext on this "
++                    "device, Skia goes on GL";
++      vulkan_context_provider_ = nullptr;
++      gpu_preferences_.gr_context_type = gpu::GrContextType::kGL;
++      gpu_feature_info_.status_values[gpu::GPU_FEATURE_TYPE_VULKAN] =
++          gpu::kGpuFeatureStatusDisabled;
++    }
++#endif
+   }
+ #endif
+ 
+diff --git a/components/viz/service/gl/gpu_service_impl.h b/components/viz/service/gl/gpu_service_impl.h
+index 3b55358..642fcf5 100644
+--- a/components/viz/service/gl/gpu_service_impl.h
++++ b/components/viz/service/gl/gpu_service_impl.h
+@@ -464,13 +464,23 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
+   // last one to be destroyed before main_runner_ and io_runner_.
+   std::unique_ptr<gpu::GpuWatchdogThread> watchdog_thread_;
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Not const on OHOS: when Skia cannot make a Vulkan GrContext, the
++  // constructor moves Skia to GL before anything reads these.
++  gpu::GpuPreferences gpu_preferences_;
++#else
+   const gpu::GpuPreferences gpu_preferences_;
++#endif
+ 
+   // Information about the GPU, such as device and vendor ID.
+   gpu::GPUInfo gpu_info_;
+ 
+   // Information about general chrome feature support for the GPU.
++#if BUILDFLAG(IS_OHOS)
++  gpu::GpuFeatureInfo gpu_feature_info_;
++#else
+   const gpu::GpuFeatureInfo gpu_feature_info_;
++#endif
+ 
+   const gpu::GpuDriverBugWorkarounds gpu_driver_bug_workarounds_;
+ 
+diff --git a/content/browser/gpu/browser_gpu_channel_host_factory.cc b/content/browser/gpu/browser_gpu_channel_host_factory.cc
+index ad53478..21c4d42 100644
+--- a/content/browser/gpu/browser_gpu_channel_host_factory.cc
++++ b/content/browser/gpu/browser_gpu_channel_host_factory.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "content/browser/gpu/browser_gpu_channel_host_factory.h"
+ 
++#include <algorithm>
++#include <atomic>
+ #include <utility>
+ 
+ #include "base/android/orderfile/orderfile_buildflags.h"
+@@ -11,6 +13,7 @@
+ #include "base/compiler_specific.h"
+ #include "base/functional/bind.h"
+ #include "base/location.h"
++#include "base/logging.h"
+ #include "base/process/process_handle.h"
+ #include "base/synchronization/waitable_event.h"
+ #include "base/task/single_thread_task_runner.h"
+@@ -41,6 +44,18 @@ namespace content {
+ 
+ namespace {
+ 
++#if BUILDFLAG(IS_OHOS)
++// Channel requests the existing GPU process failed in a row. Upstream asks
++// again at once, which is right for a GPU process that has just been
++// restarted. A GPU process that is up and cannot make channels -- one whose
++// Skia context never came up -- was asked dozens of times a second, for as
++// long as the app ran, and the log it filled scrolled out the lines that
++// said why. So each retry waits a little longer than the one before.
++std::atomic<int> g_ohos_failed_channel_requests{0};
++constexpr base::TimeDelta kOhosChannelRetryStep = base::Milliseconds(100);
++constexpr base::TimeDelta kOhosChannelRetryMax = base::Seconds(2);
++#endif
++
+ #if BUILDFLAG(IS_ANDROID)
+ 
+ // This is used as the stack frame to group these timeout crashes, so avoid
+@@ -197,6 +212,22 @@ void BrowserGpuChannelHostFactory::EstablishRequest::OnEstablished(
+         base::BindOnce(
+             &BrowserGpuChannelHostFactory::EstablishRequest::RestartTimeout,
+             this));
++#if BUILDFLAG(IS_OHOS)
++    const int failures = ++g_ohos_failed_channel_requests;
++    const base::TimeDelta delay =
++        std::min(kOhosChannelRetryStep * (failures - 1), kOhosChannelRetryMax);
++    if (failures <= 5 || failures % 100 == 0) {
++      LOG(ERROR) << "OHOS GPU channel: " << failures
++                 << " requests failed in a row, asking again in " << delay;
++    }
++    GetUIThreadTaskRunner({})->PostDelayedTask(
++        FROM_HERE,
++        base::BindOnce(
++            &BrowserGpuChannelHostFactory::EstablishRequest::Establish, this,
++            false),
++        delay);
++    return;
++#else
+     // TODO(jam): can we ever enter this when it was a sync call?
+     GetUIThreadTaskRunner({})->PostTask(
+         FROM_HERE,
+@@ -204,10 +235,14 @@ void BrowserGpuChannelHostFactory::EstablishRequest::OnEstablished(
+             &BrowserGpuChannelHostFactory::EstablishRequest::Establish, this,
+             false));
+     return;
++#endif
+   }
+ 
+   if (status == viz::GpuHostImpl::EstablishChannelStatus::kSuccess &&
+       channel_handle.is_valid()) {
++#if BUILDFLAG(IS_OHOS)
++    g_ohos_failed_channel_requests = 0;
++#endif
+     gpu_channel_ = gpu::GpuChannelHost::Create(
+         gpu_client_id_, gpu_info, gpu_feature_info, shared_image_capabilities,
+         std::move(channel_handle), GetIOThreadTaskRunner({}));

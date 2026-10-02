@@ -171,7 +171,8 @@ else
   # Every incremental patch up to hmos-154-adapter 398a5ed (and those applied
   # by hand on this runner) was folded into chromium-154-harmonyos.patch and
   # patches/deps/ on 2026-10-03, exported from this tree itself, which
-  # already has them all. New ones go here, applied in order:
+  # already has them all. Their files stay in patches/ for reference and are
+  # no longer applied. New ones go here, applied in order:
   #
   #   apply_incremental_patch "${repo_root}/patches/ohos-<name>.patch"
   #

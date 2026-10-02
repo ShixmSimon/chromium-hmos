@@ -1,0 +1,132 @@
+Point "added to the browser" at the button the shell drew.
+
+Installing an extension ends with a bubble pointing at the extension's
+toolbar button, or at the extensions button when it has none of its own.
+With the shell drawing the browser there is no Chromium toolbar to point at:
+GetExtensionsContainerViews() finds nothing, and the dialog fell through to
+a browser-modal box in the middle of the window.
+
+The shell draws those buttons and already reports where they are, under the
+two names Chromium's own rule distinguishes -- "extension:<id>" and
+"extensions". Nothing read them: GetAuraShellAnchorRect() has been in the
+bridge, with a comment describing exactly this, and no caller. This is the
+caller.
+
+The fallback order matches desktop's: the extension's own button first,
+the extensions button when it is not pinned, and the modal box when the
+shell has reported neither.
+
+The rect it anchors to is logged with what it is made of -- the rect the
+shell reported, the window origin it is moved by -- because the shell has
+seen the bubble away from its button and from outside it cannot be told
+which is off. Diagnostic; it goes once that is settled. (It lives here, not
+in a later patch: a later patch changing lines this one adds stops this
+one from being recognised as applied.)
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/ui/extensions/extension_dialog_utils_views.cc b/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
+--- a/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
++++ b/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
+@@ -12,8 +12,70 @@
+ #include "ui/views/bubble/bubble_dialog_model_host.h"
+ #include "ui/views/widget/widget.h"
+ 
++#include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "base/logging.h"
++#include "base/strings/strcat.h"
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"  // nogncheck
++#include "ui/aura/window.h"
++#include "ui/aura/window_tree_host.h"
++#endif
++
+ namespace {
+ 
++#if BUILDFLAG(IS_OHOS)
++// Where the shell drew the button this bubble should point at.
++//
++// With the shell drawing the browser there is no Chromium toolbar, so there
++// is no ExtensionsContainerViews and no anchor view -- and the dialog fell
++// back to a browser-modal box in the middle of the window, which is not what
++// "added to the browser" should look like.
++//
++// The shell does draw those buttons and reports where they are, under the
++// same two names Chromium's own rule distinguishes: one extension points at
++// that extension's button, anything else at the extensions button. Falls
++// back from the first to the second, because an extension that is not
++// pinned has no button of its own -- which is what
++// GetReferenceButtonForPopup() does on desktop.
++//
++// Empty when the shell has said nothing, and then the modal is still right.
++gfx::Rect GetOhosShellAnchorRect(
++    gfx::NativeWindow parent,
++    const std::vector<extensions::ExtensionId>& extension_ids) {
++  if (!parent || !chrome::ohos::IsAuraShellChromeHiddenByShell()) {
++    return gfx::Rect();
++  }
++  aura::Window* const root = parent->GetRootWindow();
++  if (!root || !root->GetHost()) {
++    return gfx::Rect();
++  }
++  const gfx::AcceleratedWidget widget = root->GetHost()->GetAcceleratedWidget();
++
++  gfx::Rect rect;
++  if (extension_ids.size() == 1) {
++    rect = chrome::ohos::GetAuraShellAnchorRect(
++        widget, base::StrCat({"extension:", extension_ids[0]}));
++  }
++  if (rect.IsEmpty()) {
++    rect = chrome::ohos::GetAuraShellAnchorRect(widget, "extensions");
++  }
++  if (rect.IsEmpty()) {
++    return rect;
++  }
++  // The shell reports the button in its window's own coordinates; a bubble
++  // anchors in screen ones.
++  const gfx::Rect reported = rect;
++  rect.Offset(root->GetBoundsInScreen().OffsetFromOrigin());
++  // Diagnostic: the shell still sees the "added" bubble away from its
++  // button, and from outside it cannot be told which of these is off.
++  LOG(WARNING) << "OHOS extension bubble anchor: reported="
++               << reported.ToString()
++               << " root=" << root->GetBoundsInScreen().ToString()
++               << " anchor=" << rect.ToString();
++  return rect;
++}
++#endif  // BUILDFLAG(IS_OHOS)
++
+ // Returns the action view corresponding to the extension if a single
+ // extension is specified in `extension_ids`; otherwise, returns the
+ // extensions button.
+@@ -54,10 +116,27 @@ void ShowDialog(gfx::NativeWindow parent,
+       parent ? GetExtensionsContainerViews(parent) : nullptr;
+   if (container && container->IsVisible()) {
+     ShowDialog(container, extension_ids, std::move(dialog_model));
+-  } else {
+-    // If the container is not available, show a modal dialog.
+-    ShowModalDialog(parent, std::move(dialog_model));
++    return;
+   }
++
++#if BUILDFLAG(IS_OHOS)
++  const gfx::Rect shell_anchor = GetOhosShellAnchorRect(parent, extension_ids);
++  if (!shell_anchor.IsEmpty()) {
++    auto bubble = std::make_unique<views::BubbleDialogModelHost>(
++        std::move(dialog_model), views::BubbleAnchor(),
++        views::BubbleBorder::TOP_RIGHT);
++    bubble->set_parent_window(parent);
++    bubble->SetAnchorRect(shell_anchor);
++    views::BubbleDialogDelegate::CreateBubbleDeprecated(
++        std::move(bubble),
++        views::Widget::InitParams::NATIVE_WIDGET_OWNS_WIDGET)
++        ->Show();
++    return;
++  }
++#endif  // BUILDFLAG(IS_OHOS)
++
++  // If the container is not available, show a modal dialog.
++  ShowModalDialog(parent, std::move(dialog_model));
+ }
+ 
+ void ShowDialog(ExtensionsContainerViews* container,

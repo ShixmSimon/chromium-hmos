@@ -1,0 +1,38 @@
+Hand shell-owned keyboard shortcuts to the shell.
+
+Ctrl+L, Ctrl+F, Ctrl+D, Ctrl+H, Ctrl+J and Alt+F open parts of the browser
+that a shell draws for itself. With the frame hidden Chromium has nowhere to
+put them -- no location bar to focus, no menu button to open -- so the key
+does nothing at all.
+
+The hook sits after the accelerator has been resolved to a command, so
+Chromium's accelerator table remains the one place that says which key means
+what, and only who carries the command out changes. Keys a page consumed never
+arrive here, which is the behaviour Chrome already has.
+
+Escape is deliberately not intercepted: it also stops a load, and a browser
+should keep doing that. The shell hears it and closes whatever it has open,
+and Chromium stops the page as well.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+
+diff --git a/chrome/browser/ui/views/frame/browser_view.cc b/chrome/browser/ui/views/frame/browser_view.cc
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -5316,6 +5316,16 @@
+ 
+   UpdateAcceleratorMetrics(accelerator, command_id);
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Some of these open UI the shell draws, and Chromium has nowhere to put
++  // it: no location bar to focus, no menu button to open. The shell is told
++  // instead. Chromium's accelerator table still decides which key means which
++  // command; this only decides who carries the command out.
++  if (chrome::ohos::DispatchAuraShellAccelerator(browser_, command_id)) {
++    return true;
++  }
++#endif
++
+   if (command_id == IDC_CLEAR_BROWSING_DATA) {
+     views::ElementTrackerViews::GetInstance()->NotifyCustomEvent(
+         browsing_data_important_sites_util::
