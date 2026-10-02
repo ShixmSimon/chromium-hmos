@@ -78,18 +78,9 @@ class OzonePlatformOhos : public OzonePlatform {
   // Video frames the renderer writes and the GPU samples: ohos_native_pixmap.h.
   bool IsNativePixmapConfigSupported(viz::SharedImageFormat format,
                                      gfx::BufferUsage usage) const override {
-    const bool supported =
-        IsOhosNativePixmapFormat(format) &&
-        (usage == gfx::BufferUsage::GPU_READ_CPU_READ_WRITE ||
-         usage == gfx::BufferUsage::SCANOUT_CPU_READ_WRITE);
-    // TODO: diagnosing the P010 native-buffer path; remove once it is in use.
-    static int asked = 0;
-    if (format.is_multi_plane() && asked++ % 300 == 0) {
-      LOG(WARNING) << "OHOS native pixmap: config " << format.ToString()
-                   << " usage " << static_cast<int>(usage) << " -> "
-                   << supported;
-    }
-    return supported;
+    return IsOhosNativePixmapFormat(format) &&
+           (usage == gfx::BufferUsage::GPU_READ_CPU_READ_WRITE ||
+            usage == gfx::BufferUsage::SCANOUT_CPU_READ_WRITE);
   }
   PlatformClipboard* GetPlatformClipboard() override {
     if (!clipboard_) {
