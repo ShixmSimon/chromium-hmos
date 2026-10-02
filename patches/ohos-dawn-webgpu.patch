@@ -325,7 +325,7 @@ index 361b1d4..3f6cb79 100644
      if (CheckSemaphoreSupport(DeviceExt::ExternalSemaphoreZirconHandle,
                                VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_ZIRCON_EVENT_BIT_FUCHSIA)) {
 diff --git a/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
-index 80150e6..dded980 100644
+index 80150e6..159e433 100644
 --- a/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
 +++ b/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
 @@ -55,6 +55,10 @@
@@ -385,7 +385,7 @@ index 80150e6..dded980 100644
  template <typename... AdditionalChains>
  ResultOrError<VkImage> CreateExternalVkImage(
      Device* device,
-@@ -770,6 +813,179 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
+@@ -770,6 +813,186 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
          }
      }
      return sharedTextureMemory;
@@ -429,7 +429,14 @@ index 80150e6..dded980 100644
 +    DAWN_TRY(CheckVkSuccess(
 +        device->fn.GetNativeBufferPropertiesOHOS(vkDevice, nativeBuffer, &bufferProperties),
 +        "vkGetNativeBufferPropertiesOHOS"));
-+    const VkFormat vkFormat = formatProperties.format;
++    VkFormat vkFormat = formatProperties.format;
++    if (vkFormat == VK_FORMAT_UNDEFINED &&
++        config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP) {
++        // The Maleoon driver names no VkFormat for NV12, only an opaque
++        // external one. These buffers are allocated CPU-writable and so laid
++        // out as plain NV12, which is what G8_B8R8_2PLANE_420 describes.
++        vkFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
++    }
 +    DAWN_INVALID_IF(vkFormat == VK_FORMAT_UNDEFINED,
 +                    "OH_NativeBuffer with an external format (%x) is not supported.",
 +                    formatProperties.externalFormat);
