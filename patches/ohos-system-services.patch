@@ -1,3 +1,24 @@
+Wire speech synthesis, notifications and media sessions to HarmonyOS.
+
+Absorbs, in this order: ohos-tts.patch, ohos-notifications.patch, ohos-media-session.patch. Their descriptions follow.
+
+--- ohos-tts.patch
+
+Speak with HarmonyOS CoreSpeechKit.
+
+speech/tts_ohos.cc (overlay) now talks to the engine HAR's TtsService over
+//components/ohos_system_service instead of reporting TTS as unsupported.
+
+--- ohos-notifications.patch
+
+Show web notifications as HarmonyOS notifications.
+
+notification_platform_bridge_ohos.cc (overlay) now publishes through the
+engine HAR's NotificationService over //components/ohos_system_service instead
+of returning the stub bridge, which showed nothing.
+
+--- ohos-media-session.patch
+
 Publish the page's media session to HarmonyOS AVSession.
 
 The control center and lock screen show what a page is playing and send play,
@@ -10,7 +31,43 @@ controls at all, so it is enabled on OHOS. OHOS has no ui::MediaKeysListener
 without either instead of dereferencing a null listener.
 
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+Apply with:
 
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-system-services.patch
+
+diff --git a/content/browser/BUILD.gn b/content/browser/BUILD.gn
+--- a/content/browser/BUILD.gn
++++ b/content/browser/BUILD.gn
+@@ -2559,8 +2559,9 @@ source_set("browser") {
+     ]
+   }
+ 
+   if (is_ohos) {
+     sources += [ "speech/tts_ohos.cc" ]
++    deps += [ "//components/ohos_system_service" ]
+   }
+ 
+   # ChromeOS also defines linux but their memory-monitors conflict.
+   if (is_chromeos) {
+diff --git a/chrome/browser/notifications/BUILD.gn b/chrome/browser/notifications/BUILD.gn
+--- a/chrome/browser/notifications/BUILD.gn
++++ b/chrome/browser/notifications/BUILD.gn
+@@ -338,13 +338,14 @@ source_set("impl") {
+     }
+   }
+ 
+   if (is_ohos) {
+     sources += [
+       "notification_platform_bridge_ohos.cc",
+       "stub_notification_platform_bridge.cc",
+       "stub_notification_platform_bridge.h",
+     ]
++    deps += [ "//components/ohos_system_service" ]
+   }
+ 
+   if (enable_extensions_core) {
+     if (is_android) {
+       deps += [ "//chrome/browser/enterprise" ]
 diff --git a/components/system_media_controls/BUILD.gn b/components/system_media_controls/BUILD.gn
 index 8089e11..b6198a7 100644
 --- a/components/system_media_controls/BUILD.gn

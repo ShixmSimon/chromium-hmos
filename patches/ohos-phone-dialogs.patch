@@ -1,0 +1,491 @@
+Fit dialogs and bubbles to a phone screen and to the shell's insets.
+
+Absorbs, in this order: ohos-device-chooser-width.patch, ohos-dialog-width-fits-screen.patch, ohos-dialog-preferred-width.patch, ohos-bubble-anchor-top-center.patch, ohos-tab-modal-shell-insets.patch, ohos-browser-modal-shell-insets.patch. Their descriptions follow.
+
+--- ohos-device-chooser-width.patch
+
+Fit the device chooser inside a phone screen.
+
+DeviceChooserContentView asks for a fixed 402dp of width. On the device this
+port runs on the work area is 377dp, and a bubble is not shrunk to fit: the
+chooser was laid out 462dp wide (measured, bounds=34,-4 462x483), its right
+edge past the display, and the Connect button sat where no touch could reach
+it. Selecting a device by touch worked and still could not be confirmed.
+
+The width is now the smaller of 402dp and what the work area leaves once the
+bubble frame is accounted for. Desktop is untouched.
+
+--- ohos-dialog-width-fits-screen.patch
+
+Stop a dialog being snapped wider than the screen it is shown on.
+
+BubbleFrameView snaps any bubble that has buttons to one of Chrome's dialog
+widths. The smallest of those is wider than this port's phone screen, so the
+Bluetooth device chooser was laid out 462dp wide on a 376dp work area, its
+right edge past the display and its Connect button somewhere no touch could
+reach. Measured on device, with the chooser's own contents already clamped to
+312dp: contents_preferred=312x320, work_area=0,0 376x809, bubble bounds
+34,-4 462x483. The width was not coming from the contents.
+
+Snapping is a nicety. Fitting on the screen is not, on a device where there is
+nowhere else for the dialog to go. The snapped width is now capped at the work
+area less a small margin, and min_width still wins over the cap -- a frame
+narrower than its own contents is not a size, it is a broken layout, and the
+contents-side clamp in ohos-device-chooser-width.patch is what keeps the two
+from meeting there.
+
+This is deliberately not limited to the chooser. Every dialog with buttons is
+snapped by this function, and none of them fit either.
+
+--- ohos-dialog-preferred-width.patch
+
+Keep dialogs that ask for a preferred width on a phone screen.
+
+ohos-dialog-width-fits-screen.patch capped GetSnappedDialogWidth, but dialogs
+that take DISTANCE_MODAL_DIALOG_PREFERRED_WIDTH (or the large variant, or the
+standalone bubble width) directly bypass it. The WebAuthn "use a phone or
+tablet" QR sheet is one: it was laid out past the right edge of the screen and
+cut off. On OHOS those metrics are capped to the work area as well.
+
+--- ohos-bubble-anchor-top-center.patch
+
+Put the anchorless bubbles across the top centre, not in the corner.
+
+With no Views toolbar to anchor to, every branch of
+GetPageInfoAnchorConfiguration falls through to an empty configuration whose
+arrow is TOP_LEFT, and GetPageInfoAnchorRect returns a zero-size rect
+kNoToolbarLeftOffset (40dp) in from the window's left edge. So the Bluetooth
+chooser and the permission prompt both hung off the top-left corner of a phone
+screen -- measured on device as anchor_rect=40,0 0x0.
+
+The offset exists so that a bubble shown in fullscreen does not obscure the
+fullscreen bubble, which is a trade this port does not have to make: its
+browser UI is drawn in ArkTS, so nothing of Chrome's is up there to collide
+with. The anchor becomes a zero-height rect across the top of the window and
+the arrow becomes TOP_CENTER, which hangs the bubble from the top edge,
+centred -- where a phone-shaped Chrome puts it. The rect sits below the
+shell's top bar, which the shell reports to the bridge: from the window's own
+top edge the bubble went under the status bar and the address bar, with only
+its buttons showing (the local network access prompt on baidu.com).
+
+This is the shared anchor for the page info bubble, the permission prompt and
+the device chooser, so all three move together, which is the point.
+
+--- ohos-tab-modal-shell-insets.patch
+
+Keep tab-modal dialogs between the shell's top bar and dock.
+
+A tab-modal dialog -- the extension and theme install confirmations, and the
+other dialogs Chromium shows over a tab -- hangs from the bottom of the Views
+toolbar. This port has no Views toolbar on screen: its browser UI is drawn in
+ArkTS over the page, so the dialog went to the very top of the window, under
+the status bar and the shell's address bar, with only its buttons showing and
+taps on them taken by the address bar (measured on a Mate 70 Pro+ with an
+extension install from www.crxsoso.com).
+
+On OHOS TabModalDialogHost keeps the dialog's top at or below the shell's top
+bar and its maximum height within the room above the dock and the gesture
+bar, both as the shell reported them to the bridge. While a tab is blocked by
+such a dialog, the bridge holds the top bar and dock shown, so that room is
+the room there is; they go back to following the page when it closes.
+
+--- ohos-browser-modal-shell-insets.patch
+
+Keep browser-modal dialogs between the shell's top bar and dock.
+
+ohos-tab-modal-shell-insets.patch moved tab-modal dialogs below the shell's
+top bar, but a browser-modal dialog -- the extension install prompt for a
+.crx the shell asks to install -- is placed by BrowserViewLayout's own
+dialog host, below a Views toolbar this port does not show. On a Mate 70
+Pro+ it still opened under the status bar and the address bar, its title
+hidden.
+
+On OHOS BrowserModalDialogHostViews keeps the dialog's top at or below the
+shell's top bar and its maximum height within the room above the dock and
+gesture bar, from the insets the shell reported for the window.
+
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
+Apply with:
+
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-phone-dialogs.patch
+
+diff --git a/chrome/browser/ui/views/device_chooser_content_view.cc b/chrome/browser/ui/views/device_chooser_content_view.cc
+index 30f20e9..9f87bb2 100644
+--- a/chrome/browser/ui/views/device_chooser_content_view.cc
++++ b/chrome/browser/ui/views/device_chooser_content_view.cc
+@@ -4,10 +4,12 @@
+ 
+ #include "chrome/browser/ui/views/device_chooser_content_view.h"
+ 
++#include <algorithm>
+ #include <array>
+ #include <string>
+ 
+ #include "base/functional/bind.h"
++#include "build/build_config.h"
+ #include "base/numerics/safe_conversions.h"
+ #include "base/strings/strcat.h"
+ #include "chrome/browser/ui/views/chrome_layout_provider.h"
+@@ -20,6 +22,8 @@
+ #include "ui/base/mojom/dialog_button.mojom.h"
+ #include "ui/base/resource/resource_bundle.h"
+ #include "ui/base/ui_base_features.h"
++#include "ui/display/display.h"
++#include "ui/display/screen.h"
+ #include "ui/gfx/color_palette.h"
+ #include "ui/gfx/geometry/point.h"
+ #include "ui/gfx/geometry/rect.h"
+@@ -51,7 +55,25 @@ DeviceChooserContentView::DeviceChooserContentView(
+     : chooser_controller_(std::move(chooser_controller)) {
+   chooser_controller_->set_view(this);
+ 
++#if BUILDFLAG(IS_OHOS)
++  // 402dp is wider than the phone this port runs on (377dp of work area), and
++  // a bubble is not shrunk to fit what is left: the chooser rendered with its
++  // right edge past the display, which put the Connect button where no touch
++  // could reach it. Leave the bubble frame room on both sides instead -- 60dp
++  // of it on the device measured, rounded up -- so the whole bubble lands
++  // inside the screen. Desktop keeps the fixed width, and so does a startup
++  // with no screen to ask.
++  constexpr int kPreferredWidth = 402;
++  constexpr int kBubbleFrameAllowance = 64;
++  int width = kPreferredWidth;
++  if (display::Screen* screen = display::Screen::Get()) {
++    width = std::min(width, screen->GetPrimaryDisplay().work_area().width() -
++                                kBubbleFrameAllowance);
++  }
++  SetPreferredSize(gfx::Size(width, 320));
++#else
+   SetPreferredSize(gfx::Size(402, 320));
++#endif
+   SetProperty(views::kElementIdentifierKey,
+               kDeviceChooserDialogBubbleElementId);
+ 
+diff --git a/chrome/browser/ui/views/chrome_layout_provider.cc b/chrome/browser/ui/views/chrome_layout_provider.cc
+index 7814bc0..3dcdbc5 100644
+--- a/chrome/browser/ui/views/chrome_layout_provider.cc
++++ b/chrome/browser/ui/views/chrome_layout_provider.cc
+@@ -10,7 +10,10 @@
+ #include "chrome/browser/ui/ui_features.h"
+ #include "chrome/browser/ui/views/chrome_typography.h"
+ #include "components/omnibox/common/omnibox_features.h"
++#include "build/build_config.h"
+ #include "ui/base/pointer/touch_ui_controller.h"
++#include "ui/display/display.h"
++#include "ui/display/screen.h"
+ #include "ui/gfx/shadow_value.h"
+ 
+ namespace {
+@@ -298,14 +301,32 @@ int ChromeLayoutProvider::GetDistanceMetric(int metric) const {
+ }
+ 
+ int ChromeLayoutProvider::GetSnappedDialogWidth(int min_width) const {
++  int width = ((min_width + 15) / 16) * 16;
+   for (int snap_point :
+        {kSmallDialogWidth, kMediumDialogWidth, kLargeDialogWidth}) {
+     if (min_width <= snap_point) {
+-      return snap_point;
++      width = snap_point;
++      break;
+     }
+   }
+ 
+-  return ((min_width + 15) / 16) * 16;
++#if BUILDFLAG(IS_OHOS)
++  // The snap points are desktop widths and the smallest of them is wider than
++  // this port's phone screen, so a dialog with buttons was laid out past the
++  // right edge of the display -- far enough that the Bluetooth chooser's
++  // Connect button could not be touched at all. Snapping is a nicety; fitting
++  // on the screen is not. min_width still wins, because a frame narrower than
++  // its own contents is not a size, it is a broken layout.
++  if (const display::Screen* screen = display::Screen::Get()) {
++    constexpr int kScreenEdgeMargin = 16;
++    width = std::max(
++        min_width,
++        std::min(width, screen->GetPrimaryDisplay().work_area().width() -
++                            kScreenEdgeMargin));
++  }
++#endif
++
++  return width;
+ }
+ 
+ const views::TypographyProvider& ChromeLayoutProvider::GetTypographyProvider()
+diff --git a/chrome/browser/ui/views/chrome_layout_provider.cc b/chrome/browser/ui/views/chrome_layout_provider.cc
+index 3dcdbc5..d743cb1 100644
+--- a/chrome/browser/ui/views/chrome_layout_provider.cc
++++ b/chrome/browser/ui/views/chrome_layout_provider.cc
+@@ -18,6 +18,22 @@
+ 
+ namespace {
+ 
++#if BUILDFLAG(IS_OHOS)
++// The preferred dialog and bubble widths are desktop sizes, all wider than a
++// phone screen. A dialog that asks for one by metric rather than through
++// GetSnappedDialogWidth -- the WebAuthn "use a phone" QR sheet, for one --
++// was laid out past the right edge and cut off. Keep every such width inside
++// the work area.
++int FitDialogWidthToScreen(int width) {
++  constexpr int kScreenEdgeMargin = 16;
++  if (const display::Screen* screen = display::Screen::Get()) {
++    return std::min(width, screen->GetPrimaryDisplay().work_area().width() -
++                               kScreenEdgeMargin);
++  }
++  return width;
++}
++#endif
++
+ ChromeLayoutProvider* g_chrome_layout_provider = nullptr;
+ 
+ }  // namespace
+@@ -116,6 +132,18 @@ int ChromeLayoutProvider::GetDistanceMetric(int metric) const {
+   DCHECK_GE(metric, views::VIEWS_DISTANCE_START);
+   DCHECK_LT(metric, views::VIEWS_DISTANCE_MAX);
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (metric == views::DISTANCE_MODAL_DIALOG_PREFERRED_WIDTH ||
++      metric == views::DISTANCE_LARGE_MODAL_DIALOG_PREFERRED_WIDTH ||
++      metric == DISTANCE_STANDALONE_BUBBLE_PREFERRED_WIDTH) {
++    const int width =
++        metric < views::VIEWS_DISTANCE_END
++            ? LayoutProvider::GetDistanceMetric(metric)
++            : kMediumDialogWidth;
++    return FitDialogWidthToScreen(width);
++  }
++#endif
++
+   if (metric < views::VIEWS_DISTANCE_END) {
+     return LayoutProvider::GetDistanceMetric(metric);
+   }
+diff --git a/chrome/browser/ui/views/bubble_anchor_util_views.cc b/chrome/browser/ui/views/bubble_anchor_util_views.cc
+index 21c7c53..d6f60ba 100644
+--- a/chrome/browser/ui/views/bubble_anchor_util_views.cc
++++ b/chrome/browser/ui/views/bubble_anchor_util_views.cc
+@@ -12,6 +12,10 @@
+ #include "chrome/browser/ui/bubble_anchor_util.h"
+ #include "chrome/browser/ui/views/frame/app_menu_button.h"
+ #include "chrome/browser/ui/views/frame/browser_view.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
+ #include "chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view.h"
+ #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
+ #include "chrome/browser/ui/views/payments/payment_handler_web_flow_view_controller.h"
+@@ -35,6 +39,16 @@ namespace bubble_anchor_util {
+ AnchorConfiguration GetPageInfoAnchorConfiguration(
+     BrowserWindowInterface* browser,
+     Anchor anchor) {
++#if BUILDFLAG(IS_OHOS)
++  // This port draws its browser UI in ArkTS, so there is no location bar, no
++  // custom tab bar and no app menu button to anchor to -- every branch below
++  // falls through to an empty configuration whose arrow is TOP_LEFT. Say so
++  // up front, and ask to be centred on the anchor rect instead: paired with
++  // the rect below, that puts the bubble across the top centre of the window,
++  // which is where a phone-shaped Chrome puts it.
++  return {views::BubbleAnchor(), std::nullopt,
++          views::BubbleBorder::TOP_CENTER};
++#else
+   BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
+   auto* location_bar_view =
+       browser_view ? browser_view->GetLocationBarView() : nullptr;
+@@ -119,6 +133,7 @@ AnchorConfiguration GetPageInfoAnchorConfiguration(
+ 
+   return {app_menu_anchor, kToolbarAppMenuButtonElementId,
+           views::BubbleBorder::TOP_RIGHT};
++#endif  // BUILDFLAG(IS_OHOS)
+ }
+ 
+ AnchorConfiguration GetPermissionPromptBubbleAnchorConfiguration(
+@@ -181,6 +196,21 @@ gfx::Rect GetPageInfoAnchorRect(BrowserWindowInterface* browser) {
+   DCHECK(GetPageInfoAnchorConfiguration(browser).anchor.IsNull());
+ 
+   BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
++#if BUILDFLAG(IS_OHOS)
++  // A zero-height rect across the window just below the shell's top bar.
++  // With the TOP_CENTER arrow above, the bubble is centred horizontally and
++  // hangs from it, below the status bar and the address bar the shell draws
++  // over the top of the page; from the window's own top edge it went under
++  // them, its title hidden and only its buttons showing. kNoToolbarLeftOffset
++  // exists so a fullscreen bubble is not obscured by one in the corner, which
++  // is not a trade this port has to make: its browser UI is not Views, so
++  // nothing else is up there to collide with.
++  const gfx::Rect browser_bounds = browser_view->GetBoundsInScreen();
++  const int shell_top =
++      chrome::ohos::GetAuraShellModalDialogInsets(browser).top();
++  return gfx::Rect(browser_bounds.x(), browser_bounds.y() + shell_top,
++                   browser_bounds.width(), 0);
++#else
+   // Get position in view (taking RTL UI into account).
+   int x_within_browser_view = browser_view->GetMirroredXInView(
+       bubble_anchor_util::kNoToolbarLeftOffset);
+@@ -190,6 +220,7 @@ gfx::Rect GetPageInfoAnchorRect(BrowserWindowInterface* browser) {
+   gfx::Point browser_view_origin = browser_view->GetBoundsInScreen().origin();
+   browser_view_origin += gfx::Vector2d(x_within_browser_view, 0);
+   return gfx::Rect(browser_view_origin, gfx::Size());
++#endif  // BUILDFLAG(IS_OHOS)
+ }
+ 
+ // Returns true if the given anchor can be used as a highlight.
+diff --git a/chrome/browser/ui/views/frame/tab_modal_dialog_host.cc b/chrome/browser/ui/views/frame/tab_modal_dialog_host.cc
+index 7ad0e2b..3e89dba 100644
+--- a/chrome/browser/ui/views/frame/tab_modal_dialog_host.cc
++++ b/chrome/browser/ui/views/frame/tab_modal_dialog_host.cc
+@@ -23,6 +23,12 @@
+ #include "ui/views/view.h"
+ #include "ui/views/widget/widget.h"
+ 
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
++
+ namespace {
+ // The number of pixels the constrained window should overlap the bottom
+ // of the omnibox.
+@@ -55,10 +61,21 @@ gfx::Point TabModalDialogHost::GetDialogPosition(const gfx::Size& dialog_size) {
+   const int leading_x = contents_container_view_coordinates_in_browser.x();
+   const int middle_x = leading_x + contents_container_view_->width() / 2;
+   const int dialog_starting_x = std::max(middle_x - dialog_size.width() / 2, 0);
++  int dialog_y =
++      GetDialogYCoordinate(contents_container_view_coordinates_in_browser.y(),
++                           dialog_size.height());
++#if BUILDFLAG(IS_OHOS)
++  // The browser UI is the shell's, drawn in ArkTS over the page: there is no
++  // Views toolbar to hang the dialog from, and the shell's top bar covers
++  // the top of the window. Keep the dialog below that bar, as it would hang
++  // below Chrome's toolbar; GetMaximumDialogSize() keeps it above the dock.
++  dialog_y = std::max(dialog_y, chrome::ohos::GetAuraShellModalDialogInsets(
++                                    browser_view_->browser())
++                                    .top());
++#endif
+   return gfx::Point(
+       std::min(dialog_starting_x, browser_view_->width() - dialog_size.width()),
+-      GetDialogYCoordinate(contents_container_view_coordinates_in_browser.y(),
+-                           dialog_size.height()));
++      dialog_y);
+ }
+ 
+ bool TabModalDialogHost::ShouldActivateDialog() const {
+@@ -100,9 +117,22 @@ gfx::Size TabModalDialogHost::GetMaximumDialogSize() {
+   // clipping when the content_area becomes too small for the dialog. This will
+   // cause the dialog to extend beyond its corresponding content_area but remain
+   // the bounds of the browser view contents container.
++#if BUILDFLAG(IS_OHOS)
++  // Between the shell's top bar and its dock (see GetDialogPosition()). A
++  // dialog taller than that scrolls or lays itself out shorter instead of
++  // running under either.
++  const gfx::Insets shell =
++      chrome::ohos::GetAuraShellModalDialogInsets(browser_view_->browser());
++  return gfx::Size(
++      browser_view_->contents_container()->width(),
++      std::max(0, std::min(contents_container_area.bottom() -
++                               GetToolbarOverlappingYCoordinate(),
++                           browser_view_->height() - shell.height())));
++#else
+   return gfx::Size(
+       browser_view_->contents_container()->width(),
+       contents_container_area.bottom() - GetToolbarOverlappingYCoordinate());
++#endif
+ }
+ 
+ void TabModalDialogHost::OnViewAddedToWidget(views::View* observed_view) {
+diff --git a/chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.cc b/chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.cc
+index fd0a7db..f30de8a 100644
+--- a/chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.cc
++++ b/chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.cc
+@@ -25,6 +25,12 @@
+ #include "content/public/browser/browser_thread.h"
+ #include "content/public/browser/web_contents.h"
+ 
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
++
+ DEFINE_USER_DATA(BrowserWindowModalDialogDelegate);
+ 
+ BrowserWindowModalDialogDelegate::BrowserWindowModalDialogDelegate(
+@@ -89,6 +95,11 @@ void BrowserWindowModalDialogDelegate::SetWebContentsBlocked(
+   }
+ 
+   tab_strip_model->SetTabBlocked(index, blocked);
++#if BUILDFLAG(IS_OHOS)
++  // Hold the shell's top bar and dock out while a tab-modal dialog is up,
++  // so the room the dialog is placed in is the room there is.
++  chrome::ohos::OnAuraShellWebContentsBlocked(web_contents, blocked);
++#endif
+ 
+   const bool browser_active =
+       GetLastActiveBrowserWindowInterfaceWithAnyProfile() == browser_;
+diff --git a/chrome/browser/ui/views/frame/layout/browser_view_layout.cc b/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
+index 778997a..eb42875 100644
+--- a/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
++++ b/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
+@@ -24,6 +24,14 @@
+ #include "ui/views/widget/widget.h"
+ #include "ui/views/widget/widget_observer.h"
+ 
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include <algorithm>
++
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
++
+ using web_modal::ModalDialogHostObserver;
+ using web_modal::WebContentsModalDialogHost;
+ 
+@@ -71,7 +79,19 @@ class BrowserViewLayout::BrowserModalDialogHostViews
+   }
+ 
+   gfx::Point GetDialogPosition(const gfx::Size& dialog_size) override {
++#if BUILDFLAG(IS_OHOS)
++    // The browser UI is the shell's, drawn in ArkTS over the window: the
++    // layout places a browser-modal dialog -- the extension install prompt
++    // for a downloaded .crx -- below a Views toolbar that is not on screen,
++    // so it went under the status bar and the shell's address bar. Keep it
++    // below the shell's top bar, as TabModalDialogHost does for tab-modal
++    // dialogs (ohos-tab-modal-shell-insets.patch).
++    gfx::Point position = browser_view_layout_->GetDialogPosition(dialog_size);
++    position.set_y(std::max(position.y(), ShellInsets().top()));
++    return position;
++#else
+     return browser_view_layout_->GetDialogPosition(dialog_size);
++#endif
+   }
+ 
+   bool ShouldActivateDialog() const override {
+@@ -87,9 +107,29 @@ class BrowserViewLayout::BrowserModalDialogHostViews
+   }
+ 
+   gfx::Size GetMaximumDialogSize() override {
++#if BUILDFLAG(IS_OHOS)
++    // Between the shell's top bar and its dock (see GetDialogPosition()).
++    gfx::Size size = browser_view_layout_->GetMaximumDialogSize();
++    if (views::View* view = browser_view_layout_->views().browser_view) {
++      size.set_height(std::max(
++          0, std::min(size.height(), view->height() - ShellInsets().height())));
++    }
++    return size;
++#else
+     return browser_view_layout_->GetMaximumDialogSize();
++#endif
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  gfx::Insets ShellInsets() const {
++    views::View* view = browser_view_layout_->views().browser_view;
++    views::Widget* widget = view ? view->GetWidget() : nullptr;
++    return widget ? chrome::ohos::GetAuraShellModalDialogInsetsForWindow(
++                        widget->GetNativeWindow())
++                  : gfx::Insets();
++  }
++#endif
++
+   views::Widget* GetHostWidget() const {
+     return views::Widget::GetWidgetForNativeView(
+         browser_view_layout_->delegate().GetHostViewForAnchoring());

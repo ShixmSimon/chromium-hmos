@@ -166,29 +166,14 @@ if [[ -n "${PACKAGE_ONLY:-}" ]]; then
   readonly readelf="${src}/third_party/llvm-build/Release+Asserts/bin/llvm-readelf"
 else
   compiled_here=true
-  apply_incremental_patch "${repo_root}/patches/ohos-audio-input.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-vibration.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-battery.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-wake-lock.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-api.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-web-usb.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-web-hid.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-web-serial.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-device-apis.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-display-capture.patch"
   # The press no longer steals focus from an open bubble, so the chooser does
   # not need its own opt-out from close-on-deactivate.
   retire_incremental_patch "${repo_root}/patches/ohos-web-bluetooth-chooser-input.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-device-chooser-width.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-dialog-width-fits-screen.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-dialog-preferred-width.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-bubble-anchor-top-center.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-phone-dialogs.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-browser-controls.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-tab-modal-shell-insets.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-browser-modal-shell-insets.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-tts.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-notifications.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-media-session.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-system-services.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-screen-orientation.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-orientation-lock-resolve.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shape-detection.patch"
@@ -264,10 +249,8 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-clear-unprotected-passwords.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-huks-oscrypt.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-password-reauth.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-ua-chrome-android.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-extension-store.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-store-ua-tab-helper.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-image-drag-out.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-ua-web-store.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-drag-drop.patch"
   # Repair, once. The anchor log lines moved from
   # ohos-extension-installed-bubble.patch into this patch; the next build
   # backed out the old installed-bubble revision, which took those lines
@@ -295,7 +278,6 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-new-tab-focuses-omnibox.patch"
   retire_incremental_patch "${repo_root}/patches/ohos-touch-gesture-diagnostics.patch"
   retire_incremental_patch "${repo_root}/patches/ohos-focus-diagnostics.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-drop-data-at-drop.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-extensions-page.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-passwords.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-password-settings-reauth.patch"
