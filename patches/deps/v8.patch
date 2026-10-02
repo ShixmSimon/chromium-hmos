@@ -1,8 +1,8 @@
 diff --git a/BUILD.gn b/BUILD.gn
-index a19ec521..0d886394 100644
+index 76391be1..3f273937 100644
 --- a/BUILD.gn
 +++ b/BUILD.gn
-@@ -1131,6 +1131,11 @@ if (target_os == "android") {
+@@ -1179,6 +1179,11 @@ if (target_os == "android") {
  } else if (target_os == "chromeos") {
    enabled_external_v8_defines += [ "V8_HAVE_TARGET_OS" ]
    enabled_external_v8_defines += [ "V8_TARGET_OS_CHROMEOS" ]
@@ -14,7 +14,7 @@ index a19ec521..0d886394 100644
  }
  
  # Some V8_TARGET_ARCH_ defines that affect Api constants (see usages of
-@@ -5077,7 +5082,7 @@ v8_header_set("v8_internal_headers") {
+@@ -5165,7 +5170,7 @@ v8_header_set("v8_internal_headers") {
      if (v8_enable_webassembly) {
        # iOS Xcode simulator builds run on an x64 target. iOS and macOS are both
        # based on Darwin and thus POSIX-compliant to a similar degree.
@@ -23,7 +23,7 @@ index a19ec521..0d886394 100644
            target_os == "freebsd") {
          sources += [ "src/trap-handler/handler-inside-posix.h" ]
        } else if (is_win) {
-@@ -5145,7 +5150,7 @@ v8_header_set("v8_internal_headers") {
+@@ -5233,7 +5238,7 @@ v8_header_set("v8_internal_headers") {
        # Trap handling is enabled on arm64 Mac and Linux and in simulators on
        # x64 on Linux and Mac.
        if ((current_cpu == "arm64" &&
@@ -32,7 +32,7 @@ index a19ec521..0d886394 100644
            (current_cpu == "x64" && (is_linux || is_chromeos || is_mac))) {
          sources += [ "src/trap-handler/handler-inside-posix.h" ]
        }
-@@ -6575,7 +6580,7 @@ v8_cluster_source_set("v8_base_without_compiler") {
+@@ -6671,7 +6676,7 @@ v8_cluster_source_set("v8_base_without_compiler") {
      if (v8_enable_webassembly) {
        # iOS Xcode simulator builds run on an x64 target. iOS and macOS are both
        # based on Darwin and thus POSIX-compliant to a similar degree.
@@ -41,7 +41,7 @@ index a19ec521..0d886394 100644
            target_os == "freebsd") {
          sources += [
            "src/trap-handler/handler-inside-posix.cc",
-@@ -6627,7 +6632,8 @@ v8_cluster_source_set("v8_base_without_compiler") {
+@@ -6723,7 +6728,8 @@ v8_cluster_source_set("v8_base_without_compiler") {
      ]
      if (v8_enable_webassembly) {
        # Trap handling is enabled on arm64 and x64, on Linux, Mac and Windows.
@@ -51,7 +51,7 @@ index a19ec521..0d886394 100644
            (current_cpu == "x64" && (is_linux || is_chromeos || is_mac))) {
          sources += [
            "src/trap-handler/handler-inside-posix.cc",
-@@ -7286,7 +7292,7 @@ v8_component("v8_libbase") {
+@@ -7398,7 +7404,7 @@ v8_component("v8_libbase") {
      }
    }
  
@@ -61,10 +61,10 @@ index a19ec521..0d886394 100644
        "src/base/debug/stack_trace_posix.cc",
        "src/base/platform/platform-linux.cc",
 diff --git a/gni/v8.gni b/gni/v8.gni
-index 6334faf2..bdaa8e4d 100644
+index 7ae927dc..3503e037 100644
 --- a/gni/v8.gni
 +++ b/gni/v8.gni
-@@ -351,6 +351,7 @@ is_drumbrake_supported =
+@@ -354,6 +354,7 @@ is_drumbrake_supported =
      (v8_current_cpu == "x64" || v8_current_cpu == "arm64" ||
       v8_current_cpu == "riscv64") &&
      (target_os == "win" || target_os == "linux" || target_os == "mac" ||
@@ -92,8 +92,30 @@ index 39fa8be2..ca2eb32c 100644
  // Demangles C++ symbols in the given text. Example:
  //
  // "out/Debug/base_unittests(_ZN10StackTraceC1Ev+0x20) [0x817778c]"
+diff --git a/src/base/platform/platform-linux.cc b/src/base/platform/platform-linux.cc
+index 51d24a55..ee3823f7 100644
+--- a/src/base/platform/platform-linux.cc
++++ b/src/base/platform/platform-linux.cc
+@@ -175,10 +175,15 @@ MemoryRegion FindEnclosingMapping(uintptr_t target_start, size_t size) {
+ bool KernelSupportsRemapDontUnmap() {
+   static bool supported = [] {
+     struct utsname buffer;
+-    CHECK_EQ(uname(&buffer), 0);
++    // Not every kernel this runs on reports a Linux-style release string.
++    // HarmonyOS returns "HongMeng Kernel 1.13.0", which %d.%d cannot parse, and
++    // the CHECK below then aborts the renderer at startup. Treat anything
++    // unparseable as unsupported: RemapPages() already falls back to reading
++    // /proc/self/maps, so the conservative answer is the safe one.
++    if (uname(&buffer) != 0) return false;
+ 
+     int major, minor;
+-    CHECK_EQ(sscanf(buffer.release, "%d.%d", &major, &minor), 2);
++    if (sscanf(buffer.release, "%d.%d", &major, &minor) != 2) return false;
+ 
+     // MREMAP_DONTUNMAP was added in Linux 5.7, but before Linux 5.13 it only
+     // worked on private anonymous mappings, whereas RemapPages() needs it on
 diff --git a/src/builtins/arm64/builtins-arm64.cc b/src/builtins/arm64/builtins-arm64.cc
-index 6a7717c9..2aa28a1b 100644
+index 8f14edd4..1daec79a 100644
 --- a/src/builtins/arm64/builtins-arm64.cc
 +++ b/src/builtins/arm64/builtins-arm64.cc
 @@ -402,7 +402,10 @@ static void GetSharedFunctionInfoBytecodeOrBaseline(
@@ -108,3 +130,25 @@ index 6a7717c9..2aa28a1b 100644
  
    Register data = bytecode;
    __ LoadTrustedUnknownPointerField(
+diff --git a/src/sandbox/hardware-support.cc b/src/sandbox/hardware-support.cc
+index 9eda40c5..e07db90b 100644
+--- a/src/sandbox/hardware-support.cc
++++ b/src/sandbox/hardware-support.cc
+@@ -155,10 +155,15 @@ bool SandboxHardwareSupport::CurrentSandboxingModeIs(
+ bool SandboxHardwareSupport::KernelSupportsSignalDeliveryInSandbox() {
+ #ifdef V8_OS_LINUX
+   struct utsname buffer;
+-  CHECK_EQ(uname(&buffer), 0);
++  // Same caveat as KernelSupportsRemapDontUnmap in platform-linux.cc: the
++  // release string is not Linux-shaped everywhere this runs (HarmonyOS reports
++  // "HongMeng Kernel 1.13.0"), and a CHECK here aborts the process at startup.
++  // An unknown kernel is treated as lacking the fix, which only disables an
++  // optimisation.
++  if (uname(&buffer) != 0) return false;
+ 
+   int major, minor;
+-  CHECK_EQ(sscanf(buffer.release, "%d.%d", &major, &minor), 2);
++  if (sscanf(buffer.release, "%d.%d", &major, &minor) != 2) return false;
+ 
+   // Kernel 6.12 seems to be the first release to have the necessary fixes
+   // that support signal delivery when the stack uses a non-default pkey:

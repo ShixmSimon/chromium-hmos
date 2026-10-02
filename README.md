@@ -34,7 +34,7 @@ endorsed by Google, Chromium, Huawei, or the OpenHarmony project.
 
 ## Repository Layout
 
-- `patches/chromium-150-harmonyos.patch`: all modifications to files tracked by
+- `patches/chromium-154-harmonyos.patch`: all modifications to files tracked by
   upstream Chromium.
 - `patches/deps/`: OHOS changes to DEPS repositories (V8, ANGLE, Dawn, FFmpeg,
   PDFium, Skia, WebRTC, and others), listed in `patches/deps/series`. See

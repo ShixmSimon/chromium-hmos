@@ -25,7 +25,7 @@ HarmonyOS by the ArkWeb User-Agent token.
 | `third_party_skia.patch` | Adds `SkFontMgr_New_Custom_Directories`, which `skia/ext/font_utils.cc` calls, and implements `onMatchFamilyStyleCharacter`. Blink's OHOS font cache relies on it for all fallback; without it every CJK glyph was blank. The locale's `SC`/`TC`/`JP`/`KR` family is preferred. |
 | `third_party_vulkan-loader_src.patch` | Defines `SYSCONFDIR` and `FALLBACK_*_DIRS` like Linux. The ICD search paths still need device verification. |
 
-## `chromium/src` additions (`patches/chromium-150-harmonyos.patch`)
+## `chromium/src` additions (`patches/chromium-154-harmonyos.patch`)
 
 - `third_party/dav1d/BUILD.gn`: musl lacks `pthread_{get,set}affinity_np`.
 - `ui/webui/resources/js/BUILD.gn`: builds `batch_upload_promo` on OHOS, which

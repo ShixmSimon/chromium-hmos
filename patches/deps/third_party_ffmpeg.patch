@@ -1,5 +1,5 @@
 diff --git a/ffmpeg_generated.gni b/ffmpeg_generated.gni
-index 145ceba..28e13d5 100644
+index 6dd28da..b147b6e 100644
 --- a/ffmpeg_generated.gni
 +++ b/ffmpeg_generated.gni
 @@ -16,7 +16,7 @@ ffmpeg_nasm_include_dirs = []

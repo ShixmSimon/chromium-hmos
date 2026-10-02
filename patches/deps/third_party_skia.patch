@@ -17,7 +17,7 @@ index b1a60fb..24e9157 100644
 +
  #endif // SkFontMgr_directory_DEFINED
 diff --git a/src/ports/SkFontMgr_custom.cpp b/src/ports/SkFontMgr_custom.cpp
-index 408b1ec..79fae13 100644
+index bd81353..0e059f2 100644
 --- a/src/ports/SkFontMgr_custom.cpp
 +++ b/src/ports/SkFontMgr_custom.cpp
 @@ -19,6 +19,8 @@
@@ -123,15 +123,15 @@ index 408b1ec..79fae13 100644
  }
  
 diff --git a/src/ports/SkFontMgr_custom.h b/src/ports/SkFontMgr_custom.h
-index d656764..183fba8 100644
+index 0d565b0..431336b 100644
 --- a/src/ports/SkFontMgr_custom.h
 +++ b/src/ports/SkFontMgr_custom.h
 @@ -13,6 +13,7 @@
  #include "include/core/SkRefCnt.h"
  #include "include/core/SkString.h"
  #include "include/core/SkTypes.h"
-+#include "include/private/base/SkMutex.h"
- #include "include/private/base/SkTArray.h"
++#include "include/private/SkMutex.h"
+ #include "include/private/SkTArray.h"
  #include "src/ports/SkTypeface_FreeType.h"
  
 @@ -134,8 +135,14 @@ protected:

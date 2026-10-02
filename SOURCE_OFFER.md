@@ -9,7 +9,7 @@ The corresponding source consists of:
 
 1. Chromium revision `f405107495a07cb1bfcf687d4af8d91117098db6` and the
    third-party revisions pinned by its DEPS file.
-2. `patches/chromium-150-harmonyos.patch`.
+2. `patches/chromium-154-harmonyos.patch`.
 3. The complete `overlay/` and `external/` trees in this branch.
 4. `config/args.plan_kirin_pc.gn` and the build instructions in `BUILDING.md`.
 5. `SOURCE_MANIFEST.sha256`, which verifies every published regular file other

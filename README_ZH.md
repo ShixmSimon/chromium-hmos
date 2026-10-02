@@ -26,7 +26,7 @@
 
 ## 仓库内容
 
-- `patches/chromium-150-harmonyos.patch`：对 Chromium 上游已跟踪文件的完整修改。
+- `patches/chromium-154-harmonyos.patch`：对 Chromium 上游已跟踪文件的完整修改。
 - `overlay/`：新增的 HarmonyOS、ArkWeb、Ozone、Aura shell 与 ArkUI 源码。
 - `external/deps_code/webview/`：适配层需要的 WebView 接口源码。
 - `config/args.plan_kirin_pc.gn`：本次原生构建使用的 GN 参数。

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-readonly expected_revision="f405107495a07cb1bfcf687d4af8d91117098db6"
+readonly expected_revision="743f26418a267dd97c3c1c71d786038ae68cfc8f"  # 154.0.8037.51
 readonly project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly chromium_src="${1:-}"
 
@@ -34,7 +34,7 @@ while read -r deps_path deps_patch; do
 done <"${deps_patch_root}/series"
 
 git -C "${chromium_src}" apply --binary \
-  "${project_root}/patches/chromium-150-harmonyos.patch"
+  "${project_root}/patches/chromium-154-harmonyos.patch"
 while read -r deps_path deps_patch; do
   [[ -z "${deps_path}" || "${deps_path}" == \#* ]] && continue
   git -C "${chromium_src}/${deps_path}" apply --binary \
