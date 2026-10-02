@@ -100,19 +100,19 @@ std::string FdInfo(int fd) {
   return info;
 }
 
-// The name a dma-buf was given with DMA_BUF_SET_NAME, or empty.
+// The name a dma-buf was given with DMA_BUF_SET_NAME, or empty: the
+// "name:" line of its fdinfo, not to be confused with "exp_name:".
 std::string DmaBufName(int fd) {
-  const std::string info = FdInfo(fd);
-  const size_t start = info.find("name:");
+  const std::string info = "\n" + FdInfo(fd);
+  const size_t start = info.find("\nname:");
   if (start == std::string::npos) {
     return std::string();
   }
-  size_t begin = info.find_first_not_of(" 	", start + 5);
+  const size_t begin = info.find_first_not_of(" \t", start + 6);
   if (begin == std::string::npos) {
     return std::string();
   }
-  const size_t end = info.find('
-', begin);
+  const size_t end = info.find('\n', begin);
   return info.substr(begin, end == std::string::npos ? std::string::npos
                                                      : end - begin);
 }
