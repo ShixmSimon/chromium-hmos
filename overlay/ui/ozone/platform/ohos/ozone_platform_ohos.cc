@@ -78,7 +78,9 @@ class OzonePlatformOhos : public OzonePlatform {
   // Video frames the renderer writes and the GPU samples: ohos_native_pixmap.h.
   bool IsNativePixmapConfigSupported(viz::SharedImageFormat format,
                                      gfx::BufferUsage usage) const override {
-    return IsOhosNativePixmapFormat(format) &&
+    // Video frames only: renderers write them. RGBA and BGRA buffers are
+    // WebGPU's, allocated in the GPU process.
+    return format.is_multi_plane() && IsOhosNativePixmapFormat(format) &&
            (usage == gfx::BufferUsage::GPU_READ_CPU_READ_WRITE ||
             usage == gfx::BufferUsage::SCANOUT_CPU_READ_WRITE);
   }

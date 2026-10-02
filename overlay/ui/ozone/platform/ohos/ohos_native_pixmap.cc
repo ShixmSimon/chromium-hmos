@@ -62,6 +62,13 @@ std::optional<int32_t> OhosFormatFor(viz::SharedImageFormat format) {
   if (format == viz::MultiPlaneFormat::kP010) {
     return NATIVEBUFFER_PIXEL_FMT_YCBCR_P010;
   }
+  // WebGPU's textures (see IsOhosNativePixmapFormat).
+  if (format == viz::SinglePlaneFormat::kRGBA_8888) {
+    return NATIVEBUFFER_PIXEL_FMT_RGBA_8888;
+  }
+  if (format == viz::SinglePlaneFormat::kBGRA_8888) {
+    return NATIVEBUFFER_PIXEL_FMT_BGRA_8888;
+  }
   return std::nullopt;
 }
 
@@ -162,8 +169,16 @@ class BufferRegistry {
     config.width = size.width();
     config.height = size.height();
     config.format = *ohos_format;
-    config.usage = NATIVEBUFFER_USAGE_CPU_READ | NATIVEBUFFER_USAGE_CPU_WRITE |
-                   NATIVEBUFFER_USAGE_MEM_DMA | NATIVEBUFFER_USAGE_HW_TEXTURE;
+    const bool yuv = format.is_multi_plane();
+    // Video frames are written by the CPU and sampled; WebGPU's textures are
+    // rendered to as well, and never touched by the CPU.
+    config.usage = yuv ? NATIVEBUFFER_USAGE_CPU_READ |
+                             NATIVEBUFFER_USAGE_CPU_WRITE |
+                             NATIVEBUFFER_USAGE_MEM_DMA |
+                             NATIVEBUFFER_USAGE_HW_TEXTURE
+                       : NATIVEBUFFER_USAGE_MEM_DMA |
+                             NATIVEBUFFER_USAGE_HW_TEXTURE |
+                             NATIVEBUFFER_USAGE_HW_RENDER;
     OH_NativeBuffer* buffer = OH_NativeBuffer_Alloc(&config);
     if (!buffer) {
       LOG(ERROR) << "OHOS native pixmap: could not allocate "
@@ -176,21 +191,36 @@ class BufferRegistry {
 
     // Where each plane sits. MapPlanes reports a plane's row pitch as its
     // column stride (for a 1920-wide P010 luma plane: row 2, column 3840).
+    // A YUV buffer stays mapped until its tag is written below.
     void* address = nullptr;
-    OH_NativeBuffer_Planes planes = {};
-    if (OH_NativeBuffer_MapPlanes(buffer, &address, &planes) != 0 ||
-        planes.planeCount < 2) {
-      LOG(ERROR) << "OHOS native pixmap: no plane layout";
-      ReleaseEntry(*entry);
-      return std::nullopt;
+    if (yuv) {
+      OH_NativeBuffer_Planes planes = {};
+      if (OH_NativeBuffer_MapPlanes(buffer, &address, &planes) != 0 ||
+          planes.planeCount < 2) {
+        LOG(ERROR) << "OHOS native pixmap: no plane layout";
+        ReleaseEntry(*entry);
+        return std::nullopt;
+      }
+      const uint64_t rows[] = {static_cast<uint64_t>(size.height()),
+                               static_cast<uint64_t>((size.height() + 1) / 2)};
+      for (size_t i = 0; i < 2; ++i) {
+        entry->planes.push_back({planes.planes[i].columnStride,
+                                 planes.planes[i].offset,
+                                 planes.planes[i].columnStride * rows[i]});
+      }
+    } else {
+      OH_NativeBuffer_Config allocated = {};
+      OH_NativeBuffer_GetConfig(buffer, &allocated);
+      const uint32_t stride = static_cast<uint32_t>(allocated.stride);
+      entry->planes.push_back(
+          {stride, 0, static_cast<uint64_t>(stride) * size.height()});
     }
-    const uint64_t rows[] = {static_cast<uint64_t>(size.height()),
-                             static_cast<uint64_t>((size.height() + 1) / 2)};
-    for (size_t i = 0; i < 2; ++i) {
-      entry->planes.push_back({planes.planes[i].columnStride,
-                               planes.planes[i].offset,
-                               planes.planes[i].columnStride * rows[i]});
-    }
+    const auto unmap = [&] {
+      if (address) {
+        OH_NativeBuffer_Unmap(buffer);
+        address = nullptr;
+      }
+    };
 
     entry->window_buffer =
         OH_NativeWindow_CreateNativeWindowBufferFromNativeBuffer(buffer);
@@ -200,43 +230,45 @@ class BufferRegistry {
             : nullptr;
     if (!handle || handle->fd < 0) {
       LOG(ERROR) << "OHOS native pixmap: no dma-buf fd";
-      OH_NativeBuffer_Unmap(buffer);
+      unmap();
       ReleaseEntry(*entry);
       return std::nullopt;
     }
     entry->fd.reset(HANDLE_EINTR(dup(handle->fd)));
     if (!entry->fd.is_valid()) {
       PLOG(ERROR) << "OHOS native pixmap: dup";
-      OH_NativeBuffer_Unmap(buffer);
+      unmap();
       ReleaseEntry(*entry);
       return std::nullopt;
     }
-    const PlaneLayout& last_plane = entry->planes.back();
     entry->size = static_cast<size_t>(handle->size);
-    const std::optional<size_t> tag_offset =
-        TagOffset(entry->size, last_plane.offset + last_plane.size);
-    if (!tag_offset) {
-      // Remembered, so that a video of this size goes back to uploading
-      // planes at once rather than allocating a buffer for every frame.
-      LOG(ERROR) << "OHOS native pixmap: no room to tag a " << format.ToString()
-                 << " " << size.ToString() << " buffer of " << entry->size
-                 << " bytes; not offered again";
-      {
-        base::AutoLock hold(lock_);
-        untaggable_.insert(shape);
-      }
-      OH_NativeBuffer_Unmap(buffer);
-      ReleaseEntry(*entry);
-      return std::nullopt;
-    }
     uint64_t key;
     {
       base::AutoLock hold(lock_);
       key = ++last_key_;
     }
-    const BufferTag tag = {kBufferTagMagic, key};
-    memcpy(static_cast<uint8_t*>(address) + *tag_offset, &tag, sizeof(tag));
-    OH_NativeBuffer_Unmap(buffer);
+    if (yuv) {
+      const PlaneLayout& last_plane = entry->planes.back();
+      const std::optional<size_t> tag_offset =
+          TagOffset(entry->size, last_plane.offset + last_plane.size);
+      if (!tag_offset) {
+        // Remembered, so that a video of this size goes back to uploading
+        // planes at once rather than allocating a buffer for every frame.
+        LOG(ERROR) << "OHOS native pixmap: no room to tag a "
+                   << format.ToString() << " " << size.ToString()
+                   << " buffer of " << entry->size << " bytes; not offered again";
+        {
+          base::AutoLock hold(lock_);
+          untaggable_.insert(shape);
+        }
+        unmap();
+        ReleaseEntry(*entry);
+        return std::nullopt;
+      }
+      const BufferTag tag = {kBufferTagMagic, key};
+      memcpy(static_cast<uint8_t*>(address) + *tag_offset, &tag, sizeof(tag));
+      unmap();
+    }
     entry->users = 1;
 
     static bool logged[2] = {false, false};
@@ -281,6 +313,17 @@ class BufferRegistry {
     if (it != entries_.end() && --it->second->users == 0) {
       it->second->unused_since = base::TimeTicks::Now();
     }
+  }
+
+  // The buffer whose fd is `fd`, as an OhosNativePixmap reports it.
+  OH_NativeBuffer* BufferForFd(int fd) {
+    base::AutoLock hold(lock_);
+    for (auto& [key, entry] : entries_) {
+      if (entry->fd.get() == fd) {
+        return entry->buffer;
+      }
+    }
+    return nullptr;
   }
 
   // Runs `use` on the entry for `key`, or on null, under the lock.
@@ -578,8 +621,11 @@ std::unique_ptr<NativePixmapGLBinding> ImportOhosNativePixmap(
         if (!entry || !entry->window_buffer) {
           return nullptr;
         }
-        OH_NativeBuffer_SetColorSpace(entry->buffer,
-                                      OhosColorSpaceFor(color_space));
+        // How the driver converts YUV; an RGB buffer has nothing to convert.
+        if (entry->planes.size() > 1) {
+          OH_NativeBuffer_SetColorSpace(entry->buffer,
+                                        OhosColorSpaceFor(color_space));
+        }
         return entry->window_buffer;
       });
   if (!window_buffer) {
@@ -610,6 +656,13 @@ std::unique_ptr<NativePixmapGLBinding> ImportOhosNativePixmap(
   }
   return std::make_unique<OhosNativePixmapGLBinding>(std::move(pixmap),
                                                      std::move(image));
+}
+
+void* GetOhosNativeBuffer(const gfx::NativePixmap& pixmap) {
+  if (!pixmap.AreDmaBufFdsValid()) {
+    return nullptr;
+  }
+  return BufferRegistry::Get().BufferForFd(pixmap.GetDmaBufFd(0));
 }
 
 std::unique_ptr<gfx::ClientNativePixmapFactory>

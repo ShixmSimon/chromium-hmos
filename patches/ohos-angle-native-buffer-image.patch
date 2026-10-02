@@ -101,7 +101,7 @@ index 3120510..97bd664 100644
  namespace
  {
  
-@@ -86,6 +90,81 @@ egl::AttributeMap MergeAttributeMaps(const egl::AttributeMap &a, Rest... rest)
+@@ -86,6 +90,84 @@ egl::AttributeMap MergeAttributeMaps(const egl::AttributeMap &a, Rest... rest)
  namespace rx
  {
  
@@ -147,6 +147,9 @@ index 3120510..97bd664 100644
 +            case 34:  // NATIVEBUFFER_PIXEL_FMT_RGBA_1010102
 +                mFormat = gl::Format(GL_RGB10_A2);
 +                break;
++            case 20:  // NATIVEBUFFER_PIXEL_FMT_BGRA_8888
++                mFormat = gl::Format(GL_BGRA8_EXT);
++                break;
 +            case 24:  // NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP
 +            case 25:  // NATIVEBUFFER_PIXEL_FMT_YCRCB_420_SP
 +            case 35:  // NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
@@ -183,7 +186,7 @@ index 3120510..97bd664 100644
  DisplayEGL::DisplayEGL(const egl::DisplayState &state) : DisplayGL(state) {}
  
  DisplayEGL::~DisplayEGL()
-@@ -923,6 +1002,12 @@ void DisplayEGL::generateExtensions(egl::DisplayExtensions *outExtensions) const
+@@ -923,6 +1005,12 @@ void DisplayEGL::generateExtensions(egl::DisplayExtensions *outExtensions) const
  
      outExtensions->imageDmaBufImportEXT = mEGL->hasExtension("EGL_EXT_image_dma_buf_import");
  
@@ -196,7 +199,7 @@ index 3120510..97bd664 100644
      outExtensions->imageDmaBufImportModifiersEXT = mSupportsDmaBufImportModifiers;
  
      outExtensions->robustnessVideoMemoryPurgeNV = mHasNVRobustnessVideoMemoryPurge;
-@@ -1041,6 +1126,15 @@ egl::Error DisplayEGL::validateImageClientBuffer(const gl::Context *context,
+@@ -1041,6 +1129,15 @@ egl::Error DisplayEGL::validateImageClientBuffer(const gl::Context *context,
          case EGL_LINUX_DMA_BUF_EXT:
              return egl::NoError();
  
@@ -212,7 +215,7 @@ index 3120510..97bd664 100644
          default:
              return DisplayGL::validateImageClientBuffer(context, target, clientBuffer, attribs);
      }
-@@ -1058,6 +1152,12 @@ ExternalImageSiblingImpl *DisplayEGL::createExternalImageSibling(const gl::Conte
+@@ -1058,6 +1155,12 @@ ExternalImageSiblingImpl *DisplayEGL::createExternalImageSibling(const gl::Conte
              ASSERT(buffer == nullptr);
              return new DmaBufImageSiblingEGL(attribs);
  

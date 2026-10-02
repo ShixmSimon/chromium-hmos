@@ -1,106 +1,184 @@
-Build Dawn for HarmonyOS, so WebGPU has a decoder to run on.
+WebGPU on HarmonyOS: Dawn's Vulkan backend, sharing OH_NativeBuffers.
 
-use_dawn left OHOS out, so the GPU process had no WebGPU decoder and
-every WebGPU context failed ("Failed to create WebGPU Context Provider")
-even with --enable-unsafe-webgpu. Dawn's Vulkan backend then needs the loader by the
-name HarmonyOS gives it, libvulkan.so, as on Android; OHOS is otherwise
-taken for Linux there, which looks for libvulkan.so.1.
+use_dawn and dawn_enable_vulkan left OHOS out, so the GPU process had no
+WebGPU decoder and every WebGPU context failed ("Failed to create WebGPU
+Context Provider") even with --enable-unsafe-webgpu. Dawn's Vulkan backend
+then loads libvulkan.so, as on Android, and is built with the Linux external
+memory and semaphore services its C++ calls, since OHOS compiles as Linux in
+Dawn.
 
-Then, still on OHOS only: Dawn's Vulkan backend is built (dawn_enable_vulkan)
-with the Linux external memory and semaphore services its C++ calls, since
-OHOS compiles as Linux there; adapters are taken although they cannot import
-Linux-style external memory; and a WebGPU canvas's textures are GL textures
-reaching Dawn through DawnFallbackImageRepresentation's copies -- nothing
-here shares memory between Dawn's Vulkan device and the GL compositor.
+Textures are shared with the GLES compositor as OH_NativeBuffers, zero-copy.
+VK_OHOS_external_memory is Android's AHardwareBuffer import with the names
+changed, so on OHOS the AHardwareBuffer SharedTextureMemory descriptor and
+feature carry an OH_NativeBuffer, imported with vkGetNativeBufferPropertiesOHOS
+and VkImportNativeBufferInfoOHOS (declared in Dawn, as Chromium's Vulkan
+headers lack them). Adapters must have that feature. OzoneImageBacking takes
+WebGPU's single-plane images (other single-plane images stay GL textures),
+DawnOzoneImageRepresentation imports its pixmap's OH_NativeBuffer, and the
+two APIs synchronise with sync fds: VK_KHR_external_semaphore_fd on Dawn's
+side, EGL_ANDROID_native_fence_sync on ANGLE's. libsync is not built here,
+so the one sync_merge() needed is the SYNC_IOC_MERGE ioctl.
 
-Experimental and behind --enable-unsafe-webgpu: on a Mate 70 Pro+ the
-Maleoon 920 adapter is found and WebGPU samples draw, through CPU copies.
+Experimental and behind --enable-unsafe-webgpu.
 
 Generated against Chromium 154.0.8037.51 (Dawn 8597a1aaec54).
 
-diff --git a/gpu/command_buffer/service/BUILD.gn b/gpu/command_buffer/service/BUILD.gn
-index 09245d2..1a9f355 100644
---- a/gpu/command_buffer/service/BUILD.gn
-+++ b/gpu/command_buffer/service/BUILD.gn
-@@ -512,7 +512,9 @@ target(link_target_type, "gles2_sources") {
-         "shared_image/dawn_gl_texture_representation.h",
-       ]
-     }
--    if (use_ozone) {
-+    # Not on OHOS: it shares native pixmaps with Dawn through dma-buf
-+    # import and libsync fences, neither of which is wired up there.
-+    if (use_ozone && !is_ohos) {
-       sources += [
-         "shared_image/dawn_ozone_image_representation.cc",
-         "shared_image/dawn_ozone_image_representation.h",
-diff --git a/gpu/command_buffer/service/shared_image/gl_texture_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/gl_texture_image_backing_factory.cc
-index c9a0757..99d32cf 100644
---- a/gpu/command_buffer/service/shared_image/gl_texture_image_backing_factory.cc
-+++ b/gpu/command_buffer/service/shared_image/gl_texture_image_backing_factory.cc
-@@ -141,7 +141,14 @@ bool GLTextureImageBackingFactory::IsSupported(
- 
-   // Only supports WebGPU usages on ANGLE/GL on a Skia/GL context
-   if (usage.HasAny(kWebGPUUsages)) {
--#if BUILDFLAG(USE_DAWN) && BUILDFLAG(DAWN_ENABLE_BACKEND_OPENGLES)
-+#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
-+    // Experimental: no backing here shares memory with Dawn's Vulkan device,
-+    // so a WebGPU canvas's textures are GL textures that reach Dawn through
-+    // DawnFallbackImageRepresentation's copies. Slow, but WebGPU draws.
-+    if (gr_context_type != GrContextType::kGL) {
-+      return false;
-+    }
-+#elif BUILDFLAG(USE_DAWN) && BUILDFLAG(DAWN_ENABLE_BACKEND_OPENGLES)
- #if BUILDFLAG(USE_WEBGPU_ON_VULKAN_VIA_GL_INTEROP)
-     if (enable_webgpu_on_vk_via_gl_interop_) {
-       // WebGPU usages will be handled by ExternalVkImageBackingFactory when
-diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
-index 2e64a7f..d39dd49 100644
---- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
-+++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
-@@ -55,7 +55,9 @@
- #if BUILDFLAG(USE_DAWN)
- #include "gpu/command_buffer/service/dawn_context_provider.h"
- #include "gpu/command_buffer/service/graphite_utils.h"
-+#if !BUILDFLAG(IS_OHOS)
+diff --git a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc b/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
+index b1cf891..47762db 100644
+--- a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
++++ b/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
+@@ -5,8 +5,20 @@
  #include "gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.h"
-+#endif
- #include "gpu/command_buffer/service/shared_image/skia_graphite_dawn_image_representation.h"
- #include "third_party/skia/include/gpu/graphite/Context.h"
- #include "third_party/skia/include/gpu/graphite/Image.h"
-@@ -160,7 +162,7 @@ std::unique_ptr<DawnImageRepresentation> OzoneImageBacking::ProduceDawn(
-   // Creating a representation in GPU is not allowed when usage is CPU only.
-   CHECK(!(usage().Has(SHARED_IMAGE_USAGE_CPU_ONLY_READ_WRITE)));
  
--#if BUILDFLAG(USE_DAWN)
-+#if BUILDFLAG(USE_DAWN) && !BUILDFLAG(IS_OHOS)
-   wgpu::TextureFormat webgpu_format = ToDawnFormat(format());
-   if (webgpu_format == wgpu::TextureFormat::Undefined) {
-     return nullptr;
-@@ -169,7 +171,8 @@ std::unique_ptr<DawnImageRepresentation> OzoneImageBacking::ProduceDawn(
-   return std::make_unique<DawnOzoneImageRepresentation>(
-       manager, this, tracker, device, webgpu_format, std::move(view_formats),
-       pixmap_);
--#else  // !BUILDFLAG(USE_DAWN)
-+#else  // !BUILDFLAG(USE_DAWN) || BUILDFLAG(IS_OHOS)
-+  // No Dawn representation of a native pixmap on OHOS yet (see BUILD.gn).
-   return nullptr;
- #endif
+ #include <dawn/native/VulkanBackend.h>
+-#include <sync/sync.h>
+ #include <vulkan/vulkan.h>
++
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include <linux/sync_file.h>
++#include <sys/ioctl.h>
++
++#include <cstring>
++
++#include "ui/ozone/platform/ohos/ohos_native_pixmap.h"  // nogncheck
++#else
++#include <sync/sync.h>
++#endif
+ // X11 Xlib.h defines Status as int and X.h defines Success as 0, both
+ // conflicting with wgpu::Status::Success.
+ #undef Status
+@@ -23,11 +35,31 @@
+ #include "gpu/config/gpu_finch_features.h"
+ #include "ui/gfx/geometry/size.h"
+ #include "ui/gfx/gpu_fence_handle.h"
++#if !BUILDFLAG(IS_OHOS)
+ #include "ui/gfx/linux/drm_util_linux.h"  // nogncheck
++#endif
+ #include "ui/gfx/native_pixmap.h"
+ 
+ namespace gpu {
+ 
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++// libsync's sync_merge(), which this port does not build: a new sync file
++// that signals when both do, or -1.
++int sync_merge(const char* name, int fd1, int fd2) {
++  struct sync_merge_data data = {};
++  strncpy(data.name, name, sizeof(data.name) - 1);
++  data.fd2 = fd2;
++  if (ioctl(fd1, SYNC_IOC_MERGE, &data) < 0) {
++    return -1;
++  }
++  return data.fence;
++}
++
++}  // namespace
++#endif  // BUILDFLAG(IS_OHOS)
++
+ DawnOzoneImageRepresentation::DawnOzoneImageRepresentation(
+     SharedImageManager* manager,
+     SharedImageBacking* backing,
+@@ -125,7 +157,9 @@ wgpu::Texture DawnOzoneImageRepresentation::BeginAccess(
+     begin_access_desc.fences = shared_fences.data();
+     begin_access_desc.signaledValues = shared_fence_signals.data();
+   }
++#if !BUILDFLAG(IS_OHOS)
+   gfx::Size pixmap_size = pixmap_->GetBufferSize();
++#endif
+ 
+   wgpu::DawnTextureInternalUsageDescriptor internalDesc;
+   internalDesc.internalUsage = internal_usage;
+@@ -143,6 +177,22 @@ wgpu::Texture DawnOzoneImageRepresentation::BeginAccess(
+   texture_descriptor.viewFormats = view_formats_.data();
+   texture_descriptor.nextInChain = &internalDesc;
+ 
++#if BUILDFLAG(IS_OHOS)
++  // The pixmap is an OH_NativeBuffer, which Dawn imports through the
++  // AHardwareBuffer descriptor with VK_OHOS_external_memory.
++  wgpu::SharedTextureMemoryAHardwareBufferDescriptor native_buffer_desc;
++  native_buffer_desc.handle = ui::GetOhosNativeBuffer(*pixmap_);
++  if (!native_buffer_desc.handle) {
++    LOG(ERROR) << "No OH_NativeBuffer behind this pixmap.";
++    ozone_backing()->EndAccess(
++        is_readonly_, OzoneImageBacking::AccessStream::kWebGPU,
++        fences.empty() ? gfx::GpuFenceHandle() : std::move(fences[0]));
++    return nullptr;
++  }
++  wgpu::SharedTextureMemoryDescriptor desc;
++  desc.label = "DawnOzoneImageRepresentation";
++  desc.nextInChain = &native_buffer_desc;
++#else
+   wgpu::SharedTextureMemoryDmaBufDescriptor dmaBufDesc;
+   dmaBufDesc.size = {static_cast<uint32_t>(pixmap_size.width()),
+                      static_cast<uint32_t>(pixmap_size.height())};
+@@ -172,6 +222,7 @@ wgpu::Texture DawnOzoneImageRepresentation::BeginAccess(
+   wgpu::SharedTextureMemoryDescriptor desc;
+   desc.label = "DawnOzoneImageRepresentation";
+   desc.nextInChain = &dmaBufDesc;
++#endif  // BUILDFLAG(IS_OHOS)
+ 
+   if (!shared_texture_memory_) {
+     shared_texture_memory_ = device_.ImportSharedTextureMemory(&desc);
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+index 9388305..3a71859 100644
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+@@ -252,6 +252,17 @@ bool OzoneImageBackingFactory::IsSupported(
+     return false;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // OH_NativeBuffers back video frames (NV12, P010) and WebGPU's textures;
++  // every other single-plane image stays where it was, a GL texture.
++  if (format.is_single_plane() &&
++      !usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_WEBGPU_WRITE |
++                      SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE |
++                      SHARED_IMAGE_USAGE_WEBGPU_STORAGE_TEXTURE)) {
++    return false;
++  }
++#endif
++
+   bool used_by_skia = usage.HasAny(
+       SHARED_IMAGE_USAGE_RASTER_READ | SHARED_IMAGE_USAGE_RASTER_WRITE |
+       SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_DISPLAY_WRITE);
+@@ -369,7 +380,9 @@ bool OzoneImageBackingFactory::CanVulkanSynchronizeGpuFence() {
  }
+ 
+ bool OzoneImageBackingFactory::CanImportNativePixmapToWebGPU() {
+-#if BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
++  // OHOS: adapters are only taken when they can import OH_NativeBuffers
++  // (webgpu_decoder_impl.cc), so the same holds there.
+   // Safe to always return true here, as it's not possible to create a WebGPU
+   // adapter that doesn't support importing native pixmaps:
+   // https://source.chromium.org/chromium/chromium/src/+/main:gpu/command_buffer/service/webgpu_decoder_impl.cc;drc=daed597d580d450d36578c0cc53b4f72d3b507da;l=1291
+@@ -393,7 +406,9 @@ bool OzoneImageBackingFactory::CanImportNativePixmapToWebGPU() {
+ }
+ 
+ bool OzoneImageBackingFactory::CanWebGPUSynchronizeGpuFence() {
+-#if BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
++  // OHOS: Dawn's Vulkan backend exchanges sync fds there too
++  // (VK_KHR_external_semaphore_fd), and EGL has EGL_ANDROID_native_fence_sync.
+   // Dawn always use sync files on ChromeOS so it's safe to unconditionally
+   // return true here.
+   return true;
 diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buffer/service/webgpu_decoder_impl.cc
-index a7f3698..346a4f5 100644
+index a7f3698..b132c75 100644
 --- a/gpu/command_buffer/service/webgpu_decoder_impl.cc
 +++ b/gpu/command_buffer/service/webgpu_decoder_impl.cc
-@@ -1809,6 +1809,13 @@ wgpu::Adapter WebGPUDecoderImpl::CreatePreferredAdapter(
+@@ -1809,6 +1809,11 @@ wgpu::Adapter WebGPUDecoderImpl::CreatePreferredAdapter(
        supports_external_textures = adapter.HasFeature(
            wgpu::FeatureName::SharedTextureMemoryAHardwareBuffer);
      }
 +#elif BUILDFLAG(IS_OHOS)
-+    // Dawn's Vulkan backend imports external memory as Linux fds, and
-+    // HarmonyOS's driver has its own VK_OHOS_external_memory instead, so
-+    // no adapter here supports external images. Take it anyway: shared
-+    // images then reach WebGPU through DawnFallbackImageRepresentation's
-+    // copies, as they do for SwiftShader. Experimental.
-+    supports_external_textures = true;
++    // OH_NativeBuffers come into Dawn through the AHardwareBuffer
++    // SharedTextureMemory path, imported with VK_OHOS_external_memory.
++    supports_external_textures = adapter.HasFeature(
++        wgpu::FeatureName::SharedTextureMemoryAHardwareBuffer);
  #else
      // Chromium is in the midst of being transitioned to SharedTextureMemory
      // platform by platform. On platforms that have not yet been transitioned,

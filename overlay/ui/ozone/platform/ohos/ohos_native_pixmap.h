@@ -27,9 +27,11 @@ class NativePixmapGLBinding;
 // Software-decoded video is written into these by the renderer and sampled
 // by the GPU without a per-frame texture upload, which for 10-bit 1080p had
 // cost the GPU thread 5-6 ms a frame, and 8-bit video a copy a frame too.
-// Only the formats video uses are offered -- NV12 and P010 -- each sampled
-// as one external texture with the driver converting it, since GLES here
-// has no R16 for per-plane P010.
+// The formats video uses -- NV12 and P010 -- are each sampled as one
+// external texture with the driver converting it, since GLES here has no R16
+// for per-plane P010. RGBA and BGRA are allocated for WebGPU, whose textures
+// are shared between Dawn's Vulkan device and the GLES compositor; renderers
+// are offered only the video formats (IsNativePixmapConfigSupported).
 //
 // HarmonyOS has no public way back from a dma-buf fd to its OH_NativeBuffer,
 // which EGL_NATIVE_BUFFER_OHOS needs. The GPU process allocates the buffers
@@ -65,6 +67,12 @@ std::unique_ptr<NativePixmapGLBinding> ImportOhosNativePixmap(
 
 std::unique_ptr<gfx::ClientNativePixmapFactory>
 CreateOhosClientNativePixmapFactory();
+
+// The OH_NativeBuffer behind `pixmap` if this process allocated it, else
+// null; for Dawn, which imports it with VK_OHOS_external_memory
+// (DawnOzoneImageRepresentation). An OH_NativeBuffer*, untyped so that the
+// GPU service needs no HarmonyOS header to call it.
+void* GetOhosNativeBuffer(const gfx::NativePixmap& pixmap);
 
 }  // namespace ui
 

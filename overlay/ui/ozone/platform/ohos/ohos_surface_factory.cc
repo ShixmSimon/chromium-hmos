@@ -532,7 +532,8 @@ OhosSurfaceFactory::CreateNativePixmapFromHandle(
 
 bool OhosSurfaceFactory::IsFormatSupportedForTexturing(
     viz::SharedImageFormat format) const {
-  return IsOhosNativePixmapFormat(format);
+  // Asked about YUV formats, for sampling video as one texture.
+  return format.is_multi_plane() && IsOhosNativePixmapFormat(format);
 }
 
 #if BUILDFLAG(ENABLE_VULKAN)
