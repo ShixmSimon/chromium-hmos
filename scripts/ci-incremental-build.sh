@@ -213,6 +213,20 @@ else
   done < <(find "${repo_root}/overlay" -type f -print0)
   say "$changed overlay file(s) updated"
 
+  # ---- engine commit -----------------------------------------------------------
+  # The chromium-hmos commit this engine is built from, as in its release tag,
+  # for aboutInfo's engineCommit (overlay shell_settings_ohos.cc). Rewritten
+  # only when it changes: a new commit recompiles that one file and relinks,
+  # which any commit with a code change does anyway.
+  engine_commit=$(git -C "$repo_root" rev-parse --short=8 HEAD)
+  commit_header="${src}/${out}/gen/ohos_engine_commit.h"
+  commit_line="#define OHOS_ENGINE_COMMIT \"${engine_commit}\""
+  if [[ "$(cat "$commit_header" 2>/dev/null)" != "$commit_line" ]]; then
+    mkdir -p "$(dirname "$commit_header")"
+    printf '%s\n' "$commit_line" > "$commit_header"
+    say "engine commit ${engine_commit}"
+  fi
+
   # ---- build -----------------------------------------------------------------
   say "building (-j ${jobs})"
   start=$(date +%s)

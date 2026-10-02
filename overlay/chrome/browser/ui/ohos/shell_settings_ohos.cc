@@ -21,6 +21,12 @@
 #include "chrome/browser/ui/ohos/shell_settings_ohos_internal.h"
 #include "components/embedder_support/user_agent_utils.h"
 
+// OHOS_ENGINE_COMMIT, the chromium-hmos commit this engine was built from,
+// written into the output directory's gen/ by ci-incremental-build.sh.
+#if __has_include("ohos_engine_commit.h")
+#include "ohos_engine_commit.h"
+#endif
+
 namespace chrome::ohos {
 
 namespace settings_internal {
@@ -58,9 +64,16 @@ void GetAboutInfo(const ShellCommandContext& context,
   event.Set("event", "aboutInfo");
   event.Set("requestId", ReadRequestId(command));
   event.Set("chromiumVersion", version_info::GetVersionNumber());
-  // The Chromium revision this build is cut from; empty in builds made
-  // without a checkout that knows it.
+  // The chromium-hmos commit this engine was built from, as in its release
+  // tag (build-<engineCommit>). A build made outside CI does not know it and
+  // reports the Chromium revision it is cut from instead, as chromiumCommit
+  // always does.
+#if defined(OHOS_ENGINE_COMMIT)
+  event.Set("engineCommit", OHOS_ENGINE_COMMIT);
+#else
   event.Set("engineCommit", version_info::GetLastChange());
+#endif
+  event.Set("chromiumCommit", version_info::GetLastChange());
   event.Set("userAgent", embedder_support::GetUserAgent());
   // What the bookmarks commands understand. 1 was the original set; 2 adds
   // insertion positions, operation results, child counts, root types, batch

@@ -86,7 +86,7 @@ class StoreUserAgentWatcher
 
     const bool is_store = IsChromeWebStore(handle->GetURL());
     const std::string desktop =
-        embedder_support::GetUserAgentForOhos(/*mobile=*/false);
+        AuraShellDesktopSiteUserAgent().ua_string_override;
     bool applied = false;
     // Logged on the way out, whatever this navigation turns out to be. There
     // was no way to see from outside which of these decided the outcome, so
@@ -177,10 +177,7 @@ class StoreUserAgentWatcher
   void RestoreUserAgent(content::NavigationHandle* handle) {
     blink::UserAgentOverride restored;
     if (desktop_site_) {
-      restored.ua_string_override =
-          embedder_support::GetUserAgentForOhos(/*mobile=*/false);
-      restored.ua_metadata_override =
-          embedder_support::GetUserAgentMetadataForOhos(/*mobile=*/false);
+      restored = AuraShellDesktopSiteUserAgent();
     }
     web_contents()->SetUserAgentOverride(restored,
                                          /*override_in_new_tabs=*/false);

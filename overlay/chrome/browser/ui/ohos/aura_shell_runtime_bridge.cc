@@ -67,6 +67,7 @@
 #include "components/sessions/core/tab_restore_service_observer.h"
 #include "base/base64.h"
 #include "base/strings/stringprintf.h"
+#include "base/system/sys_info.h"
 #include "base/scoped_observation.h"
 #include "chrome/browser/extensions/extension_action_runner.h"
 #include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
@@ -1166,12 +1167,9 @@ void SetRequestDesktopSite(content::WebContents* contents, bool enabled) {
   if (!contents) {
     return;
   }
-  const bool mobile = !enabled;
   blink::UserAgentOverride override;
   if (enabled) {
-    override.ua_string_override = embedder_support::GetUserAgentForOhos(mobile);
-    override.ua_metadata_override =
-        embedder_support::GetUserAgentMetadataForOhos(mobile);
+    override = AuraShellDesktopSiteUserAgent();
   }
   contents->SetUserAgentOverride(override, /*override_in_new_tabs=*/false);
   SetAuraShellUserAgentPinned(contents, enabled);
@@ -3898,6 +3896,45 @@ void SetAuraShellUserAgentPinned(content::WebContents* contents,
 
 bool IsAuraShellUserAgentPinned(content::WebContents* contents) {
   return contents && PinnedUserAgent::FromWebContents(contents);
+}
+
+blink::UserAgentOverride AuraShellDesktopSiteUserAgent() {
+  blink::UserAgentOverride desktop;
+  desktop.ua_string_override =
+      embedder_support::GetUserAgentForOhos(/*mobile=*/false);
+  desktop.ua_metadata_override =
+      embedder_support::GetUserAgentMetadataForOhos(/*mobile=*/false);
+  if (IsAuraShellMobilePhoneUi()) {
+    return desktop;
+  }
+  // "Mozilla/5.0 (Tablet; OpenHarmony 7.0) ... Chrome/154.0.0.0 ..." is what
+  // a tablet sends anyway, so asking for the desktop site there changed
+  // nothing: sites kept serving their tablet pages.
+  const std::string& ohos = desktop.ua_string_override;
+  const size_t chrome = ohos.find("Chrome/");
+  if (chrome == std::string::npos) {
+    return desktop;  // --user-agent replaced the string; leave it be
+  }
+  const size_t chrome_end = ohos.find(' ', chrome);
+  desktop.ua_string_override = base::StrCat(
+      {"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like "
+       "Gecko) ",
+       std::string_view(ohos).substr(chrome, chrome_end == std::string::npos
+                                                 ? std::string::npos
+                                                 : chrome_end - chrome),
+       " Safari/537.36"});
+  blink::UserAgentMetadata& metadata = *desktop.ua_metadata_override;
+  metadata.platform = "Linux";
+  int32_t major = 0;
+  int32_t minor = 0;
+  int32_t bugfix = 0;
+  base::SysInfo::OperatingSystemVersionNumbers(&major, &minor, &bugfix);
+  metadata.platform_version =
+      base::StringPrintf("%d.%d.%d", major, minor, bugfix);
+  metadata.architecture = "x86";
+  metadata.bitness = "64";
+  metadata.mobile = false;
+  return desktop;
 }
 
 namespace {

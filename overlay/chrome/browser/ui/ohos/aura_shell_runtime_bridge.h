@@ -10,6 +10,7 @@
 
 #include "base/functional/callback_forward.h"
 #include "base/values.h"
+#include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/native_ui_types.h"
@@ -215,6 +216,13 @@ void OnAuraShellWebContentsBlocked(content::WebContents* contents,
 // cannot carry.
 void SetAuraShellUserAgentPinned(content::WebContents* contents, bool pinned);
 bool IsAuraShellUserAgentPinned(content::WebContents* contents);
+
+// The user agent "desktop site" sends. On a phone, the OpenHarmony string
+// without its Mobile token, which Chinese sites take for a desktop. A tablet
+// or a 2in1 already sends that string by default, so there "desktop site"
+// is Chrome's desktop Linux string, as Chrome for Android's desktop site is,
+// with client hints to match.
+blink::UserAgentOverride AuraShellDesktopSiteUserAgent();
 
 void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
                                       float ratio);
