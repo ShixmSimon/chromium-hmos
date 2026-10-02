@@ -61,8 +61,6 @@ source_set("ohos") {
   sources = [
     "ohos_clipboard.cc",
     "ohos_clipboard.h",
-    "ohos_gpu_capability_probe.cc",
-    "ohos_gpu_capability_probe.h",
     "ohos_input_method.cc",
     "ohos_input_method.h",
     "ohos_native_pixmap.cc",
@@ -99,7 +97,6 @@ source_set("ohos") {
     "//base",
     "//components/viz/common/resources:shared_image_format",
     "//skia",
-    "//third_party/vulkan-headers/src:vulkan_headers",
     "//ui/base",
     "//ui/base/cursor",
     "//ui/events",
