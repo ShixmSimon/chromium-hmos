@@ -11,6 +11,54 @@ WebGPU canvas needs, is not wired up on OHOS.
 
 Generated against Chromium 154.0.8037.51 (Dawn 8597a1aaec54).
 
+diff --git a/gpu/command_buffer/service/BUILD.gn b/gpu/command_buffer/service/BUILD.gn
+index 09245d2..1a9f355 100644
+--- a/gpu/command_buffer/service/BUILD.gn
++++ b/gpu/command_buffer/service/BUILD.gn
+@@ -512,7 +512,9 @@ target(link_target_type, "gles2_sources") {
+         "shared_image/dawn_gl_texture_representation.h",
+       ]
+     }
+-    if (use_ozone) {
++    # Not on OHOS: it shares native pixmaps with Dawn through dma-buf
++    # import and libsync fences, neither of which is wired up there.
++    if (use_ozone && !is_ohos) {
+       sources += [
+         "shared_image/dawn_ozone_image_representation.cc",
+         "shared_image/dawn_ozone_image_representation.h",
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+index 2e64a7f..d39dd49 100644
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+@@ -55,7 +55,9 @@
+ #if BUILDFLAG(USE_DAWN)
+ #include "gpu/command_buffer/service/dawn_context_provider.h"
+ #include "gpu/command_buffer/service/graphite_utils.h"
++#if !BUILDFLAG(IS_OHOS)
+ #include "gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.h"
++#endif
+ #include "gpu/command_buffer/service/shared_image/skia_graphite_dawn_image_representation.h"
+ #include "third_party/skia/include/gpu/graphite/Context.h"
+ #include "third_party/skia/include/gpu/graphite/Image.h"
+@@ -160,7 +162,7 @@ std::unique_ptr<DawnImageRepresentation> OzoneImageBacking::ProduceDawn(
+   // Creating a representation in GPU is not allowed when usage is CPU only.
+   CHECK(!(usage().Has(SHARED_IMAGE_USAGE_CPU_ONLY_READ_WRITE)));
+ 
+-#if BUILDFLAG(USE_DAWN)
++#if BUILDFLAG(USE_DAWN) && !BUILDFLAG(IS_OHOS)
+   wgpu::TextureFormat webgpu_format = ToDawnFormat(format());
+   if (webgpu_format == wgpu::TextureFormat::Undefined) {
+     return nullptr;
+@@ -169,7 +171,8 @@ std::unique_ptr<DawnImageRepresentation> OzoneImageBacking::ProduceDawn(
+   return std::make_unique<DawnOzoneImageRepresentation>(
+       manager, this, tracker, device, webgpu_format, std::move(view_formats),
+       pixmap_);
+-#else  // !BUILDFLAG(USE_DAWN)
++#else  // !BUILDFLAG(USE_DAWN) || BUILDFLAG(IS_OHOS)
++  // No Dawn representation of a native pixmap on OHOS yet (see BUILD.gn).
+   return nullptr;
+ #endif
+ }
 diff --git a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp b/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
 index a93ea4f..2c38742 100644
 --- a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
