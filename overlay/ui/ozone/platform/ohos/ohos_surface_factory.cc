@@ -23,6 +23,7 @@
 #include "ui/ozone/common/gl_ozone_egl.h"
 #include <native_window/external_window.h>
 
+#include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 #include "ui/ozone/platform/ohos/ohos_screen.h"
 #include "ui/ozone/platform/ohos/ohos_vsync_provider.h"
@@ -446,6 +447,29 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
             display->GetAs<gl::GLDisplayEGL>(), size));
   }
 
+  bool CanImportNativePixmap(viz::SharedImageFormat format) override {
+    return IsOhosNativePixmapFormat(format);
+  }
+
+  // A YUV buffer is sampled whole, through GL_TEXTURE_EXTERNAL_OES with the
+  // driver converting it, never plane by plane.
+  std::unique_ptr<NativePixmapGLBinding> ImportNativePixmap(
+      scoped_refptr<gfx::NativePixmap> pixmap,
+      viz::SharedImageFormat plane_format,
+      std::optional<int> plane_index,
+      gfx::Size plane_size,
+      const gfx::ColorSpace& color_space,
+      GLenum target,
+      GLuint texture_id) override {
+    if (plane_index.has_value()) {
+      LOG(ERROR) << "OHOS native pixmap: per-plane import of "
+                 << plane_format.ToString() << " is not supported";
+      return nullptr;
+    }
+    return ImportOhosNativePixmap(std::move(pixmap), color_space, target,
+                                  texture_id);
+  }
+
  protected:
   gl::EGLDisplayPlatform GetNativeDisplay() override {
     return gl::EGLDisplayPlatform(EGL_DEFAULT_DISPLAY);
@@ -480,6 +504,38 @@ GLOzone* OhosSurfaceFactory::GetGLOzone(
     return egl_implementation_.get();
   }
   return nullptr;
+}
+
+scoped_refptr<gfx::NativePixmap> OhosSurfaceFactory::CreateNativePixmap(
+    gfx::AcceleratedWidget widget,
+    gpu::VulkanDeviceQueue* device_queue,
+    gfx::Size size,
+    viz::SharedImageFormat format,
+    gfx::BufferUsage usage,
+    std::optional<gfx::Size> framebuffer_size) {
+  return CreateOhosNativePixmap(size, format);
+}
+
+bool OhosSurfaceFactory::CanCreateNativePixmapForFormat(
+    viz::SharedImageFormat format) {
+  return IsOhosNativePixmapFormat(format);
+}
+
+scoped_refptr<gfx::NativePixmap>
+OhosSurfaceFactory::CreateNativePixmapFromHandle(
+    gfx::AcceleratedWidget widget,
+    gfx::Size size,
+    viz::SharedImageFormat format,
+    gfx::NativePixmapHandle handle) {
+  return CreateOhosNativePixmapFromHandle(size, format, std::move(handle));
+}
+
+bool OhosSurfaceFactory::IsFormatSupportedForTexturing(
+    viz::SharedImageFormat format) const {
+  // P010 only, for now: it is what 10-bit video needed this path for, and
+  // 8-bit video uploads cheaply enough as it is. NV12 is allocated and
+  // imported the same way should it be wanted.
+  return format == viz::MultiPlaneFormat::kP010;
 }
 
 #if BUILDFLAG(ENABLE_VULKAN)

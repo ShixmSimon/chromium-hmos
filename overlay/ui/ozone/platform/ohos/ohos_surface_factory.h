@@ -17,6 +17,23 @@ class OhosSurfaceFactory : public HeadlessSurfaceFactory {
   std::vector<gl::GLImplementationParts> GetAllowedGLImplementations() override;
   GLOzone* GetGLOzone(const gl::GLImplementationParts& implementation) override;
 
+  // Native pixmaps: OH_NativeBuffers for video frames, ohos_native_pixmap.h.
+  scoped_refptr<gfx::NativePixmap> CreateNativePixmap(
+      gfx::AcceleratedWidget widget,
+      gpu::VulkanDeviceQueue* device_queue,
+      gfx::Size size,
+      viz::SharedImageFormat format,
+      gfx::BufferUsage usage,
+      std::optional<gfx::Size> framebuffer_size = std::nullopt) override;
+  bool CanCreateNativePixmapForFormat(viz::SharedImageFormat format) override;
+  scoped_refptr<gfx::NativePixmap> CreateNativePixmapFromHandle(
+      gfx::AcceleratedWidget widget,
+      gfx::Size size,
+      viz::SharedImageFormat format,
+      gfx::NativePixmapHandle handle) override;
+  bool IsFormatSupportedForTexturing(
+      viz::SharedImageFormat format) const override;
+
 #if BUILDFLAG(ENABLE_VULKAN)
   // Ozone is asked before the per-platform factory in
   // gpu/vulkan/init, so this is where a Vulkan implementation is chosen on

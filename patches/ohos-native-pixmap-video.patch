@@ -1,0 +1,87 @@
+Sample P010 video from OH_NativeBuffers on HarmonyOS.
+
+Software-decoded 10-bit video was uploaded to half-float textures on the
+GPU thread every frame, 5-6 ms at 1080p, which made 1080p60 HDR drop
+frames. The OHOS ozone platform now allocates P010 OH_NativeBuffers the
+renderer writes and the GPU samples (ohos_native_pixmap.h); this lets
+SharedImageManager report P010 sampling there and the plane fds cross
+to the renderer.
+
+diff --git a/gpu/command_buffer/service/shared_image/shared_image_manager.cc b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
+index c38e782..b0f20e9 100644
+--- a/gpu/command_buffer/service/shared_image/shared_image_manager.cc
++++ b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
+@@ -666,7 +666,7 @@ bool SharedImageManager::SupportsScanoutImages() {
+ }
+ 
+ void SharedImageManager::QueryMultiplanarTextureSamplingSupport() {
+-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_OHOS)
+   auto* ozone_platform = ui::OzonePlatform::GetInstance();
+   auto* surface_factory = ozone_platform->GetSurfaceFactoryOzone();
+   supports_ycbcr_nv12_sampling_ =
+@@ -679,11 +679,12 @@ void SharedImageManager::QueryMultiplanarTextureSamplingSupport() {
+       surface_factory->IsFormatSupportedForTexturing(
+           viz::MultiPlaneFormat::kP010);
+   is_texture_sampling_queried_ = true;
+-#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
++#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA) ||
++        // BUILDFLAG(IS_OHOS)
+ }
+ 
+ bool SharedImageManager::SupportsNV12TextureSampling() {
+-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_OHOS)
+   AutoLock autolock(this);
+   if (!is_texture_sampling_queried_) {
+     QueryMultiplanarTextureSamplingSupport();
+@@ -697,7 +698,7 @@ bool SharedImageManager::SupportsNV12TextureSampling() {
+ }
+ 
+ bool SharedImageManager::SupportsP010TextureSampling() {
+-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_OHOS)
+   AutoLock autolock(this);
+   if (!is_texture_sampling_queried_) {
+     QueryMultiplanarTextureSamplingSupport();
+diff --git a/gpu/command_buffer/service/shared_image/shared_image_manager.h b/gpu/command_buffer/service/shared_image/shared_image_manager.h
+index 66f83b9..492fa97 100644
+--- a/gpu/command_buffer/service/shared_image/shared_image_manager.h
++++ b/gpu/command_buffer/service/shared_image/shared_image_manager.h
+@@ -217,11 +217,12 @@ class GPU_GLES2_EXPORT SharedImageManager
+   scoped_refptr<base::SingleThreadTaskRunner> io_runner_;
+ #endif
+ 
+-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_OHOS)
+   bool supports_ycbcr_nv12_sampling_ = false;
+   bool supports_ycbcr_p010_sampling_ = false;
+   bool is_texture_sampling_queried_ GUARDED_BY(lock_) = false;
+-#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
++#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA) ||
++        // BUILDFLAG(IS_OHOS)
+ 
+ #if BUILDFLAG(IS_OZONE)
+   bool supports_overlays_on_ozone_ = false;
+diff --git a/ui/gfx/mojom/native_handle_types_mojom_traits.cc b/ui/gfx/mojom/native_handle_types_mojom_traits.cc
+index 22313e6..7772231 100644
+--- a/ui/gfx/mojom/native_handle_types_mojom_traits.cc
++++ b/ui/gfx/mojom/native_handle_types_mojom_traits.cc
+@@ -84,7 +84,7 @@ bool StructTraits<gfx::mojom::AHardwareBufferHandleDataView,
+ mojo::PlatformHandle StructTraits<
+     gfx::mojom::NativePixmapPlaneDataView,
+     gfx::NativePixmapPlane>::buffer_handle(gfx::NativePixmapPlane& plane) {
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
+   return mojo::PlatformHandle(std::move(plane.fd));
+ #elif BUILDFLAG(IS_FUCHSIA)
+   return mojo::PlatformHandle(std::move(plane.vmo));
+@@ -100,7 +100,7 @@ bool StructTraits<
+   out->size = data.size();
+ 
+   mojo::PlatformHandle handle = data.TakeBufferHandle();
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
+   if (!handle.is_fd())
+     return false;
+   out->fd = handle.TakeFD();
