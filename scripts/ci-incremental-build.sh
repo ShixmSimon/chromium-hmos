@@ -294,11 +294,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-fence-capability.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-context-failure-log-throttle.patch"
   retire_incremental_patch "${repo_root}/patches/ohos-gl-init-diagnostics.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-backend.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-angle-gles-display.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-angle-egl-client-extensions.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-angle-null-gl-strings.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-angle-native-buffer-image.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-angle.patch"
   # P010 video frames from OH_NativeBuffers (overlay ohos_native_pixmap.h).
   apply_incremental_patch "${repo_root}/patches/ohos-native-pixmap-video.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gl-native-fence.patch"
