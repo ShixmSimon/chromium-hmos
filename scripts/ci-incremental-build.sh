@@ -194,19 +194,23 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-shape-detection.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-webauthn-platform.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-video-codec.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-vp9-row-threads.patch"
+  # Row threading stays; the decode-time logging that came with it goes.
+  retire_incremental_patch "${repo_root}/patches/ohos-vp9-row-threads.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-vp9-row-mt.patch"
   # Video frames reach the GPU in native buffers now, and the deeper queue
   # is tried without; it goes back if 1080p60 HDR drops more.
   retire_incremental_patch "${repo_root}/patches/ohos-video-queue-depth.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-video-render-diagnostics.patch"
+  # The 1080p60 HDR frame-drop measurements are done: native buffers ended
+  # the drops, and their logging goes.
+  retire_incremental_patch "${repo_root}/patches/ohos-video-render-diagnostics.patch"
   # Folded into ohos-thread-qos.patch, which raises every kPresentation
   # thread the VideoFrameCompositor is one of.
   retire_incremental_patch "${repo_root}/patches/ohos-video-compositor-qos.patch"
   # Raising display-paced threads' QoS never moved the drops it was written
   # for; the native-buffer video path removed what did.
   retire_incremental_patch "${repo_root}/patches/ohos-thread-qos.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-video-submit-diagnostics.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-gpu-stage-diagnostics.patch"
+  retire_incremental_patch "${repo_root}/patches/ohos-video-submit-diagnostics.patch"
+  retire_incremental_patch "${repo_root}/patches/ohos-gpu-stage-diagnostics.patch"
   # The Mate 70 Pro+ has neither GL_EXT_texture_norm16 nor Skia R16 on GLES,
   # so the R16 planes it allowed never came into play.
   retire_incremental_patch "${repo_root}/patches/ohos-video-r16-planes.patch"
@@ -319,7 +323,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-angle-native-buffer-image.patch"
   # P010 video frames from OH_NativeBuffers (overlay ohos_native_pixmap.h).
   apply_incremental_patch "${repo_root}/patches/ohos-native-pixmap-video.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-video-output-format-diagnostics.patch"
+  retire_incremental_patch "${repo_root}/patches/ohos-video-output-format-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-implementation.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-surface-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-compositor-diagnostics.patch"
