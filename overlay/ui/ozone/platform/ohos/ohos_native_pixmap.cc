@@ -13,6 +13,8 @@
 
 #include <cstring>
 #include <map>
+#include <set>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -147,6 +149,14 @@ class BufferRegistry {
                  << " " << size.ToString();
       return std::nullopt;
     }
+    const std::tuple<int32_t, int, int> shape(*ohos_format, size.width(),
+                                              size.height());
+    {
+      base::AutoLock hold(lock_);
+      if (untaggable_.contains(shape)) {
+        return std::nullopt;
+      }
+    }
     OH_NativeBuffer_Config config = {};
     config.width = size.width();
     config.height = size.height();
@@ -205,12 +215,14 @@ class BufferRegistry {
     const std::optional<size_t> tag_offset =
         TagOffset(entry->size, last_plane.offset + last_plane.size);
     if (!tag_offset) {
-      static bool logged_no_room = false;
-      if (!logged_no_room) {
-        logged_no_room = true;
-        LOG(ERROR) << "OHOS native pixmap: no room to tag a "
-                   << size.ToString() << " buffer of " << entry->size
-                   << " bytes";
+      // Remembered, so that a video of this size goes back to uploading
+      // planes at once rather than allocating a buffer for every frame.
+      LOG(ERROR) << "OHOS native pixmap: no room to tag a " << format.ToString()
+                 << " " << size.ToString() << " buffer of " << entry->size
+                 << " bytes; not offered again";
+      {
+        base::AutoLock hold(lock_);
+        untaggable_.insert(shape);
       }
       OH_NativeBuffer_Unmap(buffer);
       ReleaseEntry(*entry);
@@ -226,9 +238,11 @@ class BufferRegistry {
     OH_NativeBuffer_Unmap(buffer);
     entry->users = 1;
 
-    static bool logged = false;
-    if (!logged) {
-      logged = true;
+    static bool logged[2] = {false, false};
+    bool& logged_format =
+        logged[*ohos_format == NATIVEBUFFER_PIXEL_FMT_YCBCR_P010 ? 1 : 0];
+    if (!logged_format) {
+      logged_format = true;
       LOG(WARNING) << "OHOS native pixmap: " << format.ToString() << " "
                    << size.ToString() << " planes " << entry->planes[0].stride
                    << "@" << entry->planes[0].offset << ", "
@@ -295,6 +309,8 @@ class BufferRegistry {
 
   base::Lock lock_;
   uint64_t last_key_ GUARDED_BY(lock_) = 0;
+  // Format and size of buffers with no padding to hold a tag.
+  std::set<std::tuple<int32_t, int, int>> untaggable_ GUARDED_BY(lock_);
   std::map<uint64_t, std::unique_ptr<BufferEntry>> entries_ GUARDED_BY(lock_);
 };
 
@@ -506,10 +522,7 @@ class OhosNativePixmapGLBinding : public NativePixmapGLBinding {
 }  // namespace
 
 bool IsOhosNativePixmapFormat(viz::SharedImageFormat format) {
-  // Not NV12, though it allocates and imports the same way: 8-bit video
-  // already goes to the GPU as NV12 shared memory, sampled plane by plane,
-  // and offering native NV12 would move it here with nothing to gain.
-  return WithoutExternalSampler(format) == viz::MultiPlaneFormat::kP010;
+  return OhosFormatFor(format).has_value();
 }
 
 scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmap(
