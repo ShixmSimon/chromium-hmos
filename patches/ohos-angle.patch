@@ -179,6 +179,18 @@ YUV for GL_TEXTURE_EXTERNAL_OES sampling. ImageEGL then creates the system
 image with the same target and buffer. The sibling holds a reference on the
 buffer for as long as the image exists.
 
+--- Vulkan import of OH_NativeBuffers
+
+The Vulkan backend imports EGL_NATIVE_BUFFER_OHOS too, as the Android one
+imports AHardwareBuffers: NativeBufferImageSiblingVkOhos takes the
+OHNativeWindowBuffer's OH_NativeBuffer through VK_OHOS_external_memory
+(enabled with VK_EXT_queue_family_foreign when the device has both) into a
+dedicated allocation. The Maleoon driver names no VkFormat for YUV, so NV12
+and P010 -- linear, being CPU-written -- import as the matching two-plane
+formats and are sampled through a YCbCr conversion whose matrix and range
+come from the buffer's color space. Without it, video on ANGLE Vulkan was
+uploaded plane by plane, 27 ms a frame at 2160p, half of 60 fps.
+
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 Apply with:
 
@@ -591,6 +603,24 @@ diff --git a/third_party/angle/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp b
      void *f = reinterpret_cast<void *>(mGetProcAddressPtr(name));
      if (f)
      {
+diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/BUILD.gn b/third_party/angle/src/libANGLE/renderer/vulkan/BUILD.gn
+--- a/third_party/angle/src/libANGLE/renderer/vulkan/BUILD.gn
++++ b/third_party/angle/src/libANGLE/renderer/vulkan/BUILD.gn
+@@ -147,6 +147,14 @@ template("angle_vulkan_backend_template") {
+       deps += [ "$angle_root:angle_version_info" ]
+     }
+ 
++    if (is_ohos) {
++      # OH_NativeBuffer and OHNativeWindowBuffer, for EGL_NATIVE_BUFFER_OHOS.
++      libs += [
++        "native_buffer",
++        "native_window",
++      ]
++    }
++
+     # OpenCL on ANGLE needs both spirv-tools and clspv for compiler
+     if (angle_enable_cl) {
+       deps += [
 diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/DisplayVk_api.h b/third_party/angle/src/libANGLE/renderer/vulkan/DisplayVk_api.h
 --- a/third_party/angle/src/libANGLE/renderer/vulkan/DisplayVk_api.h
 +++ b/third_party/angle/src/libANGLE/renderer/vulkan/DisplayVk_api.h
@@ -610,7 +640,7 @@ diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.c
 new file mode 100644
 --- /dev/null
 +++ b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,114 @@
 +//
 +// Copyright 2026 The ANGLE Project Authors. All rights reserved.
 +// Use of this source code is governed by a BSD-style license that can be
@@ -624,6 +654,7 @@ new file mode 100644
 +
 +#include <vulkan/vulkan_ohos.h>
 +
++#include "libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.h"
 +#include "libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.h"
 +#include "libANGLE/renderer/vulkan/vk_caps_utils.h"
 +#include "libANGLE/renderer/vulkan/vk_renderer.h"
@@ -673,6 +704,46 @@ new file mode 100644
 +    return VK_OHOS_SURFACE_EXTENSION_NAME;
 +}
 +
++void DisplayVkOhos::generateExtensions(egl::DisplayExtensions *outExtensions) const
++{
++    DisplayVk::generateExtensions(outExtensions);
++    // Video frames and WebGPU textures arrive as OH_NativeBuffers; with
++    // VK_OHOS_external_memory they are imported instead of uploaded.
++    outExtensions->imageNativeBufferOHOS = getRenderer()->supportsOhosNativeBuffer();
++}
++
++egl::Error DisplayVkOhos::validateImageClientBuffer(const gl::Context *context,
++                                                    EGLenum target,
++                                                    EGLClientBuffer clientBuffer,
++                                                    const egl::AttributeMap &attribs) const
++{
++    switch (target)
++    {
++        case EGL_NATIVE_BUFFER_OHOS:
++            return NativeBufferImageSiblingVkOhos::ValidateNativeBuffer(getRenderer(), clientBuffer,
++                                                                        attribs);
++
++        default:
++            return DisplayVk::validateImageClientBuffer(context, target, clientBuffer, attribs);
++    }
++}
++
++ExternalImageSiblingImpl *DisplayVkOhos::createExternalImageSibling(
++    const gl::Context *context,
++    EGLenum target,
++    EGLClientBuffer buffer,
++    const egl::AttributeMap &attribs)
++{
++    switch (target)
++    {
++        case EGL_NATIVE_BUFFER_OHOS:
++            return new NativeBufferImageSiblingVkOhos(buffer);
++
++        default:
++            return DisplayVk::createExternalImageSibling(context, target, buffer, attribs);
++    }
++}
++
 +bool IsVulkanOhosDisplayAvailable()
 +{
 +    return true;
@@ -688,7 +759,7 @@ diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.h
 new file mode 100644
 --- /dev/null
 +++ b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.h
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,48 @@
 +//
 +// Copyright 2026 The ANGLE Project Authors. All rights reserved.
 +// Use of this source code is governed by a BSD-style license that can be
@@ -719,11 +790,539 @@ new file mode 100644
 +    void checkConfigSupport(egl::Config *config) override;
 +
 +    const char *getWSIExtension() const override;
++
++    egl::Error validateImageClientBuffer(const gl::Context *context,
++                                         EGLenum target,
++                                         EGLClientBuffer clientBuffer,
++                                         const egl::AttributeMap &attribs) const override;
++
++    ExternalImageSiblingImpl *createExternalImageSibling(const gl::Context *context,
++                                                         EGLenum target,
++                                                         EGLClientBuffer buffer,
++                                                         const egl::AttributeMap &attribs) override;
++
++  protected:
++    void generateExtensions(egl::DisplayExtensions *outExtensions) const override;
 +};
 +
 +}  // namespace rx
 +
 +#endif  // LIBANGLE_RENDERER_VULKAN_OHOS_DISPLAYVKOHOS_H_
+diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.cpp b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.cpp
+new file mode 100644
+--- /dev/null
++++ b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.cpp
+@@ -0,0 +1,433 @@
++//
++// Copyright 2026 The ANGLE Project Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++//
++// NativeBufferImageSiblingVkOhos.cpp:
++//    Implements NativeBufferImageSiblingVkOhos.
++//
++
++#include "libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.h"
++
++#include <native_buffer/native_buffer.h>
++
++#include <sstream>
++
++#include "libANGLE/Display.h"
++#include "libANGLE/renderer/vulkan/DisplayVk.h"
++#include "libANGLE/renderer/vulkan/vk_renderer.h"
++
++namespace rx
++{
++
++namespace
++{
++// From <vulkan/vulkan_ohos.h>, repeated rather than included: the Vulkan
++// headers ANGLE builds against are the Khronos ones and do not carry this
++// platform's extension, while the driver on the device does.
++constexpr VkStructureType kStructureTypeNativeBufferProperties =
++    static_cast<VkStructureType>(1000452001);
++constexpr VkStructureType kStructureTypeNativeBufferFormatProperties =
++    static_cast<VkStructureType>(1000452002);
++constexpr VkStructureType kStructureTypeImportNativeBufferInfo =
++    static_cast<VkStructureType>(1000452003);
++// VK_EXTERNAL_MEMORY_HANDLE_TYPE_OH_NATIVE_BUFFER_BIT_OHOS
++constexpr VkExternalMemoryHandleTypeFlags kHandleTypeNativeBuffer = 0x00008000;
++
++struct NativeBufferPropertiesOHOS
++{
++    VkStructureType sType;
++    void *pNext;
++    VkDeviceSize allocationSize;
++    uint32_t memoryTypeBits;
++};
++
++struct NativeBufferFormatPropertiesOHOS
++{
++    VkStructureType sType;
++    void *pNext;
++    VkFormat format;
++    uint64_t externalFormat;
++    VkFormatFeatureFlags formatFeatures;
++    VkComponentMapping samplerYcbcrConversionComponents;
++    VkSamplerYcbcrModelConversion suggestedYcbcrModel;
++    VkSamplerYcbcrRange suggestedYcbcrRange;
++    VkChromaLocation suggestedXChromaOffset;
++    VkChromaLocation suggestedYChromaOffset;
++};
++
++struct ImportNativeBufferInfoOHOS
++{
++    VkStructureType sType;
++    const void *pNext;
++    OH_NativeBuffer *buffer;
++};
++
++using PFN_GetNativeBufferPropertiesOHOS = VkResult(VKAPI_PTR *)(VkDevice device,
++                                                               const OH_NativeBuffer *buffer,
++                                                               NativeBufferPropertiesOHOS *pProperties);
++
++OH_NativeBuffer *ClientBufferToNativeBuffer(EGLClientBuffer buffer)
++{
++    OH_NativeBuffer *nativeBuffer = nullptr;
++    if (buffer == nullptr ||
++        OH_NativeBuffer_FromNativeWindowBuffer(reinterpret_cast<OHNativeWindowBuffer *>(buffer),
++                                               &nativeBuffer) != 0)
++    {
++        return nullptr;
++    }
++    return nativeBuffer;
++}
++
++angle::Result GetProperties(vk::ErrorContext *context,
++                            OH_NativeBuffer *nativeBuffer,
++                            NativeBufferPropertiesOHOS *properties,
++                            NativeBufferFormatPropertiesOHOS *formatProperties)
++{
++    VkDevice device = context->getRenderer()->getDevice();
++    static PFN_GetNativeBufferPropertiesOHOS getProperties =
++        reinterpret_cast<PFN_GetNativeBufferPropertiesOHOS>(
++            vkGetDeviceProcAddr(device, "vkGetNativeBufferPropertiesOHOS"));
++    ANGLE_VK_CHECK(context, getProperties != nullptr, VK_ERROR_EXTENSION_NOT_PRESENT);
++
++    *formatProperties       = {};
++    formatProperties->sType = kStructureTypeNativeBufferFormatProperties;
++    *properties             = {};
++    properties->sType       = kStructureTypeNativeBufferProperties;
++    properties->pNext       = formatProperties;
++    ANGLE_VK_TRY(context, getProperties(device, nativeBuffer, properties));
++    return angle::Result::Continue;
++}
++
++// The VkFormat to import as. The Maleoon driver names one for RGBA but only
++// an opaque external format for YUV; these buffers are allocated
++// CPU-writable and so laid out linearly as plain NV12 or P010, which is what
++// the two-plane formats describe -- the same choice Dawn's import makes.
++VkFormat ImportFormat(const NativeBufferFormatPropertiesOHOS &formatProperties, int32_t ohosFormat)
++{
++    if (formatProperties.format != VK_FORMAT_UNDEFINED)
++    {
++        return formatProperties.format;
++    }
++    switch (ohosFormat)
++    {
++        case NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP:
++            return VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
++        case NATIVEBUFFER_PIXEL_FMT_YCBCR_P010:
++            return VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16;
++        case NATIVEBUFFER_PIXEL_FMT_RGBA_8888:
++        case NATIVEBUFFER_PIXEL_FMT_RGBX_8888:
++            return VK_FORMAT_R8G8B8A8_UNORM;
++        case NATIVEBUFFER_PIXEL_FMT_BGRA_8888:
++            return VK_FORMAT_B8G8R8A8_UNORM;
++        default:
++            return VK_FORMAT_UNDEFINED;
++    }
++}
++
++// The YUV-to-RGB conversion the buffer asks for. Chromium tags each video
++// buffer with its color space before importing it (the GLES backend's driver
++// reads the same tag); without one, the driver's suggestion stands.
++void YcbcrConversionFor(OH_NativeBuffer *nativeBuffer,
++                        const NativeBufferFormatPropertiesOHOS &formatProperties,
++                        VkSamplerYcbcrModelConversion *model,
++                        VkSamplerYcbcrRange *range)
++{
++    *model = formatProperties.suggestedYcbcrModel;
++    *range = formatProperties.suggestedYcbcrRange;
++    OH_NativeBuffer_ColorSpace colorSpace = OH_COLORSPACE_NONE;
++    if (OH_NativeBuffer_GetColorSpace(nativeBuffer, &colorSpace) != 0)
++    {
++        return;
++    }
++    switch (colorSpace)
++    {
++        case OH_COLORSPACE_BT601_EBU_FULL:
++        case OH_COLORSPACE_BT601_SMPTE_C_FULL:
++        case OH_COLORSPACE_SRGB_FULL:
++        case OH_COLORSPACE_P3_FULL:
++            *model = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
++            *range = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
++            break;
++        case OH_COLORSPACE_BT601_EBU_LIMIT:
++        case OH_COLORSPACE_BT601_SMPTE_C_LIMIT:
++        case OH_COLORSPACE_SRGB_LIMIT:
++        case OH_COLORSPACE_P3_LIMIT:
++            *model = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
++            *range = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
++            break;
++        case OH_COLORSPACE_BT709_FULL:
++            *model = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
++            *range = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
++            break;
++        case OH_COLORSPACE_BT709_LIMIT:
++            *model = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
++            *range = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
++            break;
++        case OH_COLORSPACE_BT2020_HLG_FULL:
++        case OH_COLORSPACE_BT2020_PQ_FULL:
++            *model = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
++            *range = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
++            break;
++        case OH_COLORSPACE_BT2020_HLG_LIMIT:
++        case OH_COLORSPACE_BT2020_PQ_LIMIT:
++            *model = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
++            *range = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
++            break;
++        default:
++            break;
++    }
++}
++}  // namespace
++
++NativeBufferImageSiblingVkOhos::NativeBufferImageSiblingVkOhos(EGLClientBuffer buffer)
++    : mBuffer(buffer),
++      mNativeBuffer(nullptr),
++      mFormat(GL_NONE),
++      mRenderable(false),
++      mTextureable(false),
++      mYUV(false),
++      mImage(nullptr)
++{}
++
++NativeBufferImageSiblingVkOhos::~NativeBufferImageSiblingVkOhos() {}
++
++// Static
++egl::Error NativeBufferImageSiblingVkOhos::ValidateNativeBuffer(vk::Renderer *renderer,
++                                                                EGLClientBuffer buffer,
++                                                                const egl::AttributeMap &attribs)
++{
++    if (!renderer->supportsOhosNativeBuffer())
++    {
++        return egl::Error(EGL_BAD_PARAMETER, "VK_OHOS_external_memory is not enabled.");
++    }
++    OH_NativeBuffer *nativeBuffer = ClientBufferToNativeBuffer(buffer);
++    if (nativeBuffer == nullptr)
++    {
++        return egl::Error(EGL_BAD_PARAMETER,
++                          "The client buffer is not an OHNativeWindowBuffer with a native buffer.");
++    }
++    OH_NativeBuffer_Config config = {};
++    OH_NativeBuffer_GetConfig(nativeBuffer, &config);
++    NativeBufferFormatPropertiesOHOS formatProperties = {};
++    formatProperties.format                           = VK_FORMAT_UNDEFINED;
++    if (ImportFormat(formatProperties, config.format) == VK_FORMAT_UNDEFINED)
++    {
++        // Formats the driver does name are only known once it is asked; the
++        // ones this port allocates are all covered above.
++        std::ostringstream err;
++        err << "OH_NativeBuffer pixel format " << config.format << " is not supported.";
++        return egl::Error(EGL_BAD_PARAMETER, err.str());
++    }
++    if (attribs.getAsInt(EGL_PROTECTED_CONTENT_EXT, EGL_FALSE) == EGL_TRUE)
++    {
++        return egl::Error(EGL_BAD_ACCESS, "Protected OH_NativeBuffers are not supported.");
++    }
++    return egl::NoError();
++}
++
++egl::Error NativeBufferImageSiblingVkOhos::initialize(const egl::Display *display)
++{
++    DisplayVk *displayVk = vk::GetImpl(display);
++    return angle::ToEGL(initImpl(displayVk), EGL_BAD_PARAMETER);
++}
++
++angle::Result NativeBufferImageSiblingVkOhos::initImpl(DisplayVk *displayVk)
++{
++    vk::Renderer *renderer = displayVk->getRenderer();
++
++    mNativeBuffer = ClientBufferToNativeBuffer(mBuffer);
++    ANGLE_VK_CHECK(displayVk, mNativeBuffer != nullptr, VK_ERROR_INVALID_EXTERNAL_HANDLE);
++    OH_NativeBuffer_Reference(mNativeBuffer);
++
++    OH_NativeBuffer_Config config = {};
++    OH_NativeBuffer_GetConfig(mNativeBuffer, &config);
++    mSize = gl::Extents(config.width, config.height, 1);
++
++    NativeBufferPropertiesOHOS bufferProperties;
++    NativeBufferFormatPropertiesOHOS formatProperties;
++    ANGLE_TRY(GetProperties(displayVk, mNativeBuffer, &bufferProperties, &formatProperties));
++
++    const VkFormat importFormat = ImportFormat(formatProperties, config.format);
++    ANGLE_VK_CHECK(displayVk, importFormat != VK_FORMAT_UNDEFINED, VK_ERROR_FORMAT_NOT_SUPPORTED);
++
++    const vk::Format &vkFormat       = renderer->getFormat(vk::GetFormatIDFromVkFormat(importFormat));
++    const angle::Format &imageFormat = vkFormat.getActualRenderableImageFormat();
++    mFormat                          = gl::Format(vkFormat.getIntendedGLFormat());
++    mYUV                             = imageFormat.isYUV;
++
++    VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
++    if ((config.usage & NATIVEBUFFER_USAGE_HW_TEXTURE) != 0 || mYUV)
++    {
++        usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
++    }
++    if ((config.usage & NATIVEBUFFER_USAGE_HW_RENDER) != 0 && !mYUV)
++    {
++        usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
++    }
++
++    vk::YcbcrConversionDesc conversionDesc{};
++    if (mYUV)
++    {
++        ANGLE_VK_CHECK(displayVk, renderer->getFeatures().supportsYUVSamplerConversion.enabled,
++                       VK_ERROR_FEATURE_NOT_PRESENT);
++        VkSamplerYcbcrModelConversion model;
++        VkSamplerYcbcrRange range;
++        YcbcrConversionFor(mNativeBuffer, formatProperties, &model, &range);
++        const vk::YcbcrLinearFilterSupport linearFilterSupported =
++            renderer->hasImageFormatFeatureBits(
++                imageFormat.id, VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT)
++                ? vk::YcbcrLinearFilterSupport::Supported
++                : vk::YcbcrLinearFilterSupport::Unsupported;
++        // Chromium's buffers are 4:2:0 with chroma sited at the even samples.
++        conversionDesc.update(renderer, 0, model, range, VK_CHROMA_LOCATION_COSITED_EVEN,
++                              VK_CHROMA_LOCATION_COSITED_EVEN, vk::kDefaultYCbCrChromaFilter,
++                              formatProperties.samplerYcbcrConversionComponents, imageFormat.id,
++                              linearFilterSupported);
++    }
++
++    VkExternalMemoryImageCreateInfo externalMemoryImageCreateInfo = {};
++    externalMemoryImageCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
++    externalMemoryImageCreateInfo.handleTypes = kHandleTypeNativeBuffer;
++
++    VkExtent3D vkExtents;
++    gl_vk::GetExtent(mSize, &vkExtents);
++
++    mImage = new vk::ImageHelper();
++    mImage->setTilingMode(VK_IMAGE_TILING_OPTIMAL);
++
++    const angle::FormatID intendedFormatID = vkFormat.getIntendedFormatID();
++    const angle::FormatID actualFormatID =
++        vkFormat.getActualImageFormatID(vk::ImageFormatSupport::SampleOnly);
++    // YUV images are sampled through their conversion only; RGBA ones may
++    // be given sRGB views.
++    const vk::ImageFormatReinterpretability formatReinterpretability =
++        mYUV ? vk::ImageFormatReinterpretability::None
++             : vk::ImageFormatReinterpretability::ColorspaceOverrides;
++    VkImageCreateFlags imageCreateFlags = vk::kVkImageCreateFlagsNone;
++    VkImageFormatListCreateInfoKHR imageFormatListInfoStorage;
++    vk::ImageHelper::ImageFormats imageFormats;
++    const void *imageCreateInfoPNext = vk::ImageHelper::DeriveCreateInfoPNext(
++        displayVk, actualFormatID, &externalMemoryImageCreateInfo, &imageFormatListInfoStorage,
++        &imageFormats, formatReinterpretability, &imageCreateFlags);
++
++    ANGLE_TRY(mImage->initExternal(
++        displayVk, gl::TextureType::_2D, vkExtents, intendedFormatID, actualFormatID, 1, usage,
++        imageCreateFlags, vk::ImageAccess::ExternalPreInitialized, imageCreateInfoPNext,
++        gl::OwnerLevel(0), 1, 1, false, false, vk::TileMemory::Prohibited, conversionDesc,
++        nullptr, formatReinterpretability));
++
++    ImportNativeBufferInfoOHOS importInfo = {};
++    importInfo.sType                      = kStructureTypeImportNativeBufferInfo;
++    importInfo.buffer                     = mNativeBuffer;
++
++    VkMemoryDedicatedAllocateInfo dedicatedAllocInfo = {};
++    dedicatedAllocInfo.sType          = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
++    dedicatedAllocInfo.pNext          = &importInfo;
++    dedicatedAllocInfo.image          = mImage->getImage().getHandle();
++    dedicatedAllocInfo.buffer         = VK_NULL_HANDLE;
++    const void *dedicatedAllocInfoPtr = &dedicatedAllocInfo;
++
++    VkMemoryRequirements externalMemoryRequirements = {};
++    externalMemoryRequirements.size                 = bufferProperties.allocationSize;
++    externalMemoryRequirements.alignment            = 0;
++    externalMemoryRequirements.memoryTypeBits       = bufferProperties.memoryTypeBits;
++
++    ANGLE_TRY(mImage->initExternalMemory(displayVk, renderer->getMemoryProperties(),
++                                         externalMemoryRequirements, 1, &dedicatedAllocInfoPtr,
++                                         vk::kForeignDeviceQueueIndex,
++                                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
++
++    if (mYUV)
++    {
++        mRenderable  = false;
++        mTextureable = true;
++    }
++    else
++    {
++        mRenderable = renderer->hasImageFormatFeatureBits(actualFormatID,
++                                                          VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
++        mTextureable = renderer->hasImageFormatFeatureBits(
++            actualFormatID,
++            VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT);
++    }
++
++    return angle::Result::Continue;
++}
++
++void NativeBufferImageSiblingVkOhos::onDestroy(const egl::Display *display)
++{
++    if (mNativeBuffer != nullptr)
++    {
++        OH_NativeBuffer_Unreference(mNativeBuffer);
++        mNativeBuffer = nullptr;
++    }
++    ASSERT(mImage == nullptr);
++}
++
++gl::Format NativeBufferImageSiblingVkOhos::getFormat() const
++{
++    return mFormat;
++}
++
++bool NativeBufferImageSiblingVkOhos::isRenderable(const gl::Context *context) const
++{
++    return mRenderable;
++}
++
++bool NativeBufferImageSiblingVkOhos::isTexturable(const gl::Context *context) const
++{
++    return mTextureable;
++}
++
++bool NativeBufferImageSiblingVkOhos::isYUV() const
++{
++    return mYUV;
++}
++
++bool NativeBufferImageSiblingVkOhos::hasFrontBufferUsage() const
++{
++    return false;
++}
++
++bool NativeBufferImageSiblingVkOhos::isCubeMap() const
++{
++    return false;
++}
++
++bool NativeBufferImageSiblingVkOhos::hasProtectedContent() const
++{
++    return false;
++}
++
++gl::Extents NativeBufferImageSiblingVkOhos::getSize() const
++{
++    return mSize;
++}
++
++size_t NativeBufferImageSiblingVkOhos::getSamples() const
++{
++    return 0;
++}
++
++uint32_t NativeBufferImageSiblingVkOhos::getLevelCount() const
++{
++    return 1;
++}
++
++vk::ImageHelper *NativeBufferImageSiblingVkOhos::getImage() const
++{
++    return mImage;
++}
++
++void NativeBufferImageSiblingVkOhos::release(vk::Renderer *renderer)
++{
++    if (mImage != nullptr)
++    {
++        mImage->releaseImage(renderer);
++        mImage->releaseStagedUpdates(renderer);
++        SafeDelete(mImage);
++    }
++}
++
++}  // namespace rx
+diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.h b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.h
+new file mode 100644
+--- /dev/null
++++ b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.h
+@@ -0,0 +1,72 @@
++//
++// Copyright 2026 The ANGLE Project Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++//
++// NativeBufferImageSiblingVkOhos.h:
++//    Defines NativeBufferImageSiblingVkOhos, which wraps EGL images created
++//    from HarmonyOS native buffers (EGL_NATIVE_BUFFER_OHOS).
++//
++
++#ifndef LIBANGLE_RENDERER_VULKAN_OHOS_NATIVEBUFFERIMAGESIBLINGVKOHOS_H_
++#define LIBANGLE_RENDERER_VULKAN_OHOS_NATIVEBUFFERIMAGESIBLINGVKOHOS_H_
++
++#include "libANGLE/renderer/vulkan/ImageVk.h"
++
++struct OH_NativeBuffer;
++
++namespace rx
++{
++
++// The Vulkan backend's counterpart of the GLES backend's EGL_NATIVE_BUFFER_OHOS
++// passthrough: the client buffer is an OHNativeWindowBuffer, imported with
++// VK_OHOS_external_memory the way HardwareBufferImageSiblingVkAndroid imports
++// an AHardwareBuffer.
++class NativeBufferImageSiblingVkOhos : public ExternalImageSiblingVk
++{
++  public:
++    NativeBufferImageSiblingVkOhos(EGLClientBuffer buffer);
++    ~NativeBufferImageSiblingVkOhos() override;
++
++    static egl::Error ValidateNativeBuffer(vk::Renderer *renderer,
++                                           EGLClientBuffer buffer,
++                                           const egl::AttributeMap &attribs);
++
++    egl::Error initialize(const egl::Display *display) override;
++    void onDestroy(const egl::Display *display) override;
++
++    // ExternalImageSiblingImpl interface
++    gl::Format getFormat() const override;
++    bool isRenderable(const gl::Context *context) const override;
++    bool isTexturable(const gl::Context *context) const override;
++    bool isYUV() const override;
++    bool hasFrontBufferUsage() const override;
++    bool isCubeMap() const override;
++    bool hasProtectedContent() const override;
++    gl::Extents getSize() const override;
++    size_t getSamples() const override;
++    uint32_t getLevelCount() const override;
++
++    // ExternalImageSiblingVk interface
++    vk::ImageHelper *getImage() const override;
++
++    void release(vk::Renderer *renderer) override;
++
++  private:
++    angle::Result initImpl(DisplayVk *displayVk);
++
++    EGLClientBuffer mBuffer;
++    OH_NativeBuffer *mNativeBuffer;
++    gl::Extents mSize;
++    gl::Format mFormat;
++
++    bool mRenderable;
++    bool mTextureable;
++    bool mYUV;
++
++    vk::ImageHelper *mImage;
++};
++
++}  // namespace rx
++
++#endif  // LIBANGLE_RENDERER_VULKAN_OHOS_NATIVEBUFFERIMAGESIBLINGVKOHOS_H_
 diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.cpp b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.cpp
 new file mode 100644
 --- /dev/null
@@ -843,10 +1442,55 @@ new file mode 100644
 +}  // namespace rx
 +
 +#endif  // LIBANGLE_RENDERER_VULKAN_OHOS_WINDOWSURFACEVKOHOS_H_
+diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.cpp b/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.cpp
+--- a/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.cpp
++++ b/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.cpp
+@@ -3939,6 +3939,20 @@ void Renderer::enableDeviceExtensionsNotPromoted(const vk::ExtensionNameList &de
+     ASSERT(!mFeatures.supportsAndroidHardwareBuffer.enabled);
+ #endif
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++    // OH_NativeBuffer import (EGL_NATIVE_BUFFER_OHOS): Android's
++    // AHardwareBuffer import with the names changed, and like it owned by a
++    // foreign queue family.
++    mSupportsOhosNativeBuffer =
++        ExtensionFound("VK_OHOS_external_memory", deviceExtensionNames) &&
++        ExtensionFound(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME, deviceExtensionNames);
++    if (mSupportsOhosNativeBuffer)
++    {
++        mEnabledDeviceExtensions.push_back(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME);
++        mEnabledDeviceExtensions.push_back("VK_OHOS_external_memory");
++    }
++#endif
++
+     if (mFeatures.supportsExternalMemoryFd.enabled)
+     {
+         mEnabledDeviceExtensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.h b/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.h
+--- a/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.h
++++ b/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.h
+@@ -708,6 +708,9 @@ class Renderer : angle::NonCopyable
+ 
+     bool supportsAstcHdr() const;
+ 
++    // VK_OHOS_external_memory and VK_EXT_queue_family_foreign are enabled.
++    bool supportsOhosNativeBuffer() const { return mSupportsOhosNativeBuffer; }
++
+     uint32_t getNativeVectorWidthDouble() const { return mNativeVectorWidthDouble; }
+     uint32_t getNativeVectorWidthHalf() const { return mNativeVectorWidthHalf; }
+     uint32_t getPreferredVectorWidthDouble() const { return mPreferredVectorWidthDouble; }
+@@ -959,6 +962,7 @@ class Renderer : angle::NonCopyable
+     VkDeviceSize mMaxCopyBytesUsingCPUWhenPreservingBufferData;
+ 
+     bool mDeviceLost;
++    bool mSupportsOhosNativeBuffer = false;
+ 
+     vk::SharedGarbageList<vk::SharedGarbage> mSharedGarbageList;
+     // Suballocations have its own dedicated garbage list for performance optimization since they
 diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni b/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni
 --- a/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni
 +++ b/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni
-@@ -181,6 +181,15 @@ if (is_android) {
+@@ -181,6 +181,17 @@ if (is_android) {
    ]
  }
  
@@ -854,6 +1498,8 @@ diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/vulkan_backend.gni b
 +  vulkan_backend_sources += [
 +    "ohos/DisplayVkOhos.cpp",
 +    "ohos/DisplayVkOhos.h",
++    "ohos/NativeBufferImageSiblingVkOhos.cpp",
++    "ohos/NativeBufferImageSiblingVkOhos.h",
 +    "ohos/WindowSurfaceVkOhos.cpp",
 +    "ohos/WindowSurfaceVkOhos.h",
 +  ]

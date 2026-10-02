@@ -183,7 +183,7 @@ void RunNativeChild(const char* encoded_params,
   }
   // After the launch environment, which may have cleared everything: ANGLE
   // reaches the system EGL and GLES through the HarmonyOS wrapper's exports
-  // in this process only. See ohos-angle-null-gl-strings.patch.
+  // in this process only. See ohos-angle.patch.
   if (gpu_child) {
     setenv("OHOS_ANGLE_WRAPPER_EXPORTS", "1", 1);
   }
