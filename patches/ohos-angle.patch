@@ -812,7 +812,7 @@ diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferIma
 new file mode 100644
 --- /dev/null
 +++ b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.cpp
-@@ -0,0 +1,433 @@
+@@ -0,0 +1,458 @@
 +//
 +// Copyright 2026 The ANGLE Project Authors. All rights reserved.
 +// Use of this source code is governed by a BSD-style license that can be
@@ -826,6 +826,7 @@ new file mode 100644
 +
 +#include <native_buffer/native_buffer.h>
 +
++#include <set>
 +#include <sstream>
 +
 +#include "libANGLE/Display.h"
@@ -1152,6 +1153,30 @@ new file mode 100644
 +                                         externalMemoryRequirements, 1, &dedicatedAllocInfoPtr,
 +                                         vk::kForeignDeviceQueueIndex,
 +                                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
++
++    {
++        // Once per pixel format: what the driver said about it and what the
++        // import made of it.
++        static std::set<int32_t> logged;
++        if (logged.insert(config.format).second)
++        {
++            WARN() << "OHOS native buffer import: pixel format " << config.format
++                   << ", driver format " << formatProperties.format << " external 0x" << std::hex
++                   << formatProperties.externalFormat << " features 0x"
++                   << formatProperties.formatFeatures << std::dec << " model "
++                   << formatProperties.suggestedYcbcrModel << " range "
++                   << formatProperties.suggestedYcbcrRange << "; imported as " << importFormat
++                   << " YUV " << mYUV << " sampled "
++                   << renderer->hasImageFormatFeatureBits(actualFormatID,
++                                                          VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)
++                   << " ycbcr-linear "
++                   << renderer->hasImageFormatFeatureBits(
++                          actualFormatID,
++                          VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT)
++                   << " memoryTypeBits 0x" << std::hex << bufferProperties.memoryTypeBits
++                   << std::dec << " size " << bufferProperties.allocationSize;
++        }
++    }
 +
 +    if (mYUV)
 +    {

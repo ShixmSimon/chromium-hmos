@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/command_line.h"
 #include "base/files/scoped_file.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
@@ -603,7 +604,9 @@ bool IsOhosNativePixmapFormat(viz::SharedImageFormat format) {
   }
   // P010 imports without error on the Maleoon driver but samples black, so
   // HDR video keeps uploading under Vulkan; NV12 and RGBA import.
-  if (format == viz::MultiPlaneFormat::kP010) {
+  if (format == viz::MultiPlaneFormat::kP010 &&
+      !base::CommandLine::ForCurrentProcess()->HasSwitch(
+          "ohos-vulkan-p010-import")) {
     return false;
   }
   static const bool vulkan_imports = [] {
