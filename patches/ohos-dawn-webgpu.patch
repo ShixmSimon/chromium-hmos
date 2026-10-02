@@ -118,6 +118,29 @@ index b443750..84f6c9f 100644
  
    # Enables error injection for faking failures to native API calls
    dawn_enable_error_injection =
+diff --git a/third_party/dawn/src/dawn/native/BUILD.gn b/third_party/dawn/src/dawn/native/BUILD.gn
+index c5a8679..08eba71 100644
+--- a/third_party/dawn/src/dawn/native/BUILD.gn
++++ b/third_party/dawn/src/dawn/native/BUILD.gn
+@@ -1021,7 +1021,8 @@ source_set("sources") {
+       "vulkan/external_semaphore/SemaphoreServiceImplementation.h",
+     ]
+ 
+-    if (is_android || is_linux || is_chromeos) {
++    # OHOS compiles as Linux here (__linux__), so it takes Linux's services.
++    if (is_android || is_linux || is_chromeos || is_ohos) {
+       sources += [
+         "vulkan/external_semaphore/SemaphoreServiceImplementationFD.cpp",
+         "vulkan/external_semaphore/SemaphoreServiceImplementationFD.h",
+@@ -1032,7 +1033,7 @@ source_set("sources") {
+           "vulkan/external_memory/MemoryServiceImplementationAHardwareBuffer.cpp",
+           "vulkan/external_memory/MemoryServiceImplementationAHardwareBuffer.h",
+         ]
+-      } else if (is_linux || is_chromeos) {
++      } else if (is_linux || is_chromeos || is_ohos) {
+         sources += [
+           "vulkan/external_memory/MemoryServiceImplementationDmaBuf.cpp",
+           "vulkan/external_memory/MemoryServiceImplementationDmaBuf.h",
 diff --git a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp b/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
 index a93ea4f..2c38742 100644
 --- a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
