@@ -263,7 +263,7 @@ index 361b1d4..3f6cb79 100644
      if (CheckSemaphoreSupport(DeviceExt::ExternalSemaphoreZirconHandle,
                                VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_ZIRCON_EVENT_BIT_FUCHSIA)) {
 diff --git a/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
-index 80150e6..0cf14ea 100644
+index 80150e6..b8c9f47 100644
 --- a/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
 +++ b/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
 @@ -55,6 +55,10 @@
@@ -323,7 +323,7 @@ index 80150e6..0cf14ea 100644
  template <typename... AdditionalChains>
  ResultOrError<VkImage> CreateExternalVkImage(
      Device* device,
-@@ -770,6 +813,156 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
+@@ -770,6 +813,164 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
          }
      }
      return sharedTextureMemory;
@@ -427,8 +427,16 @@ index 80150e6..0cf14ea 100644
 +            break;
 +        }
 +    }
-+    DAWN_INVALID_IF(!importable, "OH_NativeBuffer %s with %s cannot be imported.",
-+                    properties.format, properties.usage);
++    if (!importable) {
++        // The Maleoon driver answers VK_ERROR_FORMAT_NOT_SUPPORTED to this
++        // query for either handle type, whatever the flags, while importing
++        // OH_NativeBuffers is what HarmonyOS's own graphics stack does. The
++        // query is only a check before the import: go on with the current
++        // handle type and let vkCreateImage and vkAllocateMemory decide.
++        handleType =
++            static_cast<VkExternalMemoryHandleTypeFlagBits>(kOhosNativeBufferHandleType);
++        imageFormatInfo.flags = vkCreateFlags & ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
++    }
 +
 +    {
 +        VkImage vkImage;
