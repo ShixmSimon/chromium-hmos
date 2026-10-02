@@ -308,6 +308,7 @@ else
   # the GPU process's log in hilog -- stays, in a patch of its own.
   retire_incremental_patch "${repo_root}/patches/ohos-gpu-startup-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-vulkan-fallback.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-vulkan-present-fence.patch"
   # The manager is trustworthy now -- HUKS holds the key and the user is asked
   # before a saved password is handed back -- so the patch that switched it off
   # comes out. The tree is persistent, so deleting the file is not enough.
