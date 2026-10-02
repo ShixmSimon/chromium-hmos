@@ -9,11 +9,10 @@
 #include <native_window/external_window.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <fcntl.h>
 #include <unistd.h>
 
+#include <cstring>
 #include <map>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -22,7 +21,6 @@
 #include "base/memory/ref_counted.h"
 #include "base/no_destructor.h"
 #include "base/posix/eintr_wrapper.h"
-#include "base/strings/string_number_conversions.h"
 #include "base/synchronization/lock.h"
 #include "base/thread_annotations.h"
 #include "base/time/time.h"
@@ -75,46 +73,46 @@ struct BufferEntry {
   OH_NativeBuffer* buffer = nullptr;
   OHNativeWindowBuffer* window_buffer = nullptr;
   base::ScopedFD fd;
-  // Its dma-buf's name, which identifies it; see BufferRegistry.
-  std::string name;
+  // The dma-buf's size; the last bytes hold its tag, see BufferRegistry.
+  size_t size = 0;
   std::vector<PlaneLayout> planes;
   int users = 0;
   base::TimeTicks unused_since;
 };
 
-// What the kernel says about an open file, from /proc/self/fdinfo. Read
-// with plain syscalls: this runs on the GPU thread, where base's file
-// helpers would assert.
-std::string FdInfo(int fd) {
-  const std::string path = "/proc/self/fdinfo/" + base::NumberToString(fd);
-  base::ScopedFD file(HANDLE_EINTR(open(path.c_str(), O_RDONLY | O_CLOEXEC)));
-  if (!file.is_valid()) {
-    return std::string();
+// Marks a buffer as one of this registry's, with its id, in the padding
+// after its last plane.
+struct BufferTag {
+  uint64_t magic;
+  uint64_t key;
+};
+constexpr uint64_t kBufferTagMagic = 0x58504f484f534f52;  // "ROSOHOPX"
+
+// Where a buffer of `buffer_size` bytes keeps its tag, if its planes, ending
+// at `data_end`, leave room for one.
+std::optional<size_t> TagOffset(size_t buffer_size, size_t data_end) {
+  if (buffer_size < data_end + sizeof(BufferTag)) {
+    return std::nullopt;
   }
-  std::string info;
-  char chunk[512];
-  ssize_t length;
-  while ((length = HANDLE_EINTR(read(file.get(), chunk, sizeof(chunk)))) > 0) {
-    info.append(chunk, static_cast<size_t>(length));
-  }
-  return info;
+  return buffer_size - sizeof(BufferTag);
 }
 
-// The name a dma-buf was given with DMA_BUF_SET_NAME, or empty: the
-// "name:" line of its fdinfo, not to be confused with "exp_name:".
-std::string DmaBufName(int fd) {
-  const std::string info = "\n" + FdInfo(fd);
-  const size_t start = info.find("\nname:");
-  if (start == std::string::npos) {
-    return std::string();
+// Reads the tag at `offset` of the dma-buf `fd` through a mapping of the
+// page that holds it.
+std::optional<BufferTag> ReadTag(int fd, size_t offset) {
+  const size_t page = static_cast<size_t>(getpagesize());
+  const size_t page_start = offset & ~(page - 1);
+  const size_t length = offset - page_start + sizeof(BufferTag);
+  void* mapping = mmap(nullptr, length, PROT_READ, MAP_SHARED, fd,
+                       static_cast<off_t>(page_start));
+  if (mapping == MAP_FAILED) {
+    return std::nullopt;
   }
-  const size_t begin = info.find_first_not_of(" \t", start + 6);
-  if (begin == std::string::npos) {
-    return std::string();
-  }
-  const size_t end = info.find('\n', begin);
-  return info.substr(begin, end == std::string::npos ? std::string::npos
-                                                     : end - begin);
+  BufferTag tag;
+  memcpy(&tag, static_cast<uint8_t*>(mapping) + (offset - page_start),
+         sizeof(tag));
+  munmap(mapping, length);
+  return tag;
 }
 
 void ReleaseEntry(BufferEntry& entry) {
@@ -130,9 +128,10 @@ void ReleaseEntry(BufferEntry& entry) {
 
 // The buffers this process allocated, by an id of their own. A dma-buf fd
 // cannot be traced back to one by its inode, which HarmonyOS reports as 0
-// for every dma-buf, nor with kcmp, which the app sandbox kills a process
-// for. So each buffer is named after its id (DMA_BUF_SET_NAME) and a handle
-// is resolved by the name the kernel reports for its fd.
+// for every dma-buf, nor by kcmp, which the app sandbox kills a process for,
+// nor by a DMA_BUF_SET_NAME name, which its fdinfo does not show. So each
+// buffer carries its id in the padding after its last plane, which nothing
+// else writes, and a handle is resolved by reading it back.
 class BufferRegistry {
  public:
   static BufferRegistry& Get() {
@@ -174,7 +173,6 @@ class BufferRegistry {
       ReleaseEntry(*entry);
       return std::nullopt;
     }
-    OH_NativeBuffer_Unmap(buffer);
     const uint64_t rows[] = {static_cast<uint64_t>(size.height()),
                              static_cast<uint64_t>((size.height() + 1) / 2)};
     for (size_t i = 0; i < 2; ++i) {
@@ -191,12 +189,30 @@ class BufferRegistry {
             : nullptr;
     if (!handle || handle->fd < 0) {
       LOG(ERROR) << "OHOS native pixmap: no dma-buf fd";
+      OH_NativeBuffer_Unmap(buffer);
       ReleaseEntry(*entry);
       return std::nullopt;
     }
     entry->fd.reset(HANDLE_EINTR(dup(handle->fd)));
     if (!entry->fd.is_valid()) {
       PLOG(ERROR) << "OHOS native pixmap: dup";
+      OH_NativeBuffer_Unmap(buffer);
+      ReleaseEntry(*entry);
+      return std::nullopt;
+    }
+    const PlaneLayout& last_plane = entry->planes.back();
+    entry->size = static_cast<size_t>(handle->size);
+    const std::optional<size_t> tag_offset =
+        TagOffset(entry->size, last_plane.offset + last_plane.size);
+    if (!tag_offset) {
+      static bool logged_no_room = false;
+      if (!logged_no_room) {
+        logged_no_room = true;
+        LOG(ERROR) << "OHOS native pixmap: no room to tag a "
+                   << size.ToString() << " buffer of " << entry->size
+                   << " bytes";
+      }
+      OH_NativeBuffer_Unmap(buffer);
       ReleaseEntry(*entry);
       return std::nullopt;
     }
@@ -205,21 +221,9 @@ class BufferRegistry {
       base::AutoLock hold(lock_);
       key = ++last_key_;
     }
-    entry->name = "cr-ohos-" + base::NumberToString(getpid()) + "-" +
-                  base::NumberToString(key);
-    if (HANDLE_EINTR(ioctl(entry->fd.get(), DMA_BUF_SET_NAME,
-                           entry->name.c_str())) != 0 ||
-        DmaBufName(entry->fd.get()) != entry->name) {
-      static bool logged_failure = false;
-      if (!logged_failure) {
-        logged_failure = true;
-        PLOG(ERROR) << "OHOS native pixmap: could not name the dma-buf; "
-                       "fdinfo: "
-                    << FdInfo(entry->fd.get());
-      }
-      ReleaseEntry(*entry);
-      return std::nullopt;
-    }
+    const BufferTag tag = {kBufferTagMagic, key};
+    memcpy(static_cast<uint8_t*>(address) + *tag_offset, &tag, sizeof(tag));
+    OH_NativeBuffer_Unmap(buffer);
     entry->users = 1;
 
     static bool logged = false;
@@ -240,13 +244,15 @@ class BufferRegistry {
 
   // Takes a user on the buffer `fd` belongs to, if this process has it.
   std::optional<uint64_t> Acquire(int fd) {
-    const std::string name = DmaBufName(fd);
-    if (name.empty()) {
-      return std::nullopt;
-    }
+    const off_t end = lseek(fd, 0, SEEK_END);
     base::AutoLock hold(lock_);
     for (auto& [key, entry] : entries_) {
-      if (entry->name == name) {
+      if (end > 0 && entry->size != static_cast<size_t>(end)) {
+        continue;
+      }
+      const std::optional<BufferTag> tag =
+          ReadTag(fd, entry->size - sizeof(BufferTag));
+      if (tag && tag->magic == kBufferTagMagic && tag->key == key) {
         ++entry->users;
         return key;
       }
