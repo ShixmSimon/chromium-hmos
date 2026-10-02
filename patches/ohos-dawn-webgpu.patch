@@ -1,0 +1,41 @@
+Build Dawn for HarmonyOS, so WebGPU has a decoder to run on.
+
+use_dawn left OHOS out, so the GPU process had no WebGPU decoder and every
+WebGPU context failed ("Failed to create WebGPU Context Provider") even with
+--enable-unsafe-webgpu. Dawn's Vulkan backend then needs the loader by the
+name HarmonyOS gives it, libvulkan.so, as on Android; OHOS is otherwise
+taken for Linux there, which looks for libvulkan.so.1.
+
+An experiment: sharing images between Dawn and the compositor, which a
+WebGPU canvas needs, is not wired up on OHOS.
+
+Generated against Chromium 154.0.8037.51 (Dawn 8597a1aaec54).
+
+diff --git a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp b/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
+index a93ea4f..2c38742 100644
+--- a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
++++ b/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
+@@ -58,7 +58,9 @@ constexpr char kSwiftshaderLibName[] = "libvk_swiftshader.dylib";
+ #endif
+ 
+ #if DAWN_PLATFORM_IS(LINUX)
+-#if DAWN_PLATFORM_IS(ANDROID)
++#if DAWN_PLATFORM_IS(ANDROID) || defined(__OHOS__)
++// HarmonyOS, like Android, ships its loader as libvulkan.so with no
++// versioned name.
+ constexpr char kVulkanLibName[] = "libvulkan.so";
+ #else
+ constexpr char kVulkanLibName[] = "libvulkan.so.1";
+diff --git a/ui/gl/features.gni b/ui/gl/features.gni
+index 7a788bd..a46ef2c 100644
+--- a/ui/gl/features.gni
++++ b/ui/gl/features.gni
+@@ -14,7 +14,7 @@ declare_args() {
+   # Vulkan Validation Layers.
+   use_dawn = is_apple || is_win || is_chromeos || (is_linux && !is_castos) ||
+              (is_android && target_cpu != "x86" && target_cpu != "x64") ||
+-             is_desktop_android
++             is_desktop_android || is_ohos
+ 
+   # Should Dawn test binaries (unittests, end2end_tests, perf_tests) be built?
+   # Independent of use_dawn, which controls whether Dawn is used in Chromium.
