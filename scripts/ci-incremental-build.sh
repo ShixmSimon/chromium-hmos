@@ -271,8 +271,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-extension-popup-at-shell-rect.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-native-extensions-button.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-save-as-no-prompt.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-single-process-discardable.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-pdf-single-process.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-single-process.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-use-shell-ui-menu.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-emulator-gpu-rasterization.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-new-tab-focuses-omnibox.patch"
@@ -283,21 +282,6 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-password-settings-reauth.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-extension-installed-bubble.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-crx-download-kept.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-single-process-commit-checks.patch"
-  # The extension context diagnostics are done. This patch was made on top
-  # of them, so while their log is in the tree, back out this patch as it
-  # was then and them under it; it goes back in without them.
-  if grep -q 'OHOS extension context: allowed' \
-      "${src}/extensions/browser/process_map.cc"; then
-    git -C "$repo_root" show 5ad1f972:patches/ohos-single-process-extensions.patch |
-      git -C "$src" apply --reverse ||
-      die "failed to back out the old ohos-single-process-extensions.patch"
-    git -C "$repo_root" show 2d38775:patches/ohos-extension-context-diagnostics.patch |
-      git -C "$src" apply --reverse ||
-      die "failed to retire ohos-extension-context-diagnostics.patch"
-    say "retired incremental patch ohos-extension-context-diagnostics.patch"
-  fi
-  apply_incremental_patch "${repo_root}/patches/ohos-single-process-extensions.patch"
   # Answered: the channel was a user script's and reached the worker.
   retire_incremental_patch "${repo_root}/patches/ohos-extension-messaging-diagnostics.patch"
   retire_incremental_patch "${repo_root}/patches/ohos-extension-event-diagnostics.patch"
@@ -327,19 +311,6 @@ else
   # led to -- Skia on GL when Vulkan cannot hold it, paced channel retries,
   # the GPU process's log in hilog -- stays, in a patch of its own.
   retire_incremental_patch "${repo_root}/patches/ohos-gpu-startup-diagnostics.patch"
-  # The Vulkan compositor diagnostics are done too. The fallback was made on
-  # top of them, so retiring them alone fails its context check: while their
-  # log is in the tree, back out the fallback as it was then and them under
-  # it, and the fallback, which carries the includes now, goes back in.
-  if grep -q 'OHOS compositor: asking for a root frame sink'       "${src}/content/browser/compositor/viz_process_transport_factory.cc"; then
-    git -C "$repo_root" show e84a37ba:patches/ohos-gpu-vulkan-fallback.patch |
-      git -C "$src" apply --reverse ||
-      die "failed to back out the old ohos-gpu-vulkan-fallback.patch"
-    git -C "$repo_root" show 97303a6f:patches/ohos-vulkan-compositor-diagnostics.patch |
-      git -C "$src" apply --reverse ||
-      die "failed to retire ohos-vulkan-compositor-diagnostics.patch"
-    say "retired incremental patch ohos-vulkan-compositor-diagnostics.patch"
-  fi
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-vulkan-fallback.patch"
   # The manager is trustworthy now -- HUKS holds the key and the user is asked
   # before a saved password is handed back -- so the patch that switched it off
