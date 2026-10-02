@@ -449,7 +449,9 @@ class NativeWindowRegistry {
       if (it == logical_windows_.end()) {
         return;
       }
-      focused_widget_ = widget;
+      if (!AwaitsOwnSurface(widget, it->second)) {
+        focused_widget_ = widget;
+      }
       it->second.stacking_order = ++next_stacking_order_;
       if (it->second.auxiliary && it->second.visible) {
         state = MakeLogicalWindowState(widget, it->second);
@@ -494,6 +496,17 @@ class NativeWindowRegistry {
            !ParseAuxiliarySurfaceWidget(binding->second).has_value();
   }
 
+  // A top-level window still waiting for the surface the shell is to make
+  // for it. Nothing of it is on screen, so it must not take input: a second
+  // browser window whose surface never came was a full-screen auxiliary on
+  // top of everything, and every touch and key went to it.
+  bool AwaitsOwnSurface(gfx::AcceleratedWidget widget,
+                        const LogicalWindowRecord& record) const
+      EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+    return !record.anchored && expected_native_surfaces_.contains(widget) &&
+           !widget_bindings_.contains(widget);
+  }
+
   gfx::AcceleratedWidget GetWidgetAtScreenPoint(const gfx::Point& point) {
     base::AutoLock lock(lock_);
     // Ranked by tier first, then by stacking order. An auxiliary window's
@@ -507,7 +520,7 @@ class NativeWindowRegistry {
     std::pair<bool, uint64_t> target_rank{false, 0};
     for (const auto& [widget, record] : logical_windows_) {
       if (!record.visible || record.bounds.IsEmpty() ||
-          !record.bounds.Contains(point)) {
+          !record.bounds.Contains(point) || AwaitsOwnSurface(widget, record)) {
         continue;
       }
       const std::pair<bool, uint64_t> rank{record.auxiliary,

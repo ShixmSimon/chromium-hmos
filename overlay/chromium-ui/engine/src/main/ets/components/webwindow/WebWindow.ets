@@ -1522,7 +1522,14 @@ export struct WebWindow {
 
     try {
       const state = JSON.parse(stateJson) as AuxiliaryWindowState;
-      if (state.widget > 0 && state.componentId.startsWith('aura_aux_')) {
+      // Popups (aura_aux_), browser windows of their own (aura_win_: a new
+      // window, a new incognito window, a tab dragged out) and installed web
+      // apps (aura_pwa_) all reach the shell this way. Passing only popups
+      // dropped every new browser window: the shell never made its surface,
+      // and the engine, waiting for it, gave up on GPU compositing.
+      const componentId: string = state.componentId ?? '';
+      if (state.widget > 0 && (componentId.startsWith('aura_aux_') ||
+        componentId.startsWith('aura_win_') || componentId.startsWith('aura_pwa_'))) {
         this.onAuxiliaryWindowState(state);
       }
     } catch (error) {
