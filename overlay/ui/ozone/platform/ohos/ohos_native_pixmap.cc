@@ -14,6 +14,7 @@
 #include <cstring>
 #include <map>
 #include <set>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -23,6 +24,7 @@
 #include "base/memory/ref_counted.h"
 #include "base/no_destructor.h"
 #include "base/posix/eintr_wrapper.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/synchronization/lock.h"
 #include "base/thread_annotations.h"
 #include "base/time/time.h"
@@ -276,11 +278,14 @@ class BufferRegistry {
         logged[*ohos_format == NATIVEBUFFER_PIXEL_FMT_YCBCR_P010 ? 1 : 0];
     if (!logged_format) {
       logged_format = true;
+      std::string layout;
+      for (const PlaneLayout& plane : entry->planes) {
+        layout += base::NumberToString(plane.stride) + "@" +
+                  base::NumberToString(plane.offset) + " ";
+      }
       LOG(WARNING) << "OHOS native pixmap: " << format.ToString() << " "
-                   << size.ToString() << " planes " << entry->planes[0].stride
-                   << "@" << entry->planes[0].offset << ", "
-                   << entry->planes[1].stride << "@"
-                   << entry->planes[1].offset << ", buffer " << handle->size;
+                   << size.ToString() << " planes " << layout << "buffer "
+                   << handle->size;
     }
 
     base::AutoLock hold(lock_);
