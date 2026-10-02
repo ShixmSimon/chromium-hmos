@@ -42,7 +42,17 @@ constexpr EGLenum kEglNativeBufferOhos = 0x34E1;
 // header.
 constexpr base::TimeDelta kUnusedBufferGrace = base::Seconds(10);
 
+// Video asks for its YUV formats with the external sampler preferred, and
+// that is part of a format's identity: compare without it.
+viz::SharedImageFormat WithoutExternalSampler(viz::SharedImageFormat format) {
+  if (format.is_multi_plane() && format.PrefersExternalSampler()) {
+    format.ClearPrefersExternalSampler();
+  }
+  return format;
+}
+
 std::optional<int32_t> OhosFormatFor(viz::SharedImageFormat format) {
+  format = WithoutExternalSampler(format);
   if (format == viz::MultiPlaneFormat::kNV12) {
     return NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP;
   }
@@ -428,7 +438,7 @@ bool IsOhosNativePixmapFormat(viz::SharedImageFormat format) {
   // Not NV12, though it allocates and imports the same way: 8-bit video
   // already goes to the GPU as NV12 shared memory, sampled plane by plane,
   // and offering native NV12 would move it here with nothing to gain.
-  return format == viz::MultiPlaneFormat::kP010;
+  return WithoutExternalSampler(format) == viz::MultiPlaneFormat::kP010;
 }
 
 scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmap(
