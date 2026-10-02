@@ -26,14 +26,14 @@ handler that wrote it there with one that forwards it to the browser for
 chrome://gpu, so the browser writes what it is forwarded, WARNING and above,
 as "OHOS GPU process says:".
 
-Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch,
-ohos-gpu-lose-context-debug-url.patch and
-ohos-vulkan-compositor-diagnostics.patch.
+Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch
+and ohos-gpu-lose-context-debug-url.patch.
 
 diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/components/viz/common/gpu/vulkan_in_process_context_provider.cc
+index 620d83c..812c6c4 100644
 --- a/components/viz/common/gpu/vulkan_in_process_context_provider.cc
 +++ b/components/viz/common/gpu/vulkan_in_process_context_provider.cc
-@@ -5,6 +5,7 @@
+@@ -5,16 +5,19 @@
  #include "components/viz/common/gpu/vulkan_in_process_context_provider.h"
  
  #include <algorithm>
@@ -41,7 +41,19 @@ diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/c
  #include <string_view>
  #include <utility>
  
-@@ -31,6 +32,10 @@
+ #include "base/compiler_specific.h"
++#include "base/logging.h"
+ #include "base/memory_coordinator/memory_consumer.h"
+ #include "base/memory_coordinator/memory_coordinator_features.h"
+ #include "base/memory_coordinator/memory_limit.h"
+ #include "base/memory_coordinator/traits.h"
+ #include "base/memory_coordinator/utils.h"
+ #include "base/numerics/safe_conversions.h"
++#include "build/build_config.h"
+ #include "gpu/vulkan/buildflags.h"
+ #include "gpu/vulkan/vma_wrapper.h"
+ #include "gpu/vulkan/vulkan_device_queue.h"
+@@ -29,6 +32,10 @@
  #include "third_party/skia/include/gpu/vk/VulkanExtensions.h"
  #include "third_party/skia/include/gpu/vk/VulkanTypes.h"
  
@@ -52,7 +64,7 @@ diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/c
  namespace {
  
  // Setting this limit to 0 practically forces sync at every submit.
-@@ -50,6 +55,242 @@ constexpr base::MemoryConsumerTraits kMemoryConsumerTraits(
+@@ -48,6 +55,242 @@ constexpr base::MemoryConsumerTraits kMemoryConsumerTraits(
  
  namespace viz {
  
@@ -295,7 +307,7 @@ diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/c
  // static
  scoped_refptr<VulkanInProcessContextProvider>
  VulkanInProcessContextProvider::Create(
-@@ -212,6 +453,12 @@ bool VulkanInProcessContextProvider::InitializeGrContext(
+@@ -203,6 +446,12 @@ bool VulkanInProcessContextProvider::InitializeGrContext(
    backend_context.fProtectedContext = GrProtected::kNo;
  
    gr_context_ = GrDirectContexts::MakeVulkan(backend_context, context_options);
@@ -309,6 +321,7 @@ diff --git a/components/viz/common/gpu/vulkan_in_process_context_provider.cc b/c
    return gr_context_ != nullptr;
  }
 diff --git a/components/viz/host/gpu_host_impl.cc b/components/viz/host/gpu_host_impl.cc
+index 7ddfa11..059482b 100644
 --- a/components/viz/host/gpu_host_impl.cc
 +++ b/components/viz/host/gpu_host_impl.cc
 @@ -9,6 +9,7 @@
@@ -337,6 +350,7 @@ diff --git a/components/viz/host/gpu_host_impl.cc b/components/viz/host/gpu_host
  }
  
 diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/service/gl/gpu_service_impl.cc
+index 39a9e18..cc7e8b0 100644
 --- a/components/viz/service/gl/gpu_service_impl.cc
 +++ b/components/viz/service/gl/gpu_service_impl.cc
 @@ -71,6 +71,7 @@
@@ -347,11 +361,10 @@ diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/serv
  #include "third_party/skia/include/gpu/ganesh/GrDirectContext.h"
  #include "third_party/skia/include/gpu/ganesh/gl/GrGLAssembleInterface.h"
  #include "third_party/skia/include/gpu/ganesh/gl/GrGLInterface.h"
-@@ -262,6 +263,33 @@ GpuServiceImpl::GpuServiceImpl(
-     // Said in a release build, where the line above is not.
-     LOG(ERROR) << "OHOS Vulkan: context provider "
-                << (vulkan_context_provider_ ? "created" : "NOT created");
-+#endif
+@@ -256,6 +257,33 @@ GpuServiceImpl::GpuServiceImpl(
+     if (!vulkan_context_provider_) {
+       DLOG(ERROR) << "Failed to create Vulkan context provider.";
+     }
 +#if BUILDFLAG(IS_OHOS)
 +    // A Vulkan device is not yet one Skia can draw with. On the 2in1
 +    // emulator -- Vulkan 1.1 translated from the host's GPU -- the instance,
@@ -378,10 +391,12 @@ diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/serv
 +      gpu_feature_info_.status_values[gpu::GPU_FEATURE_TYPE_VULKAN] =
 +          gpu::kGpuFeatureStatusDisabled;
 +    }
- #endif
++#endif
    }
  #endif
+ 
 diff --git a/components/viz/service/gl/gpu_service_impl.h b/components/viz/service/gl/gpu_service_impl.h
+index 3b55358..642fcf5 100644
 --- a/components/viz/service/gl/gpu_service_impl.h
 +++ b/components/viz/service/gl/gpu_service_impl.h
 @@ -464,13 +464,23 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
@@ -409,6 +424,7 @@ diff --git a/components/viz/service/gl/gpu_service_impl.h b/components/viz/servi
    const gpu::GpuDriverBugWorkarounds gpu_driver_bug_workarounds_;
  
 diff --git a/content/browser/gpu/browser_gpu_channel_host_factory.cc b/content/browser/gpu/browser_gpu_channel_host_factory.cc
+index ad53478..21c4d42 100644
 --- a/content/browser/gpu/browser_gpu_channel_host_factory.cc
 +++ b/content/browser/gpu/browser_gpu_channel_host_factory.cc
 @@ -4,6 +4,8 @@

@@ -329,11 +329,23 @@ else
   retire_incremental_patch "${repo_root}/patches/ohos-video-output-format-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-implementation.patch"
   retire_incremental_patch "${repo_root}/patches/ohos-vulkan-surface-diagnostics.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-vulkan-compositor-diagnostics.patch"
   # The GPU start-up diagnosis is done: its logging comes out, and what it
   # led to -- Skia on GL when Vulkan cannot hold it, paced channel retries,
   # the GPU process's log in hilog -- stays, in a patch of its own.
   retire_incremental_patch "${repo_root}/patches/ohos-gpu-startup-diagnostics.patch"
+  # The Vulkan compositor diagnostics are done too. The fallback was made on
+  # top of them, so retiring them alone fails its context check: while their
+  # log is in the tree, back out the fallback as it was then and them under
+  # it, and the fallback, which carries the includes now, goes back in.
+  if grep -q 'OHOS compositor: asking for a root frame sink'       "${src}/content/browser/compositor/viz_process_transport_factory.cc"; then
+    git -C "$repo_root" show e84a37ba:patches/ohos-gpu-vulkan-fallback.patch |
+      git -C "$src" apply --reverse ||
+      die "failed to back out the old ohos-gpu-vulkan-fallback.patch"
+    git -C "$repo_root" show 97303a6f:patches/ohos-vulkan-compositor-diagnostics.patch |
+      git -C "$src" apply --reverse ||
+      die "failed to retire ohos-vulkan-compositor-diagnostics.patch"
+    say "retired incremental patch ohos-vulkan-compositor-diagnostics.patch"
+  fi
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-vulkan-fallback.patch"
   # The manager is trustworthy now -- HUKS holds the key and the user is asked
   # before a saved password is handed back -- so the patch that switched it off
