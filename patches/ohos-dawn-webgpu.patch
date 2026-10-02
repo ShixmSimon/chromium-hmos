@@ -1,6 +1,6 @@
 Build Dawn for HarmonyOS, so WebGPU has a decoder to run on.
 
-use_dawn left OHOS out, so the GPU process had no WebGPU decoder and every
+use_dawn and dawn_enable_vulkan left OHOS out, so the GPU process had no WebGPU decoder and every
 WebGPU context failed ("Failed to create WebGPU Context Provider") even with
 --enable-unsafe-webgpu. Dawn's Vulkan backend then needs the loader by the
 name HarmonyOS gives it, libvulkan.so, as on Android; OHOS is otherwise
@@ -105,6 +105,19 @@ index a7f3698..b7eadd6 100644
      for (dawn::native::Adapter& native_adapter :
           dawn_instance_->EnumerateAdapters(&adapter_options)) {
        native_adapter.SetUseTieredLimits(tiered_adapter_limits_);
+diff --git a/third_party/dawn/scripts/dawn_features.gni b/third_party/dawn/scripts/dawn_features.gni
+index b443750..84f6c9f 100644
+--- a/third_party/dawn/scripts/dawn_features.gni
++++ b/third_party/dawn/scripts/dawn_features.gni
+@@ -132,7 +132,7 @@ declare_args() {
+   # Disables vulkan when compiling for UWP, since UWP only supports d3d
+   dawn_enable_vulkan =
+       dawn_maximal || is_linux || is_chromeos || (is_win && !dawn_is_winuwp) ||
+-      is_fuchsia || is_android || dawn_use_swiftshader
++      is_fuchsia || is_android || is_ohos || dawn_use_swiftshader
+ 
+   # Enables error injection for faking failures to native API calls
+   dawn_enable_error_injection =
 diff --git a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp b/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
 index a93ea4f..2c38742 100644
 --- a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
