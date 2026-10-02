@@ -601,6 +601,11 @@ bool IsOhosNativePixmapFormat(viz::SharedImageFormat format) {
   if (angle != gl::ANGLEImplementation::kVulkan) {
     return false;
   }
+  // P010 imports without error on the Maleoon driver but samples black, so
+  // HDR video keeps uploading under Vulkan; NV12 and RGBA import.
+  if (format == viz::MultiPlaneFormat::kP010) {
+    return false;
+  }
   static const bool vulkan_imports = [] {
     gl::GLDisplayEGL* display = gl::GLSurfaceEGL::GetGLDisplayEGL();
     const char* extensions =
