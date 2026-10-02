@@ -102,9 +102,7 @@ class NativeWindowRegistry {
                 void* window,
                 const gfx::Rect& bounds,
                 float density) {
-    OhosLogicalWindowStateCallback callback;
     OhosNativeSurfaceBoundsCallback bounds_callback;
-    std::optional<OhosLogicalWindowState> promoted_state;
     std::optional<OhosNativeSurface> bound_surface;
     {
       base::AutoLock lock(lock_);
@@ -141,11 +139,16 @@ class NativeWindowRegistry {
             pending_widgets_.erase(pending);
             widget_bindings_[record.widget] = component_id;
             if (own_surface_widget) {
-              promoted_state =
-                  MakeLogicalWindowState(record.widget, logical->second, true);
+              // No longer a popup over the first window, but not gone either:
+              // the shell has just given it a surface of its own. This used to
+              // send the shell `destroyed` for the widget, meant to drop an
+              // auxiliary overlay -- but the event names the window by the
+              // surface the shell just made (aura_win_<w>, aura_pwa_<w>), so
+              // the shell closed the window it had opened, 7 ms after onLoad.
+              // A dragged-out tab vanished and an incognito window never
+              // stayed open. Nothing to tell the shell here.
               logical->second.auxiliary = false;
               logical->second.announced = true;
-              callback = logical_window_state_callback_;
             }
           }
         } else if (!pending_widgets_.empty()) {
@@ -165,9 +168,6 @@ class NativeWindowRegistry {
     }
     if (bounds_callback && bound_surface) {
       bounds_callback.Run(bound_surface->bounds, bound_surface->density);
-    }
-    if (callback && promoted_state) {
-      callback.Run(*promoted_state);
     }
   }
 

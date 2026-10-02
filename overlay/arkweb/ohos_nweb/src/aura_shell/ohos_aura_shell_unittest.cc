@@ -852,8 +852,10 @@ TEST(NWebAuraShellTest, PwaWindowBindsExactAbilitySurfaceAndBecomesPrimary) {
   EXPECT_TRUE(
       ui::WaitForOhosNativeSurface(kWidget, base::Milliseconds(1)).has_value());
   EXPECT_TRUE(ui::IsOhosPrimaryLogicalWindow(kWidget));
+  // Getting a surface of its own is not the window going away: the shell
+  // would close the window it had just opened.
   ASSERT_FALSE(states.empty());
-  EXPECT_TRUE(states.back().destroyed);
+  EXPECT_FALSE(states.back().destroyed);
   const auto component_id =
       ui::GetOhosNativeSurfaceComponentIdForWidget(kWidget);
   ASSERT_TRUE(component_id.has_value());
