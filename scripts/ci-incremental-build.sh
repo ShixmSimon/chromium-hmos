@@ -231,7 +231,7 @@ else
   # rather than sit in the tree half-live.
   retire_incremental_patch "${repo_root}/patches/ohos-links-in-current-tab.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-text-length.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-reader-mode-staging-probe.patch"
+  retire_incremental_patch "${repo_root}/patches/ohos-reader-mode-staging-probe.patch"
   # Applied again on every build until the check above: take the extra
   # copies back out. Counted by a line only this patch adds, so a tree with
   # one copy is left untouched and nothing rebuilds.
@@ -294,8 +294,8 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-use-shell-ui-menu.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-emulator-gpu-rasterization.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-new-tab-focuses-omnibox.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-touch-gesture-diagnostics.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-focus-diagnostics.patch"
+  retire_incremental_patch "${repo_root}/patches/ohos-touch-gesture-diagnostics.patch"
+  retire_incremental_patch "${repo_root}/patches/ohos-focus-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-drop-data-at-drop.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-extensions-page.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-passwords.patch"
@@ -306,7 +306,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-single-process-extensions.patch"
   # Answered: the channel was a user script's and reached the worker.
   retire_incremental_patch "${repo_root}/patches/ohos-extension-messaging-diagnostics.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-extension-event-diagnostics.patch"
+  retire_incremental_patch "${repo_root}/patches/ohos-extension-event-diagnostics.patch"
   # Answered: HDR output drawn PQ into an sRGB window; output is SDR now.
   retire_incremental_patch "${repo_root}/patches/ohos-video-frame-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-pull-to-refresh.patch"
@@ -315,7 +315,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-lose-context-debug-url.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-fence-capability.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-context-failure-log-throttle.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-gl-init-diagnostics.patch"
+  retire_incremental_patch "${repo_root}/patches/ohos-gl-init-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-backend.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-gles-display.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-egl-client-extensions.patch"
@@ -328,7 +328,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-dawn-webgpu.patch"
   retire_incremental_patch "${repo_root}/patches/ohos-video-output-format-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-implementation.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-vulkan-surface-diagnostics.patch"
+  retire_incremental_patch "${repo_root}/patches/ohos-vulkan-surface-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-compositor-diagnostics.patch"
   # The GPU start-up diagnosis is done: its logging comes out, and what it
   # led to -- Skia on GL when Vulkan cannot hold it, paced channel retries,

@@ -112,76 +112,6 @@ std::optional<SizeRange> GetSizeRange(OH_AVCapability* capability) {
       gfx::Size(width.maxVal, height.maxVal)};
 }
 
-std::string JoinInts(const int32_t* values, uint32_t count) {
-  std::string joined;
-  if (!values) {
-    return joined;
-  }
-  // SAFETY: AVCodecKit returns an array of `count` entries owned by the
-  // capability, which outlives this call.
-  for (int32_t value : UNSAFE_BUFFERS(base::span(values, count))) {
-    joined += " " + base::NumberToString(value);
-  }
-  return joined;
-}
-
-// Whether this device has hardware VP9 or AV1 decoders the port does not
-// drive yet. YouTube serves HDR as VP9 profile 2 or AV1, which the renderer
-// then decodes in software: 2160p60 HDR dropped 15% of its frames on a
-// Mate 70 Pro+. The MIME strings are spelled out because the SDK only names
-// them from API 23, and a system without the codec just returns no
-// capability. Profiles are AVCodecKit's numbering (VP9: 0-3, profile 2 is
-// 10-bit 4:2:0; AV1: 0 main); pixel formats are OH_AVPixelFormat.
-void LogUndrivenHardwareDecoders() {
-  struct Probe {
-    const char* label;
-    const char* mime;
-  };
-  constexpr Probe kProbes[] = {{"VP9", "video/x-vnd.on2.vp9"},
-                               {"AV1", "video/av01"}};
-  for (const Probe& probe : kProbes) {
-    OH_AVCapability* capability = OH_AVCodec_GetCapabilityByCategory(
-        probe.mime, /*isEncoder=*/false, HARDWARE);
-    if (!capability || !OH_AVCapability_IsHardware(capability)) {
-      LOG(WARNING) << "OHOS codec probe: no hardware " << probe.label
-                   << " decoder";
-      continue;
-    }
-    const char* name = OH_AVCapability_GetName(capability);
-    const int32_t* profiles = nullptr;
-    uint32_t profile_count = 0;
-    OH_AVCapability_GetSupportedProfiles(capability, &profiles,
-                                         &profile_count);
-    const int32_t* pixel_formats = nullptr;
-    uint32_t pixel_format_count = 0;
-    OH_AVCapability_GetVideoSupportedPixelFormats(
-        capability, &pixel_formats, &pixel_format_count);
-    OH_AVRange width = {};
-    OH_AVRange height = {};
-    OH_AVCapability_GetVideoWidthRange(capability, &width);
-    OH_AVCapability_GetVideoHeightRange(capability, &height);
-    OH_AVRange uhd_rate = {};
-    const bool uhd = OH_AVCapability_IsVideoSizeSupported(capability, 3840,
-                                                          2160);
-    if (uhd) {
-      OH_AVCapability_GetVideoFrameRateRangeForSize(capability, 3840, 2160,
-                                                    &uhd_rate);
-    }
-    LOG(WARNING) << "OHOS codec probe: hardware " << probe.label
-                 << " decoder " << (name ? name : "(unnamed)")
-                 << ", profiles [" << JoinInts(profiles, profile_count)
-                 << " ], pixel formats ["
-                 << JoinInts(pixel_formats, pixel_format_count)
-                 << " ], up to " << width.maxVal << "x" << height.maxVal
-                 << ", 3840x2160 "
-                 << (uhd ? "at up to " + base::NumberToString(uhd_rate.maxVal) +
-                               " fps"
-                         : std::string("not supported"))
-                 << ", instances "
-                 << OH_AVCapability_GetMaxSupportedInstances(capability);
-  }
-}
-
 }  // namespace
 
 void OhosAVFormatDeleter::operator()(OH_AVFormat* format) const {
@@ -233,8 +163,6 @@ std::optional<int32_t> VideoCodecProfileToOhosProfile(
 }
 
 SupportedVideoDecoderConfigs GetOhosSupportedDecoderConfigs() {
-  static const bool probed = (LogUndrivenHardwareDecoders(), true);
-  (void)probed;
   SupportedVideoDecoderConfigs configs;
   for (VideoCodec codec : {VideoCodec::kH264, VideoCodec::kHEVC}) {
     OH_AVCapability* capability =
