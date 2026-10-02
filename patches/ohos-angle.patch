@@ -194,15 +194,6 @@ vk_cache_utils.cpp). Either way the conversion's matrix and range come
 from the buffer's color space. Without it, video on ANGLE Vulkan was
 uploaded plane by plane, 27 ms a frame at 2160p, half of 60 fps.
 
---- Swapchain depth
-
-HarmonyOS's compositor keeps two of a window's buffers, the one on screen
-and the one queued for its next vsync. With ANGLE's three, each swap's
-throttleCPU waited for the GPU work of two frames back, which itself
-waited to acquire an image: 29 ms a swap on a Mate 70 Pro+, a third of
-60 fps video dropped. On OHOS the swapchain takes at least four images,
-and the first one created logs its present mode and image count.
-
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
 Apply with:
 
@@ -648,78 +639,6 @@ diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/DisplayVk_api.h b/th
  #if defined(ANGLE_PLATFORM_FUCHSIA)
  bool IsVulkanFuchsiaDisplayAvailable();
  DisplayImpl *CreateVulkanFuchsiaDisplay(const egl::DisplayState &state);
-diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/SurfaceVk.cpp b/third_party/angle/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
---- a/third_party/angle/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
-+++ b/third_party/angle/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
-@@ -8,6 +8,8 @@
- //
- 
- #include "libANGLE/renderer/vulkan/SurfaceVk.h"
-+
-+#include <sstream>
- #include "common/unsafe_buffers.h"
- 
- #include "common/debug.h"
-@@ -58,6 +60,19 @@ vk::PresentMode GetDesiredPresentMode(const std::vector<vk::PresentMode> &presen
-     // always be supported.
-     if (interval > 0)
-     {
-+#if defined(ANGLE_PLATFORM_OHOS)
-+        // Chromium paces frames to vsync itself (BeginFrame). Under FIFO on a
-+        // Mate 70 Pro+ each frame's GPU work finished ~60 ms after it was
-+        // submitted, two frames late, and every swap waited 29 ms for it;
-+        // mailbox presents without holding the queue for vsync.
-+        for (vk::PresentMode presentMode : presentModes)
-+        {
-+            if (presentMode == vk::PresentMode::MailboxKHR)
-+            {
-+                return vk::PresentMode::MailboxKHR;
-+            }
-+        }
-+#endif
-         return vk::PresentMode::FifoKHR;
-     }
- 
-@@ -131,6 +146,14 @@ uint32_t GetMinImageCount(vk::Renderer *renderer,
-             : 0x3u;
- 
-     uint32_t minImageCount = std::max(imageCount, surfaceCaps.minImageCount);
-+#if defined(ANGLE_PLATFORM_OHOS)
-+    // HarmonyOS's compositor keeps two of a window's buffers, the one on
-+    // screen and the one queued for its next vsync. With three, every swap
-+    // waited for the GPU work of two frames back, which itself waited to
-+    // acquire an image: 29 ms a swap on a Mate 70 Pro+, and 60 fps video
-+    // dropped a third of its frames. A fourth lets one be drawn meanwhile.
-+    minImageCount = std::max(minImageCount, 4u);
-+#endif
-     // Make sure we don't exceed maxImageCount.
-     if (surfaceCaps.maxImageCount > 0 && minImageCount > surfaceCaps.maxImageCount)
-     {
-@@ -2148,6 +2171,24 @@ angle::Result WindowSurfaceVk::prepareSwapchainForAcquireNextImage(vk::ErrorCont
-                                         isSwapchainValid ? nullptr : &mCompatiblePresentModes));
- 
-     const uint32_t minImageCount = GetMinImageCount(renderer, surfaceCaps, mSwapchainPresentMode);
-+#if defined(ANGLE_PLATFORM_OHOS)
-+    {
-+        static bool logged = false;
-+        if (!logged)
-+        {
-+            logged = true;
-+            std::ostringstream modes;
-+            for (vk::PresentMode mode : mPresentModes)
-+            {
-+                modes << static_cast<int>(vk::ConvertPresentModeToVkPresentMode(mode)) << " ";
-+            }
-+            WARN() << "OHOS swapchain: present mode "
-+                   << static_cast<int>(vk::ConvertPresentModeToVkPresentMode(mSwapchainPresentMode))
-+                   << " of [ " << modes.str() << "], images " << minImageCount << " (surface "
-+                   << surfaceCaps.minImageCount << "-" << surfaceCaps.maxImageCount << ")";
-+        }
-+    }
-+#endif
- 
-     if (isSwapchainValid)
-     {
 diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp
 new file mode 100644
 --- /dev/null
