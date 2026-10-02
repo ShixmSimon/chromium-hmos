@@ -263,7 +263,7 @@ index 361b1d4..3f6cb79 100644
      if (CheckSemaphoreSupport(DeviceExt::ExternalSemaphoreZirconHandle,
                                VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_ZIRCON_EVENT_BIT_FUCHSIA)) {
 diff --git a/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
-index 80150e6..545452e 100644
+index 80150e6..0cf14ea 100644
 --- a/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
 +++ b/third_party/dawn/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
 @@ -55,6 +55,10 @@
@@ -277,7 +277,7 @@ index 80150e6..545452e 100644
  namespace dawn::native::vulkan {
  
  namespace {
-@@ -117,6 +121,44 @@ ResultOrError<wgpu::TextureFormat> FormatFromDrmFormat(uint32_t drmFormat) {
+@@ -117,6 +121,45 @@ ResultOrError<wgpu::TextureFormat> FormatFromDrmFormat(uint32_t drmFormat) {
  // `externalMemoryHandleTypeFlagBits`. The rest of the parameters are computed from `properties`
  // and `imageFormatInfo`. Additional structs may be chained by passing them in the varardic
  // parameter args.
@@ -285,6 +285,7 @@ index 80150e6..545452e 100644
 +// VK_OHOS_external_memory, as the HarmonyOS SDK's vulkan_ohos.h declares it.
 +// Declared here because Chromium's Vulkan headers do not have it.
 +constexpr uint32_t kOhosNativeBufferHandleType = 0x00008000;  // OH_NATIVE_BUFFER_BIT
++constexpr uint32_t kOhosNativeBufferHandleTypeDeprecated = 0x00002000;  // OHOS_NATIVE_BUFFER_BIT
 +constexpr VkStructureType kOhosStructureTypeNativeBufferProperties =
 +    static_cast<VkStructureType>(1000452001);
 +constexpr VkStructureType kOhosStructureTypeNativeBufferFormatProperties =
@@ -322,7 +323,7 @@ index 80150e6..545452e 100644
  template <typename... AdditionalChains>
  ResultOrError<VkImage> CreateExternalVkImage(
      Device* device,
-@@ -770,6 +812,133 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
+@@ -770,6 +813,156 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
          }
      }
      return sharedTextureMemory;
@@ -333,8 +334,6 @@ index 80150e6..545452e 100644
 +    // (YCbCr) formats.
 +    VkDevice vkDevice = device->GetVkDevice();
 +    auto* nativeBuffer = static_cast<OH_NativeBuffer*>(descriptor->handle);
-+    const VkExternalMemoryHandleTypeFlagBits handleType =
-+        static_cast<VkExternalMemoryHandleTypeFlagBits>(kOhosNativeBufferHandleType);
 +
 +    OH_NativeBuffer_Config config = {};
 +    OH_NativeBuffer_GetConfig(nativeBuffer, &config);
@@ -395,16 +394,41 @@ index 80150e6..545452e 100644
 +        vkCreateFlags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 +    }
 +
++    // Which handle type the driver takes the import as, and whether it can
++    // make the image mutable-format: the SDK's current
++    // VK_EXTERNAL_MEMORY_HANDLE_TYPE_OH_NATIVE_BUFFER_BIT_OHOS or the
++    // deprecated value older drivers know, each first with and then without
++    // VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT (without it, no -srgb views).
 +    VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {};
 +    imageFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
 +    imageFormatInfo.format = vkFormat;
 +    imageFormatInfo.type = VK_IMAGE_TYPE_2D;
 +    imageFormatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 +    imageFormatInfo.usage = vkUsageFlags;
-+    imageFormatInfo.flags = vkCreateFlags;
-+    DAWN_TRY_CONTEXT(
-+        CheckExternalImageFormatSupport(device, properties, &imageFormatInfo, handleType),
-+        "checking import support of OH_NativeBuffer");
++    VkExternalMemoryHandleTypeFlagBits handleType = {};
++    bool importable = false;
++    for (uint32_t candidateType :
++         {kOhosNativeBufferHandleType, kOhosNativeBufferHandleTypeDeprecated}) {
++        for (VkImageCreateFlags candidateFlags :
++             {vkCreateFlags, vkCreateFlags & ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT}) {
++            imageFormatInfo.pNext = nullptr;
++            imageFormatInfo.flags = candidateFlags;
++            handleType = static_cast<VkExternalMemoryHandleTypeFlagBits>(candidateType);
++            MaybeError supported =
++                CheckExternalImageFormatSupport(device, properties, &imageFormatInfo, handleType);
++            imageFormatInfo.pNext = nullptr;
++            if (!supported.IsError()) {
++                importable = true;
++                break;
++            }
++            std::ignore = supported.AcquireError();
++        }
++        if (importable) {
++            break;
++        }
++    }
++    DAWN_INVALID_IF(!importable, "OH_NativeBuffer %s with %s cannot be imported.",
++                    properties.format, properties.usage);
 +
 +    {
 +        VkImage vkImage;
