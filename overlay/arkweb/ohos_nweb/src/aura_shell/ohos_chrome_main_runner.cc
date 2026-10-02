@@ -239,6 +239,12 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
 
   startup_config_ = config;
   ApplySystemTimeZone();
+  // ANGLE reaches the system EGL and GLES through the HarmonyOS wrapper's
+  // exports here too, as in a GPU process of its own: an EGLImage of a
+  // native buffer can only be made by the wrapper, against a display the
+  // wrapper gave out, and the display ANGLE got through eglGetProcAddress
+  // was the driver's. See ohos-angle-null-gl-strings.patch.
+  setenv("OHOS_ANGLE_WRAPPER_EXPORTS", "1", /*overwrite=*/0);
   arguments_ = BuildArgumentsLocked(config);
   started_ = true;
   if (!config.headless) {
