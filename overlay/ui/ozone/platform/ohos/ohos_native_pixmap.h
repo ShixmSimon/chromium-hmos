@@ -33,8 +33,9 @@ class NativePixmapGLBinding;
 // HarmonyOS has no public way back from a dma-buf fd to its OH_NativeBuffer,
 // which EGL_NATIVE_BUFFER_OHOS needs. The GPU process allocates the buffers
 // and imports them itself, so it keeps each one in a registry, and a handle
-// coming back to it is resolved there by comparing open files (kcmp): the
-// dma-buf inode would be the natural key, but HarmonyOS reports 0 for it. A
+// coming back to it is resolved there by the name it gave the dma-buf: the
+// inode would be the natural key, but HarmonyOS reports 0 for it, and kcmp
+// is not allowed in the app sandbox. A
 // buffer stays registered for a while after its last pixmap goes, in case
 // its handle is still on the way. Renderers, processes of their own, only
 // write into the buffer: they map the dma-buf fd directly.

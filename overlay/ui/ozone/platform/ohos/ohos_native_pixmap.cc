@@ -9,11 +9,11 @@
 #include <native_window/external_window.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <linux/kcmp.h>
-#include <sys/syscall.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <map>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -22,6 +22,7 @@
 #include "base/memory/ref_counted.h"
 #include "base/no_destructor.h"
 #include "base/posix/eintr_wrapper.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/synchronization/lock.h"
 #include "base/thread_annotations.h"
 #include "base/time/time.h"
@@ -74,24 +75,46 @@ struct BufferEntry {
   OH_NativeBuffer* buffer = nullptr;
   OHNativeWindowBuffer* window_buffer = nullptr;
   base::ScopedFD fd;
+  // Its dma-buf's name, which identifies it; see BufferRegistry.
+  std::string name;
   std::vector<PlaneLayout> planes;
   int users = 0;
   base::TimeTicks unused_since;
 };
 
-// Whether two fds of this process are the same open dma-buf. Its inode
-// cannot tell: HarmonyOS reports 0 for every dma-buf.
-bool IsSameFile(int a, int b) {
-  const pid_t pid = getpid();
-  const long result = syscall(SYS_kcmp, pid, pid, KCMP_FILE, a, b);
-  if (result < 0) {
-    static bool logged = false;
-    if (!logged) {
-      logged = true;
-      PLOG(ERROR) << "OHOS native pixmap: kcmp";
-    }
+// What the kernel says about an open file, from /proc/self/fdinfo. Read
+// with plain syscalls: this runs on the GPU thread, where base's file
+// helpers would assert.
+std::string FdInfo(int fd) {
+  const std::string path = "/proc/self/fdinfo/" + base::NumberToString(fd);
+  base::ScopedFD file(HANDLE_EINTR(open(path.c_str(), O_RDONLY | O_CLOEXEC)));
+  if (!file.is_valid()) {
+    return std::string();
   }
-  return result == 0;
+  std::string info;
+  char chunk[512];
+  ssize_t length;
+  while ((length = HANDLE_EINTR(read(file.get(), chunk, sizeof(chunk)))) > 0) {
+    info.append(chunk, static_cast<size_t>(length));
+  }
+  return info;
+}
+
+// The name a dma-buf was given with DMA_BUF_SET_NAME, or empty.
+std::string DmaBufName(int fd) {
+  const std::string info = FdInfo(fd);
+  const size_t start = info.find("name:");
+  if (start == std::string::npos) {
+    return std::string();
+  }
+  size_t begin = info.find_first_not_of(" 	", start + 5);
+  if (begin == std::string::npos) {
+    return std::string();
+  }
+  const size_t end = info.find('
+', begin);
+  return info.substr(begin, end == std::string::npos ? std::string::npos
+                                                     : end - begin);
 }
 
 void ReleaseEntry(BufferEntry& entry) {
@@ -105,7 +128,11 @@ void ReleaseEntry(BufferEntry& entry) {
   entry.buffer = nullptr;
 }
 
-// The buffers this process allocated, by an id of their own.
+// The buffers this process allocated, by an id of their own. A dma-buf fd
+// cannot be traced back to one by its inode, which HarmonyOS reports as 0
+// for every dma-buf, nor with kcmp, which the app sandbox kills a process
+// for. So each buffer is named after its id (DMA_BUF_SET_NAME) and a handle
+// is resolved by the name the kernel reports for its fd.
 class BufferRegistry {
  public:
   static BufferRegistry& Get() {
@@ -173,6 +200,26 @@ class BufferRegistry {
       ReleaseEntry(*entry);
       return std::nullopt;
     }
+    uint64_t key;
+    {
+      base::AutoLock hold(lock_);
+      key = ++last_key_;
+    }
+    entry->name = "cr-ohos-" + base::NumberToString(getpid()) + "-" +
+                  base::NumberToString(key);
+    if (HANDLE_EINTR(ioctl(entry->fd.get(), DMA_BUF_SET_NAME,
+                           entry->name.c_str())) != 0 ||
+        DmaBufName(entry->fd.get()) != entry->name) {
+      static bool logged_failure = false;
+      if (!logged_failure) {
+        logged_failure = true;
+        PLOG(ERROR) << "OHOS native pixmap: could not name the dma-buf; "
+                       "fdinfo: "
+                    << FdInfo(entry->fd.get());
+      }
+      ReleaseEntry(*entry);
+      return std::nullopt;
+    }
     entry->users = 1;
 
     static bool logged = false;
@@ -187,16 +234,19 @@ class BufferRegistry {
 
     base::AutoLock hold(lock_);
     PurgeUnused();
-    const uint64_t key = ++last_key_;
     entries_[key] = std::move(entry);
     return key;
   }
 
   // Takes a user on the buffer `fd` belongs to, if this process has it.
   std::optional<uint64_t> Acquire(int fd) {
+    const std::string name = DmaBufName(fd);
+    if (name.empty()) {
+      return std::nullopt;
+    }
     base::AutoLock hold(lock_);
     for (auto& [key, entry] : entries_) {
-      if (entry->fd.is_valid() && IsSameFile(entry->fd.get(), fd)) {
+      if (entry->name == name) {
         ++entry->users;
         return key;
       }
