@@ -29,6 +29,7 @@
 #include "ui/gfx/client_native_pixmap.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gl/gl_bindings.h"
+#include "ui/gl/gl_implementation.h"
 #include "ui/gl/scoped_binders.h"
 #include "ui/gl/scoped_egl_image.h"
 #include "ui/ozone/public/native_pixmap_gl_binding.h"
@@ -522,7 +523,17 @@ class OhosNativePixmapGLBinding : public NativePixmapGLBinding {
 }  // namespace
 
 bool IsOhosNativePixmapFormat(viz::SharedImageFormat format) {
-  return OhosFormatFor(format).has_value();
+  if (!OhosFormatFor(format).has_value()) {
+    return false;
+  }
+  // The import is EGL_NATIVE_BUFFER_OHOS, which ANGLE's GLES backend hands
+  // to the system EGL. Its Vulkan backend has nothing of the kind -- that
+  // would be VK_OHOS_native_buffer -- and crashed creating the image, so
+  // under it video keeps uploading planes. A process that has not set up
+  // GL (kNone) answers for the GPU's sake as GLES would.
+  const gl::ANGLEImplementation angle = gl::GetANGLEImplementation();
+  return angle == gl::ANGLEImplementation::kNone ||
+         angle == gl::ANGLEImplementation::kOpenGLES;
 }
 
 scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmap(
