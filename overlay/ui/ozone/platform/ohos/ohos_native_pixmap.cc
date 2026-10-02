@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/command_line.h"
 #include "base/files/scoped_file.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
@@ -38,6 +39,29 @@
 
 namespace ui {
 namespace {
+
+// Experiment, while 2160p60 frames take 64 ms of CPU to copy in: usage bits
+// added to a video buffer's (hex, --ohos-native-buffer-usage=0x10000), and
+// how a mapping is synced for the CPU (--ohos-native-buffer-sync=rw, write
+// or none).
+uint64_t ExtraVideoUsage() {
+  static const uint64_t extra = [] {
+    uint64_t value = 0;
+    base::HexStringToUInt64(
+        base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+            "ohos-native-buffer-usage"),
+        &value);
+    return value;
+  }();
+  return extra;
+}
+
+std::string VideoSyncMode() {
+  static const base::NoDestructor<std::string> mode(
+      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+          "ohos-native-buffer-sync"));
+  return *mode;
+}
 
 // HarmonyOS's EGL target for an OHNativeWindowBuffer
 // (ohos-angle-native-buffer-image.patch passes it through ANGLE).
@@ -181,7 +205,16 @@ class BufferRegistry {
                        : NATIVEBUFFER_USAGE_MEM_DMA |
                              NATIVEBUFFER_USAGE_HW_TEXTURE |
                              NATIVEBUFFER_USAGE_HW_RENDER;
+    if (yuv && ExtraVideoUsage()) {
+      config.usage |= ExtraVideoUsage();
+    }
     OH_NativeBuffer* buffer = OH_NativeBuffer_Alloc(&config);
+    if (!buffer && yuv && ExtraVideoUsage()) {
+      LOG(WARNING) << "OHOS native pixmap: usage 0x" << std::hex
+                   << config.usage << " refused, trying without the extra";
+      config.usage &= ~ExtraVideoUsage();
+      buffer = OH_NativeBuffer_Alloc(&config);
+    }
     if (!buffer) {
       LOG(ERROR) << "OHOS native pixmap: could not allocate "
                  << size.ToString() << " " << format.ToString();
@@ -285,7 +318,7 @@ class BufferRegistry {
       }
       LOG(WARNING) << "OHOS native pixmap: " << format.ToString() << " "
                    << size.ToString() << " planes " << layout << "buffer "
-                   << handle->size;
+                   << handle->size << " usage 0x" << std::hex << config.usage;
     }
 
     base::AutoLock hold(lock_);
@@ -500,8 +533,12 @@ class OhosClientNativePixmap : public gfx::ClientNativePixmap {
  private:
   // Keeps the CPU's caches and the GPU's view of the buffer in step.
   void Sync(uint64_t when) {
+    const std::string mode = VideoSyncMode();
+    if (mode == "none") {
+      return;
+    }
     struct dma_buf_sync sync = {};
-    sync.flags = when | DMA_BUF_SYNC_RW;
+    sync.flags = when | (mode == "write" ? DMA_BUF_SYNC_WRITE : DMA_BUF_SYNC_RW);
     if (HANDLE_EINTR(ioctl(handle_.planes[0].fd.get(), DMA_BUF_IOCTL_SYNC,
                            &sync)) != 0) {
       PLOG(WARNING) << "OHOS native pixmap: DMA_BUF_IOCTL_SYNC";
