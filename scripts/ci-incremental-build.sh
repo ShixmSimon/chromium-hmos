@@ -294,6 +294,13 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-fence-capability.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-gpu-context-failure-log-throttle.patch"
   retire_incremental_patch "${repo_root}/patches/ohos-gl-init-diagnostics.patch"
+  # The swapchain experiments (4462e42, 5e051d0) came out of the patch by
+  # removing lines only, which a tree that had them takes for "already
+  # applied". SurfaceVk.cpp is no other patch's, so it goes back to pristine.
+  if grep -q 'OHOS swapchain:'       "${src}/third_party/angle/src/libANGLE/renderer/vulkan/SurfaceVk.cpp" 2>/dev/null; then
+    git -C "${src}/third_party/angle" checkout -- src/libANGLE/renderer/vulkan/SurfaceVk.cpp
+    say "restored SurfaceVk.cpp from the swapchain experiments"
+  fi
   apply_incremental_patch "${repo_root}/patches/ohos-angle.patch"
   # P010 video frames from OH_NativeBuffers (overlay ohos_native_pixmap.h).
   apply_incremental_patch "${repo_root}/patches/ohos-native-pixmap-video.patch"
