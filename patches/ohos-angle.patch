@@ -660,7 +660,27 @@ diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/SurfaceVk.cpp b/thir
  #include "common/unsafe_buffers.h"
  
  #include "common/debug.h"
-@@ -131,6 +133,14 @@ uint32_t GetMinImageCount(vk::Renderer *renderer,
+@@ -58,6 +60,19 @@ vk::PresentMode GetDesiredPresentMode(const std::vector<vk::PresentMode> &presen
+     // always be supported.
+     if (interval > 0)
+     {
++#if defined(ANGLE_PLATFORM_OHOS)
++        // Chromium paces frames to vsync itself (BeginFrame). Under FIFO on a
++        // Mate 70 Pro+ each frame's GPU work finished ~60 ms after it was
++        // submitted, two frames late, and every swap waited 29 ms for it;
++        // mailbox presents without holding the queue for vsync.
++        for (vk::PresentMode presentMode : presentModes)
++        {
++            if (presentMode == vk::PresentMode::MailboxKHR)
++            {
++                return vk::PresentMode::MailboxKHR;
++            }
++        }
++#endif
+         return vk::PresentMode::FifoKHR;
+     }
+ 
+@@ -131,6 +146,14 @@ uint32_t GetMinImageCount(vk::Renderer *renderer,
              : 0x3u;
  
      uint32_t minImageCount = std::max(imageCount, surfaceCaps.minImageCount);
@@ -675,7 +695,7 @@ diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/SurfaceVk.cpp b/thir
      // Make sure we don't exceed maxImageCount.
      if (surfaceCaps.maxImageCount > 0 && minImageCount > surfaceCaps.maxImageCount)
      {
-@@ -2148,6 +2158,24 @@ angle::Result WindowSurfaceVk::prepareSwapchainForAcquireNextImage(vk::ErrorCont
+@@ -2148,6 +2171,24 @@ angle::Result WindowSurfaceVk::prepareSwapchainForAcquireNextImage(vk::ErrorCont
                                          isSwapchainValid ? nullptr : &mCompatiblePresentModes));
  
      const uint32_t minImageCount = GetMinImageCount(renderer, surfaceCaps, mSwapchainPresentMode);
