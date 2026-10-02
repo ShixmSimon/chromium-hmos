@@ -12,8 +12,10 @@
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
 #include "base/strings/string_split.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "ui/gfx/color_space.h"
+#include "ui/gfx/presentation_feedback.h"
 #include "ui/gfx/vsync_provider.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_display.h"
@@ -401,6 +403,35 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
   bool ten_bit_unavailable_ = false;
 };
 
+// A window's surface when the shell never made one for it: draws into a 1x1
+// pbuffer and drops every frame. viz presents to a window's surface each
+// frame, and a pbuffer's own SwapBuffers is NOTREACHED -- the GPU thread
+// trapped on the first frame of a second browser window drawn offscreen.
+class OhosDetachedGLSurface : public gl::PbufferGLSurfaceEGL {
+ public:
+  explicit OhosDetachedGLSurface(gl::GLDisplayEGL* display)
+      : PbufferGLSurfaceEGL(display, gfx::Size(1, 1)) {}
+
+  gfx::SwapResult SwapBuffers(PresentationCallback callback,
+                              gfx::FrameData data) override {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback),
+                                  gfx::PresentationFeedback::Failure()));
+    return gfx::SwapResult::SWAP_ACK;
+  }
+
+  // Stays 1x1: nothing it draws is seen, so it need not be window-sized.
+  bool Resize(const gfx::Size& size,
+              float scale_factor,
+              const gfx::ColorSpace& color_space,
+              bool has_alpha) override {
+    return true;
+  }
+
+ private:
+  ~OhosDetachedGLSurface() override = default;
+};
+
 class GLOzoneEGLOhos : public GLOzoneEGL {
  public:
   GLOzoneEGLOhos() = default;
@@ -426,7 +457,9 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
         // nowhere instead.
         LOG(ERROR) << "No native surface for widget " << widget
                    << "; drawing it offscreen";
-        return CreateOffscreenGLSurface(display, gfx::Size(1, 1));
+        return gl::InitializeGLSurface(
+            base::MakeRefCounted<OhosDetachedGLSurface>(
+                display->GetAs<gl::GLDisplayEGL>()));
       }
       return nullptr;
     }
