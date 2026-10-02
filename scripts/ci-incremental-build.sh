@@ -315,6 +315,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-angle-native-buffer-image.patch"
   # P010 video frames from OH_NativeBuffers (overlay ohos_native_pixmap.h).
   apply_incremental_patch "${repo_root}/patches/ohos-native-pixmap-video.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-video-output-format-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-implementation.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-surface-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-compositor-diagnostics.patch"

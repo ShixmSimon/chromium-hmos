@@ -1,0 +1,43 @@
+Log what the renderer sees when it picks a video output format.
+
+Diagnostic for the P010 native-buffer path on HarmonyOS.
+
+diff --git a/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc b/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc
+index 709223f..9a2bd4d 100644
+--- a/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc
++++ b/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc
+@@ -29,6 +29,11 @@
+ #include "services/viz/public/cpp/gpu/context_provider_command_buffer.h"
+ #include "third_party/skia/include/core/SkTypes.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "base/logging.h"
++#include "media/base/video_types.h"
++#endif
++
+ namespace media {
+ 
+ #if BUILDFLAG(IS_WIN)
+@@ -282,6 +287,22 @@ MojoGpuVideoAcceleratorFactories::VideoFrameOutputFormat(
+   const auto& shared_image_capabilities =
+       context_provider_->SharedImageInterface()->GetCapabilities();
+   const size_t bit_depth = media::BitDepth(pixel_format);
++#if BUILDFLAG(IS_OHOS)
++  // TODO: diagnosing why 10-bit video still bypasses the frame pool; remove
++  // once P010 native buffers are in use.
++  static size_t logged_bit_depth = 0;
++  if (logged_bit_depth != bit_depth) {
++    logged_bit_depth = bit_depth;
++    LOG(WARNING) << "OHOS video output format: "
++                 << media::VideoPixelFormatToString(pixel_format)
++                 << ", p010 sampling "
++                 << shared_image_capabilities.supports_ycbcr_p010_sampling
++                 << ", nv12 sampling "
++                 << shared_image_capabilities.supports_ycbcr_nv12_sampling
++                 << ", texture_rg " << capabilities.texture_rg
++                 << ", rendering " << rendering_color_space_.ToString();
++  }
++#endif
+   if (bit_depth > 8) {
+     if (shared_image_capabilities.supports_ycbcr_p010_sampling &&
+         bit_depth == 10) {

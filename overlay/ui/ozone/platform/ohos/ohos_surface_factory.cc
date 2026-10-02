@@ -532,6 +532,9 @@ OhosSurfaceFactory::CreateNativePixmapFromHandle(
 
 bool OhosSurfaceFactory::IsFormatSupportedForTexturing(
     viz::SharedImageFormat format) const {
+  // TODO: diagnosing the P010 native-buffer path; remove once it is in use.
+  LOG(WARNING) << "OHOS native pixmap: texturing " << format.ToString()
+               << " asked, " << IsOhosNativePixmapFormat(format);
   return IsOhosNativePixmapFormat(format);
 }
 
