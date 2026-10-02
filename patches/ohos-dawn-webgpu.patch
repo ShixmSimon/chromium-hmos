@@ -60,7 +60,7 @@ index 2e64a7f..d39dd49 100644
  #endif
  }
 diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buffer/service/webgpu_decoder_impl.cc
-index a7f3698..346a4f5 100644
+index a7f3698..b7eadd6 100644
 --- a/gpu/command_buffer/service/webgpu_decoder_impl.cc
 +++ b/gpu/command_buffer/service/webgpu_decoder_impl.cc
 @@ -1809,6 +1809,13 @@ wgpu::Adapter WebGPUDecoderImpl::CreatePreferredAdapter(
@@ -77,6 +77,34 @@ index a7f3698..346a4f5 100644
  #else
      // Chromium is in the midst of being transitioned to SharedTextureMemory
      // platform by platform. On platforms that have not yet been transitioned,
+@@ -1840,6 +1847,27 @@ wgpu::Adapter WebGPUDecoderImpl::CreatePreferredAdapter(
+   // Enumerate adapters in order of the preferred backend type.
+   for (wgpu::BackendType backend_type : backend_types) {
+     adapter_options.backendType = backend_type;
++#if BUILDFLAG(IS_OHOS)
++    // TODO: experimental WebGPU bring-up; remove once adapters are found.
++    {
++      auto found = dawn_instance_->EnumerateAdapters(&adapter_options);
++      LOG(WARNING) << "OHOS WebGPU: backend " << static_cast<int>(backend_type)
++                   << ", " << found.size() << " adapters";
++      for (dawn::native::Adapter& native_adapter : found) {
++        wgpu::Adapter adapter(native_adapter.Get());
++        wgpu::AdapterInfo info = {};
++        adapter.GetInfo(&info);
++        LOG(WARNING) << "OHOS WebGPU: adapter "
++                     << std::string_view(info.device) << " type "
++                     << static_cast<int>(info.adapterType) << " vendor 0x"
++                     << std::hex << info.vendorID << std::dec
++                     << ", blocklist " << use_blocklist() << " blocked "
++                     << (use_blocklist() &&
++                         IsWebGPUAdapterBlocklisted(adapter).blocked)
++                     << ", usable " << CanUseAdapter(native_adapter);
++      }
++    }
++#endif
+     for (dawn::native::Adapter& native_adapter :
+          dawn_instance_->EnumerateAdapters(&adapter_options)) {
+       native_adapter.SetUseTieredLimits(tiered_adapter_limits_);
 diff --git a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp b/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
 index a93ea4f..2c38742 100644
 --- a/third_party/dawn/src/dawn/native/vulkan/BackendVk.cpp
