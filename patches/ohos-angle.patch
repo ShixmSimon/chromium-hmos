@@ -185,10 +185,13 @@ The Vulkan backend imports EGL_NATIVE_BUFFER_OHOS too, as the Android one
 imports AHardwareBuffers: NativeBufferImageSiblingVkOhos takes the
 OHNativeWindowBuffer's OH_NativeBuffer through VK_OHOS_external_memory
 (enabled with VK_EXT_queue_family_foreign when the device has both) into a
-dedicated allocation. The Maleoon driver names no VkFormat for YUV, so NV12
-and P010 -- linear, being CPU-written -- import as the matching two-plane
-formats and are sampled through a YCbCr conversion whose matrix and range
-come from the buffer's color space. Without it, video on ANGLE Vulkan was
+dedicated allocation. The Maleoon driver names no VkFormat for YUV. NV12 --
+linear, being CPU-written -- imports as G8_B8R8_2PLANE_420; P010, which
+sampled black that way, is imported and sampled through the driver's
+opaque external format (VkExternalFormatOHOS, chained where Android chains
+VkExternalFormatANDROID, including the YCbCr conversion in
+vk_cache_utils.cpp). Either way the conversion's matrix and range come
+from the buffer's color space. Without it, video on ANGLE Vulkan was
 uploaded plane by plane, 27 ms a frame at 2160p, half of 60 fps.
 
 Generated for Chromium 154.0.8037.51 after chromium-154-harmonyos.patch.
@@ -812,7 +815,7 @@ diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferIma
 new file mode 100644
 --- /dev/null
 +++ b/third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.cpp
-@@ -0,0 +1,458 @@
+@@ -0,0 +1,498 @@
 +//
 +// Copyright 2026 The ANGLE Project Authors. All rights reserved.
 +// Use of this source code is governed by a BSD-style license that can be
@@ -872,6 +875,14 @@ new file mode 100644
 +    VkChromaLocation suggestedYChromaOffset;
 +};
 +
++struct ExternalFormatOHOS
++{
++    VkStructureType sType;
++    void *pNext;
++    uint64_t externalFormat;
++};
++constexpr VkStructureType kStructureTypeExternalFormat = static_cast<VkStructureType>(1000452005);
++
 +struct ImportNativeBufferInfoOHOS
 +{
 +    VkStructureType sType;
@@ -929,8 +940,6 @@ new file mode 100644
 +    {
 +        case NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP:
 +            return VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-+        case NATIVEBUFFER_PIXEL_FMT_YCBCR_P010:
-+            return VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16;
 +        case NATIVEBUFFER_PIXEL_FMT_RGBA_8888:
 +        case NATIVEBUFFER_PIXEL_FMT_RGBX_8888:
 +            return VK_FORMAT_R8G8B8A8_UNORM;
@@ -1027,7 +1036,8 @@ new file mode 100644
 +    OH_NativeBuffer_GetConfig(nativeBuffer, &config);
 +    NativeBufferFormatPropertiesOHOS formatProperties = {};
 +    formatProperties.format                           = VK_FORMAT_UNDEFINED;
-+    if (ImportFormat(formatProperties, config.format) == VK_FORMAT_UNDEFINED)
++    if (ImportFormat(formatProperties, config.format) == VK_FORMAT_UNDEFINED &&
++        config.format != NATIVEBUFFER_PIXEL_FMT_YCBCR_P010)
 +    {
 +        // Formats the driver does name are only known once it is asked; the
 +        // ones this port allocates are all covered above.
@@ -1065,12 +1075,21 @@ new file mode 100644
 +    ANGLE_TRY(GetProperties(displayVk, mNativeBuffer, &bufferProperties, &formatProperties));
 +
 +    const VkFormat importFormat = ImportFormat(formatProperties, config.format);
-+    ANGLE_VK_CHECK(displayVk, importFormat != VK_FORMAT_UNDEFINED, VK_ERROR_FORMAT_NOT_SUPPORTED);
++    // An opaque driver format (P010 on Maleoon: the layout is the driver's,
++    // not the two-plane one CPU writes suggest) is sampled through its
++    // external format, as Android samples AHardwareBuffers it cannot name.
++    const bool isExternal = importFormat == VK_FORMAT_UNDEFINED &&
++                            formatProperties.externalFormat != 0 &&
++                            (formatProperties.formatFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
++    ANGLE_VK_CHECK(displayVk, importFormat != VK_FORMAT_UNDEFINED || isExternal,
++                   VK_ERROR_FORMAT_NOT_SUPPORTED);
 +
-+    const vk::Format &vkFormat       = renderer->getFormat(vk::GetFormatIDFromVkFormat(importFormat));
++    const vk::Format &vkFormat =
++        renderer->getFormat(isExternal ? angle::FormatID::NONE
++                                       : vk::GetFormatIDFromVkFormat(importFormat));
 +    const angle::Format &imageFormat = vkFormat.getActualRenderableImageFormat();
-+    mFormat                          = gl::Format(vkFormat.getIntendedGLFormat());
-+    mYUV                             = imageFormat.isYUV;
++    mFormat = isExternal ? gl::Format(GL_RGB10_A2_EXT) : gl::Format(vkFormat.getIntendedGLFormat());
++    mYUV    = isExternal || imageFormat.isYUV;
 +
 +    VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 +    if ((config.usage & NATIVEBUFFER_USAGE_HW_TEXTURE) != 0 || mYUV)
@@ -1091,20 +1110,44 @@ new file mode 100644
 +        VkSamplerYcbcrRange range;
 +        YcbcrConversionFor(mNativeBuffer, formatProperties, &model, &range);
 +        const vk::YcbcrLinearFilterSupport linearFilterSupported =
-+            renderer->hasImageFormatFeatureBits(
++            !isExternal && renderer->hasImageFormatFeatureBits(
 +                imageFormat.id, VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT)
 +                ? vk::YcbcrLinearFilterSupport::Supported
 +                : vk::YcbcrLinearFilterSupport::Unsupported;
-+        // Chromium's buffers are 4:2:0 with chroma sited at the even samples.
-+        conversionDesc.update(renderer, 0, model, range, VK_CHROMA_LOCATION_COSITED_EVEN,
-+                              VK_CHROMA_LOCATION_COSITED_EVEN, vk::kDefaultYCbCrChromaFilter,
-+                              formatProperties.samplerYcbcrConversionComponents, imageFormat.id,
-+                              linearFilterSupported);
++        if (isExternal)
++        {
++            conversionDesc.update(
++                renderer, formatProperties.externalFormat, model, range,
++                formatProperties.suggestedXChromaOffset, formatProperties.suggestedYChromaOffset,
++                vk::kDefaultYCbCrChromaFilter, formatProperties.samplerYcbcrConversionComponents,
++                angle::FormatID::NONE,
++                (formatProperties.formatFeatures &
++                 VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT) != 0
++                    ? vk::YcbcrLinearFilterSupport::Supported
++                    : vk::YcbcrLinearFilterSupport::Unsupported);
++        }
++        else
++        {
++            // Chromium's buffers are 4:2:0 with chroma sited at the even samples.
++            conversionDesc.update(renderer, 0, model, range, VK_CHROMA_LOCATION_COSITED_EVEN,
++                                  VK_CHROMA_LOCATION_COSITED_EVEN, vk::kDefaultYCbCrChromaFilter,
++                                  formatProperties.samplerYcbcrConversionComponents,
++                                  imageFormat.id, linearFilterSupported);
++        }
 +    }
 +
 +    VkExternalMemoryImageCreateInfo externalMemoryImageCreateInfo = {};
 +    externalMemoryImageCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
 +    externalMemoryImageCreateInfo.handleTypes = kHandleTypeNativeBuffer;
++    ExternalFormatOHOS externalFormat = {};
++    if (isExternal)
++    {
++        externalFormat.sType                = kStructureTypeExternalFormat;
++        externalFormat.externalFormat       = formatProperties.externalFormat;
++        externalMemoryImageCreateInfo.pNext = &externalFormat;
++        // An external-format image may only be sampled (VUID-VkImageCreateInfo-pNext-02397).
++        usage = VK_IMAGE_USAGE_SAMPLED_BIT;
++    }
 +
 +    VkExtent3D vkExtents;
 +    gl_vk::GetExtent(mSize, &vkExtents);
@@ -1467,6 +1510,31 @@ new file mode 100644
 +}  // namespace rx
 +
 +#endif  // LIBANGLE_RENDERER_VULKAN_OHOS_WINDOWSURFACEVKOHOS_H_
+diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/vk_cache_utils.cpp b/third_party/angle/src/libANGLE/renderer/vulkan/vk_cache_utils.cpp
+--- a/third_party/angle/src/libANGLE/renderer/vulkan/vk_cache_utils.cpp
++++ b/third_party/angle/src/libANGLE/renderer/vulkan/vk_cache_utils.cpp
+@@ -5601,6 +5601,21 @@ angle::Result YcbcrConversionDesc::init(ErrorContext *context,
+         externalFormat.externalFormat    = mExternalOrVkFormat;
+         samplerYcbcrConversionInfo.pNext = &externalFormat;
+     }
++#elif defined(ANGLE_PLATFORM_OHOS)
++    // VkExternalFormatOHOS, which the Khronos headers ANGLE builds against
++    // do not have: an OH_NativeBuffer's opaque YUV format (P010 on Maleoon).
++    struct
++    {
++        VkStructureType sType;
++        void *pNext;
++        uint64_t externalFormat;
++    } externalFormat = {};
++    if (getExternalFormat() != 0)
++    {
++        externalFormat.sType             = static_cast<VkStructureType>(1000452005);
++        externalFormat.externalFormat    = mExternalOrVkFormat;
++        samplerYcbcrConversionInfo.pNext = &externalFormat;
++    }
+ #else
+     // We do not support external format for any platform other than Android.
+     ASSERT(mIsExternalFormat == 0);
 diff --git a/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.cpp b/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.cpp
 --- a/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.cpp
 +++ b/third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.cpp
