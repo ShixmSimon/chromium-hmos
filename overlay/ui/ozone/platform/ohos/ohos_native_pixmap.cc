@@ -9,7 +9,8 @@
 #include <native_window/external_window.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
+#include <linux/kcmp.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #include <map>
@@ -78,9 +79,19 @@ struct BufferEntry {
   base::TimeTicks unused_since;
 };
 
-ino_t InodeOf(int fd) {
-  struct stat info = {};
-  return fstat(fd, &info) == 0 ? info.st_ino : 0;
+// Whether two fds of this process are the same open dma-buf. Its inode
+// cannot tell: HarmonyOS reports 0 for every dma-buf.
+bool IsSameFile(int a, int b) {
+  const pid_t pid = getpid();
+  const long result = syscall(SYS_kcmp, pid, pid, KCMP_FILE, a, b);
+  if (result < 0) {
+    static bool logged = false;
+    if (!logged) {
+      logged = true;
+      PLOG(ERROR) << "OHOS native pixmap: kcmp";
+    }
+  }
+  return result == 0;
 }
 
 void ReleaseEntry(BufferEntry& entry) {
@@ -94,7 +105,7 @@ void ReleaseEntry(BufferEntry& entry) {
   entry.buffer = nullptr;
 }
 
-// The buffers this process allocated, by dma-buf inode.
+// The buffers this process allocated, by an id of their own.
 class BufferRegistry {
  public:
   static BufferRegistry& Get() {
@@ -103,7 +114,7 @@ class BufferRegistry {
   }
 
   // Allocates a buffer and registers it with one user. Returns its key.
-  std::optional<ino_t> Allocate(gfx::Size size, viz::SharedImageFormat format) {
+  std::optional<uint64_t> Allocate(gfx::Size size, viz::SharedImageFormat format) {
     const std::optional<int32_t> ohos_format = OhosFormatFor(format);
     if (!ohos_format || size.IsEmpty()) {
       LOG(ERROR) << "OHOS native pixmap: not allocating " << format.ToString()
@@ -157,10 +168,8 @@ class BufferRegistry {
       return std::nullopt;
     }
     entry->fd.reset(HANDLE_EINTR(dup(handle->fd)));
-    const ino_t key = entry->fd.is_valid() ? InodeOf(entry->fd.get()) : 0;
-    if (!key) {
-      PLOG(ERROR) << "OHOS native pixmap: no inode for fd " << handle->fd
-                  << " (dup " << entry->fd.get() << ")";
+    if (!entry->fd.is_valid()) {
+      PLOG(ERROR) << "OHOS native pixmap: dup";
       ReleaseEntry(*entry);
       return std::nullopt;
     }
@@ -178,23 +187,24 @@ class BufferRegistry {
 
     base::AutoLock hold(lock_);
     PurgeUnused();
+    const uint64_t key = ++last_key_;
     entries_[key] = std::move(entry);
     return key;
   }
 
   // Takes a user on the buffer `fd` belongs to, if this process has it.
-  std::optional<ino_t> Acquire(int fd) {
-    const ino_t key = InodeOf(fd);
+  std::optional<uint64_t> Acquire(int fd) {
     base::AutoLock hold(lock_);
-    auto it = entries_.find(key);
-    if (it == entries_.end()) {
-      return std::nullopt;
+    for (auto& [key, entry] : entries_) {
+      if (entry->fd.is_valid() && IsSameFile(entry->fd.get(), fd)) {
+        ++entry->users;
+        return key;
+      }
     }
-    ++it->second->users;
-    return key;
+    return std::nullopt;
   }
 
-  void Unuse(ino_t key) {
+  void Unuse(uint64_t key) {
     base::AutoLock hold(lock_);
     auto it = entries_.find(key);
     if (it != entries_.end() && --it->second->users == 0) {
@@ -204,7 +214,7 @@ class BufferRegistry {
 
   // Runs `use` on the entry for `key`, or on null, under the lock.
   template <typename Use>
-  auto With(ino_t key, Use use) {
+  auto With(uint64_t key, Use use) {
     base::AutoLock hold(lock_);
     auto it = entries_.find(key);
     return use(it == entries_.end() ? nullptr : it->second.get());
@@ -228,12 +238,13 @@ class BufferRegistry {
   }
 
   base::Lock lock_;
-  std::map<ino_t, std::unique_ptr<BufferEntry>> entries_ GUARDED_BY(lock_);
+  uint64_t last_key_ GUARDED_BY(lock_) = 0;
+  std::map<uint64_t, std::unique_ptr<BufferEntry>> entries_ GUARDED_BY(lock_);
 };
 
 class OhosNativePixmap : public gfx::NativePixmap {
  public:
-  OhosNativePixmap(ino_t key, gfx::Size size, viz::SharedImageFormat format)
+  OhosNativePixmap(uint64_t key, gfx::Size size, viz::SharedImageFormat format)
       : key_(key), size_(size), format_(format) {
     BufferRegistry::Get().With(key_, [this](BufferEntry* entry) {
       if (entry) {
@@ -244,7 +255,7 @@ class OhosNativePixmap : public gfx::NativePixmap {
     });
   }
 
-  ino_t key() const { return key_; }
+  uint64_t key() const { return key_; }
 
   bool AreDmaBufFdsValid() const override { return fd_ >= 0; }
   int GetDmaBufFd(size_t plane) const override { return fd_; }
@@ -294,7 +305,7 @@ class OhosNativePixmap : public gfx::NativePixmap {
  private:
   ~OhosNativePixmap() override { BufferRegistry::Get().Unuse(key_); }
 
-  const ino_t key_;
+  const uint64_t key_;
   const gfx::Size size_;
   const viz::SharedImageFormat format_;
   // Owned by the registry entry, which outlives this pixmap.
@@ -454,7 +465,7 @@ scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmap(
     LOG(WARNING) << "OHOS native pixmap: create " << format.ToString() << " "
                  << size.ToString() << " (" << requests << ")";
   }
-  const std::optional<ino_t> key =
+  const std::optional<uint64_t> key =
       BufferRegistry::Get().Allocate(size, format);
   if (!key) {
     return nullptr;
@@ -476,7 +487,7 @@ scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmapFromHandle(
       !handle.planes[0].fd.is_valid()) {
     return nullptr;
   }
-  const std::optional<ino_t> key =
+  const std::optional<uint64_t> key =
       BufferRegistry::Get().Acquire(handle.planes[0].fd.get());
   if (!key) {
     LOG(ERROR) << "OHOS native pixmap: handle for a buffer from elsewhere";
@@ -493,7 +504,7 @@ std::unique_ptr<NativePixmapGLBinding> ImportOhosNativePixmap(
   if (!pixmap || !IsOhosNativePixmapFormat(pixmap->GetSharedImageFormat())) {
     return nullptr;
   }
-  const ino_t key = static_cast<OhosNativePixmap*>(pixmap.get())->key();
+  const uint64_t key = static_cast<OhosNativePixmap*>(pixmap.get())->key();
   OHNativeWindowBuffer* window_buffer = BufferRegistry::Get().With(
       key, [&color_space](BufferEntry* entry) -> OHNativeWindowBuffer* {
         if (!entry || !entry->window_buffer) {
