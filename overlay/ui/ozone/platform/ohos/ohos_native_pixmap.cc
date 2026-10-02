@@ -444,6 +444,12 @@ bool IsOhosNativePixmapFormat(viz::SharedImageFormat format) {
 scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmap(
     gfx::Size size,
     viz::SharedImageFormat format) {
+  // TODO: diagnosing the P010 native-buffer path; remove once it is in use.
+  static int requests = 0;
+  if (requests++ % 100 == 0) {
+    LOG(WARNING) << "OHOS native pixmap: create " << format.ToString() << " "
+                 << size.ToString() << " (" << requests << ")";
+  }
   const std::optional<ino_t> key =
       BufferRegistry::Get().Allocate(size, format);
   if (!key) {

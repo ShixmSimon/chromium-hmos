@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "base/files/file_path.h"
+#include "base/logging.h"
 #include "ui/base/cursor/cursor_factory.h"
 #include "ui/display/types/native_display_delegate.h"
 #include "ui/events/ozone/layout/keyboard_layout_engine_manager.h"
@@ -77,9 +78,17 @@ class OzonePlatformOhos : public OzonePlatform {
   // Video frames the renderer writes and the GPU samples: ohos_native_pixmap.h.
   bool IsNativePixmapConfigSupported(viz::SharedImageFormat format,
                                      gfx::BufferUsage usage) const override {
-    return IsOhosNativePixmapFormat(format) &&
-           (usage == gfx::BufferUsage::GPU_READ_CPU_READ_WRITE ||
-            usage == gfx::BufferUsage::SCANOUT_CPU_READ_WRITE);
+    const bool supported =
+        IsOhosNativePixmapFormat(format) &&
+        (usage == gfx::BufferUsage::GPU_READ_CPU_READ_WRITE ||
+         usage == gfx::BufferUsage::SCANOUT_CPU_READ_WRITE);
+    // TODO: diagnosing the P010 native-buffer path; remove once it is in use.
+    if (format.is_multi_plane()) {
+      LOG(WARNING) << "OHOS native pixmap: config " << format.ToString()
+                   << " usage " << static_cast<int>(usage) << " -> "
+                   << supported;
+    }
+    return supported;
   }
   PlatformClipboard* GetPlatformClipboard() override {
     if (!clipboard_) {
