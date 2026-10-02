@@ -23,6 +23,7 @@
 #include "ui/ozone/common/gl_ozone_egl.h"
 #include <native_window/external_window.h>
 
+#include "ui/ozone/platform/ohos/ohos_gpu_capability_probe.h"
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 #include "ui/ozone/platform/ohos/ohos_screen.h"
@@ -430,6 +431,9 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
     }
 
     LogTenBitConfigs(display->GetAs<gl::GLDisplayEGL>()->GetDisplay());
+    // TODO: diagnostic for sharing native buffers with Dawn; remove once
+    // answered.
+    ProbeOhosGpuSharingCapabilities();
     auto vsync_provider = std::make_unique<OhosVSyncProvider>(
         GetOhosApplicationWindowIdForWidget(widget));
     auto gl_surface = base::MakeRefCounted<OhosNativeViewGLSurfaceEGL>(
