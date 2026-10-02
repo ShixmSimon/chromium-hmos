@@ -1,5 +1,6 @@
 #include "ui/ozone/platform/ohos/ohos_platform_window.h"
 
+#include "base/logging.h"
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
 #include "ui/base/cursor/cursor.h"
@@ -173,7 +174,26 @@ bool OhosPlatformWindow::IsVisible() const {
   return adapter_.IsVisible();
 }
 
-void OhosPlatformWindow::SetBoundsInPixels(const gfx::Rect& bounds) {
+void OhosPlatformWindow::SetBoundsInPixels(const gfx::Rect& requested) {
+  gfx::Rect bounds = requested;
+  // A window the shell hosts in a surface of its own is placed and sized by
+  // the shell; what Chromium asks for cannot change the XComponent. A second
+  // browser window opened restored, at the size WindowSizer chose, which was
+  // taller than the XComponent below the status bar: drawn from the bottom
+  // up, its top -- tab strip, toolbar, half the bookmark bar -- fell off the
+  // surface. Follow the surface instead, as OnNativeSurfaceBoundsChanged does.
+  if (!anchored_) {
+    std::optional<OhosNativeSurface> surface =
+        GetOhosNativeSurface(adapter_.GetAcceleratedWidget());
+    if (surface && surface->window && !surface->bounds.IsEmpty() &&
+        surface->bounds != bounds) {
+      LOG(WARNING) << "OHOS window " << adapter_.GetAcceleratedWidget()
+                   << ": keeping the shell's bounds "
+                   << surface->bounds.ToString() << " over "
+                   << bounds.ToString();
+      bounds = surface->bounds;
+    }
+  }
   const bool origin_changed = adapter_.GetBounds().origin() != bounds.origin();
   adapter_.SetBounds(bounds);
   delegate()->OnBoundsChanged({origin_changed});
