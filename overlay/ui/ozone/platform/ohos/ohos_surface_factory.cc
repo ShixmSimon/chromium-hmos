@@ -190,7 +190,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
   // The EGL surface goes first, then the window it was made on.
   ~OhosNativeViewGLSurfaceEGL() override {
     Destroy();
-    HoldWindow(nullptr);
+    HoldWindow(0);
   }
 
   // On an HDR panel the screen tells the compositor an opaque window is
