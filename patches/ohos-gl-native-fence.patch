@@ -1,0 +1,96 @@
+Use EGL_ANDROID_native_fence_sync on HarmonyOS.
+
+GLFence::IsGpuFenceSupported() was false on OHOS whatever the driver
+offered: GLFenceAndroidNativeFenceSync, and gfx::GpuFence's wait and status
+calls, were only built for Android, ChromeOS and Linux. The system EGL
+under ANGLE's GLES backend has EGL_ANDROID_native_fence_sync, and
+OzoneImageBacking needs gpu fences to share a native pixmap between GL and
+WebGPU (Dawn's Vulkan device), so they are built here too, with libsync.
+
+Generated against Chromium 154.0.8037.51, on top of
+chromium-154-harmonyos.patch.
+
+diff --git a/ui/gfx/BUILD.gn b/ui/gfx/BUILD.gn
+index 7714756..5952852 100644
+--- a/ui/gfx/BUILD.gn
++++ b/ui/gfx/BUILD.gn
+@@ -640,7 +640,7 @@ source_set("memory_buffer_sources") {
+     deps += [ "//build/config/linux/libdrm" ]
+   }
+ 
+-  if (is_linux || is_chromeos || is_android) {
++  if (is_linux || is_chromeos || is_android || is_ohos) {
+     deps += [ "//third_party/libsync" ]
+   }
+ 
+diff --git a/ui/gfx/gpu_fence.cc b/ui/gfx/gpu_fence.cc
+index d4bdac3..d93a8b2 100644
+--- a/ui/gfx/gpu_fence.cc
++++ b/ui/gfx/gpu_fence.cc
+@@ -10,7 +10,8 @@
+ #include "build/build_config.h"
+ #include "build/chromeos_buildflags.h"
+ 
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID) || \
++    BUILDFLAG(IS_OHOS)
+ #include <sync/sync.h>
+ #endif
+ 
+@@ -43,7 +44,8 @@ void GpuFence::Wait() {
+     return;
+   }
+ 
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID) || \
++    BUILDFLAG(IS_OHOS)
+   static const int kInfiniteSyncWaitTimeout = -1;
+   DCHECK_GE(fence_handle_.Peek(), 0);
+   if (sync_wait(fence_handle_.Peek(), kInfiniteSyncWaitTimeout) < 0) {
+@@ -58,7 +60,8 @@ void GpuFence::Wait() {
+ GpuFence::FenceStatus GpuFence::GetStatusChangeTime(int fd,
+                                                     base::TimeTicks* time) {
+   DCHECK_NE(fd, -1);
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS) || \
++    BUILDFLAG(IS_OHOS)
+ #if BUILDFLAG(IS_CHROMEOS_DEVICE)
+   auto info =
+       std::unique_ptr<sync_fence_info_data, void (*)(sync_fence_info_data*)>{
+@@ -114,7 +117,8 @@ GpuFence::FenceStatus GpuFence::GetStatusChangeTime(int fd,
+ }
+ 
+ base::TimeTicks GpuFence::GetMaxTimestamp() const {
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID) || \
++    BUILDFLAG(IS_OHOS)
+   base::TimeTicks timestamp;
+   FenceStatus status = GetStatusChangeTime(fence_handle_.Peek(), &timestamp);
+   DCHECK_EQ(status, FenceStatus::kSignaled);
+diff --git a/ui/gl/BUILD.gn b/ui/gl/BUILD.gn
+index 49511ee..ec97940 100644
+--- a/ui/gl/BUILD.gn
++++ b/ui/gl/BUILD.gn
+@@ -430,7 +430,7 @@ component("gl") {
+     ]
+   }
+ 
+-  if (is_android || is_chromeos || is_linux) {
++  if (is_android || is_chromeos || is_linux || is_ohos) {
+     # Windows doesn't support base::FileDescriptor.
+     # libsync isn't supported or needed on MacOSX.
+     # Fuchsia is excluded due to a libsync dependency and because it's
+diff --git a/ui/gl/gl_fence.cc b/ui/gl/gl_fence.cc
+index e2c60bd..451d17e 100644
+--- a/ui/gl/gl_fence.cc
++++ b/ui/gl/gl_fence.cc
+@@ -18,7 +18,8 @@
+ #include "ui/gl/gl_surface_egl.h"
+ #include "ui/gl/gl_version_info.h"
+ 
+-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX)
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || \
++    BUILDFLAG(IS_OHOS)
+ #define USE_GL_FENCE_ANDROID_NATIVE_FENCE_SYNC
+ #include "ui/gl/gl_fence_android_native_fence_sync.h"
+ #endif
