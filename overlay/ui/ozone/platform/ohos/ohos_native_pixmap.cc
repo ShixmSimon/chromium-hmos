@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "base/command_line.h"
 #include "base/files/scoped_file.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
@@ -40,31 +39,8 @@
 namespace ui {
 namespace {
 
-// Experiment, while 2160p60 frames take 64 ms of CPU to copy in: usage bits
-// added to a video buffer's (hex, --ohos-native-buffer-usage=0x10000), and
-// how a mapping is synced for the CPU (--ohos-native-buffer-sync=rw, write
-// or none).
-uint64_t ExtraVideoUsage() {
-  static const uint64_t extra = [] {
-    uint64_t value = 0;
-    base::HexStringToUInt64(
-        base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
-            "ohos-native-buffer-usage"),
-        &value);
-    return value;
-  }();
-  return extra;
-}
-
-std::string VideoSyncMode() {
-  static const base::NoDestructor<std::string> mode(
-      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
-          "ohos-native-buffer-sync"));
-  return *mode;
-}
-
 // HarmonyOS's EGL target for an OHNativeWindowBuffer
-// (ohos-angle-native-buffer-image.patch passes it through ANGLE).
+// (ohos-angle.patch passes it through ANGLE).
 constexpr EGLenum kEglNativeBufferOhos = 0x34E1;
 
 // How long a buffer stays findable after its last pixmap is gone; see the
@@ -198,21 +174,24 @@ class BufferRegistry {
     const bool yuv = format.is_multi_plane();
     // Video frames are written by the CPU and sampled; WebGPU's textures are
     // rendered to as well, and never touched by the CPU.
+    //
+    // Video frames are cached memory: without MEM_MMZ_CACHE the allocator
+    // hands out uncached pages, and libyuv took 58 ms of CPU to write one
+    // 2160p P010 frame in, against 19 ms with it. On a Mate 70 Pro+ that
+    // took 2160p60 VP9 from 18 to 30 frames shown a second, the decoder
+    // getting the cores the copy gave back.
     config.usage = yuv ? NATIVEBUFFER_USAGE_CPU_READ |
                              NATIVEBUFFER_USAGE_CPU_WRITE |
                              NATIVEBUFFER_USAGE_MEM_DMA |
+                             NATIVEBUFFER_USAGE_MEM_MMZ_CACHE |
                              NATIVEBUFFER_USAGE_HW_TEXTURE
                        : NATIVEBUFFER_USAGE_MEM_DMA |
                              NATIVEBUFFER_USAGE_HW_TEXTURE |
                              NATIVEBUFFER_USAGE_HW_RENDER;
-    if (yuv && ExtraVideoUsage()) {
-      config.usage |= ExtraVideoUsage();
-    }
     OH_NativeBuffer* buffer = OH_NativeBuffer_Alloc(&config);
-    if (!buffer && yuv && ExtraVideoUsage()) {
-      LOG(WARNING) << "OHOS native pixmap: usage 0x" << std::hex
-                   << config.usage << " refused, trying without the extra";
-      config.usage &= ~ExtraVideoUsage();
+    if (!buffer && yuv) {
+      // A system without cached MMZ: uncached, slower to write, but works.
+      config.usage &= ~NATIVEBUFFER_USAGE_MEM_MMZ_CACHE;
       buffer = OH_NativeBuffer_Alloc(&config);
     }
     if (!buffer) {
@@ -533,12 +512,8 @@ class OhosClientNativePixmap : public gfx::ClientNativePixmap {
  private:
   // Keeps the CPU's caches and the GPU's view of the buffer in step.
   void Sync(uint64_t when) {
-    const std::string mode = VideoSyncMode();
-    if (mode == "none") {
-      return;
-    }
     struct dma_buf_sync sync = {};
-    sync.flags = when | (mode == "write" ? DMA_BUF_SYNC_WRITE : DMA_BUF_SYNC_RW);
+    sync.flags = when | DMA_BUF_SYNC_RW;
     if (HANDLE_EINTR(ioctl(handle_.planes[0].fd.get(), DMA_BUF_IOCTL_SYNC,
                            &sync)) != 0) {
       PLOG(WARNING) << "OHOS native pixmap: DMA_BUF_IOCTL_SYNC";
