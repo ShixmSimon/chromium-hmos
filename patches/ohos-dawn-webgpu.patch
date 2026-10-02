@@ -1,13 +1,20 @@
 Build Dawn for HarmonyOS, so WebGPU has a decoder to run on.
 
-use_dawn and dawn_enable_vulkan left OHOS out, so the GPU process had no WebGPU decoder and every
-WebGPU context failed ("Failed to create WebGPU Context Provider") even with
---enable-unsafe-webgpu. Dawn's Vulkan backend then needs the loader by the
+use_dawn left OHOS out, so the GPU process had no WebGPU decoder and
+every WebGPU context failed ("Failed to create WebGPU Context Provider")
+even with --enable-unsafe-webgpu. Dawn's Vulkan backend then needs the loader by the
 name HarmonyOS gives it, libvulkan.so, as on Android; OHOS is otherwise
 taken for Linux there, which looks for libvulkan.so.1.
 
-An experiment: sharing images between Dawn and the compositor, which a
-WebGPU canvas needs, is not wired up on OHOS.
+Then, still on OHOS only: Dawn's Vulkan backend is built (dawn_enable_vulkan)
+with the Linux external memory and semaphore services its C++ calls, since
+OHOS compiles as Linux there; adapters are taken although they cannot import
+Linux-style external memory; and a WebGPU canvas's textures are GL textures
+reaching Dawn through DawnFallbackImageRepresentation's copies -- nothing
+here shares memory between Dawn's Vulkan device and the GL compositor.
+
+Experimental and behind --enable-unsafe-webgpu: on a Mate 70 Pro+ the
+Maleoon 920 adapter is found and WebGPU samples draw, through CPU copies.
 
 Generated against Chromium 154.0.8037.51 (Dawn 8597a1aaec54).
 
@@ -80,7 +87,7 @@ index 2e64a7f..d39dd49 100644
  #endif
  }
 diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buffer/service/webgpu_decoder_impl.cc
-index a7f3698..b7eadd6 100644
+index a7f3698..346a4f5 100644
 --- a/gpu/command_buffer/service/webgpu_decoder_impl.cc
 +++ b/gpu/command_buffer/service/webgpu_decoder_impl.cc
 @@ -1809,6 +1809,13 @@ wgpu::Adapter WebGPUDecoderImpl::CreatePreferredAdapter(
@@ -97,34 +104,6 @@ index a7f3698..b7eadd6 100644
  #else
      // Chromium is in the midst of being transitioned to SharedTextureMemory
      // platform by platform. On platforms that have not yet been transitioned,
-@@ -1840,6 +1847,27 @@ wgpu::Adapter WebGPUDecoderImpl::CreatePreferredAdapter(
-   // Enumerate adapters in order of the preferred backend type.
-   for (wgpu::BackendType backend_type : backend_types) {
-     adapter_options.backendType = backend_type;
-+#if BUILDFLAG(IS_OHOS)
-+    // TODO: experimental WebGPU bring-up; remove once adapters are found.
-+    {
-+      auto found = dawn_instance_->EnumerateAdapters(&adapter_options);
-+      LOG(WARNING) << "OHOS WebGPU: backend " << static_cast<int>(backend_type)
-+                   << ", " << found.size() << " adapters";
-+      for (dawn::native::Adapter& native_adapter : found) {
-+        wgpu::Adapter adapter(native_adapter.Get());
-+        wgpu::AdapterInfo info = {};
-+        adapter.GetInfo(&info);
-+        LOG(WARNING) << "OHOS WebGPU: adapter "
-+                     << std::string_view(info.device) << " type "
-+                     << static_cast<int>(info.adapterType) << " vendor 0x"
-+                     << std::hex << info.vendorID << std::dec
-+                     << ", blocklist " << use_blocklist() << " blocked "
-+                     << (use_blocklist() &&
-+                         IsWebGPUAdapterBlocklisted(adapter).blocked)
-+                     << ", usable " << CanUseAdapter(native_adapter);
-+      }
-+    }
-+#endif
-     for (dawn::native::Adapter& native_adapter :
-          dawn_instance_->EnumerateAdapters(&adapter_options)) {
-       native_adapter.SetUseTieredLimits(tiered_adapter_limits_);
 diff --git a/third_party/dawn/scripts/dawn_features.gni b/third_party/dawn/scripts/dawn_features.gni
 index b443750..84f6c9f 100644
 --- a/third_party/dawn/scripts/dawn_features.gni
