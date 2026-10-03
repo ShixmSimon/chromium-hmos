@@ -8,37 +8,15 @@ which are small and fiddly on a phone. On the phone UI the engine now
   menu to a handler chrome registers (content/public/browser/
   ohos_popup_menu.h, in the overlay) instead of a RenderViewHostDelegateView
   that only exists with USE_EXTERNAL_POPUP_MENU;
-- turns off InputMultipleFieldsUI, so date inputs use ExternalDateTimeChooser,
-  served by chrome::ohos::BindAuraShellDateTimeChooser.
+- has date inputs use ExternalDateTimeChooser (ohos-shell-date-picker.patch),
+  served by chrome::ohos::BindAuraShellDateTimeChooser, which
+  ohos-web-share.patch binds.
 Both send the request to the shell as runtime events.
 
 Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
-and ohos-web-share.patch applied. Apply with:
+applied. Apply with:
   git apply ohos-native-pickers.patch
 
-diff --git a/chrome/browser/chrome_browser_interface_binders.cc b/chrome/browser/chrome_browser_interface_binders.cc
-index 9dd9d5d..ab84098 100644
---- a/chrome/browser/chrome_browser_interface_binders.cc
-+++ b/chrome/browser/chrome_browser_interface_binders.cc
-@@ -130,6 +130,7 @@
- 
- #if BUILDFLAG(IS_OHOS)
- #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"  // nogncheck
-+#include "third_party/blink/public/mojom/choosers/date_time_chooser.mojom.h"
- #include "third_party/blink/public/mojom/webshare/webshare.mojom.h"
- #endif
- 
-@@ -565,6 +566,10 @@ void PopulateChromeFrameBinders(
- #if BUILDFLAG(IS_OHOS)
-   map->Add<blink::mojom::ShareService>(
-       &chrome::ohos::BindAuraShellShareService);
-+  // Asked for only when InputMultipleFieldsUI is off, which the engine does
-+  // on a phone: date and time inputs then open the shell's own picker.
-+  map->Add<blink::mojom::DateTimeChooser>(
-+      &chrome::ohos::BindAuraShellDateTimeChooser);
- #endif
- 
-   map->Add<network_hints::mojom::NetworkHintsHandler>(&BindNetworkHintsHandler);
 diff --git a/content/browser/renderer_host/render_frame_host_impl.cc b/content/browser/renderer_host/render_frame_host_impl.cc
 index 7c40405..36e5e6a 100644
 --- a/content/browser/renderer_host/render_frame_host_impl.cc
