@@ -189,6 +189,11 @@ void OhosClipboard::OfferClipboardData(ClipboardBuffer buffer,
   if (buffer != ClipboardBuffer::kCopyPaste || !pasteboard_) {
     return;
   }
+  // TEMP diagnostics: which formats a copy offers.
+  for (const auto& [mime, bytes] : data_map) {
+    LOG(WARNING) << "OHOS clipboard offer " << mime << " "
+                 << (bytes ? bytes->size() : 0);
+  }
   std::optional<std::string> text = ReadString(data_map, kMimeTypePlainText);
   if (!text) {
     text = ReadString(data_map, kMimeTypeUtf8PlainText);
