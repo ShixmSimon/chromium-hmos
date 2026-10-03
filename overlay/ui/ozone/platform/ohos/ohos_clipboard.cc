@@ -8,6 +8,8 @@
 #include <database/pasteboard/oh_pasteboard_err_code.h>
 #include <database/udmf/udmf.h>
 #include <database/udmf/uds.h>
+#include <multimedia/image_framework/image/image_source_native.h>
+#include <multimedia/image_framework/image/pixelmap_native.h>
 
 #include <string>
 #include <utility>
@@ -23,6 +25,40 @@
 namespace ui {
 
 namespace {
+
+std::optional<std::vector<uint8_t>> ReadBytes(
+    const PlatformClipboard::DataMap& data,
+    const char* mime_type) {
+  auto it = data.find(mime_type);
+  if (it == data.end() || !it->second || it->second->size() == 0) {
+    return std::nullopt;
+  }
+  const auto bytes = it->second->as_vector();
+  return std::vector<uint8_t>(bytes.begin(), bytes.end());
+}
+
+// A copied picture as the system's PixelMap, which is what other apps paste
+// from: WeChat and the gallery read no PNG bytes. Null when it will not
+// decode.
+OH_PixelmapNative* DecodePng(std::vector<uint8_t>& png) {
+  OH_ImageSourceNative* source = nullptr;
+  if (OH_ImageSourceNative_CreateFromData(png.data(), png.size(), &source) !=
+          IMAGE_SUCCESS ||
+      !source) {
+    return nullptr;
+  }
+  OH_DecodingOptions* options = nullptr;
+  OH_PixelmapNative* pixelmap = nullptr;
+  if (OH_DecodingOptions_Create(&options) == IMAGE_SUCCESS) {
+    if (OH_ImageSourceNative_CreatePixelmap(source, options, &pixelmap) !=
+        IMAGE_SUCCESS) {
+      pixelmap = nullptr;
+    }
+    OH_DecodingOptions_Release(options);
+  }
+  OH_ImageSourceNative_Release(source);
+  return pixelmap;
+}
 
 std::optional<std::string> ReadString(const PlatformClipboard::DataMap& data,
                                       const char* mime_type) {
@@ -57,11 +93,13 @@ struct ChangeRelay {
   static void OnFinalize(void* context) {}
 };
 
-// Plain text, and HTML when the page copied rich content; other apps pick
-// whichever they understand. Returns whether anything was written.
+// Plain text, HTML when the page copied rich content, and a picture when one
+// was copied; other apps pick whichever they understand. Returns whether
+// anything was written.
 bool WriteToPasteboard(OH_Pasteboard* pasteboard,
                        const std::optional<std::string>& text,
-                       const std::optional<std::string>& html) {
+                       const std::optional<std::string>& html,
+                       OH_PixelmapNative* image) {
   OH_UdmfRecord* record = OH_UdmfRecord_Create();
   if (!record) {
     return false;
@@ -85,6 +123,14 @@ bool WriteToPasteboard(OH_Pasteboard* pasteboard,
       OH_UdmfRecord_AddHtml(record, rich);
     }
   }
+  OH_UdsPixelMap* picture = nullptr;
+  if (image) {
+    picture = OH_UdsPixelMap_Create();
+    if (picture) {
+      OH_UdsPixelMap_SetPixelMap(picture, image);
+      OH_UdmfRecord_AddPixelMap(record, picture);
+    }
+  }
 
   bool written = false;
   if (OH_UdmfData* data = OH_UdmfData_Create()) {
@@ -102,6 +148,9 @@ bool WriteToPasteboard(OH_Pasteboard* pasteboard,
   }
   if (rich) {
     OH_UdsHtml_Destroy(rich);
+  }
+  if (picture) {
+    OH_UdsPixelMap_Destroy(picture);
   }
   OH_UdmfRecord_Destroy(record);
   return written;
@@ -145,12 +194,26 @@ void OhosClipboard::OfferClipboardData(ClipboardBuffer buffer,
     text = ReadString(data_map, kMimeTypeUtf8PlainText);
   }
   const std::optional<std::string> html = ReadString(data_map, kMimeTypeHtml);
-  if (!text && !html) {
-    // Images, files and custom formats stay inside the browser for now.
+  // "Copy image" and a page's clipboard.write() of a picture both arrive as
+  // PNG (ClipboardOzone::WriteBitmap).
+  OH_PixelmapNative* image = nullptr;
+  if (std::optional<std::vector<uint8_t>> png =
+          ReadBytes(data_map, kMimeTypePng)) {
+    image = DecodePng(*png);
+    if (!image) {
+      LOG(WARNING) << "Copied image did not decode; not on the pasteboard";
+    }
+  }
+  if (!text && !html && !image) {
+    // Files and custom formats stay inside the browser for now.
     owned_change_count_ = std::nullopt;
     return;
   }
-  if (!WriteToPasteboard(pasteboard_, text, html)) {
+  const bool written = WriteToPasteboard(pasteboard_, text, html, image);
+  if (image) {
+    OH_PixelmapNative_Release(image);
+  }
+  if (!written) {
     owned_change_count_ = std::nullopt;
     return;
   }
