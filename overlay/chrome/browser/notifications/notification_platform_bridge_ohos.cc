@@ -142,7 +142,11 @@ std::optional<base::DictValue> EncodeIcon(
   return icon;
 }
 
-void ForwardClick(const RoutingKey& key) {
+// A tap on the notification (no `action_index`), on one of its buttons, or
+// the user swiping it away (kClose).
+void ForwardOperation(const RoutingKey& key,
+                      NotificationOperation operation,
+                      std::optional<int> action_index) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   if (key.profile_id.empty() || !g_browser_process ||
       !g_browser_process->profile_manager()) {
@@ -153,9 +157,11 @@ void ForwardClick(const RoutingKey& key) {
           key.profile_id),
       key.incognito,
       base::BindOnce(&NotificationDisplayServiceImpl::ProfileLoadedCallback,
-                     NotificationOperation::kClick, key.type, key.origin,
-                     key.notification_id, /*action_index=*/std::nullopt,
-                     /*reply=*/std::nullopt, /*by_user=*/std::nullopt,
+                     operation, key.type, key.origin, key.notification_id,
+                     action_index, /*reply=*/std::nullopt,
+                     operation == NotificationOperation::kClose
+                         ? std::optional<bool>(true)
+                         : std::nullopt,
                      /*is_suspicious=*/false, base::DoNothing()));
 }
 
@@ -186,6 +192,13 @@ class NotificationPlatformBridgeOhos : public NotificationPlatformBridge {
     args.Set("body", base::UTF16ToUTF8(notification.message()));
     args.Set("origin", notification.origin_url().host());
     args.Set("silent", notification.silent());
+    if (!notification.buttons().empty()) {
+      base::ListValue buttons;
+      for (const message_center::ButtonInfo& button : notification.buttons()) {
+        buttons.Append(base::UTF16ToUTF8(button.title));
+      }
+      args.Set("buttons", std::move(buttons));
+    }
     if (std::optional<base::DictValue> icon = EncodeIcon(notification)) {
       args.Set("icon", std::move(*icon));
     }
@@ -287,15 +300,24 @@ class NotificationPlatformBridgeOhos : public NotificationPlatformBridge {
   }
 
   static void OnEvent(const std::string& event, const base::DictValue& data) {
-    if (event != "click") {
+    NotificationOperation operation;
+    if (event == "click") {
+      operation = NotificationOperation::kClick;
+    } else if (event == "close") {
+      operation = NotificationOperation::kClose;
+    } else {
       return;
     }
     const std::string* encoded = data.FindString("id");
     if (!encoded) {
       return;
     }
+    std::optional<int> action_index = data.FindInt("action");
+    if (action_index && *action_index < 0) {
+      action_index.reset();
+    }
     if (std::optional<RoutingKey> key = DecodeKey(*encoded)) {
-      ForwardClick(*key);
+      ForwardOperation(*key, operation, action_index);
     }
   }
 

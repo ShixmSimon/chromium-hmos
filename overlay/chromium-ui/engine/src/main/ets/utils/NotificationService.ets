@@ -7,18 +7,24 @@
 // Web notifications as HarmonyOS notifications.
 //
 // Methods (see chrome/browser/notifications/notification_platform_bridge_ohos.cc):
-//   publish { id, title, body, origin, silent, icon?: { width, height, rgba } }
+//   publish { id, title, body, origin, silent, buttons?: string[],
+//             icon?: { width, height, rgba } }
 //                         -> {}     rgba is base64 RGBA_8888, at most 128x128
 //   close { id }          -> {}
 //   displayed             -> { ids: string[] }
 //   enabled               -> { enabled }
-// Events: click { id }   when the user taps a notification.
+// Events: click { id, action? }  when the user taps a notification, or the
+//                                button at index `action`.
+//         close { id }           when the user swipes it away.
 //
 // A tap launches the app through a WantAgent carrying the Chromium id. Only
 // the shell's EntryAbility sees that launch, so it must pass every want to
-// handleNotificationWant() (docs/SHELL_CONTRACT.md).
+// handleNotificationWant() (docs/SHELL_CONTRACT.md). Swiping away must not
+// launch anything, so it publishes a common event instead, which is only
+// heard while the app runs.
 
 import { common, Want, wantAgent, WantAgent } from '@kit.AbilityKit';
+import { commonEventManager } from '@kit.BasicServicesKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
@@ -26,13 +32,16 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { SystemServiceEmitter, SystemServiceHandler } from './SystemServiceBridge';
 
 const WANT_KEY: string = 'chromiumNotificationId';
+const ACTION_KEY: string = 'chromiumNotificationAction';
+// HarmonyOS shows at most three buttons; the web asks for at most two.
+const MAX_BUTTONS: number = 3;
 const DOMAIN: number = 0x0000;
 const TAG: string = 'WebNotification';
 
 // Clicks that arrive before the engine is up, e.g. a tap that launched the
 // app from cold. Delivered as soon as a service is registered.
 let activeService: NotificationService | null = null;
-const pendingClicks: string[] = [];
+const pendingClicks: Record<string, Object>[] = [];
 
 // The shell calls this from EntryAbility.onCreate and onNewWant. Returns true
 // when the want was a notification tap, which the shell can then treat as
@@ -42,10 +51,15 @@ export function handleNotificationWant(want: Want): boolean {
   if (typeof id !== 'string' || id.length === 0) {
     return false;
   }
+  const click: Record<string, Object> = { 'id': id };
+  const action = want.parameters?.[ACTION_KEY];
+  if (typeof action === 'number' && action >= 0) {
+    click['action'] = action;
+  }
   if (activeService) {
-    activeService.reportClick(id);
+    activeService.reportClick(click);
   } else {
-    pendingClicks.push(id);
+    pendingClicks.push(click);
   }
   return true;
 }
@@ -64,18 +78,42 @@ export class NotificationService implements SystemServiceHandler {
   private permissionAsked: boolean = false;
   private readonly context: common.UIAbilityContext;
   private readonly emit: SystemServiceEmitter;
+  // Per bundle, so two browsers built from this engine hear only their own.
+  private readonly removedEvent: string;
+  private removedSubscriber: commonEventManager.CommonEventSubscriber | undefined = undefined;
 
   constructor(context: common.UIAbilityContext, emit: SystemServiceEmitter) {
     this.context = context;
     this.emit = emit;
+    this.removedEvent = `${context.abilityInfo.bundleName}.WEB_NOTIFICATION_REMOVED`;
     activeService = this;
     const queued = pendingClicks.splice(0, pendingClicks.length);
-    queued.forEach((id: string): void => this.reportClick(id));
+    queued.forEach((click: Record<string, Object>): void => this.reportClick(click));
+    this.listenForRemoval();
   }
 
-  reportClick(id: string): void {
-    const data: Record<string, Object> = { 'id': id };
-    this.emit('click', data);
+  reportClick(click: Record<string, Object>): void {
+    this.emit('click', click);
+  }
+
+  private async listenForRemoval(): Promise<void> {
+    try {
+      const subscriber = await commonEventManager.createSubscriber({ events: [this.removedEvent] });
+      this.removedSubscriber = subscriber;
+      commonEventManager.subscribe(subscriber, (error, data: commonEventManager.CommonEventData): void => {
+        if (error) {
+          return;
+        }
+        const id = data.parameters?.[WANT_KEY];
+        if (typeof id === 'string' && id.length > 0) {
+          const close: Record<string, Object> = { 'id': id };
+          this.emit('close', close);
+        }
+      });
+    } catch (error) {
+      // Clicks still work; only closing by swipe goes unreported.
+      hilog.warn(DOMAIN, TAG, 'no removal events: %{public}s', String(error));
+    }
   }
 
   async handle(method: string, args: Record<string, Object>): Promise<Object | undefined> {
@@ -122,8 +160,17 @@ export class NotificationService implements SystemServiceHandler {
           additionalText: origin
         }
       },
-      wantAgent: await this.clickAgent(id)
+      wantAgent: await this.clickAgent(id, -1),
+      removalWantAgent: await this.removalAgent(id)
     };
+    const titles = (args['buttons'] as string[] | undefined) ?? [];
+    const buttons: notificationManager.NotificationActionButton[] = [];
+    for (let i = 0; i < titles.length && i < MAX_BUTTONS; i++) {
+      buttons.push({ title: String(titles[i]), wantAgent: await this.clickAgent(id, i) });
+    }
+    if (buttons.length > 0) {
+      request.actionButtons = buttons;
+    }
     if (args['silent'] === true) {
       request.isAlertOnce = true;
     }
@@ -147,9 +194,14 @@ export class NotificationService implements SystemServiceHandler {
     await notificationManager.requestEnableNotification(this.context);
   }
 
-  private clickAgent(id: string): Promise<WantAgent> {
+  // `action` is the button's index, or -1 for the notification itself. Each
+  // needs its own request code, or the system hands back one agent for all.
+  private clickAgent(id: string, action: number): Promise<WantAgent> {
     const parameters: Record<string, Object> = {};
     parameters[WANT_KEY] = id;
+    if (action >= 0) {
+      parameters[ACTION_KEY] = action;
+    }
     const want: Want = {
       bundleName: this.context.abilityInfo.bundleName,
       abilityName: this.context.abilityInfo.name,
@@ -158,7 +210,23 @@ export class NotificationService implements SystemServiceHandler {
     const info: wantAgent.WantAgentInfo = {
       wants: [want],
       actionType: wantAgent.OperationType.START_ABILITY,
-      requestCode: numericId(id),
+      requestCode: action >= 0 ? numericId(`${id}#${action}`) : numericId(id),
+      actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
+    };
+    return wantAgent.getWantAgent(info);
+  }
+
+  private removalAgent(id: string): Promise<WantAgent> {
+    const parameters: Record<string, Object> = {};
+    parameters[WANT_KEY] = id;
+    const want: Want = {
+      action: this.removedEvent,
+      parameters: parameters
+    };
+    const info: wantAgent.WantAgentInfo = {
+      wants: [want],
+      actionType: wantAgent.OperationType.SEND_COMMON_EVENT,
+      requestCode: numericId(`${id}#removed`),
       actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
     };
     return wantAgent.getWantAgent(info);
