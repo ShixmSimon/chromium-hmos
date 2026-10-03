@@ -151,6 +151,8 @@
 #include "chrome/browser/ui/views/side_panel/side_panel.h"
 #include "chrome/browser/ui/views/toolbar/app_menu.h"
 #include "chrome/browser/ui/web_applications/web_app_menu_model.h"
+#include "chrome/browser/web_applications/web_app_command_scheduler.h"
+#include "chrome/browser/web_applications/web_app_icon_manager.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/browser/web_applications/web_app_tab_helper.h"
@@ -215,6 +217,9 @@ std::atomic<int> g_open_shell_pickers{0};
 void CompleteShellDateTimePicker(const base::DictValue& command);
 void CompleteShellSelectPopup(const base::DictValue& command);
 void CompleteShellContactsPicker(const base::DictValue& command);
+void LaunchShellWebApp(const base::DictValue& command);
+void ExportShellWebAppIcon(gfx::AcceleratedWidget widget,
+                           const base::DictValue& command);
 void ForwardShellSpeechEvent(const base::DictValue& command);
 void StartShellSpeechRecognition(int session_id,
                                  content::GlobalRenderFrameHostId frame,
@@ -3151,6 +3156,14 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     ForwardShellSpeechEvent(command);
     return;
   }
+  if (*name == "launchWebApp") {
+    LaunchShellWebApp(command);
+    return;
+  }
+  if (*name == "exportWebAppIcon") {
+    ExportShellWebAppIcon(widget, command);
+    return;
+  }
 
   if (*name == "filePickerResult") {
     const std::optional<int> request_id = command.FindInt("requestId");
@@ -4427,6 +4440,8 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "selectPopupResult",
       "contactsPickerResult",
       "speechRecognitionEvent",
+      "launchWebApp",
+      "exportWebAppIcon",
       "permissionResult",
       "systemPermissionState",
       "setViewportInsets",
@@ -5785,6 +5800,102 @@ void CompleteShellContactsPicker(const base::DictValue& command) {
   // Cancelled is an empty list, as the API defines it; only a picker that
   // could not be shown is nullopt.
   std::move(done).Run(std::move(contacts));
+}
+
+// --- Installed web apps on the home screen. ---------------------------------
+//
+// HarmonyOS lets an app put no icon of its own on the home screen; the shell
+// offers a service card per web app instead. It asks for the app's icon as a
+// file it can show (exportWebAppIcon), and launches the app when the card is
+// tapped (launchWebApp).
+
+web_app::WebAppProvider* ShellWebAppProvider() {
+  BrowserWindowInterface* browser = GetActiveBrowser();
+  Profile* profile = browser ? browser->GetProfile() : nullptr;
+  if (!profile && g_browser_process && g_browser_process->profile_manager()) {
+    profile = g_browser_process->profile_manager()->GetLastUsedProfileIfLoaded();
+  }
+  return profile ? web_app::WebAppProvider::GetForWebApps(
+                       profile->GetOriginalProfile())
+                 : nullptr;
+}
+
+// launchWebApp { appId }: opens the app in its own window, as its icon does
+// on other platforms.
+void LaunchShellWebApp(const base::DictValue& command) {
+  const std::string* app_id = command.FindString("appId");
+  web_app::WebAppProvider* provider = ShellWebAppProvider();
+  if (!app_id || !provider ||
+      !provider->registrar_unsafe().IsInstallState(
+          *app_id, {web_app::proto::INSTALLED_WITH_OS_INTEGRATION,
+                    web_app::proto::INSTALLED_WITHOUT_OS_INTEGRATION})) {
+    LOG(WARNING) << "OHOS launchWebApp: no installed app "
+                 << (app_id ? *app_id : std::string());
+    return;
+  }
+  provider->scheduler().LaunchApp(*app_id, std::nullopt, base::DoNothing(),
+                                  apps::LaunchSource::kFromShortcut);
+}
+
+// exportWebAppIcon { requestId, appId, directory } -> webAppIcon { requestId,
+// appId, title, path }. The icon is written as <directory>/<appId>.png at
+// 192 px or the next size up; path is empty when there was none.
+void ExportShellWebAppIcon(gfx::AcceleratedWidget widget,
+                           const base::DictValue& command) {
+  const int request_id = ReadRequestId(command);
+  const std::string* app_id = command.FindString("appId");
+  const std::string* directory = command.FindString("directory");
+  web_app::WebAppProvider* provider = ShellWebAppProvider();
+  auto reply = [](gfx::AcceleratedWidget widget, int request_id,
+                  std::string app_id, std::string title, std::string path) {
+    base::DictValue event;
+    event.Set("event", "webAppIcon");
+    event.Set("requestId", request_id);
+    event.Set("appId", app_id);
+    event.Set("title", title);
+    event.Set("path", path);
+    DispatchRuntimeEvent(widget, std::move(event));
+  };
+  if (!app_id || !directory || directory->empty() || !provider) {
+    reply(widget, request_id, app_id ? *app_id : std::string(), std::string(),
+          std::string());
+    return;
+  }
+  const std::string title =
+      provider->registrar_unsafe().GetAppShortName(*app_id);
+  const base::FilePath path =
+      base::FilePath(*directory).AppendASCII(*app_id + ".png");
+  provider->icon_manager().ReadSmallestIcon(
+      *app_id, {web_app::IconPurpose::ANY, web_app::IconPurpose::MASKABLE}, 192,
+      base::BindOnce(
+          [](decltype(reply) reply, gfx::AcceleratedWidget widget,
+             int request_id, std::string app_id, std::string title,
+             base::FilePath path, web_app::IconPurpose, SkBitmap bitmap) {
+            if (bitmap.drawsNothing()) {
+              reply(widget, request_id, app_id, title, std::string());
+              return;
+            }
+            base::ThreadPool::PostTaskAndReplyWithResult(
+                FROM_HERE, {base::MayBlock()},
+                base::BindOnce(
+                    [](SkBitmap bitmap, base::FilePath path) {
+                      std::optional<std::vector<uint8_t>> png =
+                          gfx::PNGCodec::EncodeBGRASkBitmap(
+                              bitmap, /*discard_transparency=*/false);
+                      return png && base::CreateDirectory(path.DirName()) &&
+                             base::WriteFile(path, *png);
+                    },
+                    std::move(bitmap), path),
+                base::BindOnce(
+                    [](decltype(reply) reply, gfx::AcceleratedWidget widget,
+                       int request_id, std::string app_id, std::string title,
+                       base::FilePath path, bool written) {
+                      reply(widget, request_id, app_id, title,
+                            written ? path.value() : std::string());
+                    },
+                    reply, widget, request_id, app_id, title, path));
+          },
+          reply, widget, request_id, *app_id, title, path));
 }
 
 // --- Speech recognition. -----------------------------------------------------

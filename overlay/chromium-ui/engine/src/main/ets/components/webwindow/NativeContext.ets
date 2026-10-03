@@ -214,6 +214,7 @@ export interface BrowserRuntimeEvent {
     'fileOpenRequested' | 'dateTimePickerRequested' | 'dateTimePickerClosed' |
     'selectPopupRequested' | 'selectPopupClosed' | 'contactsPickerRequested' |
     'speechRecognitionRequested' | 'speechRecognitionStop' | 'speechRecognitionAbort' |
+    'webAppIcon' |
     // Profile data; read these through shellEvent<T>() (ShellServiceTypes).
     'bookmarkList' | 'bookmarkCreated' | 'bookmarksChanged' |
     'historyResults' | 'historyChanged' | 'autocompleteResults' | 'topSites' |
@@ -551,6 +552,11 @@ export interface BrowserCommandPayload {
   indices?: number[];
   // contactsPickerResult: the chosen contacts; empty when none were.
   contacts?: PickedContact[];
+  // launchWebApp / exportWebAppIcon: the installed web app (pwaInstalled's
+  // appId). exportWebAppIcon writes <directory>/<appId>.png and answers
+  // with webAppIcon { requestId, appId, title, path } (path '' if none).
+  appId?: string;
+  directory?: string;
   // speechRecognitionEvent: what happened (speechEvent) -- audioStart, soundStart,
   // soundEnd, audioEnd, result (transcript, isFinal, confidence), error
   // (error: a Web Speech error name such as 'no-speech' or 'not-allowed'),
