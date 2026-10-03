@@ -18,6 +18,7 @@
 #include "components/tabs/public/tab_group.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -199,6 +200,13 @@
 namespace chrome::ohos {
 
 // The shell's own pickers, defined with BindAuraShellDateTimeChooser below.
+//
+// How many are open. The shell shows them as ArkUI dialogs in the same
+// window, which takes focus from the engine's component: passed on, that
+// blur made Blink take the <select> or date input's request back the moment
+// the picker appeared, and the answer found nothing to go to. While one is
+// open, losing focus is not passed on. Read from the shell's thread.
+std::atomic<int> g_open_shell_pickers{0};
 void CompleteShellDateTimePicker(const base::DictValue& command);
 void CompleteShellSelectPopup(const base::DictValue& command);
 void ShowShellSelectPopup(
@@ -5118,6 +5126,9 @@ void SetAuraShellBrowserFocused(bool focused) {
 }
 
 void SetAuraShellBrowserFocused(gfx::AcceleratedWidget widget, bool focused) {
+  if (!focused && g_open_shell_pickers.load() > 0) {
+    return;
+  }
   scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner;
   {
     RuntimeBridgeState& state = GetState();
@@ -5443,6 +5454,7 @@ class ShellDateTimeChooser
     callback_ = std::move(callback);
     request_id_ = NextShellPickerRequestId();
     DateTimePickerRequests()[request_id_] = weak_factory_.GetWeakPtr();
+    ++g_open_shell_pickers;
 
     base::DictValue event;
     event.Set("event", "dateTimePickerRequested");
@@ -5494,6 +5506,7 @@ class ShellDateTimeChooser
     if (request_id_) {
       DateTimePickerRequests().erase(request_id_);
       request_id_ = 0;
+      --g_open_shell_pickers;
     }
     if (callback_) {
       std::move(callback_).Run(success, value);
@@ -5572,6 +5585,7 @@ void ShowShellSelectPopup(
   remote.set_disconnect_handler(base::BindOnce(
       [](int request_id) {
         if (SelectPopupRequests().erase(request_id)) {
+          --g_open_shell_pickers;
           base::DictValue event;
           event.Set("event", "selectPopupClosed");
           event.Set("requestId", request_id);
@@ -5580,6 +5594,7 @@ void ShowShellSelectPopup(
       },
       request_id));
   SelectPopupRequests()[request_id] = std::move(remote);
+  ++g_open_shell_pickers;
 
   base::ListValue list;
   for (const blink::mojom::MenuItemPtr& item : items) {
@@ -5610,6 +5625,7 @@ void CompleteShellSelectPopup(const base::DictValue& command) {
   }
   mojo::Remote<blink::mojom::PopupMenuClient> remote = std::move(it->second);
   SelectPopupRequests().erase(it);
+  --g_open_shell_pickers;
   const base::ListValue* indices = command.FindList("indices");
   if (command.FindBool("canceled").value_or(false) || !indices) {
     remote->DidCancel();
