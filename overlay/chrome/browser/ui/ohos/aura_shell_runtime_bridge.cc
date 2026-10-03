@@ -107,6 +107,8 @@
 #include "components/payments/mojom/payment_request_data.mojom.h"
 #include "content/public/browser/ohos_contacts_picker.h"
 #include "content/public/browser/ohos_popup_menu.h"
+#include "content/public/browser/ohos_speech_recognizer.h"
+#include "media/mojo/mojom/speech_recognition_error_code.mojom.h"
 #include "third_party/blink/public/mojom/contacts/contacts_manager.mojom.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "third_party/blink/public/mojom/choosers/date_time_chooser.mojom.h"
@@ -213,6 +215,12 @@ std::atomic<int> g_open_shell_pickers{0};
 void CompleteShellDateTimePicker(const base::DictValue& command);
 void CompleteShellSelectPopup(const base::DictValue& command);
 void CompleteShellContactsPicker(const base::DictValue& command);
+void ForwardShellSpeechEvent(const base::DictValue& command);
+void StartShellSpeechRecognition(int session_id,
+                                 content::GlobalRenderFrameHostId frame,
+                                 const std::string& language,
+                                 bool continuous,
+                                 bool interim_results);
 void ShowShellContactsPicker(
     content::RenderFrameHost* frame,
     bool multiple,
@@ -3139,6 +3147,10 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     CompleteShellContactsPicker(command);
     return;
   }
+  if (*name == "speechRecognitionEvent") {
+    ForwardShellSpeechEvent(command);
+    return;
+  }
 
   if (*name == "filePickerResult") {
     const std::optional<int> request_id = command.FindInt("requestId");
@@ -4179,6 +4191,23 @@ void NotifyAuraShellBrowserStarted() {
   content::SetOhosPopupMenuHandler(base::BindRepeating(&ShowShellSelectPopup));
   content::SetOhosContactsPickerHandler(
       base::BindRepeating(&ShowShellContactsPicker));
+  {
+    content::OhosSpeechRecognitionHandler speech;
+    speech.start = base::BindRepeating(&StartShellSpeechRecognition);
+    speech.stop = base::BindRepeating([](int session_id) {
+      base::DictValue event;
+      event.Set("event", "speechRecognitionStop");
+      event.Set("requestId", session_id);
+      DispatchRuntimeEvent(std::move(event));
+    });
+    speech.abort = base::BindRepeating([](int session_id) {
+      base::DictValue event;
+      event.Set("event", "speechRecognitionAbort");
+      event.Set("requestId", session_id);
+      DispatchRuntimeEvent(std::move(event));
+    });
+    content::SetOhosSpeechRecognitionHandler(std::move(speech));
+  }
   ApplyPullToRefresh(IsAuraShellMobilePhoneUi());
   OhosWebPermissionWatcher::GetInstance().Start();
   // Only Android installs one upstream; without it screen.orientation.lock()
@@ -4279,6 +4308,7 @@ void NotifyAuraShellBrowserStopped() {
   ui::SetOhosSelectFileDialogRequestCallback({});
   content::SetOhosPopupMenuHandler({});
   content::SetOhosContactsPickerHandler({});
+  content::SetOhosSpeechRecognitionHandler({});
   ui::CancelAllOhosSelectFileDialogs();
   GetPwaMenuSessions().clear();
   RuntimeBridgeState& state = GetState();
@@ -4396,6 +4426,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "dateTimePickerResult",
       "selectPopupResult",
       "contactsPickerResult",
+      "speechRecognitionEvent",
       "permissionResult",
       "systemPermissionState",
       "setViewportInsets",
@@ -5745,6 +5776,85 @@ void CompleteShellContactsPicker(const base::DictValue& command) {
   // Cancelled is an empty list, as the API defines it; only a picker that
   // could not be shown is nullopt.
   std::move(done).Run(std::move(contacts));
+}
+
+// --- Speech recognition. -----------------------------------------------------
+
+void StartShellSpeechRecognition(int session_id,
+                                 content::GlobalRenderFrameHostId frame,
+                                 const std::string& language,
+                                 bool continuous,
+                                 bool interim_results) {
+  content::RenderFrameHost* host = content::RenderFrameHost::FromID(frame);
+  content::WebContents* contents =
+      host ? content::WebContents::FromRenderFrameHost(host) : nullptr;
+  BrowserWindowInterface* browser =
+      contents ? FindBrowserForWebContents(contents) : nullptr;
+  if (!browser) {
+    content::OnOhosSpeechRecognitionEvent(
+        session_id, content::OhosSpeechEvent::kError, std::u16string(), false,
+        0,
+        static_cast<int>(media::mojom::SpeechRecognitionErrorCode::kAborted));
+    content::OnOhosSpeechRecognitionEvent(session_id,
+                                          content::OhosSpeechEvent::kEnd,
+                                          std::u16string(), false, 0, 0);
+    return;
+  }
+  base::DictValue event;
+  event.Set("event", "speechRecognitionRequested");
+  event.Set("requestId", session_id);
+  event.Set("language", language);
+  event.Set("continuous", continuous);
+  event.Set("interimResults", interim_results);
+  DispatchRuntimeEvent(GetBrowserWidget(browser), std::move(event));
+}
+
+// speechRecognitionEvent { requestId, speechEvent, transcript?, isFinal?,
+// confidence?, error? } -- speechEvent is audioStart, soundStart, soundEnd,
+// audioEnd, result, error or end; error is the Web Speech error name.
+void ForwardShellSpeechEvent(const base::DictValue& command) {
+  const std::optional<int> request_id = command.FindInt("requestId");
+  const std::string* type = command.FindString("speechEvent");
+  if (!request_id || !type) {
+    return;
+  }
+  using Event = content::OhosSpeechEvent;
+  using Code = media::mojom::SpeechRecognitionErrorCode;
+  static constexpr std::pair<std::string_view, Event> kEvents[] = {
+      {"audioStart", Event::kAudioStart}, {"soundStart", Event::kSoundStart},
+      {"soundEnd", Event::kSoundEnd},     {"audioEnd", Event::kAudioEnd},
+      {"result", Event::kResult},         {"error", Event::kError},
+      {"end", Event::kEnd},
+  };
+  static constexpr std::pair<std::string_view, Code> kErrors[] = {
+      {"no-speech", Code::kNoSpeech},
+      {"aborted", Code::kAborted},
+      {"audio-capture", Code::kAudioCapture},
+      {"network", Code::kNetwork},
+      {"not-allowed", Code::kNotAllowed},
+      {"service-not-allowed", Code::kServiceNotAllowed},
+      {"language-not-supported", Code::kLanguageNotSupported},
+      {"no-match", Code::kNoMatch},
+  };
+  const auto event = std::ranges::find(
+      kEvents, *type, &std::pair<std::string_view, Event>::first);
+  if (event == std::ranges::end(kEvents)) {
+    return;
+  }
+  int error_code = static_cast<int>(Code::kAborted);
+  if (const std::string* error = command.FindString("error")) {
+    const auto found = std::ranges::find(
+        kErrors, *error, &std::pair<std::string_view, Code>::first);
+    if (found != std::ranges::end(kErrors)) {
+      error_code = static_cast<int>(found->second);
+    }
+  }
+  const std::string* transcript = command.FindString("transcript");
+  content::OnOhosSpeechRecognitionEvent(
+      *request_id, event->second,
+      transcript ? base::UTF8ToUTF16(*transcript) : std::u16string(),
+      command.FindBool("isFinal").value_or(false),
+      command.FindDouble("confidence").value_or(1.0), error_code);
 }
 
 void CompleteShellSelectPopup(const base::DictValue& command) {

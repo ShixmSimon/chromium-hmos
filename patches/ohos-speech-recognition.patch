@@ -1,0 +1,274 @@
+Web Speech recognition on OHOS uses the system recognizer, through the shell.
+
+On desktop builds SpeechRecognition sends audio to Google's speech service,
+which needs an API key this build does not have, so recognition failed with
+a network error. As on Android, recognition and audio capture are left to
+the system: SpeechRecognizerImplOhos (here, so no new source file) asks a
+handler chrome registers (content/public/browser/ohos_speech_recognizer.h,
+in the overlay) to start, stop and abort, and turns what the shell reports
+back into the listener's events on the IO thread.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-speech-recognition.patch
+
+diff --git a/content/browser/speech/speech_recognition_manager_impl.cc b/content/browser/speech/speech_recognition_manager_impl.cc
+index 6de11cc..f94c19d 100644
+--- a/content/browser/speech/speech_recognition_manager_impl.cc
++++ b/content/browser/speech/speech_recognition_manager_impl.cc
+@@ -52,6 +52,13 @@
+ #include "url/gurl.h"
+ #include "url/origin.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "base/no_destructor.h"
++#include "content/public/browser/ohos_speech_recognizer.h"  // nogncheck
++#include "media/mojo/mojom/speech_recognition_error.mojom.h"
++#include "media/mojo/mojom/speech_recognition_result.mojom.h"
++#endif
++
+ #if BUILDFLAG(IS_ANDROID)
+ #include "content/browser/speech/speech_recognizer_impl_android.h"
+ #elif !BUILDFLAG(IS_FUCHSIA)
+@@ -65,6 +72,214 @@ namespace content {
+ 
+ SpeechRecognitionManager* SpeechRecognitionManager::manager_for_tests_;
+ 
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++OhosSpeechRecognitionHandler& GetOhosSpeechRecognitionHandler() {
++  static base::NoDestructor<OhosSpeechRecognitionHandler> handler;
++  return *handler;
++}
++
++class SpeechRecognizerImplOhos;
++
++// Live recognizers by session, on the IO thread.
++std::map<int, SpeechRecognizerImplOhos*>& OhosRecognizers() {
++  static base::NoDestructor<std::map<int, SpeechRecognizerImplOhos*>> map;
++  return *map;
++}
++
++// The system's speech recognizer, run by the shell -- it captures the audio
++// itself, as Android's does, so there is no audio capture or network engine
++// here. Like SpeechRecognizerImplAndroid, it lives on the IO thread and asks
++// the UI thread to start, stop and abort.
++class SpeechRecognizerImplOhos : public SpeechRecognizer {
++ public:
++  SpeechRecognizerImplOhos(SpeechRecognitionEventListener* listener,
++                           int session_id,
++                           GlobalRenderFrameHostId frame)
++      : SpeechRecognizer(listener, session_id), frame_(frame) {}
++
++  void StartRecognition(const std::string& device_id) override {
++    DCHECK_CURRENTLY_ON(BrowserThread::IO);
++    state_ = State::kCapturing;
++    OhosRecognizers()[session_id()] = this;
++    // Posted, as Android does: the manager is still in its start transition.
++    GetIOThreadTaskRunner({})->PostTask(
++        FROM_HERE,
++        base::BindOnce(&SpeechRecognitionEventListener::OnRecognitionStart,
++                       base::Unretained(listener()), session_id()));
++    const SpeechRecognitionSessionConfig config =
++        SpeechRecognitionManager::GetInstance()->GetSessionConfig(session_id());
++    GetUIThreadTaskRunner({})->PostTask(
++        FROM_HERE,
++        base::BindOnce(
++            [](int session_id, GlobalRenderFrameHostId frame,
++               std::string language, bool continuous, bool interim) {
++              const OhosSpeechRecognitionHandler& handler =
++                  GetOhosSpeechRecognitionHandler();
++              if (handler.start) {
++                handler.start.Run(session_id, frame, language, continuous,
++                                  interim);
++              } else {
++                OnOhosSpeechRecognitionEvent(
++                    session_id, OhosSpeechEvent::kError, std::u16string(),
++                    false, 0,
++                    static_cast<int>(
++                        media::mojom::SpeechRecognitionErrorCode::
++                            kServiceNotAllowed));
++                OnOhosSpeechRecognitionEvent(session_id, OhosSpeechEvent::kEnd,
++                                             std::u16string(), false, 0, 0);
++              }
++            },
++            session_id(), frame_, config.language, config.continuous,
++            config.interim_results));
++  }
++
++  void UpdateRecognitionContext(
++      const media::SpeechRecognitionRecognitionContext& context) override {
++    // As on Android: the system recognizer takes no phrase list.
++    GetIOThreadTaskRunner({})->PostTask(
++        FROM_HERE,
++        base::BindOnce(
++            &SpeechRecognizerImplOhos::ReportError, base::WrapRefCounted(this),
++            static_cast<int>(media::mojom::SpeechRecognitionErrorCode::
++                                 kPhrasesNotSupported)));
++  }
++
++  void AbortRecognition() override {
++    DCHECK_CURRENTLY_ON(BrowserThread::IO);
++    if (state_ == State::kIdle) {
++      return;
++    }
++    // The shell answers an abort with its end event.
++    PostToHandler(&OhosSpeechRecognitionHandler::abort);
++  }
++
++  void StopAudioCapture() override {
++    DCHECK_CURRENTLY_ON(BrowserThread::IO);
++    if (state_ == State::kCapturing) {
++      PostToHandler(&OhosSpeechRecognitionHandler::stop);
++    }
++  }
++
++  bool IsActive() const override { return state_ != State::kIdle; }
++  bool IsCapturingAudio() const override {
++    return state_ == State::kCapturing;
++  }
++
++  void OnEvent(OhosSpeechEvent type,
++               const std::u16string& transcript,
++               bool is_final,
++               double confidence,
++               int error_code) {
++    DCHECK_CURRENTLY_ON(BrowserThread::IO);
++    if (state_ == State::kIdle) {
++      return;
++    }
++    switch (type) {
++      case OhosSpeechEvent::kAudioStart:
++        listener()->OnAudioStart(session_id());
++        break;
++      case OhosSpeechEvent::kSoundStart:
++        listener()->OnSoundStart(session_id());
++        break;
++      case OhosSpeechEvent::kSoundEnd:
++        listener()->OnSoundEnd(session_id());
++        break;
++      case OhosSpeechEvent::kAudioEnd:
++        state_ = State::kRecognizing;
++        listener()->OnAudioEnd(session_id());
++        break;
++      case OhosSpeechEvent::kResult: {
++        std::vector<media::mojom::WebSpeechRecognitionResultPtr> results;
++        auto result = media::mojom::WebSpeechRecognitionResult::New();
++        result->hypotheses.push_back(
++            media::mojom::SpeechRecognitionHypothesis::New(transcript,
++                                                           confidence));
++        result->is_provisional = !is_final;
++        results.push_back(std::move(result));
++        listener()->OnRecognitionResults(session_id(), results);
++        break;
++      }
++      case OhosSpeechEvent::kError:
++        ReportError(error_code);
++        break;
++      case OhosSpeechEvent::kEnd:
++        state_ = State::kIdle;
++        OhosRecognizers().erase(session_id());
++        listener()->OnRecognitionEnd(session_id());
++        break;
++    }
++  }
++
++ private:
++  enum class State { kIdle, kCapturing, kRecognizing };
++
++  ~SpeechRecognizerImplOhos() override {
++    auto it = OhosRecognizers().find(session_id());
++    if (it != OhosRecognizers().end() && it->second == this) {
++      OhosRecognizers().erase(it);
++    }
++  }
++
++  void ReportError(int error_code) {
++    DCHECK_CURRENTLY_ON(BrowserThread::IO);
++    listener()->OnRecognitionError(
++        session_id(),
++        media::mojom::SpeechRecognitionError(
++            static_cast<media::mojom::SpeechRecognitionErrorCode>(error_code),
++            media::mojom::SpeechAudioErrorDetails::kNone));
++  }
++
++  void PostToHandler(
++      base::RepeatingCallback<void(int)> OhosSpeechRecognitionHandler::*which) {
++    GetUIThreadTaskRunner({})->PostTask(
++        FROM_HERE, base::BindOnce(
++                       [](base::RepeatingCallback<void(int)>
++                              OhosSpeechRecognitionHandler::*which,
++                          int session_id) {
++                         const auto& callback =
++                             GetOhosSpeechRecognitionHandler().*which;
++                         if (callback) {
++                           callback.Run(session_id);
++                         }
++                       },
++                       which, session_id()));
++  }
++
++  const GlobalRenderFrameHostId frame_;
++  State state_ = State::kIdle;
++};
++
++}  // namespace
++
++void SetOhosSpeechRecognitionHandler(OhosSpeechRecognitionHandler handler) {
++  GetOhosSpeechRecognitionHandler() = std::move(handler);
++}
++
++void OnOhosSpeechRecognitionEvent(int session_id,
++                                  OhosSpeechEvent type,
++                                  const std::u16string& transcript,
++                                  bool is_final,
++                                  double confidence,
++                                  int error_code) {
++  GetIOThreadTaskRunner({})->PostTask(
++      FROM_HERE,
++      base::BindOnce(
++          [](int session_id, OhosSpeechEvent type, std::u16string transcript,
++             bool is_final, double confidence, int error_code) {
++            auto it = OhosRecognizers().find(session_id);
++            if (it != OhosRecognizers().end()) {
++              // A ref for the call: the end event may let the session go.
++              scoped_refptr<SpeechRecognizerImplOhos> recognizer(it->second);
++              recognizer->OnEvent(type, transcript, is_final, confidence,
++                                  error_code);
++            }
++          },
++          session_id, type, transcript, is_final, confidence, error_code));
++}
++#endif  // BUILDFLAG(IS_OHOS)
++
+ namespace {
+ 
+ SpeechRecognitionManagerImpl* g_speech_recognition_manager_impl;
+@@ -695,6 +910,26 @@ int SpeechRecognitionManagerImpl::CreateSession(
+   session->context = config.initial_context;
+   session->use_microphone = !audio_forwarder_config.has_value();
+ 
++#if BUILDFLAG(IS_OHOS)
++  // The system recognizer, through the shell, for a page's own
++  // SpeechRecognition. Chromium's network engine needs Google's speech
++  // service and an API key, and there is no SODA here.
++  if (GetOhosSpeechRecognitionHandler().start &&
++      !audio_forwarder_config.has_value()) {
++    session->recognizer = new SpeechRecognizerImplOhos(
++        this, session_id, config.initial_context.global_id);
++    sessions_[session_id] = std::move(session);
++    GetUIThreadTaskRunner({})->PostTask(
++        FROM_HERE,
++        base::BindOnce(
++            &FrameSessionTracker::CreateObserverForSession,
++            config.initial_context.global_id, session_id,
++            base::BindRepeating(&SpeechRecognitionManagerImpl::AbortSessionImpl,
++                                weak_factory_.GetWeakPtr())));
++    return session_id;
++  }
++#endif
++
+ #if !BUILDFLAG(IS_ANDROID)
+ #if !BUILDFLAG(IS_FUCHSIA)
+   const bool use_gemini_nano =

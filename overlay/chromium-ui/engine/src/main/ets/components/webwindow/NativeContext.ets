@@ -213,6 +213,7 @@ export interface BrowserRuntimeEvent {
     'contextMenuRequested' | 'externalUrlRequested' | 'popupBlocked' |
     'fileOpenRequested' | 'dateTimePickerRequested' | 'dateTimePickerClosed' |
     'selectPopupRequested' | 'selectPopupClosed' | 'contactsPickerRequested' |
+    'speechRecognitionRequested' | 'speechRecognitionStop' | 'speechRecognitionAbort' |
     // Profile data; read these through shellEvent<T>() (ShellServiceTypes).
     'bookmarkList' | 'bookmarkCreated' | 'bookmarksChanged' |
     'historyResults' | 'historyChanged' | 'autocompleteResults' | 'topSites' |
@@ -356,6 +357,16 @@ export interface BrowserRuntimeEvent {
   // Answer with contactsPickerResult { requestId, contacts } or
   // { requestId, canceled: true }.
   properties?: ('name' | 'email' | 'tel' | 'address' | 'icon')[];
+  // speechRecognitionRequested: a page's SpeechRecognition.start(); the
+  // shell runs the system recognizer (it captures the audio) and reports
+  // with speechRecognitionEvent { requestId, speechEvent, ... } until
+  // speechEvent 'end'.
+  // speechRecognitionStop: stop listening and report what was heard;
+  // speechRecognitionAbort: stop without a result -- both still end with
+  // 'end'.
+  language?: string;
+  continuous?: boolean;
+  interimResults?: boolean;
   presentation?: 'popup' | 'sheet';
   menuSessionId?: number;
   items?: PwaMenuItemState[];
@@ -540,6 +551,15 @@ export interface BrowserCommandPayload {
   indices?: number[];
   // contactsPickerResult: the chosen contacts; empty when none were.
   contacts?: PickedContact[];
+  // speechRecognitionEvent: what happened (speechEvent) -- audioStart, soundStart,
+  // soundEnd, audioEnd, result (transcript, isFinal, confidence), error
+  // (error: a Web Speech error name such as 'no-speech' or 'not-allowed'),
+  // and always last, end.
+  speechEvent?: 'audioStart' | 'soundStart' | 'soundEnd' | 'audioEnd' | 'result' | 'error' | 'end';
+  transcript?: string;
+  isFinal?: boolean;
+  confidence?: number;
+  error?: string;
   granted?: string[];
   denied?: string[];
   location?: 'allowed' | 'denied' | 'notDetermined';
