@@ -293,7 +293,19 @@ gfx::AcceleratedWidget OhosEventSource::ResolveDispatchTarget(
     return gfx::kNullAcceleratedWidget;
   }
   if (!event->IsLocatedEvent()) {
-    return GetOhosFocusedLogicalWindow();
+    // A key from a window's own XComponent is that window's -- unless what
+    // has focus is a popup or dialog of Chromium's drawn over it. Going by
+    // focus alone sent a second browser window's keys to the first, or the
+    // first's to the second, whichever had been activated last.
+    const gfx::AcceleratedWidget focused = GetOhosFocusedLogicalWindow();
+    if (target_hint != gfx::kNullAcceleratedWidget &&
+        GetOhosLogicalWindowBounds(target_hint).has_value()) {
+      return focused != gfx::kNullAcceleratedWidget && focused != target_hint &&
+                     !IsOhosPrimaryLogicalWindow(focused)
+                 ? focused
+                 : target_hint;
+    }
+    return focused;
   }
 
   const gfx::Point screen_point =
@@ -308,7 +320,13 @@ gfx::AcceleratedWidget OhosEventSource::ResolveDispatchTarget(
       if (hinted_bounds->Contains(screen_point)) {
         const gfx::AcceleratedWidget topmost =
             GetOhosAcceleratedWidgetAtScreenPoint(screen_point);
-        if (topmost != gfx::kNullAcceleratedWidget) {
+        // Only what is drawn over this window's surface -- a popup, a menu --
+        // may take its presses. Another browser window with a surface of its
+        // own is another system window: both fill the screen, so the one
+        // activated last was "on top" of every point, and once a second
+        // window had been opened every press in the first went to it.
+        if (topmost != gfx::kNullAcceleratedWidget &&
+            (topmost == target_hint || !IsOhosPrimaryLogicalWindow(topmost))) {
           return topmost;
         }
       }

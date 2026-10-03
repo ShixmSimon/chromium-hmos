@@ -658,8 +658,12 @@ bool OhosAuraInputRouter::DispatchKeyEvent(const std::string& event_json) {
 
   const ui::EventType event_type =
       pressed ? ui::EventType::kKeyPressed : ui::EventType::kKeyReleased;
-  bool posted = ui::OhosEventSource::PostEvent(std::make_unique<ui::KeyEvent>(
-      event_type, key_code, event_flags_, base::TimeTicks::Now()));
+  // To this component's window: see OhosEventSource::ResolveDispatchTarget.
+  const gfx::AcceleratedWidget target = GetBoundWidget();
+  bool posted = ui::OhosEventSource::PostEvent(
+      std::make_unique<ui::KeyEvent>(event_type, key_code, event_flags_,
+                                     base::TimeTicks::Now()),
+      target);
   if (!posted) {
     WVLOG_W("Aura input router could not post key event code=%{public}d",
             *raw_key_code);
@@ -678,7 +682,8 @@ bool OhosAuraInputRouter::DispatchKeyEvent(const std::string& event_json) {
       posted =
           ui::OhosEventSource::PostEvent(
               std::make_unique<ui::KeyEvent>(ui::KeyEvent::FromCharacter(
-                  character, key_code, ui::DomCode::NONE, event_flags_))) &&
+                  character, key_code, ui::DomCode::NONE, event_flags_)),
+              target) &&
           posted;
     }
   }

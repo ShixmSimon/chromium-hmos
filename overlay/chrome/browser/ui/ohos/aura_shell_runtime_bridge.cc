@@ -5025,6 +5025,18 @@ void SetAuraShellBrowserFocused(gfx::AcceleratedWidget widget, bool focused) {
         }
         it->second = focused;
       }
+      // One window has focus at a time. The shell need not report the
+      // previous window losing it, and a window still recorded as focused
+      // took its next "focused" for a repeat: with a second browser window
+      // opened, bringing the first back to front never activated it again,
+      // and the keyboard stayed on the second window's address bar.
+      if (focused) {
+        for (auto& [other, other_focused] : state.window_focus) {
+          if (other != widget) {
+            other_focused = false;
+          }
+        }
+      }
     }
     ui_task_runner = state.ui_task_runner;
   }
