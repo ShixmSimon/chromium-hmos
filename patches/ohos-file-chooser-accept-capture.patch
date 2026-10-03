@@ -1,0 +1,38 @@
+Pass an <input type=file>'s accept list and capture attribute to the shell.
+
+Android hands them to its picker through SelectFileDialog::SetAcceptTypes()
+and SetUseMediaCapture(); on OHOS FileSelectHelper gives them to
+ui::SetOhosNextSelectFileDialogHints() instead, and the filePickerRequested
+event carries them as acceptTypes and capture, so the shell can open the
+gallery or the camera rather than the document picker.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-file-chooser-accept-capture.patch
+
+diff --git a/chrome/browser/file_select_helper.cc b/chrome/browser/file_select_helper.cc
+index 9b7c30c..be3596b 100644
+--- a/chrome/browser/file_select_helper.cc
++++ b/chrome/browser/file_select_helper.cc
+@@ -61,6 +61,10 @@
+ #include "chrome/browser/picture_in_picture/scoped_tuck_picture_in_picture.h"
+ #endif  // BUILDFLAG(IS_ANDROID)
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "ui/shell_dialogs/select_file_dialog_ohos.h"  // nogncheck
++#endif
++
+ using blink::mojom::FileChooserFileInfo;
+ using blink::mojom::FileChooserFileInfoPtr;
+ using blink::mojom::FileChooserParams;
+@@ -710,6 +714,10 @@ void FileSelectHelper::RunFileChooserOnUIThread(
+   select_file_dialog_->SetAcceptTypes(params->accept_types);
+   select_file_dialog_->SetUseMediaCapture(params->use_media_capture);
+ #endif
++#if BUILDFLAG(IS_OHOS)
++  ui::SetOhosNextSelectFileDialogHints(params->accept_types,
++                                       params->use_media_capture);
++#endif
+ 
+   // Never consider the current scope as hung. The hang watching deadline (if
+   // any) is not valid since the user can take unbounded time to choose the

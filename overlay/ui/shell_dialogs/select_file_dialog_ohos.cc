@@ -29,6 +29,8 @@ struct OhosFileDialogState {
   int next_request_id GUARDED_BY(lock) = 1;
   OhosSelectFileDialogRequestCallback request_callback GUARDED_BY(lock);
   std::map<int, scoped_refptr<SelectFileDialogOhos>> pending GUARDED_BY(lock);
+  std::vector<std::string> next_accept_types GUARDED_BY(lock);
+  bool next_use_media_capture GUARDED_BY(lock) = false;
 };
 
 OhosFileDialogState& GetOhosFileDialogState() {
@@ -156,6 +158,9 @@ class SelectFileDialogOhos final : public SelectFileDialog {
       OhosFileDialogState& state = GetOhosFileDialogState();
       base::AutoLock lock(state.lock);
       request.request_id = state.next_request_id++;
+      request.accept_types.swap(state.next_accept_types);
+      request.use_media_capture = state.next_use_media_capture;
+      state.next_use_media_capture = false;
       request_id_ = request.request_id;
       state.pending.emplace(request.request_id, this);
       callback = state.request_callback;
@@ -215,6 +220,18 @@ void CancelAllOhosSelectFileDialogs() {
   for (auto& [request_id, dialog] : pending) {
     dialog->Complete({}, 0, /*canceled=*/true);
   }
+}
+
+void SetOhosNextSelectFileDialogHints(
+    const std::vector<std::u16string>& accept_types,
+    bool use_media_capture) {
+  OhosFileDialogState& state = GetOhosFileDialogState();
+  base::AutoLock lock(state.lock);
+  state.next_accept_types.clear();
+  for (const std::u16string& type : accept_types) {
+    state.next_accept_types.push_back(base::UTF16ToUTF8(type));
+  }
+  state.next_use_media_capture = use_media_capture;
 }
 
 SelectFileDialog* CreateSelectFileDialog(

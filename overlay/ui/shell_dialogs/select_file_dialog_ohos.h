@@ -21,6 +21,10 @@ struct SHELL_DIALOGS_EXPORT OhosSelectFileDialogRequest {
   std::string default_name;
   std::vector<std::string> suffix_filters;
   int file_type_index = 0;
+  // An <input type=file>'s accept list as written ("image/*", ".pdf"), and
+  // whether it asked to capture rather than pick (the capture attribute).
+  std::vector<std::string> accept_types;
+  bool use_media_capture = false;
 };
 
 using OhosSelectFileDialogRequestCallback =
@@ -39,6 +43,14 @@ SHELL_DIALOGS_EXPORT bool CompleteOhosSelectFileDialog(
     bool canceled);
 
 SHELL_DIALOGS_EXPORT void CancelAllOhosSelectFileDialogs();
+
+// What Android passes through SelectFileDialog::SetAcceptTypes() and
+// SetUseMediaCapture(), for the next SelectFile() on this thread. Those two
+// are Android-only virtuals on SelectFileDialog, and adding OHOS to them would
+// rebuild everything that includes it.
+SHELL_DIALOGS_EXPORT void SetOhosNextSelectFileDialogHints(
+    const std::vector<std::u16string>& accept_types,
+    bool use_media_capture);
 
 }  // namespace ui
 

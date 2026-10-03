@@ -722,6 +722,15 @@ void DispatchFilePickerRequest(const ui::OhosSelectFileDialogRequest& request) {
     filters.Append(filter);
   }
   event.Set("suffixFilters", std::move(filters));
+  // From the page's <input type=file>, absent for Chromium's own pickers: the
+  // accept list lets the shell offer the gallery for "image/*" or
+  // "video/*", and capture asks for the camera straight away.
+  base::ListValue accept_types;
+  for (const std::string& type : request.accept_types) {
+    accept_types.Append(type);
+  }
+  event.Set("acceptTypes", std::move(accept_types));
+  event.Set("capture", request.use_media_capture);
   DispatchRuntimeEvent(std::move(event));
 }
 
