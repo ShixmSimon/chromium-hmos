@@ -425,8 +425,17 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   // (//components/ohos_shape_detection). Upstream ships BarcodeDetector only
   // where a platform backend exists and keeps the other two experimental;
   // turning them on at startup avoids regenerating Blink's feature table.
+  //
+  // On a phone also window.orientation and orientationchange, which Android
+  // ships and mobile sites and players use to tell a phone and follow its
+  // rotation. Not on a tablet or PC: their desktop User-Agent is there to get
+  // desktop pages, and sites take window.orientation for a phone.
   arguments.push_back(
-      "--enable-blink-features=BarcodeDetector,FaceDetector,TextDetector");
+      config.ui_family == "mobile_phone"
+          ? "--enable-blink-features=BarcodeDetector,FaceDetector,"
+            "TextDetector,OrientationEvent"
+          : "--enable-blink-features=BarcodeDetector,FaceDetector,"
+            "TextDetector");
 
   // Reader mode needs the renderer to say whether a page is an article, and
   // the agent that answers is only created when this switch is present --
