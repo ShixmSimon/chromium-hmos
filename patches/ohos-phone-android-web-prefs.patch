@@ -1,0 +1,35 @@
+Android's phone WebPreferences on an OHOS phone.
+
+WebPreferences turns several touch-phone behaviours on by BUILDFLAG(IS_ANDROID)
+rather than by device, so the OHOS phone got the Linux desktop's: no zoom
+into a focused field on a zoomed-out page, -webkit-text-size-adjust ignored,
+find-in-page jumping between matches, and desktop editing rules. Set them in
+ApplyOhosPhoneWebPreferences, which only runs for the phone UI family.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-phone-android-web-prefs.patch
+
+diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
+index fb82665..8281d82 100644
+--- a/chrome/browser/chrome_content_browser_client.cc
++++ b/chrome/browser/chrome_content_browser_client.cc
+@@ -4559,6 +4559,18 @@ bool ApplyOhosPhoneWebPreferences(WebContents* web_contents,
+   web_prefs->primary_hover_type = blink::mojom::HoverType::kHoverNone;
+   web_prefs->default_maximum_page_scale_factor = 5.0f;
+ 
++  // What WebPreferences defaults to on Android and leaves off everywhere
++  // else, because it keys on the build rather than on the device: focusing a
++  // field on a zoomed-out page zooms in until its text is legible,
++  // -webkit-text-size-adjust is honoured, find-in-page scrolls to each match
++  // instead of jumping, and caret and selection editing follow Android's
++  // touch rules rather than a Linux desktop's.
++  web_prefs->auto_zoom_focused_editable_to_legible_scale = true;
++  web_prefs->text_size_adjust_enabled = true;
++  web_prefs->smooth_scroll_for_find_enabled = true;
++  web_prefs->editing_behavior =
++      blink::mojom::EditingBehavior::kEditingAndroidBehavior;
++
+   // WebUI is written for a desktop window and almost none of it declares a
+   // <meta viewport>: 29 files in all of chrome/browser/resources do, and
+   // password_manager.html is not one. Under the mobile rules it would be laid

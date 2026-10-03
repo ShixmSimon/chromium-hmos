@@ -76,6 +76,9 @@ constexpr BoolPref kBoolPrefs[] = {
     // have no setting; this covers filling alone, which is the one the
     // product wanted to be able to turn off.
     {"passwordFillRequiresAuth", kPasswordFillRequiresAuth},
+    // Blink's auto dark mode, the same pref Android's "darken websites"
+    // drives. PrefWatcher already observes it, so open tabs repaint at once.
+    {"forceDarkWebContents", prefs::kWebKitForceDarkModeEnabled},
 };
 
 // --- Settings that need translating. --------------------------------------
@@ -252,10 +255,6 @@ constexpr CustomPref kCustomPrefs[] = {
     {"textScale", &ReadTextScale, &WriteTextScale},
 };
 
-// Keys the shell knows but this engine does not serve yet. They are logged as
-// unsupported rather than unknown, and left out of the answer.
-constexpr std::string_view kUnsupportedKeys[] = {"forceDarkWebContents"};
-
 // --- Lookup. ---------------------------------------------------------------
 
 const BoolPref* FindBoolPref(std::string_view key) {
@@ -277,12 +276,6 @@ const CustomPref* FindCustomPref(std::string_view key) {
 }
 
 void LogUnknownKey(std::string_view key) {
-  for (std::string_view unsupported : kUnsupportedKeys) {
-    if (unsupported == key) {
-      LOG(WARNING) << "OHOS shell pref " << key << " is not supported";
-      return;
-    }
-  }
   LOG(WARNING) << "OHOS shell asked for unknown pref " << key;
 }
 
