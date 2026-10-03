@@ -1,0 +1,57 @@
+window.print() on OHOS goes to the system print service.
+
+Print preview is Chromium's desktop dialog; on a phone it came up as a blank
+white sheet. PrintViewManager::SetupScriptedPrintPreview now answers the
+renderer without a preview, as it does when a preview is already open, and
+then, on a phone or tablet, calls
+chrome::ohos::RequestAuraShellSystemPrint, the path the shell's Print menu
+item uses (a PDF handed to the shell as systemPrintReady).
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-scripted-print-to-system.patch
+
+diff --git a/chrome/browser/printing/print_view_manager.cc b/chrome/browser/printing/print_view_manager.cc
+index 1b70189..3163959 100644
+--- a/chrome/browser/printing/print_view_manager.cc
++++ b/chrome/browser/printing/print_view_manager.cc
+@@ -16,6 +16,11 @@
+ #include "base/no_destructor.h"
+ #include "base/observer_list.h"
+ #include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "base/task/sequenced_task_runner.h"
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"  // nogncheck
++#endif
+ #include "chrome/browser/bad_message.h"
+ #include "chrome/browser/printing/print_preview_dialog_controller.h"
+ #include "chrome/browser/printing/printer_query.h"
+@@ -508,6 +513,27 @@ void PrintViewManager::SetupScriptedPrintPreview(
+     return;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // On a phone or tablet window.print() goes to the system's print service,
++  // as the shell's Print menu item does: Chromium's print preview is a
++  // desktop dialog and came up blank there. Answering without a preview lets
++  // the page's print() return, as when a preview is already open; the PDF is
++  // made after that.
++  if (!chrome::ohos::IsAuraShellDesktopUi()) {
++    std::move(callback).Run();
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(
++                       [](base::WeakPtr<content::WebContents> contents) {
++                         if (contents) {
++                           chrome::ohos::RequestAuraShellSystemPrint(
++                               contents.get());
++                         }
++                       },
++                       web_contents()->GetWeakPtr()));
++    return;
++  }
++#endif
++
+   // Since window.print() is renderer-initiated, explicitly establish a
+   // connection to the RenderFrame here. Without this, later operations that
+   // expect the established connection can unexpected fail.
