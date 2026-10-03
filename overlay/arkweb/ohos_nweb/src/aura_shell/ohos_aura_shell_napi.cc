@@ -133,7 +133,7 @@ bool IsSecondaryComponentId(const std::string& component_id) {
 
 void AddComponentEventTarget(const std::string& component_id,
                              base::DictValue* event) {
-  if (!event || !IsSecondaryComponentId(component_id)) {
+  if (!event) {
     return;
   }
   const gfx::AcceleratedWidget widget =
@@ -145,11 +145,14 @@ void AddComponentEventTarget(const std::string& component_id,
   }
 }
 
+// The window a component's input belongs to -- the main one's too. The main
+// component used to send none, leaving its presses to be placed by screen
+// point alone; with a second browser window filling the screen in a system
+// window of its own, that window was "on top" and took every press made in
+// the first. Popups drawn over a window still take presses over them: see
+// OhosEventSource::ResolveDispatchTarget.
 gfx::AcceleratedWidget GetComponentEventTarget(
     const std::string& component_id) {
-  if (!IsSecondaryComponentId(component_id)) {
-    return gfx::kNullAcceleratedWidget;
-  }
   return ui::GetOhosAcceleratedWidgetForNativeSurface(component_id);
 }
 
