@@ -93,9 +93,9 @@ struct ChangeRelay {
   static void OnFinalize(void* context) {}
 };
 
-// Plain text, HTML when the page copied rich content, and a picture when one
-// was copied; other apps pick whichever they understand. Returns whether
-// anything was written.
+// Plain text, and HTML when the page copied rich content -- or a picture
+// alone when one was copied; other apps pick whichever they understand.
+// Returns whether anything was written.
 bool WriteToPasteboard(OH_Pasteboard* pasteboard,
                        const std::optional<std::string>& text,
                        const std::optional<std::string>& html,
@@ -106,14 +106,27 @@ bool WriteToPasteboard(OH_Pasteboard* pasteboard,
   }
   OH_UdsPlainText* plain = nullptr;
   OH_UdsHtml* rich = nullptr;
-  if (text) {
+  OH_UdsPixelMap* picture = nullptr;
+  if (image) {
+    // A copied picture goes alone. The HTML beside it is only an <img> that
+    // points back at the page, and the pasteboard reports a record by its
+    // first type: with the HTML first, every app saw text/html and pasted
+    // nothing.
+    picture = OH_UdsPixelMap_Create();
+    const int set = picture ? OH_UdsPixelMap_SetPixelMap(picture, image) : -1;
+    const int added = set == 0 ? OH_UdmfRecord_AddPixelMap(record, picture) : -1;
+    if (added != 0) {
+      LOG(WARNING) << "Copied image not added to the pasteboard: set=" << set
+                   << " add=" << added;
+    }
+  } else if (text) {
     plain = OH_UdsPlainText_Create();
     if (plain) {
       OH_UdsPlainText_SetContent(plain, text->c_str());
       OH_UdmfRecord_AddPlainText(record, plain);
     }
   }
-  if (html) {
+  if (html && !image) {
     rich = OH_UdsHtml_Create();
     if (rich) {
       OH_UdsHtml_SetContent(rich, html->c_str());
@@ -121,14 +134,6 @@ bool WriteToPasteboard(OH_Pasteboard* pasteboard,
         OH_UdsHtml_SetPlainContent(rich, text->c_str());
       }
       OH_UdmfRecord_AddHtml(record, rich);
-    }
-  }
-  OH_UdsPixelMap* picture = nullptr;
-  if (image) {
-    picture = OH_UdsPixelMap_Create();
-    if (picture) {
-      OH_UdsPixelMap_SetPixelMap(picture, image);
-      OH_UdmfRecord_AddPixelMap(record, picture);
     }
   }
 
@@ -188,11 +193,6 @@ void OhosClipboard::OfferClipboardData(ClipboardBuffer buffer,
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (buffer != ClipboardBuffer::kCopyPaste || !pasteboard_) {
     return;
-  }
-  // TEMP diagnostics: which formats a copy offers.
-  for (const auto& [mime, bytes] : data_map) {
-    LOG(WARNING) << "OHOS clipboard offer " << mime << " "
-                 << (bytes ? bytes->size() : 0);
   }
   std::optional<std::string> text = ReadString(data_map, kMimeTypePlainText);
   if (!text) {
