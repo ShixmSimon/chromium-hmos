@@ -41,6 +41,8 @@
 #include "base/values.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "chrome/browser/ui/ohos/shell_settings_ohos_internal.h"
 #include "components/content_settings/core/browser/content_settings_info.h"
@@ -49,6 +51,7 @@
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_pattern.h"
 #include "components/content_settings/core/common/content_settings_types.h"
+#include "components/blocked_content/popup_blocker_tab_helper.h"  // nogncheck
 #include "content/public/browser/storage_partition.h"
 #include "net/base/is_potentially_trustworthy.h"
 #include "url/gurl.h"
@@ -310,6 +313,23 @@ void ResetSiteSettings(const ShellCommandContext& context,
   profile->GetDefaultStoragePartition()->ClearDataForOrigin(
       content::StoragePartition::REMOVE_DATA_MASK_ALL, *origin,
       base::DoNothing());
+}
+
+// Opens what the popup blocker held back on the window's current tab -- the
+// "show" on the shell's popup-blocked notice.
+void ShowBlockedPopups(const ShellCommandContext& context,
+                       const base::DictValue& command) {
+  content::WebContents* contents =
+      context.browser
+          ? context.browser->GetTabStripModel()->GetActiveWebContents()
+          : nullptr;
+  auto* popups = contents
+                     ? blocked_content::PopupBlockerTabHelper::FromWebContents(
+                           contents)
+                     : nullptr;
+  if (popups) {
+    popups->ShowAllBlockedPopups();
+  }
 }
 
 }  // namespace chrome::ohos::settings_internal

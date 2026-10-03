@@ -122,6 +122,7 @@ constexpr SettingsCommand kSettingsCommands[] = {
     {"setSiteSetting", &settings_internal::SetSiteSetting},
     {"setDefaultSiteSetting", &settings_internal::SetDefaultSiteSetting},
     {"resetSiteSettings", &settings_internal::ResetSiteSettings},
+    {"showBlockedPopups", &settings_internal::ShowBlockedPopups},
     // About.
     {"getAboutInfo", &GetAboutInfo},
 };

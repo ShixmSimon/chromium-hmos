@@ -1,0 +1,39 @@
+Tell the HarmonyOS shell when a popup was blocked.
+
+Desktop shows a location bar icon and Android a message; the shell has
+neither, so a site whose window.open() was blocked just did nothing. OHOS
+now sends popupBlocked { pageUrl, origin, popupUrl, count } from
+ChromePopupNavigationDelegate::OnPopupBlocked, where Android shows its
+message. The shell answers with showBlockedPopups or
+setSiteSetting { type: "popups" }.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-popup-blocked-notice.patch
+
+diff --git a/chrome/browser/ui/blocked_content/chrome_popup_navigation_delegate.cc b/chrome/browser/ui/blocked_content/chrome_popup_navigation_delegate.cc
+index a5db3dd..c3c8bdc 100644
+--- a/chrome/browser/ui/blocked_content/chrome_popup_navigation_delegate.cc
++++ b/chrome/browser/ui/blocked_content/chrome_popup_navigation_delegate.cc
+@@ -22,6 +22,10 @@
+ #include "components/messages/android/messages_feature.h"
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"  // nogncheck
++#endif
++
+ ChromePopupNavigationDelegate::ChromePopupNavigationDelegate(
+     NavigateParams params)
+     : params_(std::move(params)),
+@@ -98,5 +102,10 @@ void ChromePopupNavigationDelegate::OnPopupBlocked(
+     content_settings::RecordPopupsAction(
+         content_settings::POPUPS_ACTION_DISPLAYED_INFOBAR_ON_MOBILE);
+   }
++#elif BUILDFLAG(IS_OHOS)
++  // No location bar icon in the shell's UI; it shows a notice instead, as
++  // Android's message does.
++  chrome::ohos::NotifyAuraShellPopupBlocked(web_contents, GetURL(),
++                                            total_popups_blocked_on_page);
+ #endif
+ }

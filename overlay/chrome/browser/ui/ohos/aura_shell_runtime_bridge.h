@@ -177,6 +177,12 @@ bool RequestAuraShellSystemAction(const std::string& action);
 void RequestAuraShellExternalUrl(content::WebContents* contents,
                                  const GURL& url,
                                  const std::string& initiator);
+// The popup blocker stopped a window.open() on `contents`' page. The shell
+// shows its notice; "show" answers with the showBlockedPopups command and
+// "always allow" with setSiteSetting { type: "popups", setting: "allow" }.
+void NotifyAuraShellPopupBlocked(content::WebContents* contents,
+                                 const GURL& popup_url,
+                                 int blocked_on_page);
 void NotifyAuraShellWebAppInstalled(const std::string& app_id,
                                     const std::string& title,
                                     const std::string& start_url);

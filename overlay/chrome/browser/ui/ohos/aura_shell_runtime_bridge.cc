@@ -185,6 +185,7 @@
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
 #include "url/gurl.h"
+#include "url/origin.h"
 #include "base/strings/escape.h"
 #include "url/url_constants.h"
 
@@ -4941,6 +4942,24 @@ void RequestAuraShellExternalUrl(content::WebContents* contents,
       contents ? GetBrowserWidget(FindBrowserForWebContents(contents))
                : gfx::kNullAcceleratedWidget,
       std::move(event));
+}
+
+void NotifyAuraShellPopupBlocked(content::WebContents* contents,
+                                 const GURL& popup_url,
+                                 int blocked_on_page) {
+  if (!contents) {
+    return;
+  }
+  base::DictValue event;
+  event.Set("event", "popupBlocked");
+  event.Set("pageUrl", contents->GetLastCommittedURL().spec());
+  event.Set("origin", url::Origin::Create(contents->GetLastCommittedURL())
+                          .Serialize());
+  event.Set("popupUrl", popup_url.possibly_invalid_spec());
+  event.Set("count", blocked_on_page);
+  // Only the tab's own window: a background tab's popups are still listed
+  // when the user switches to it, through showBlockedPopups.
+  DispatchAuraShellRuntimeEvent(contents, std::move(event));
 }
 
 bool RequestAuraShellSystemAction(const std::string& action) {

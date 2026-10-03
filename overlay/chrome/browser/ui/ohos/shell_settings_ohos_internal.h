@@ -72,6 +72,8 @@ void SetDefaultSiteSetting(const ShellCommandContext& context,
                            const base::DictValue& command);
 void ResetSiteSettings(const ShellCommandContext& context,
                        const base::DictValue& command);
+void ShowBlockedPopups(const ShellCommandContext& context,
+                       const base::DictValue& command);
 
 }  // namespace chrome::ohos::settings_internal
 

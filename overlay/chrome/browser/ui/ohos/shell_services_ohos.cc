@@ -69,6 +69,7 @@ constexpr ShellServiceCommand kShellServiceCommands[] = {
     {"setSiteSetting", &HandleSettingsCommand},
     {"setDefaultSiteSetting", &HandleSettingsCommand},
     {"resetSiteSettings", &HandleSettingsCommand},
+    {"showBlockedPopups", &HandleSettingsCommand},
     {"getAboutInfo", &HandleSettingsCommand},
     // Saved passwords, for a phone's own password pages.
     {"getSavedPasswords", &HandlePasswordsCommand},
