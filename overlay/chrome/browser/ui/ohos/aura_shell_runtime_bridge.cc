@@ -5852,6 +5852,17 @@ web_app::WebAppProvider* ShellWebAppProvider() {
 void LaunchShellWebApp(const base::DictValue& command) {
   const std::string* app_id = command.FindString("appId");
   web_app::WebAppProvider* provider = ShellWebAppProvider();
+  // A card tapped while the app was closed asks before the web app registry
+  // has loaded from disk; every app looks uninstalled until it has.
+  if (app_id && provider && !provider->on_registry_ready().is_signaled()) {
+    provider->on_registry_ready().Post(
+        FROM_HERE, base::BindOnce(
+                       [](base::DictValue command) {
+                         LaunchShellWebApp(command);
+                       },
+                       command.Clone()));
+    return;
+  }
   if (!app_id || !provider ||
       !provider->registrar_unsafe().IsInstallState(
           *app_id, {web_app::proto::INSTALLED_WITH_OS_INTEGRATION,
@@ -5860,7 +5871,6 @@ void LaunchShellWebApp(const base::DictValue& command) {
                  << (app_id ? *app_id : std::string());
     return;
   }
-  LOG(WARNING) << "OHOS launchWebApp " << *app_id;
   provider->scheduler().LaunchApp(*app_id, std::nullopt, base::DoNothing(),
                                   apps::LaunchSource::kFromOtherApp);
 }
