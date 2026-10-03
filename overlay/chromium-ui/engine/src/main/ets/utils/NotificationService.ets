@@ -24,7 +24,7 @@
 // heard while the app runs.
 
 import { common, Want, wantAgent, WantAgent } from '@kit.AbilityKit';
-import { commonEventManager } from '@kit.BasicServicesKit';
+import { BusinessError, commonEventManager } from '@kit.BasicServicesKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
@@ -100,11 +100,13 @@ export class NotificationService implements SystemServiceHandler {
     try {
       const subscriber = await commonEventManager.createSubscriber({ events: [this.removedEvent] });
       this.removedSubscriber = subscriber;
-      commonEventManager.subscribe(subscriber, (error, data: commonEventManager.CommonEventData): void => {
+      commonEventManager.subscribe(subscriber, (error: BusinessError, data: commonEventManager.CommonEventData): void => {
         if (error) {
           return;
         }
-        const id = data.parameters?.[WANT_KEY];
+        // CommonEventData.parameters is typed any.
+        const params = (data.parameters ?? {}) as Record<string, Object>;
+        const id: Object | undefined = params[WANT_KEY];
         if (typeof id === 'string' && id.length > 0) {
           const close: Record<string, Object> = { 'id': id };
           this.emit('close', close);
