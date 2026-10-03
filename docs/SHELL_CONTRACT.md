@@ -399,6 +399,8 @@ Chromium 自己的安装确认框,用户确认后才装。
 | `selectPopupRequested` | **是** | 仅手机。`options`(`{ label, type: 'option'\|'group'\|'separator', enabled, checked }[]`)、`selectedIndex`、`multiple`。选好后发 `selectPopupResult { requestId, indices }`(下标对应 `options`),取消时发 `{ requestId, canceled: true }` |
 | `contactsPickerRequested` | **是** | 网页 `navigator.contacts.select()`:`multiple`、`properties`(`name`/`email`/`tel`/`address`/`icon` 中网页要的)。用系统联系人选择器选好后发 `contactsPickerResult { requestId, contacts: { name?, email?, tel?, address? }[] }`(每项都是字符串数组,地址一行一条),取消时发 `{ requestId, canceled: true }` |
 | `speechRecognitionRequested` | **是** | 网页语音识别 `SpeechRecognition.start()`:`language`、`continuous`、`interimResults`。用系统语音识别(自己录音)识别,过程用 `speechRecognitionEvent { requestId, speechEvent }` 报告:`audioStart`/`soundStart`/`soundEnd`/`audioEnd`、`result`(`transcript`、`isFinal`、`confidence`)、`error`(`error` 为 Web Speech 的错误名,如 `no-speech`、`not-allowed`),最后一定发 `end` |
+| `nfcScanStart`、`nfcScanStop` | **是** | 网页 NDEFReader 开始 / 停止读标签(`requestId` 是这个网页,`origin` 用于询问用户)。读到标签发 `nfcTagRead { requestId, serialNumber, ndefRecords }`,出错发 `nfcError { requestId, errorType, message }`。记录格式见 HAR 的 `WebNdefRecord` |
+| `nfcWrite`、`nfcMakeReadOnly`、`nfcWriteCancel` | **是** | 写入 `ndefRecords`(`overwrite`)/ 把标签设为只读,等用户把手机靠近标签;完成发 `nfcWriteResult { requestId, nfcOperation: 'push' \| 'makeReadOnly', errorType?, message? }`;`nfcWriteCancel` 时放弃等待 |
 | `speechRecognitionStop`、`speechRecognitionAbort` | 否 | 停止录音并给出结果 / 直接放弃;两者最后都要发 `end` |
 | `dateTimePickerClosed`、`selectPopupClosed` | 否 | 网页收回了 `requestId` 那次请求(输入框失焦或被移除),直接关掉对应的选择器,不用回复 |
 | `fileOpenRequested` | 否 | `path` 加 `action`:`open` 打开文件,`openFolder` 打开文件夹,`reveal` 在文件管理里定位这个文件 |

@@ -443,6 +443,9 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   // only on Android; the shell shows the system contact picker
   // (contactsPickerRequested).
   //
+  // On a phone also Web NFC (NDEFReader), stable only on Android: the shell
+  // reads and writes tags (BindAuraShellNfc).
+  //
   // On a phone also window.orientation and orientationchange, which Android
   // ships and mobile sites and players use to tell a phone and follow its
   // rotation. Not on a tablet or PC: their desktop User-Agent is there to get
@@ -451,7 +454,7 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
       config.ui_family == "mobile_phone"
           ? "--enable-blink-features=BarcodeDetector,FaceDetector,"
             "TextDetector,WebShare,MediaCapture,ContactsManager,"
-            "ContactsManagerExtraProperties,OrientationEvent"
+            "ContactsManagerExtraProperties,WebNFC,OrientationEvent"
           : "--enable-blink-features=BarcodeDetector,FaceDetector,"
             "TextDetector,WebShare,MediaCapture,ContactsManager,"
             "ContactsManagerExtraProperties");

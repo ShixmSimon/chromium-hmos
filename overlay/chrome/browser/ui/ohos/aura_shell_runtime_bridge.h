@@ -12,6 +12,7 @@
 #include "base/values.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "third_party/blink/public/mojom/choosers/date_time_chooser.mojom-forward.h"
+#include "services/device/public/mojom/nfc.mojom-forward.h"
 #include "third_party/blink/public/mojom/webshare/webshare.mojom-forward.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
 #include "ui/gfx/geometry/insets.h"
@@ -170,6 +171,11 @@ void BindAuraShellShareService(
     mojo::PendingReceiver<blink::mojom::ShareService> receiver);
 // <input type=date|time|datetime-local|month|week> on a phone: asks the shell
 // for its own picker with dateTimePickerRequested.
+// Web NFC: the shell scans and writes tags through the system, asked with
+// nfcScanStart / nfcWrite / nfcMakeReadOnly and answering with nfcTagRead /
+// nfcWriteResult / nfcError (docs/SHELL_CONTRACT.md).
+void BindAuraShellNfc(content::RenderFrameHost* frame,
+                      mojo::PendingReceiver<device::mojom::NFC> receiver);
 void BindAuraShellDateTimeChooser(
     content::RenderFrameHost* frame,
     mojo::PendingReceiver<blink::mojom::DateTimeChooser> receiver);

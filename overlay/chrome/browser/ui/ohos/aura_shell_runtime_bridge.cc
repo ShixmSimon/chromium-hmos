@@ -107,6 +107,7 @@
 #include "components/payments/mojom/payment_request_data.mojom.h"
 #include "content/public/browser/ohos_contacts_picker.h"
 #include "content/public/browser/ohos_popup_menu.h"
+#include "services/device/public/mojom/nfc.mojom.h"
 #include "content/public/browser/ohos_speech_recognizer.h"
 #include "media/mojo/mojom/speech_recognition_error_code.mojom.h"
 #include "third_party/blink/public/mojom/contacts/contacts_manager.mojom.h"
@@ -220,6 +221,8 @@ std::atomic<int> g_open_shell_pickers{0};
 void CompleteShellDateTimePicker(const base::DictValue& command);
 void CompleteShellSelectPopup(const base::DictValue& command);
 void CompleteShellContactsPicker(const base::DictValue& command);
+void ForwardShellNfcCommand(std::string_view name,
+                            const base::DictValue& command);
 void LaunchShellWebApp(const base::DictValue& command);
 void ListShellWebApps(gfx::AcceleratedWidget widget,
                       const base::DictValue& command);
@@ -3172,6 +3175,11 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     CompleteShellContactsPicker(command);
     return;
   }
+  if (*name == "nfcTagRead" || *name == "nfcWriteResult" ||
+      *name == "nfcError") {
+    ForwardShellNfcCommand(*name, command);
+    return;
+  }
   if (*name == "speechRecognitionEvent") {
     ForwardShellSpeechEvent(command);
     return;
@@ -4480,6 +4488,9 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "selectPopupResult",
       "contactsPickerResult",
       "speechRecognitionEvent",
+      "nfcTagRead",
+      "nfcWriteResult",
+      "nfcError",
       "launchWebApp",
       "getWebApps",
       "uninstallWebApp",
@@ -6031,6 +6042,338 @@ void ExportShellWebAppIcon(gfx::AcceleratedWidget widget,
                     reply, widget, request_id, app_id, title, path));
           },
           reply, widget, request_id, *app_id, title, path));
+}
+
+// --- Web NFC. ------------------------------------------------------------------
+//
+// The page's NDEF records travel to and from the shell as JSON:
+//   { recordType, mediaType?, id?, encoding?, lang?, data: base64,
+//     records?: [ ...the same, for a record that holds a message ] }
+// recordType is the Web NFC one ("text", "url", "mime", "absolute-url",
+// "smart-poster", "empty", "unknown", "example.com:type", ":local"); the shell
+// turns them into NDEF bytes and back.
+
+namespace {
+
+constexpr int kMaxNdefNesting = 4;
+
+device::mojom::NDEFRecordTypeCategory NdefCategoryOf(
+    const std::string& record_type) {
+  if (!record_type.empty() && record_type[0] == ':') {
+    return device::mojom::NDEFRecordTypeCategory::kLocal;
+  }
+  if (record_type.find(':') != std::string::npos) {
+    return device::mojom::NDEFRecordTypeCategory::kExternal;
+  }
+  return device::mojom::NDEFRecordTypeCategory::kStandardized;
+}
+
+base::DictValue NdefRecordToShell(const device::mojom::NDEFRecord& record) {
+  base::DictValue out;
+  out.Set("recordType", record.record_type);
+  if (record.media_type) {
+    out.Set("mediaType", *record.media_type);
+  }
+  if (record.id) {
+    out.Set("id", *record.id);
+  }
+  if (record.encoding) {
+    out.Set("encoding", *record.encoding);
+  }
+  if (record.lang) {
+    out.Set("lang", *record.lang);
+  }
+  out.Set("data", base::Base64Encode(record.data));
+  if (record.payload_message) {
+    base::ListValue records;
+    for (const auto& inner : record.payload_message->data) {
+      records.Append(NdefRecordToShell(*inner));
+    }
+    out.Set("records", std::move(records));
+  }
+  return out;
+}
+
+// Null when the record is not usable (no type, bad base64, too deep).
+device::mojom::NDEFMessagePtr NdefMessageFromShell(const base::ListValue& list,
+                                                   int depth);
+
+device::mojom::NDEFRecordPtr NdefRecordFromShell(const base::DictValue& dict,
+                                                 int depth) {
+  const std::string* record_type = dict.FindString("recordType");
+  if (!record_type || record_type->empty()) {
+    return nullptr;
+  }
+  auto record = device::mojom::NDEFRecord::New();
+  record->record_type = *record_type;
+  record->category = NdefCategoryOf(*record_type);
+  if (const std::string* value = dict.FindString("mediaType")) {
+    record->media_type = *value;
+  }
+  if (const std::string* value = dict.FindString("id")) {
+    record->id = *value;
+  }
+  if (const std::string* value = dict.FindString("encoding")) {
+    record->encoding = *value;
+  }
+  if (const std::string* value = dict.FindString("lang")) {
+    record->lang = *value;
+  }
+  if (const std::string* data = dict.FindString("data")) {
+    std::optional<std::vector<uint8_t>> bytes = base::Base64Decode(*data);
+    if (!bytes) {
+      return nullptr;
+    }
+    record->data = std::move(*bytes);
+  }
+  if (const base::ListValue* records = dict.FindList("records")) {
+    if (depth >= kMaxNdefNesting) {
+      return nullptr;
+    }
+    record->payload_message = NdefMessageFromShell(*records, depth + 1);
+    if (!record->payload_message) {
+      return nullptr;
+    }
+  }
+  return record;
+}
+
+device::mojom::NDEFMessagePtr NdefMessageFromShell(const base::ListValue& list,
+                                                   int depth) {
+  auto message = device::mojom::NDEFMessage::New();
+  for (const base::Value& value : list) {
+    if (!value.is_dict()) {
+      return nullptr;
+    }
+    device::mojom::NDEFRecordPtr record =
+        NdefRecordFromShell(value.GetDict(), depth);
+    if (!record) {
+      return nullptr;
+    }
+    message->data.push_back(std::move(record));
+  }
+  return message;
+}
+
+device::mojom::NDEFErrorPtr NdefErrorFromShell(const base::DictValue& command) {
+  using Type = device::mojom::NDEFErrorType;
+  static constexpr std::pair<std::string_view, Type> kTypes[] = {
+      {"notAllowed", Type::NOT_ALLOWED},
+      {"notSupported", Type::NOT_SUPPORTED},
+      {"notReadable", Type::NOT_READABLE},
+      {"invalidMessage", Type::INVALID_MESSAGE},
+      {"operationCancelled", Type::OPERATION_CANCELLED},
+      {"ioError", Type::IO_ERROR},
+  };
+  const std::string* name = command.FindString("errorType");
+  Type type = Type::IO_ERROR;
+  if (name) {
+    const auto found = std::ranges::find(
+        kTypes, *name, &std::pair<std::string_view, Type>::first);
+    if (found != std::ranges::end(kTypes)) {
+      type = found->second;
+    }
+  }
+  const std::string* message = command.FindString("message");
+  return device::mojom::NDEFError::New(type, message ? *message : std::string());
+}
+
+class ShellNfc;
+
+std::map<int, base::WeakPtr<ShellNfc>>& ShellNfcSessions() {
+  static base::NoDestructor<std::map<int, base::WeakPtr<ShellNfc>>> sessions;
+  return *sessions;
+}
+
+// One per document that uses NDEFReader. Scanning runs while the page has a
+// watch; a write or makeReadOnly waits for the shell's answer.
+class ShellNfc : public content::DocumentService<device::mojom::NFC> {
+ public:
+  ShellNfc(content::RenderFrameHost& frame,
+           mojo::PendingReceiver<device::mojom::NFC> receiver)
+      : DocumentService(frame, std::move(receiver)),
+        session_id_(NextShellPickerRequestId()) {
+    ShellNfcSessions()[session_id_] = weak_factory_.GetWeakPtr();
+  }
+
+  ~ShellNfc() override {
+    ShellNfcSessions().erase(session_id_);
+    if (!watch_ids_.empty()) {
+      Dispatch("nfcScanStop", base::DictValue());
+    }
+    FinishWrite(Cancelled());
+    FinishReadOnly(Cancelled());
+  }
+
+  // device::mojom::NFC:
+  void SetClient(mojo::PendingRemote<device::mojom::NFCClient> client) override {
+    client_.reset();
+    client_.Bind(std::move(client));
+  }
+
+  void Push(device::mojom::NDEFMessagePtr message,
+            device::mojom::NDEFWriteOptionsPtr options,
+            PushCallback callback) override {
+    // A new write replaces the one still waiting for a tag, as on Android.
+    FinishWrite(device::mojom::NDEFError::New(
+        device::mojom::NDEFErrorType::OPERATION_CANCELLED,
+        "Push is cancelled due to a new push request."));
+    push_callback_ = std::move(callback);
+    base::ListValue records;
+    for (const auto& record : message->data) {
+      records.Append(NdefRecordToShell(*record));
+    }
+    base::DictValue event;
+    event.Set("ndefRecords", std::move(records));
+    event.Set("overwrite", options ? options->overwrite : true);
+    Dispatch("nfcWrite", std::move(event));
+  }
+
+  void CancelPush() override {
+    if (push_callback_) {
+      FinishWrite(Cancelled());
+      Dispatch("nfcWriteCancel", base::DictValue());
+    }
+  }
+
+  void MakeReadOnly(MakeReadOnlyCallback callback) override {
+    FinishReadOnly(device::mojom::NDEFError::New(
+        device::mojom::NDEFErrorType::OPERATION_CANCELLED,
+        "Make read-only is cancelled due to a new request."));
+    read_only_callback_ = std::move(callback);
+    Dispatch("nfcMakeReadOnly", base::DictValue());
+  }
+
+  void CancelMakeReadOnly() override {
+    if (read_only_callback_) {
+      FinishReadOnly(Cancelled());
+      Dispatch("nfcWriteCancel", base::DictValue());
+    }
+  }
+
+  void Watch(uint32_t id, WatchCallback callback) override {
+    const bool first = watch_ids_.empty();
+    watch_ids_.insert(id);
+    if (first) {
+      Dispatch("nfcScanStart", base::DictValue());
+    }
+    std::move(callback).Run(nullptr);
+  }
+
+  void CancelWatch(uint32_t id) override {
+    if (watch_ids_.erase(id) && watch_ids_.empty()) {
+      Dispatch("nfcScanStop", base::DictValue());
+    }
+  }
+
+  // From the shell.
+  void OnTagRead(const base::DictValue& command) {
+    if (watch_ids_.empty() || !client_) {
+      return;
+    }
+    const base::ListValue* records = command.FindList("ndefRecords");
+    device::mojom::NDEFMessagePtr message =
+        records ? NdefMessageFromShell(*records, 0)
+                : device::mojom::NDEFMessage::New();
+    if (!message) {
+      client_->OnError(device::mojom::NDEFError::New(
+          device::mojom::NDEFErrorType::INVALID_MESSAGE,
+          "The tag's NDEF message could not be read."));
+      return;
+    }
+    const std::string* serial = command.FindString("serialNumber");
+    client_->OnWatch(std::vector<uint32_t>(watch_ids_.begin(), watch_ids_.end()),
+                     serial ? std::optional<std::string>(*serial)
+                            : std::nullopt,
+                     std::move(message));
+  }
+
+  void OnWriteResult(const base::DictValue& command) {
+    device::mojom::NDEFErrorPtr error =
+        command.FindString("errorType") ? NdefErrorFromShell(command)
+                                        : nullptr;
+    const std::string* kind = command.FindString("nfcOperation");
+    if (kind && *kind == "makeReadOnly") {
+      FinishReadOnly(std::move(error));
+    } else {
+      FinishWrite(std::move(error));
+    }
+  }
+
+  void OnError(const base::DictValue& command) {
+    if (client_) {
+      client_->OnError(NdefErrorFromShell(command));
+    }
+  }
+
+ private:
+  static device::mojom::NDEFErrorPtr Cancelled() {
+    return device::mojom::NDEFError::New(
+        device::mojom::NDEFErrorType::OPERATION_CANCELLED,
+        "The NFC operation was cancelled.");
+  }
+
+  void FinishWrite(device::mojom::NDEFErrorPtr error) {
+    if (push_callback_) {
+      std::move(push_callback_).Run(std::move(error));
+    }
+  }
+
+  void FinishReadOnly(device::mojom::NDEFErrorPtr error) {
+    if (read_only_callback_) {
+      std::move(read_only_callback_).Run(std::move(error));
+    }
+  }
+
+  void Dispatch(const char* name, base::DictValue event) {
+    event.Set("event", name);
+    event.Set("requestId", session_id_);
+    event.Set("origin", render_frame_host().GetLastCommittedOrigin().Serialize());
+    content::WebContents* contents =
+        content::WebContents::FromRenderFrameHost(&render_frame_host());
+    BrowserWindowInterface* browser =
+        contents ? FindBrowserForWebContents(contents) : nullptr;
+    DispatchRuntimeEvent(
+        browser ? GetBrowserWidget(browser) : gfx::kNullAcceleratedWidget,
+        std::move(event));
+  }
+
+  const int session_id_;
+  mojo::Remote<device::mojom::NFCClient> client_;
+  std::set<uint32_t> watch_ids_;
+  PushCallback push_callback_;
+  MakeReadOnlyCallback read_only_callback_;
+  base::WeakPtrFactory<ShellNfc> weak_factory_{this};
+};
+
+}  // namespace
+
+void BindAuraShellNfc(content::RenderFrameHost* frame,
+                      mojo::PendingReceiver<device::mojom::NFC> receiver) {
+  // DocumentService owns itself and goes with the document.
+  new ShellNfc(*frame, std::move(receiver));
+}
+
+// nfcTagRead { requestId, serialNumber?, records } / nfcWriteResult {
+// requestId, nfcOperation: "push" | "makeReadOnly", errorType?, message? } /
+// nfcError { requestId, errorType, message }.
+void ForwardShellNfcCommand(std::string_view name,
+                            const base::DictValue& command) {
+  const std::optional<int> request_id = command.FindInt("requestId");
+  if (!request_id) {
+    return;
+  }
+  auto it = ShellNfcSessions().find(*request_id);
+  if (it == ShellNfcSessions().end() || !it->second) {
+    return;
+  }
+  if (name == "nfcTagRead") {
+    it->second->OnTagRead(command);
+  } else if (name == "nfcWriteResult") {
+    it->second->OnWriteResult(command);
+  } else {
+    it->second->OnError(command);
+  }
 }
 
 // --- Speech recognition. -----------------------------------------------------

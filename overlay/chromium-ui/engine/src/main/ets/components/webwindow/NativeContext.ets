@@ -217,6 +217,7 @@ export interface BrowserRuntimeEvent {
     'selectPopupRequested' | 'selectPopupClosed' | 'contactsPickerRequested' |
     'speechRecognitionRequested' | 'speechRecognitionStop' | 'speechRecognitionAbort' |
     'webAppIcon' | 'webApps' | 'webAppUninstalled' |
+    'nfcScanStart' | 'nfcScanStop' | 'nfcWrite' | 'nfcWriteCancel' | 'nfcMakeReadOnly' |
     // Profile data; read these through shellEvent<T>() (ShellServiceTypes).
     'bookmarkList' | 'bookmarkCreated' | 'bookmarksChanged' |
     'historyResults' | 'historyChanged' | 'autocompleteResults' | 'topSites' |
@@ -356,6 +357,17 @@ export interface BrowserRuntimeEvent {
   // selectPopupRequested, contactsPickerRequested: whether several may be
   // chosen.
   multiple?: boolean;
+  // Web NFC, for the document `requestId` of the page at `origin`:
+  // nfcScanStart / nfcScanStop -- start or stop reading tags; answer each
+  // tag with nfcTagRead { requestId, serialNumber, records } and failures
+  // with nfcError { requestId, errorType, message }.
+  // nfcWrite { records, overwrite } / nfcMakeReadOnly -- wait for a tag, then
+  // answer nfcWriteResult { requestId, nfcOperation: 'push' | 'makeReadOnly',
+  // errorType?, message? }; nfcWriteCancel drops the pending one.
+  // errorType: notAllowed, notSupported, notReadable, invalidMessage,
+  // operationCancelled, ioError.
+  overwrite?: boolean;
+  ndefRecords?: WebNdefRecord[];
   // webApps: the installed web apps, by title (answer to getWebApps).
   apps?: InstalledWebApp[];
   // webAppUninstalled: whether the app went.
@@ -384,6 +396,21 @@ export interface BrowserRuntimeEvent {
   known?: boolean;
   isDefault?: boolean;
   huaweiWalletAvailable?: boolean;
+}
+
+// One NDEF record as Web NFC sees it (NDEFRecord): recordType is "text",
+// "url", "mime", "absolute-url", "smart-poster", "empty", "unknown", an
+// external type ("example.com:type") or a local one (":act"); data is the
+// payload as base64; records is the message a record holds (smart-poster,
+// external and local types). The shell turns these into NDEF bytes and back.
+export interface WebNdefRecord {
+  recordType: string;
+  mediaType?: string;
+  id?: string;
+  encoding?: string;
+  lang?: string;
+  data: string;
+  records?: WebNdefRecord[];
 }
 
 // An installed web app, in webApps.
@@ -567,6 +594,12 @@ export interface BrowserCommandPayload {
   indices?: number[];
   // contactsPickerResult: the chosen contacts; empty when none were.
   contacts?: PickedContact[];
+  // nfcTagRead / nfcWriteResult / nfcError (see the nfc events).
+  ndefRecords?: WebNdefRecord[];
+  serialNumber?: string;
+  nfcOperation?: 'push' | 'makeReadOnly';
+  errorType?: 'notAllowed' | 'notSupported' | 'notReadable' | 'invalidMessage' | 'operationCancelled' | 'ioError';
+  message?: string;
   // launchWebApp / exportWebAppIcon: the installed web app (pwaInstalled's
   // appId). exportWebAppIcon writes <directory>/<appId>.png and answers
   // with webAppIcon { requestId, appId, title, path } (path '' if none).

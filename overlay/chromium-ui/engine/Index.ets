@@ -25,7 +25,8 @@ export {
   InstalledWebApp,
   PickedContact,
   PwaMenuItemState,
-  SelectPopupOption
+  SelectPopupOption,
+  WebNdefRecord
 } from './src/main/ets/components/webwindow/NativeContext';
 export { BrowserCommandChannel } from './src/main/ets/utils/BrowserCommandChannel';
 export { ShellDownloadDirectory } from './src/main/ets/utils/ShellDownloadDirectory';

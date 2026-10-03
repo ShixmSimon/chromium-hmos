@@ -1,0 +1,63 @@
+Web NFC on OHOS: the shell reads and writes tags.
+
+- chrome_browser_interface_binders.cc binds device.mojom.NFC, which
+  content binds only on Android and iOS, to chrome::ohos::BindAuraShellNfc
+  (aura_shell_runtime_bridge.cc, in the overlay);
+- NfcPermissionContext lets a top-level, non-opaque page through: the shell
+  asks the reader when the page starts to scan or write, and there is no NFC
+  permission request type outside Android and iOS to prompt with.
+The engine turns the WebNFC Blink feature on for phones.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+and ohos-web-share.patch applied. Apply with:
+  git apply ohos-nfc.patch
+
+diff --git a/chrome/browser/chrome_browser_interface_binders.cc b/chrome/browser/chrome_browser_interface_binders.cc
+index ab84098..bf9ae70 100644
+--- a/chrome/browser/chrome_browser_interface_binders.cc
++++ b/chrome/browser/chrome_browser_interface_binders.cc
+@@ -69,6 +69,9 @@
+ #include "mojo/public/cpp/bindings/self_owned_receiver.h"
+ #include "pdf/buildflags.h"
+ #include "services/image_annotation/public/mojom/image_annotation.mojom.h"
++#if BUILDFLAG(IS_OHOS)
++#include "services/device/public/mojom/nfc.mojom.h"
++#endif
+ #include "third_party/blink/public/common/features.h"
+ #include "third_party/blink/public/common/features_generated.h"
+ #include "third_party/blink/public/mojom/credentialmanagement/credential_manager.mojom.h"
+@@ -611,6 +614,12 @@ void PopulateChromeFrameBinders(
+       &BindMediaFoundationPreferences);
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Web NFC: content binds it only on Android and iOS. Here the shell reads
++  // and writes tags through the system (BindAuraShellNfc).
++  map->Add<device::mojom::NFC>(&chrome::ohos::BindAuraShellNfc);
++#endif
++
+ #if BUILDFLAG(ENABLE_PDF)
+   map->Add<help_bubble::mojom::PdfHelpBubbleHandlerFactory>(
+       &pdf::PdfHelpBubbleHandlerFactory::Create);
+diff --git a/components/permissions/contexts/nfc_permission_context.cc b/components/permissions/contexts/nfc_permission_context.cc
+index 2eb2982..385de6f 100644
+--- a/components/permissions/contexts/nfc_permission_context.cc
++++ b/components/permissions/contexts/nfc_permission_context.cc
+@@ -35,6 +35,17 @@ ContentSetting NfcPermissionContext::GetContentSettingStatusInternal(
+   }
+   return ContentSettingPermissionContextBase::GetContentSettingStatusInternal(
+       render_frame_host, requesting_origin, embedding_origin);
++#elif BUILDFLAG(IS_OHOS)
++  // The HarmonyOS shell asks the reader itself each time a page starts to
++  // scan or write -- the sheet that also says to hold the phone to the tag --
++  // so the page's permission request stands for that, as long as it comes
++  // from a page the reader is on. There is no NFC request type to prompt
++  // with outside Android and iOS.
++  if (!render_frame_host || !render_frame_host->IsInPrimaryMainFrame() ||
++      render_frame_host->GetLastCommittedOrigin().opaque()) {
++    return CONTENT_SETTING_BLOCK;
++  }
++  return CONTENT_SETTING_ALLOW;
+ #else
+   return CONTENT_SETTING_BLOCK;
+ #endif
