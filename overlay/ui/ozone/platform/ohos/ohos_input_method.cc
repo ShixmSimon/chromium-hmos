@@ -19,6 +19,7 @@
 #include "base/time/time.h"
 #include "ui/base/ime/composition_text.h"
 #include "ui/base/ime/text_input_client.h"
+#include "ui/base/ime/text_input_mode.h"
 #include "ui/base/ime/text_input_type.h"
 #include "ui/events/event.h"
 #include "ui/events/event_constants.h"
@@ -117,7 +118,9 @@ InputMethod_TextInputType ToOhosInputType(TextInputType type);
 // The keyboard HarmonyOS should show. Password Vault fills and saves only
 // when it sees a user-name field next to a password field, and offers a
 // strong password only for a new-password one.
-InputMethod_TextInputType ToOhosInputType(TextInputType type, int flags) {
+InputMethod_TextInputType ToOhosInputType(TextInputType type,
+                                          int flags,
+                                          TextInputMode mode) {
   if (type == TEXT_INPUT_TYPE_PASSWORD &&
       (flags & kOhosAutocompleteNewPassword)) {
     return IME_TEXT_INPUT_TYPE_NEW_PASSWORD;
@@ -130,6 +133,30 @@ InputMethod_TextInputType ToOhosInputType(TextInputType type, int flags) {
        type == TEXT_INPUT_TYPE_TELEPHONE) &&
       (flags & kOhosAutocompleteOneTimeCode)) {
     return IME_TEXT_INPUT_TYPE_ONE_TIME_CODE;
+  }
+  // inputmode picks the keyboard for a field whose type does not: a code,
+  // amount or phone number box is mostly <input type=text inputmode=numeric>,
+  // and showed the full keyboard. As Android maps it; never for a password.
+  if (type != TEXT_INPUT_TYPE_PASSWORD && type != TEXT_INPUT_TYPE_NONE) {
+    switch (mode) {
+      case TEXT_INPUT_MODE_NUMERIC:
+        return IME_TEXT_INPUT_TYPE_NUMBER;
+      case TEXT_INPUT_MODE_DECIMAL:
+        return IME_TEXT_INPUT_TYPE_NUMBER_DECIMAL;
+      case TEXT_INPUT_MODE_TEL:
+        return IME_TEXT_INPUT_TYPE_PHONE;
+      case TEXT_INPUT_MODE_EMAIL:
+        return IME_TEXT_INPUT_TYPE_EMAIL_ADDRESS;
+      case TEXT_INPUT_MODE_URL:
+        return IME_TEXT_INPUT_TYPE_URL;
+      case TEXT_INPUT_MODE_TEXT:
+        return type == TEXT_INPUT_TYPE_TEXT_AREA ||
+                       type == TEXT_INPUT_TYPE_CONTENT_EDITABLE
+                   ? IME_TEXT_INPUT_TYPE_MULTILINE
+                   : IME_TEXT_INPUT_TYPE_TEXT;
+      default:
+        break;
+    }
   }
   return ToOhosInputType(type);
 }
@@ -170,7 +197,11 @@ InputMethod_TextInputType ToOhosInputType(TextInputType type) {
   }
 }
 
-InputMethod_EnterKeyType ToOhosEnterKeyType(TextInputType type) {
+InputMethod_EnterKeyType ToOhosEnterKeyType(TextInputType type,
+                                            TextInputMode mode) {
+  if (mode == TEXT_INPUT_MODE_SEARCH) {
+    return IME_ENTER_KEY_SEARCH;
+  }
   switch (type) {
     case TEXT_INPUT_TYPE_SEARCH:
       return IME_ENTER_KEY_SEARCH;
@@ -436,10 +467,13 @@ void OhosInputMethod::UpdateImeState() {
   const TextInputType type = GetTextInputType();
   const int flags =
       GetTextInputClient() ? GetTextInputClient()->GetTextInputFlags() : 0;
+  const TextInputMode mode = GetTextInputClient()
+                                 ? GetTextInputClient()->GetTextInputMode()
+                                 : TEXT_INPUT_MODE_DEFAULT;
   const InputMethod_ErrorCode result =
       OH_InputMethodProxy_NotifyConfigurationChange(
-          input_method_proxy_, ToOhosEnterKeyType(type),
-          ToOhosInputType(type, flags));
+          input_method_proxy_, ToOhosEnterKeyType(type, mode),
+          ToOhosInputType(type, flags, mode));
   if (result != IME_ERR_OK) {
     LOG(WARNING) << "HarmonyOS IME configuration update failed result="
                  << result;
@@ -453,10 +487,14 @@ void OhosInputMethod::RefreshTextSnapshot(bool notify_input_method) {
 
   ProxySnapshot snapshot;
   const TextInputType input_type = GetTextInputType();
+  const TextInputMode input_mode = GetTextInputClient()
+                                       ? GetTextInputClient()->GetTextInputMode()
+                                       : TEXT_INPUT_MODE_DEFAULT;
   snapshot.input_type = ToOhosInputType(
       input_type,
-      GetTextInputClient() ? GetTextInputClient()->GetTextInputFlags() : 0);
-  snapshot.enter_key_type = ToOhosEnterKeyType(input_type);
+      GetTextInputClient() ? GetTextInputClient()->GetTextInputFlags() : 0,
+      input_mode);
+  snapshot.enter_key_type = ToOhosEnterKeyType(input_type, input_mode);
   snapshot.window_id = GetOhosApplicationWindowIdForWidget(widget_);
 
   TextInputClient* client = GetTextInputClient();
