@@ -1,0 +1,78 @@
+Do not crash the browser when a cached Skia shader fails to compile.
+
+SharedContextState::compileError crashes the GPU process when a shader
+read from the cache fails to compile, so that the browser, seeing the
+shader cache shm count go up, clears the cache before starting another
+GPU process. On HarmonyOS the GPU runs in the browser process, so that
+crash was the whole browser's: once on a tablet emulator, a cached
+rounded-rect fragment shader failed to compile after IME input
+(SIGTRAP on Chrome_InProcGpuThread in compileError). On OHOS the GPU
+side clears its own shader cache instead (GrShaderCache::Clear) and
+carries on; Skia skips the draw it had no program for and builds the
+program from source the next time.
+
+Generated against Chromium 154.0.8037.51.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-cached-shader-no-crash.patch
+
+diff --git a/gpu/command_buffer/service/gr_shader_cache.cc b/gpu/command_buffer/service/gr_shader_cache.cc
+--- a/gpu/command_buffer/service/gr_shader_cache.cc
++++ b/gpu/command_buffer/service/gr_shader_cache.cc
+@@ -191,6 +191,13 @@ void GrShaderCache::EraseFromCache(Iterator it) {
+   store_.Erase(it);
+ }
+ 
++void GrShaderCache::Clear() {
++  base::AutoLock auto_lock(lock_);
++  while (!store_.empty()) {
++    EraseFromCache(store_.rbegin());
++  }
++}
++
+ void GrShaderCache::CacheClientIdOnDisk(int32_t client_id) {
+   base::AutoLock auto_lock(lock_);
+   client_ids_to_cache_on_disk_.insert(client_id);
+diff --git a/gpu/command_buffer/service/gr_shader_cache.h b/gpu/command_buffer/service/gr_shader_cache.h
+--- a/gpu/command_buffer/service/gr_shader_cache.h
++++ b/gpu/command_buffer/service/gr_shader_cache.h
+@@ -59,6 +59,8 @@ class RASTER_EXPORT GrShaderCache
+   void store(const SkData& key, const SkData& data) override;
+ 
+   void PopulateCache(const std::string& key, const std::string& data);
++  // Drops every entry, so programs are built from source again.
++  void Clear();
+   void CacheClientIdOnDisk(int32_t client_id);
+ 
+   // base::trace_event::MemoryDumpProvider implementation.
+diff --git a/gpu/command_buffer/service/shared_context_state.cc b/gpu/command_buffer/service/shared_context_state.cc
+--- a/gpu/command_buffer/service/shared_context_state.cc
++++ b/gpu/command_buffer/service/shared_context_state.cc
+@@ -244,6 +244,19 @@ void SharedContextState::compileError(const char* shader,
+     error_key.Set(errors);
+ 
+     if (shaderWasCached && use_shader_cache_shm_count_ != nullptr) {
++#if BUILDFLAG(IS_OHOS)
++      // Crashing the GPU process so the browser clears the cache when it
++      // starts another assumes a GPU process of its own. On HarmonyOS the GPU
++      // runs in the browser process: this took down the whole browser (a
++      // cached rounded-rect shader failed to compile on a tablet emulator,
++      // once, after IME input). Drop the cache here instead; Skia skips the
++      // draw it could not make a program for and builds it from source next
++      // time.
++      if (gr_shader_cache_) {
++        gr_shader_cache_->Clear();
++      }
++      return;
++#else
+       // https://crbug.com/1442633 Sometimes we would fail to compile a cached
+       // GLSL shader because of GL driver change. Increase shader cache shm
+       // count and crash the GPU process so that the browser process would clear
+@@ -252,6 +265,7 @@ void SharedContextState::compileError(const char* shader,
+           use_shader_cache_shm_count_.get());
+ 
+       base::ImmediateCrash();
++#endif
+     } else {
+       base::debug::DumpWithoutCrashing();
+     }
