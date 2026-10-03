@@ -161,7 +161,6 @@
 #include "skia/ext/font_utils.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_tree_host.h"
-#include "ui/compositor/compositor.h"
 #include "ui/base/base_window.h"
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
 #include "ui/base/models/button_menu_item_model.h"
@@ -1207,53 +1206,6 @@ std::map<gfx::AcceleratedWidget, gfx::Vector2d>& SurfaceOffsetStore() {
   return *store;
 }
 
-// Diagnostic: where a browser window and the parts of its native UI are, as
-// Views and the window tree host see them. A second browser window opened
-// with the native UI drew shifted up (no tab strip or toolbar) while its
-// XComponent sat right below the status bar; this says which of the window,
-// its client area, the compositor or the layout disagrees with the shell.
-void LogAuraShellBrowserGeometry(gfx::AcceleratedWidget widget,
-                                 const char* when) {
-  BrowserWindowInterface* browser = FindBrowserForWidget(widget);
-  BrowserView* browser_view =
-      browser ? BrowserView::GetBrowserViewForBrowser(browser) : nullptr;
-  views::Widget* views_widget =
-      browser_view ? browser_view->GetWidget() : nullptr;
-  if (!views_widget) {
-    LOG(WARNING) << "OHOS window geometry " << widget << " (" << when
-                 << "): no browser window";
-    return;
-  }
-  aura::Window* native_window = views_widget->GetNativeWindow();
-  aura::WindowTreeHost* host =
-      native_window ? native_window->GetHost() : nullptr;
-  LOG(WARNING) << "OHOS window geometry " << widget << " (" << when
-               << "): window "
-               << views_widget->GetWindowBoundsInScreen().ToString()
-               << " client "
-               << views_widget->GetClientAreaBoundsInScreen().ToString()
-               << " maximized " << views_widget->IsMaximized()
-               << " fullscreen " << views_widget->IsFullscreen()
-               << " host px "
-               << (host ? host->GetBoundsInPixels().ToString() : "-")
-               << " compositor "
-               << (host && host->compositor()
-                       ? host->compositor()->size().ToString()
-                       : "-")
-               << " scale "
-               << (host && host->compositor()
-                       ? host->compositor()->device_scale_factor()
-                       : 0.0f)
-               << " browser_view "
-               << browser_view->GetBoundsInScreen().ToString();
-  for (views::View* child : browser_view->children()) {
-    LOG(WARNING) << "OHOS window geometry " << widget << " (" << when
-                 << "):   " << child->GetClassName() << " "
-                 << child->GetBoundsInScreen().ToString()
-                 << (child->GetVisible() ? "" : " hidden");
-  }
-}
-
 void SetAuraShellSurfaceOffset(gfx::AcceleratedWidget widget,
                                const base::DictValue& command) {
   SurfaceOffsetStore()[widget] =
@@ -1262,16 +1214,7 @@ void SetAuraShellSurfaceOffset(gfx::AcceleratedWidget widget,
   // Diagnostic, with the extension bubble's anchor line: which offset the
   // anchors were taken back by.
   LOG(WARNING) << "OHOS surface offset in window: "
-               << SurfaceOffsetStore()[widget].ToString() << " widget "
-               << widget;
-  LogAuraShellBrowserGeometry(widget, "surface offset");
-  for (int delay_ms : {500, 2000}) {
-    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
-        FROM_HERE,
-        base::BindOnce(&LogAuraShellBrowserGeometry, widget,
-                       delay_ms == 500 ? "+0.5s" : "+2s"),
-        base::Milliseconds(delay_ms));
-  }
+               << SurfaceOffsetStore()[widget].ToString();
 }
 
 void SetAuraShellAnchorRects(gfx::AcceleratedWidget widget,

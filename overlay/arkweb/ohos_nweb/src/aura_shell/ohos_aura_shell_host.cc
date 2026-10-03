@@ -92,12 +92,6 @@ void OhosAuraShellHost::OnNativeSurfaceCreated(void* window,
       x, y, width, height, has_screen_origin_, screen_x_, screen_y_);
   xcomponent_bridge_.OnSurfaceChanged(bounds.x(), bounds.y(), bounds.width(),
                                       bounds.height(), density);
-  WVLOG_W(
-      "OHOS window geometry: native surface component=%{public}s "
-      "surface=(%{public}f,%{public}f %{public}fx%{public}f) "
-      "screen_origin=%{public}d (%{public}f,%{public}f) -> %{public}s",
-      component_id_.c_str(), x, y, width, height, has_screen_origin_ ? 1 : 0,
-      screen_x_, screen_y_, bounds.ToString().c_str());
   ui::RegisterOhosNativeSurface(component_id_, window, bounds,
                                 static_cast<float>(density));
   MaybeStartChromium();
@@ -152,10 +146,6 @@ void OhosAuraShellHost::OnSurfaceChanged(double x,
   has_screen_origin_ = true;
   screen_x_ = x;
   screen_y_ = y;
-  WVLOG_W(
-      "OHOS window geometry: shell area component=%{public}s x=%{public}f "
-      "y=%{public}f w=%{public}f h=%{public}f density=%{public}f",
-      component_id_.c_str(), x, y, width, height, density);
   xcomponent_bridge_.OnSurfaceChanged(x, y, width, height, density);
   if (native_window_) {
     ui::UpdateOhosNativeSurface(component_id_, native_window_,

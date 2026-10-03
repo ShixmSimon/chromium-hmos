@@ -185,11 +185,6 @@ void OhosPlatformWindow::SetBoundsInPixels(const gfx::Rect& requested) {
   if (!anchored_) {
     std::optional<OhosNativeSurface> surface =
         GetOhosNativeSurface(adapter_.GetAcceleratedWidget());
-    LOG(WARNING) << "OHOS window geometry " << adapter_.GetAcceleratedWidget()
-                 << ": Chromium sets bounds " << requested.ToString()
-                 << ", surface "
-                 << (surface ? surface->bounds.ToString() : "none")
-                 << ", window was " << adapter_.GetBounds().ToString();
     if (surface && surface->window && !surface->bounds.IsEmpty() &&
         surface->bounds != bounds) {
       LOG(WARNING) << "OHOS window " << adapter_.GetAcceleratedWidget()
@@ -413,11 +408,6 @@ void OhosPlatformWindow::OnNativeSurfaceBoundsChanged(gfx::Rect bounds,
   // The size is real and has to be taken; the origin is a placeholder.
   if (anchored_) {
     bounds.set_origin(adapter_.GetBounds().origin());
-  } else {
-    LOG(WARNING) << "OHOS window geometry " << adapter_.GetAcceleratedWidget()
-                 << ": surface bounds " << bounds.ToString() << " density "
-                 << density << ", window was "
-                 << adapter_.GetBounds().ToString();
   }
   const bool origin_changed = adapter_.GetBounds().origin() != bounds.origin();
   adapter_.SetBounds(bounds);
