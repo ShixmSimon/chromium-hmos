@@ -5860,6 +5860,7 @@ void LaunchShellWebApp(const base::DictValue& command) {
                  << (app_id ? *app_id : std::string());
     return;
   }
+  LOG(WARNING) << "OHOS launchWebApp " << *app_id;
   provider->scheduler().LaunchApp(*app_id, std::nullopt, base::DoNothing(),
                                   apps::LaunchSource::kFromOtherApp);
 }
