@@ -1,0 +1,42 @@
+Date and time inputs open the HarmonyOS shell's picker on a phone.
+
+ohos-native-pickers.patch turned InputMultipleFieldsUI off from the command
+line, but InputMultipleFieldsUIWithPointerChecks (stable since M154) implies
+it back on, so the input kept Blink's internal calendar. Do as Android does
+instead: keep the input's look, and when kOhosExternalPopupMenus is on,
+OpenDateTimeChooser always uses ExternalDateTimeChooser.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+and ohos-native-pickers.patch applied. Apply with:
+  git apply ohos-shell-date-picker.patch
+
+diff --git a/third_party/blink/renderer/core/page/chrome_client_impl.cc b/third_party/blink/renderer/core/page/chrome_client_impl.cc
+index f44b9dc..03097ff 100644
+--- a/third_party/blink/renderer/core/page/chrome_client_impl.cc
++++ b/third_party/blink/renderer/core/page/chrome_client_impl.cc
+@@ -130,7 +130,8 @@ namespace blink {
+ 
+ #if BUILDFLAG(IS_OHOS)
+ // A <select> opens the HarmonyOS shell's own picker instead of Blink's
+-// desktop dropdown, as Android opens its own. The engine turns this on for
++// desktop dropdown, as Android opens its own -- and so do date and time
++// inputs (OpenDateTimeChooser). The engine turns this on for
+ // the phone UI; there is no Blink runtime feature for it because adding one
+ // regenerates Blink's feature table.
+ BASE_FEATURE(kOhosExternalPopupMenus, base::FEATURE_DISABLED_BY_DEFAULT);
+@@ -837,7 +838,14 @@ DateTimeChooser* ChromeClientImpl::OpenDateTimeChooser(
+   // Android does not support PagePopup, so we must always use the native
+   // picker.
+ #if !BUILDFLAG(IS_ANDROID)
+-  if (RuntimeEnabledFeatures::InputMultipleFieldsUIEnabled()) {
++  // On an OHOS phone the shell's own picker answers, as Android's does; the
++  // input keeps its multiple-fields look, as on Android since
++  // InputMultipleFieldsUIWithPointerChecks.
++  if (RuntimeEnabledFeatures::InputMultipleFieldsUIEnabled()
++#if BUILDFLAG(IS_OHOS)
++      && !base::FeatureList::IsEnabled(kOhosExternalPopupMenus)
++#endif
++  ) {
+     return MakeGarbageCollected<DateTimeChooserImpl>(frame, picker_client,
+                                                      parameters);
+   }
