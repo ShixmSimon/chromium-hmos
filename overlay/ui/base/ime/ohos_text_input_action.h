@@ -15,10 +15,15 @@ namespace ui {
 // TextInputState directly -- and adding a method there rebuilds everything
 // that includes the header. On OHOS RenderWidgetHostViewAura's
 // GetTextInputFlags() carries it above the real flags, which end at 1 << 14,
-// and OhosInputMethod reads it back.
-inline constexpr int kOhosTextInputActionShift = 24;
-inline constexpr int kOhosTextInputActionMask = 0xf
+// and above the autocomplete hints at 1 << 24..26 that Password Vault reads
+// (kOhosAutocomplete* in ohos_input_method.cc), and OhosInputMethod reads it
+// back. Three bits: TextInputAction ends at 7.
+inline constexpr int kOhosTextInputActionShift = 28;
+inline constexpr int kOhosTextInputActionMask = 0x7
                                                 << kOhosTextInputActionShift;
+
+static_assert(static_cast<int>(TextInputAction::kMaxValue) <= 0x7,
+              "TextInputAction no longer fits its three bits");
 
 inline int PackOhosTextInputAction(TextInputAction action) {
   return static_cast<int>(action) << kOhosTextInputActionShift;

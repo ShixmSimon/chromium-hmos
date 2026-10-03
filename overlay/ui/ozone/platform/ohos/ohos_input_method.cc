@@ -109,7 +109,9 @@ void PostToInputMethod(InputMethod_TextEditorProxy* proxy,
 
 // What a field is for, from its autocomplete tokens. Set by Blink's
 // InputMethodController::TextInputFlags() on OHOS only
-// (patches/ohos-autocomplete-hints.patch); the values must match.
+// (patches/ohos-autocomplete-hints.patch); the values must match. The
+// field's enterkeyhint rides above them, at 1 << 28
+// (ui/base/ime/ohos_text_input_action.h).
 constexpr int kOhosAutocompleteUsername = 1 << 24;
 constexpr int kOhosAutocompleteNewPassword = 1 << 25;
 constexpr int kOhosAutocompleteOneTimeCode = 1 << 26;
