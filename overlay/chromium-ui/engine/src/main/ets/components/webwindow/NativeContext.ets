@@ -203,7 +203,7 @@ export interface BrowserRuntimeEvent {
     'openedInGroup' | 'pageScrollSettled' | 'pageContinuation' |
     'contextMenuImageFile' | 'contextMenuActionsChanged' |
     'backHandled' | 'dropNotHandled' | 'browserChromeRequested' |
-    'gpuContextLost' | 'lastSessionRestorable' | 'extensionInstallFailed' |
+    'gpuContextLost' | 'lastSessionRestorable' | 'lastSessionRestored' | 'extensionInstallFailed' |
     'pageFullscreenChanged' | 'pullToRefresh' |
     'extensionDetails' | 'extensionCommandFailed' |
     'pageDragStarted' | 'pageDragEnded' |
@@ -539,6 +539,10 @@ export interface BrowserCommandPayload {
   pinned?: boolean;
   // restoreLastSession: true restores the tabs, false lets them go.
   restore?: boolean;
+  // restoreLastSession: only the last session's main window, its tabs added
+  // with their history to this window (answered by lastSessionRestored
+  // { count }); without it every window of the last session comes back.
+  mainWindowOnly?: boolean;
   // getExtensionActions: the edge of the square icon to render, in px.
   // Omitted means 32.
   iconSizePx?: number;

@@ -680,6 +680,7 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 | `uninstallWebApp` | `appId` | 卸载用户装的网页应用,回 `webAppUninstalled { appId, ok }`;策略或系统装的(`canUninstall` 为 false)卸不掉 |
 | `launchWebApp` | `appId` | 在独立窗口里打开已安装的网页应用(pwaInstalled 的 `appId`),给桌面卡片用 |
 | `exportWebAppIcon` | `requestId`, `appId`, `directory` | 把网页应用的图标写成 `<directory>/<appId>.png`(192px 或更大的最小一张),回 `webAppIcon { requestId, appId, title, path }`,没有图标时 `path` 为空 |
+| `restoreLastSession` | `restore`, `mainWindowOnly?` | 回应 `lastSessionRestorable`。`mainWindowOnly` 为 true 时只把上次主窗口的标签（带前进后退历史）加进当前窗口，回 `lastSessionRestored { count }`；否则恢复上次的所有窗口 |
 | `showBlockedPopups` | | 打开当前窗口当前标签页被拦截的全部弹窗,回应 `popupBlocked` |
 | `getAboutInfo` | `requestId` | `aboutInfo { requestId, chromiumVersion, engineCommit, userAgent, bookmarkApiVersion, browsingApiVersion, jitEnabled }`。`jitEnabled` 是 V8 这次启动实际有没有用上 JIT(启动日志里 `AuraShell JIT available` 那个判断的结果):启动配置要求 jitless、或进程拿不到可执行内存时为 `false` |
 

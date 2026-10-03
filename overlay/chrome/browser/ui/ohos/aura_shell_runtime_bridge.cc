@@ -65,6 +65,10 @@
 #include "chrome/browser/profiles/profile_manager_observer.h"
 #include "chrome/browser/sessions/exit_type_service.h"
 #include "chrome/browser/sessions/session_restore.h"
+#include "chrome/browser/sessions/session_service.h"
+#include "chrome/browser/sessions/session_service_factory.h"
+#include "chrome/browser/ui/browser_tabrestore.h"
+#include "components/sessions/core/session_types.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/sessions/core/tab_restore_service_observer.h"
@@ -2451,8 +2455,76 @@ void OfferLastSession(gfx::AcceleratedWidget widget,
   DispatchRuntimeEvent(widget, std::move(event));
 }
 
-// restoreLastSession { restore: boolean }. false lets the session go.
-void AnswerLastSession(BrowserWindowInterface* browser,
+// The tabs of the last session's main window, with their back and forward
+// history, added to `widget`'s window -- what a phone's shell wants after the
+// app was killed. Restoring the whole session (RestoreSessionAfterCrash)
+// also reopens every other window the last run had, installed apps' windows
+// among them, and on a phone only one window is shown. The main window is the
+// first normal one the last run opened. Answers lastSessionRestored { count }.
+void RestoreLastSessionTabs(gfx::AcceleratedWidget widget,
+                            BrowserWindowInterface* browser) {
+  SessionService* service =
+      browser ? SessionServiceFactory::GetForProfile(browser->GetProfile())
+              : nullptr;
+  auto answer = [](gfx::AcceleratedWidget widget, int count) {
+    base::DictValue event;
+    event.Set("event", "lastSessionRestored");
+    event.Set("count", count);
+    DispatchRuntimeEvent(widget, std::move(event));
+  };
+  if (!service) {
+    answer(widget, 0);
+    return;
+  }
+  service->GetLastSession(base::BindOnce(
+      [](decltype(answer) answer, gfx::AcceleratedWidget widget,
+         std::vector<std::unique_ptr<sessions::SessionWindow>> windows,
+         SessionID active_window_id, bool read_error) {
+        BrowserWindowInterface* browser = FindBrowserForWidget(widget);
+        const sessions::SessionWindow* main = nullptr;
+        for (const auto& window : windows) {
+          if (window->type == sessions::SessionWindow::TYPE_NORMAL &&
+              window->app_name.empty() &&
+              (!main || window->window_id.id() < main->window_id.id())) {
+            main = window.get();
+          }
+        }
+        TabStripModel* tabs = browser ? browser->GetTabStripModel() : nullptr;
+        if (!main || !tabs) {
+          LOG(WARNING) << "OHOS last session has no main window to restore"
+                       << (read_error ? " (read error)" : "");
+          answer(widget, 0);
+          return;
+        }
+        int count = 0;
+        const int selected = main->selected_tab_index;
+        for (size_t i = 0; i < main->tabs.size(); ++i) {
+          const sessions::SessionTab& tab = *main->tabs[i];
+          if (tab.navigations.empty()) {
+            continue;
+          }
+          chrome::AddRestoredTab(
+              browser, tab.navigations, tabs->count(),
+              tab.normalized_navigation_index(), tab.extension_app_id,
+              tab.group, static_cast<int>(i) == selected, tab.pinned,
+              base::TimeTicks::Now(), tab.last_active_time,
+              /*storage_namespace=*/nullptr, tab.user_agent_override,
+              tab.extra_data, /*from_session_restore=*/true,
+              /*is_active_browser=*/std::nullopt);
+          ++count;
+        }
+        LOG(WARNING) << "OHOS restored " << count
+                     << " tabs of the last session's main window";
+        answer(widget, count);
+      },
+      answer, widget));
+}
+
+// restoreLastSession { restore: boolean, mainWindowOnly?: boolean }. false
+// lets the session go; mainWindowOnly restores just the main window's tabs
+// into this window (RestoreLastSessionTabs).
+void AnswerLastSession(gfx::AcceleratedWidget widget,
+                       BrowserWindowInterface* browser,
                        const base::DictValue& command) {
   // Taken out first and dropped only after the restore has started: the
   // restore has to begin while the lock still holds, or ExitTypeService
@@ -2463,7 +2535,11 @@ void AnswerLastSession(BrowserWindowInterface* browser,
     return;
   }
   if (command.FindBool("restore").value_or(true) && browser) {
-    SessionRestore::RestoreSessionAfterCrash(browser);
+    if (command.FindBool("mainWindowOnly").value_or(false)) {
+      RestoreLastSessionTabs(widget, browser);
+    } else {
+      SessionRestore::RestoreSessionAfterCrash(browser);
+    }
   }
 }
 
@@ -3854,7 +3930,7 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
   } else if (*name == "restoreRecentlyClosed") {
     RestoreRecentlyClosed(browser, command);
   } else if (*name == "restoreLastSession") {
-    AnswerLastSession(browser, command);
+    AnswerLastSession(widget, browser, command);
   } else if (*name == "print" && active) {
     RequestAuraShellSystemPrint(active);
   } else if (*name == "share" && active) {
