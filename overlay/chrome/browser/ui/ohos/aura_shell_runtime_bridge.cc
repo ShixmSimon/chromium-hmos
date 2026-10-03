@@ -5022,6 +5022,15 @@ void RequestAuraShellExternalUrl(content::WebContents* contents,
                  << url.possibly_invalid_spec();
     return;
   }
+  // A tab the reader is not looking at may not send them to another app, as
+  // on Android. A restored background tab whose page redirects to its app's
+  // scheme asked on every launch, over whatever tab was in front.
+  if (contents &&
+      contents->GetVisibility() != content::Visibility::VISIBLE) {
+    LOG(WARNING) << "OHOS external URL from a background tab ignored: "
+                 << app_url;
+    return;
+  }
   LOG(WARNING) << "OHOS external URL: " << app_url
                << (fallback_url.empty() ? "" : " fallback " + fallback_url)
                << " from " << initiator;
