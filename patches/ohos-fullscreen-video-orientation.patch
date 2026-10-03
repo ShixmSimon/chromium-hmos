@@ -1,0 +1,31 @@
+A landscape video made fullscreen on an OHOS phone turns to landscape.
+
+Attach chrome::ohos::WatchFullscreenVideoOrientation to every tab
+(screen_orientation_delegate_ohos.cc, in the overlay). Android does this in
+Blink from video_fullscreen_orientation_lock_enabled, a WebPreferences
+field that exists only on Android.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-fullscreen-video-orientation.patch
+
+diff --git a/chrome/browser/ui/tab_helpers.cc b/chrome/browser/ui/tab_helpers.cc
+index 19ae84e..f6e1ed1 100644
+--- a/chrome/browser/ui/tab_helpers.cc
++++ b/chrome/browser/ui/tab_helpers.cc
+@@ -226,6 +226,7 @@
+ #endif
+ 
+ #if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/screen_orientation_delegate_ohos.h"  // nogncheck
+ #include "chrome/browser/ui/ohos/shell_store_user_agent_ohos.h"  // nogncheck
+ #endif
+ 
+@@ -348,6 +349,7 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
+   // watcher only acts on DidStartNavigation, so one attached later has
+   // already missed the navigation that mattered.
+   chrome::ohos::WatchChromeWebStoreUserAgent(web_contents);
++  chrome::ohos::WatchFullscreenVideoOrientation(web_contents);
+ #endif
+ 
+   Profile* profile =

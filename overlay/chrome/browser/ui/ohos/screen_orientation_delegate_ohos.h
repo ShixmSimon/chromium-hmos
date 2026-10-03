@@ -7,6 +7,10 @@
 
 #include "content/public/browser/screen_orientation_delegate.h"
 
+namespace content {
+class WebContents;
+}
+
 // screen.orientation.lock() on HarmonyOS: the engine HAR's OrientationService
 // sets the app window's preferred orientation, and restores the shell's own
 // preference on unlock.
@@ -30,5 +34,15 @@ class ScreenOrientationDelegateOhos : public content::ScreenOrientationDelegate 
       content::WebContents* web_contents) override;
   void Unlock(content::WebContents* web_contents) override;
 };
+
+namespace chrome::ohos {
+
+// A landscape video that a phone page makes fullscreen turns the screen to
+// landscape until it leaves fullscreen, as Chrome on Android does. Android
+// does it in Blink from a WebPreferences field that exists only on Android;
+// here the browser watches the tab. Attach once per tab (TabHelpers).
+void WatchFullscreenVideoOrientation(content::WebContents* web_contents);
+
+}  // namespace chrome::ohos
 
 #endif  // CHROME_BROWSER_UI_OHOS_SCREEN_ORIENTATION_DELEGATE_OHOS_H_
