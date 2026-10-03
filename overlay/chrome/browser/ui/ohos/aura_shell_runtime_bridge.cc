@@ -3176,7 +3176,7 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     return;
   }
   if (*name == "nfcTagRead" || *name == "nfcWriteResult" ||
-      *name == "nfcError") {
+      *name == "nfcError" || *name == "nfcScanStarted") {
     ForwardShellNfcCommand(*name, command);
     return;
   }
@@ -4491,6 +4491,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "nfcTagRead",
       "nfcWriteResult",
       "nfcError",
+      "nfcScanStarted",
       "launchWebApp",
       "getWebApps",
       "uninstallWebApp",
@@ -6201,6 +6202,7 @@ class ShellNfc : public content::DocumentService<device::mojom::NFC> {
     if (!watch_ids_.empty()) {
       Dispatch("nfcScanStop", base::DictValue());
     }
+    FinishWatches(Cancelled());
     FinishWrite(Cancelled());
     FinishReadOnly(Cancelled());
   }
@@ -6251,19 +6253,42 @@ class ShellNfc : public content::DocumentService<device::mojom::NFC> {
     }
   }
 
+  // A scan answers once the shell has asked the reader and started reading
+  // (nfcScanStarted), so a refusal rejects the page's scan() rather than
+  // arriving later as a reading error.
   void Watch(uint32_t id, WatchCallback callback) override {
     const bool first = watch_ids_.empty();
     watch_ids_.insert(id);
+    if (scan_started_) {
+      std::move(callback).Run(nullptr);
+      return;
+    }
+    pending_watches_.push_back(std::move(callback));
     if (first) {
       Dispatch("nfcScanStart", base::DictValue());
     }
-    std::move(callback).Run(nullptr);
   }
 
   void CancelWatch(uint32_t id) override {
     if (watch_ids_.erase(id) && watch_ids_.empty()) {
+      scan_started_ = false;
+      FinishWatches(Cancelled());
       Dispatch("nfcScanStop", base::DictValue());
     }
+  }
+
+  void OnScanStarted(const base::DictValue& command) {
+    if (pending_watches_.empty()) {
+      return;
+    }
+    if (command.FindString("errorType")) {
+      // Nothing is reading: forget the watches, as Android does on failure.
+      watch_ids_.clear();
+      FinishWatches(NdefErrorFromShell(command));
+      return;
+    }
+    scan_started_ = true;
+    FinishWatches(nullptr);
   }
 
   // From the shell.
@@ -6313,6 +6338,14 @@ class ShellNfc : public content::DocumentService<device::mojom::NFC> {
         "The NFC operation was cancelled.");
   }
 
+  void FinishWatches(device::mojom::NDEFErrorPtr error) {
+    std::vector<WatchCallback> callbacks = std::move(pending_watches_);
+    pending_watches_.clear();
+    for (WatchCallback& callback : callbacks) {
+      std::move(callback).Run(error ? error.Clone() : nullptr);
+    }
+  }
+
   void FinishWrite(device::mojom::NDEFErrorPtr error) {
     if (push_callback_) {
       std::move(push_callback_).Run(std::move(error));
@@ -6341,6 +6374,8 @@ class ShellNfc : public content::DocumentService<device::mojom::NFC> {
   const int session_id_;
   mojo::Remote<device::mojom::NFCClient> client_;
   std::set<uint32_t> watch_ids_;
+  bool scan_started_ = false;
+  std::vector<WatchCallback> pending_watches_;
   PushCallback push_callback_;
   MakeReadOnlyCallback read_only_callback_;
   base::WeakPtrFactory<ShellNfc> weak_factory_{this};
@@ -6354,7 +6389,8 @@ void BindAuraShellNfc(content::RenderFrameHost* frame,
   new ShellNfc(*frame, std::move(receiver));
 }
 
-// nfcTagRead { requestId, serialNumber?, records } / nfcWriteResult {
+// nfcScanStarted { requestId, errorType?, message? } / nfcTagRead {
+// requestId, serialNumber?, ndefRecords } / nfcWriteResult {
 // requestId, nfcOperation: "push" | "makeReadOnly", errorType?, message? } /
 // nfcError { requestId, errorType, message }.
 void ForwardShellNfcCommand(std::string_view name,
@@ -6367,7 +6403,9 @@ void ForwardShellNfcCommand(std::string_view name,
   if (it == ShellNfcSessions().end() || !it->second) {
     return;
   }
-  if (name == "nfcTagRead") {
+  if (name == "nfcScanStarted") {
+    it->second->OnScanStarted(command);
+  } else if (name == "nfcTagRead") {
     it->second->OnTagRead(command);
   } else if (name == "nfcWriteResult") {
     it->second->OnWriteResult(command);

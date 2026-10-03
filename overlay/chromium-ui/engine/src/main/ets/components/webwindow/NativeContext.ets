@@ -358,9 +358,12 @@ export interface BrowserRuntimeEvent {
   // chosen.
   multiple?: boolean;
   // Web NFC, for the document `requestId` of the page at `origin`:
-  // nfcScanStart / nfcScanStop -- start or stop reading tags; answer each
-  // tag with nfcTagRead { requestId, serialNumber, records } and failures
-  // with nfcError { requestId, errorType, message }.
+  // nfcScanStart / nfcScanStop -- start or stop reading tags. Answer
+  // nfcScanStart with nfcScanStarted { requestId } once reading, or with an
+  // errorType when the reader refused or NFC is off (the page's scan() then
+  // rejects); then each tag with nfcTagRead { requestId, serialNumber,
+  // ndefRecords } and later failures with nfcError { requestId, errorType,
+  // message }.
   // nfcWrite { records, overwrite } / nfcMakeReadOnly -- wait for a tag, then
   // answer nfcWriteResult { requestId, nfcOperation: 'push' | 'makeReadOnly',
   // errorType?, message? }; nfcWriteCancel drops the pending one.
