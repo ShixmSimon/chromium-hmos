@@ -186,6 +186,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-phone-ua-openharmony.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-external-protocol-to-shell.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-phone-android-web-prefs.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-web-share.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

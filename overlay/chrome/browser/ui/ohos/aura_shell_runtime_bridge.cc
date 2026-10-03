@@ -101,6 +101,8 @@
 #include "components/sessions/core/tab_restore_types.h"
 #include "components/zoom/zoom_controller.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
+#include "third_party/blink/public/mojom/webshare/share_error.mojom.h"
+#include "third_party/blink/public/mojom/webshare/webshare.mojom.h"
 #include "chrome/browser/permissions/system/system_permission_common.h"
 #include "chrome/browser/permissions/system/system_permission_settings_ohos.h"
 #include "chrome/browser/ui/ohos/shell_context_menu_ohos.h"
@@ -150,6 +152,7 @@
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/overscroll_configuration.h"
 #include "content/public/browser/page_navigator.h"
+#include "content/public/browser/document_service.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_widget_host.h"
@@ -5147,6 +5150,55 @@ void ShutdownAuraShellBrowser() {
   }
 
   ui_task_runner->PostTask(FROM_HERE, base::BindOnce(&ShutdownOnUiThread));
+}
+
+namespace {
+
+// navigator.share() for one document. The renderer has already checked for a
+// secure context and consumed the user activation, as it does everywhere.
+//
+// The shell's sheet does not say whether the user went through with it, so a
+// share that reached the shell resolves at once, the way Windows does before
+// its picker closes. Files are refused until the shell can take them: a page
+// then learns at once, rather than a share sheet opening without them.
+class ShellShareService
+    : public content::DocumentService<blink::mojom::ShareService> {
+ public:
+  ShellShareService(content::RenderFrameHost& frame,
+                    mojo::PendingReceiver<blink::mojom::ShareService> receiver)
+      : DocumentService(frame, std::move(receiver)) {}
+
+  void Share(const std::string& title,
+             const std::string& text,
+             const GURL& url,
+             std::vector<blink::mojom::SharedFilePtr> files,
+             ShareCallback callback) override {
+    content::WebContents* contents =
+        content::WebContents::FromRenderFrameHost(&render_frame_host());
+    BrowserWindowInterface* browser =
+        contents ? FindBrowserForWebContents(contents) : nullptr;
+    if (!files.empty() || !browser) {
+      std::move(callback).Run(blink::mojom::ShareError::PERMISSION_DENIED);
+      return;
+    }
+    base::DictValue event;
+    event.Set("event", "shareRequested");
+    event.Set("url", url.is_valid() ? url.spec() : std::string());
+    event.Set("title", title);
+    event.Set("text", text);
+    event.Set("fromPage", true);
+    DispatchRuntimeEvent(GetBrowserWidget(browser), std::move(event));
+    std::move(callback).Run(blink::mojom::ShareError::OK);
+  }
+};
+
+}  // namespace
+
+void BindAuraShellShareService(
+    content::RenderFrameHost* frame,
+    mojo::PendingReceiver<blink::mojom::ShareService> receiver) {
+  // DocumentService owns itself and goes with the document.
+  new ShellShareService(*frame, std::move(receiver));
 }
 
 }  // namespace chrome::ohos

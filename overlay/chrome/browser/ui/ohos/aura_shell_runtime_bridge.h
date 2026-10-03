@@ -10,6 +10,8 @@
 
 #include "base/functional/callback_forward.h"
 #include "base/values.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "third_party/blink/public/mojom/webshare/webshare.mojom-forward.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/rect.h"
@@ -20,6 +22,7 @@ class GURL;
 class Profile;
 
 namespace content {
+class RenderFrameHost;
 class WebContents;
 }
 
@@ -159,6 +162,11 @@ void DispatchAuraShellRuntimeEventToProfile(Profile* profile,
 bool DispatchAuraShellRuntimeEvent(content::WebContents* contents,
                                    base::DictValue event);
 bool RequestAuraShellSystemShare(content::WebContents* contents);
+// navigator.share(): hands the page's title, text and URL to the shell's
+// share sheet as a shareRequested event.
+void BindAuraShellShareService(
+    content::RenderFrameHost* frame,
+    mojo::PendingReceiver<blink::mojom::ShareService> receiver);
 bool RequestAuraShellSystemCast(content::WebContents* contents);
 bool RequestAuraShellSystemAction(const std::string& action);
 
