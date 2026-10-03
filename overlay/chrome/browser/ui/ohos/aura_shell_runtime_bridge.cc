@@ -152,6 +152,8 @@
 #include "chrome/browser/ui/views/toolbar/app_menu.h"
 #include "chrome/browser/ui/web_applications/web_app_menu_model.h"
 #include "chrome/browser/web_applications/web_app_command_scheduler.h"
+#include "components/webapps/browser/installable/installable_metrics.h"
+#include "components/webapps/browser/uninstall_result_code.h"
 #include "chrome/browser/web_applications/web_app_icon_manager.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
@@ -219,6 +221,10 @@ void CompleteShellDateTimePicker(const base::DictValue& command);
 void CompleteShellSelectPopup(const base::DictValue& command);
 void CompleteShellContactsPicker(const base::DictValue& command);
 void LaunchShellWebApp(const base::DictValue& command);
+void ListShellWebApps(gfx::AcceleratedWidget widget,
+                      const base::DictValue& command);
+void UninstallShellWebApp(gfx::AcceleratedWidget widget,
+                          const base::DictValue& command);
 void ExportShellWebAppIcon(gfx::AcceleratedWidget widget,
                            const base::DictValue& command);
 void ForwardShellSpeechEvent(const base::DictValue& command);
@@ -3182,6 +3188,14 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     }
     return;
   }
+  if (*name == "getWebApps") {
+    ListShellWebApps(widget, command);
+    return;
+  }
+  if (*name == "uninstallWebApp") {
+    UninstallShellWebApp(widget, command);
+    return;
+  }
   if (*name == "launchWebApp") {
     LaunchShellWebApp(command);
     return;
@@ -4467,6 +4481,8 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "contactsPickerResult",
       "speechRecognitionEvent",
       "launchWebApp",
+      "getWebApps",
+      "uninstallWebApp",
       "installWebApp",
       "exportWebAppIcon",
       "permissionResult",
@@ -5873,6 +5889,87 @@ void LaunchShellWebApp(const base::DictValue& command) {
   }
   provider->scheduler().LaunchApp(*app_id, std::nullopt, base::DoNothing(),
                                   apps::LaunchSource::kFromOtherApp);
+}
+
+// getWebApps { requestId } -> webApps { requestId, apps: [{ appId, title,
+// startUrl, canUninstall }] }: the web apps installed on this device, by
+// title. Waits for the registry, as launchWebApp does.
+void ListShellWebApps(gfx::AcceleratedWidget widget,
+                      const base::DictValue& command) {
+  web_app::WebAppProvider* provider = ShellWebAppProvider();
+  if (provider && !provider->on_registry_ready().is_signaled()) {
+    provider->on_registry_ready().Post(
+        FROM_HERE, base::BindOnce(
+                       [](gfx::AcceleratedWidget widget,
+                          base::DictValue command) {
+                         ListShellWebApps(widget, command);
+                       },
+                       widget, command.Clone()));
+    return;
+  }
+  struct Entry {
+    std::string app_id;
+    std::string title;
+    std::string start_url;
+    bool can_uninstall;
+  };
+  std::vector<Entry> entries;
+  if (provider) {
+    const web_app::WebAppRegistrar& registrar = provider->registrar_unsafe();
+    for (const webapps::AppId& app_id : registrar.GetAppIds()) {
+      if (!registrar.IsInstallState(
+              app_id, {web_app::proto::INSTALLED_WITH_OS_INTEGRATION,
+                       web_app::proto::INSTALLED_WITHOUT_OS_INTEGRATION})) {
+        continue;
+      }
+      entries.push_back({app_id, registrar.GetAppShortName(app_id),
+                         registrar.GetAppStartUrl(app_id).spec(),
+                         registrar.CanUserUninstallWebApp(app_id)});
+    }
+  }
+  std::ranges::sort(entries, {}, &Entry::title);
+  base::ListValue apps;
+  for (const Entry& entry : entries) {
+    base::DictValue app;
+    app.Set("appId", entry.app_id);
+    app.Set("title", entry.title);
+    app.Set("startUrl", entry.start_url);
+    app.Set("canUninstall", entry.can_uninstall);
+    apps.Append(std::move(app));
+  }
+  base::DictValue event;
+  event.Set("event", "webApps");
+  event.Set("requestId", ReadRequestId(command));
+  event.Set("apps", std::move(apps));
+  DispatchRuntimeEvent(widget, std::move(event));
+}
+
+// uninstallWebApp { appId } -> webAppUninstalled { appId, ok }. Removes what
+// the user installed; an app a policy or the system put there stays.
+void UninstallShellWebApp(gfx::AcceleratedWidget widget,
+                          const base::DictValue& command) {
+  const std::string* app_id = command.FindString("appId");
+  web_app::WebAppProvider* provider = ShellWebAppProvider();
+  auto reply = [](gfx::AcceleratedWidget widget, std::string app_id, bool ok) {
+    base::DictValue event;
+    event.Set("event", "webAppUninstalled");
+    event.Set("appId", app_id);
+    event.Set("ok", ok);
+    DispatchRuntimeEvent(widget, std::move(event));
+  };
+  if (!app_id || !provider || !provider->on_registry_ready().is_signaled() ||
+      !provider->registrar_unsafe().CanUserUninstallWebApp(*app_id)) {
+    reply(widget, app_id ? *app_id : std::string(), false);
+    return;
+  }
+  provider->scheduler().RemoveUserUninstallableManagements(
+      *app_id, webapps::WebappUninstallSource::kAppManagement,
+      base::BindOnce(
+          [](decltype(reply) reply, gfx::AcceleratedWidget widget,
+             std::string app_id, webapps::UninstallResultCode code) {
+            reply(widget, app_id, webapps::UninstallSucceeded(code));
+          },
+          reply, widget, *app_id));
 }
 
 // exportWebAppIcon { requestId, appId, directory } -> webAppIcon { requestId,

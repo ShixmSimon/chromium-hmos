@@ -216,7 +216,7 @@ export interface BrowserRuntimeEvent {
     'fileOpenRequested' | 'dateTimePickerRequested' | 'dateTimePickerClosed' |
     'selectPopupRequested' | 'selectPopupClosed' | 'contactsPickerRequested' |
     'speechRecognitionRequested' | 'speechRecognitionStop' | 'speechRecognitionAbort' |
-    'webAppIcon' |
+    'webAppIcon' | 'webApps' | 'webAppUninstalled' |
     // Profile data; read these through shellEvent<T>() (ShellServiceTypes).
     'bookmarkList' | 'bookmarkCreated' | 'bookmarksChanged' |
     'historyResults' | 'historyChanged' | 'autocompleteResults' | 'topSites' |
@@ -356,6 +356,10 @@ export interface BrowserRuntimeEvent {
   // selectPopupRequested, contactsPickerRequested: whether several may be
   // chosen.
   multiple?: boolean;
+  // webApps: the installed web apps, by title (answer to getWebApps).
+  apps?: InstalledWebApp[];
+  // webAppUninstalled: whether the app went.
+  ok?: boolean;
   // contactsPickerRequested: what the page asked to know about each contact.
   // Answer with contactsPickerResult { requestId, contacts } or
   // { requestId, canceled: true }.
@@ -380,6 +384,15 @@ export interface BrowserRuntimeEvent {
   known?: boolean;
   isDefault?: boolean;
   huaweiWalletAvailable?: boolean;
+}
+
+// An installed web app, in webApps.
+export interface InstalledWebApp {
+  appId: string;
+  title: string;
+  startUrl: string;
+  // False for an app a policy or the system installed.
+  canUninstall: boolean;
 }
 
 // A contact the user chose in the system picker, for contactsPickerResult.

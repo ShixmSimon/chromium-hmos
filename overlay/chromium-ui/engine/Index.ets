@@ -22,6 +22,7 @@ export {
   BrowserStateSnapshot,
   BrowserTabState,
   PwaMenuButtonState,
+  InstalledWebApp,
   PickedContact,
   PwaMenuItemState,
   SelectPopupOption

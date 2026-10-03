@@ -674,6 +674,8 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 | `setDefaultSiteSetting` | `type`, `setting` | |
 | `resetSiteSettings` | `origin` | 清除这个网站的全部权限和存储 |
 | `installWebApp` | | 把当前网页安装成应用(Chromium 的安装对话框),装好后发 `pwaInstalled`。浏览器状态里 `canInstallWebApp` 为 true 时才在菜单里提供 |
+| `getWebApps` | `requestId` | 回 `webApps { requestId, apps: { appId, title, startUrl, canUninstall }[] }`,已安装的网页应用,按名字排序 |
+| `uninstallWebApp` | `appId` | 卸载用户装的网页应用,回 `webAppUninstalled { appId, ok }`;策略或系统装的(`canUninstall` 为 false)卸不掉 |
 | `launchWebApp` | `appId` | 在独立窗口里打开已安装的网页应用(pwaInstalled 的 `appId`),给桌面卡片用 |
 | `exportWebAppIcon` | `requestId`, `appId`, `directory` | 把网页应用的图标写成 `<directory>/<appId>.png`(192px 或更大的最小一张),回 `webAppIcon { requestId, appId, title, path }`,没有图标时 `path` 为空 |
 | `showBlockedPopups` | | 打开当前窗口当前标签页被拦截的全部弹窗,回应 `popupBlocked` |
