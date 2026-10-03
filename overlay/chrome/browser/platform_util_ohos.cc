@@ -9,7 +9,7 @@
 
 #include "base/values.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
-#include "ui/gfx/native_widget_types.h"
+#include "ui/gfx/native_ui_types.h"
 #include "url/gurl.h"
 
 namespace platform_util {
