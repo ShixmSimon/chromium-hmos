@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <limits>
 #include <map>
 #include <memory>
@@ -43,6 +44,7 @@
 #include "base/memory/ref_counted_memory.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/no_destructor.h"
+#include "base/memory/weak_ptr.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
@@ -101,7 +103,12 @@
 #include "components/sessions/core/tab_restore_types.h"
 #include "components/zoom/zoom_controller.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
+#include "content/public/browser/ohos_popup_menu.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "third_party/blink/public/mojom/choosers/date_time_chooser.mojom.h"
+#include "third_party/blink/public/mojom/choosers/popup_menu.mojom.h"
 #include "third_party/blink/public/mojom/webshare/share_error.mojom.h"
+#include "ui/base/ime/text_input_type.h"
 #include "third_party/blink/public/mojom/webshare/webshare.mojom.h"
 #include "chrome/browser/permissions/system/system_permission_common.h"
 #include "chrome/browser/permissions/system/system_permission_settings_ohos.h"
@@ -190,6 +197,17 @@
 #include "url/url_constants.h"
 
 namespace chrome::ohos {
+
+// The shell's own pickers, defined with BindAuraShellDateTimeChooser below.
+void CompleteShellDateTimePicker(const base::DictValue& command);
+void CompleteShellSelectPopup(const base::DictValue& command);
+void ShowShellSelectPopup(
+    content::RenderFrameHost* frame,
+    mojo::PendingRemote<blink::mojom::PopupMenuClient> client,
+    int32_t selected_item,
+    std::vector<blink::mojom::MenuItemPtr> items,
+    bool allow_multiple_selection);
+
 
 // Defined further down, past this namespace: the settings switch that says
 // who draws the browser, as opposed to the screen changing shape.
@@ -3087,6 +3105,15 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     return;
   }
 
+  if (*name == "dateTimePickerResult") {
+    CompleteShellDateTimePicker(command);
+    return;
+  }
+  if (*name == "selectPopupResult") {
+    CompleteShellSelectPopup(command);
+    return;
+  }
+
   if (*name == "filePickerResult") {
     const std::optional<int> request_id = command.FindInt("requestId");
     const base::ListValue* path_values = command.FindList("paths");
@@ -4123,6 +4150,7 @@ void NotifyAuraShellBrowserStarted() {
   }
   ui::SetOhosSelectFileDialogRequestCallback(
       base::BindRepeating(&DispatchFilePickerRequest));
+  content::SetOhosPopupMenuHandler(base::BindRepeating(&ShowShellSelectPopup));
   ApplyPullToRefresh(IsAuraShellMobilePhoneUi());
   OhosWebPermissionWatcher::GetInstance().Start();
   // Only Android installs one upstream; without it screen.orientation.lock()
@@ -4221,6 +4249,7 @@ void EnsureAuraShellSystemPermissions() {
 void NotifyAuraShellBrowserStopped() {
   content::WebContents::SetScreenOrientationDelegate(nullptr);
   ui::SetOhosSelectFileDialogRequestCallback({});
+  content::SetOhosPopupMenuHandler({});
   ui::CancelAllOhosSelectFileDialogs();
   GetPwaMenuSessions().clear();
   RuntimeBridgeState& state = GetState();
@@ -4335,6 +4364,8 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "passwordAuthReset",
       "requestState",
       "filePickerResult",
+      "dateTimePickerResult",
+      "selectPopupResult",
       "permissionResult",
       "systemPermissionState",
       "setViewportInsets",
@@ -5227,6 +5258,370 @@ void BindAuraShellShareService(
     mojo::PendingReceiver<blink::mojom::ShareService> receiver) {
   // DocumentService owns itself and goes with the document.
   new ShellShareService(*frame, std::move(receiver));
+}
+
+namespace {
+
+// --- Date and time pickers. ----------------------------------------------
+//
+// Blink hands over a date as a number whose unit depends on the input type
+// (InputType::ValueAsDouble): milliseconds since the epoch for date,
+// datetime-local and week (its Monday), months since January 1970 for month,
+// milliseconds since midnight for time; NaN when empty. The shell gets and
+// returns the HTML value strings instead -- 2026-10-03, 2026-10-03T14:30,
+// 2026-10, 14:30, 2026-W40 -- so it needs no knowledge of these.
+
+const char* DateTimeTypeName(ui::TextInputType type) {
+  switch (type) {
+    case ui::TEXT_INPUT_TYPE_DATE:
+      return "date";
+    case ui::TEXT_INPUT_TYPE_DATE_TIME:
+    case ui::TEXT_INPUT_TYPE_DATE_TIME_LOCAL:
+      return "datetime-local";
+    case ui::TEXT_INPUT_TYPE_MONTH:
+      return "month";
+    case ui::TEXT_INPUT_TYPE_TIME:
+      return "time";
+    case ui::TEXT_INPUT_TYPE_WEEK:
+      return "week";
+    default:
+      return nullptr;
+  }
+}
+
+constexpr int64_t kMsPerDay = 24 * 60 * 60 * 1000;
+
+std::string DateTimeToShell(ui::TextInputType type, double value) {
+  if (!std::isfinite(value)) {
+    return std::string();
+  }
+  if (type == ui::TEXT_INPUT_TYPE_MONTH) {
+    const int64_t months = static_cast<int64_t>(std::floor(value));
+    const int64_t year = 1970 + (months >= 0 ? months / 12 : (months - 11) / 12);
+    const int64_t month = months - (year - 1970) * 12 + 1;
+    return base::StringPrintf("%04d-%02d", static_cast<int>(year),
+                              static_cast<int>(month));
+  }
+  if (type == ui::TEXT_INPUT_TYPE_TIME) {
+    const int64_t ms = static_cast<int64_t>(value);
+    const int hours = static_cast<int>(ms / 3600000);
+    const int minutes = static_cast<int>(ms / 60000 % 60);
+    const int seconds = static_cast<int>(ms / 1000 % 60);
+    return seconds ? base::StringPrintf("%02d:%02d:%02d", hours, minutes,
+                                        seconds)
+                   : base::StringPrintf("%02d:%02d", hours, minutes);
+  }
+  base::Time::Exploded day;
+  if (type == ui::TEXT_INPUT_TYPE_WEEK) {
+    // The ISO week belongs to the year its Thursday falls in.
+    base::Time::FromMillisecondsSinceUnixEpoch(value + 3 * kMsPerDay)
+        .UTCExplode(&day);
+    base::Time::Exploded jan1 = {};
+    jan1.year = day.year;
+    jan1.month = 1;
+    jan1.day_of_month = 1;
+    base::Time start;
+    if (!base::Time::FromUTCExploded(jan1, &start)) {
+      return std::string();
+    }
+    const int64_t ordinal =
+        (static_cast<int64_t>(value + 3 * kMsPerDay) -
+         start.InMillisecondsSinceUnixEpoch()) /
+        kMsPerDay;
+    return base::StringPrintf("%04d-W%02d", day.year,
+                              static_cast<int>(ordinal / 7 + 1));
+  }
+  base::Time::FromMillisecondsSinceUnixEpoch(value).UTCExplode(&day);
+  if (type == ui::TEXT_INPUT_TYPE_DATE) {
+    return base::StringPrintf("%04d-%02d-%02d", day.year, day.month,
+                              day.day_of_month);
+  }
+  return base::StringPrintf("%04d-%02d-%02dT%02d:%02d", day.year, day.month,
+                            day.day_of_month, day.hour, day.minute);
+}
+
+// NaN when `text` is not a value of that type.
+double DateTimeFromShell(ui::TextInputType type, const std::string& text) {
+  const double invalid = std::numeric_limits<double>::quiet_NaN();
+  int year = 0, month = 1, day = 1, hour = 0, minute = 0, second = 0, week = 0;
+  switch (type) {
+    case ui::TEXT_INPUT_TYPE_MONTH:
+      if (sscanf(text.c_str(), "%d-%d", &year, &month) != 2 || month < 1 ||
+          month > 12) {
+        return invalid;
+      }
+      return (year - 1970) * 12.0 + (month - 1);
+    case ui::TEXT_INPUT_TYPE_TIME:
+      if (sscanf(text.c_str(), "%d:%d:%d", &hour, &minute, &second) < 2) {
+        return invalid;
+      }
+      return ((hour * 60.0 + minute) * 60.0 + second) * 1000.0;
+    case ui::TEXT_INPUT_TYPE_WEEK: {
+      if (sscanf(text.c_str(), "%d-W%d", &year, &week) != 2 || week < 1 ||
+          week > 53) {
+        return invalid;
+      }
+      // Week 1 is the one with January 4th in it.
+      base::Time::Exploded jan4 = {};
+      jan4.year = year;
+      jan4.month = 1;
+      jan4.day_of_month = 4;
+      base::Time time;
+      if (!base::Time::FromUTCExploded(jan4, &time)) {
+        return invalid;
+      }
+      base::Time::Exploded exploded;
+      time.UTCExplode(&exploded);
+      const int iso_weekday = exploded.day_of_week == 0 ? 7 : exploded.day_of_week;
+      return static_cast<double>(time.InMillisecondsSinceUnixEpoch()) +
+             static_cast<double>((week - 1) * 7 - (iso_weekday - 1)) *
+                 kMsPerDay;
+    }
+    case ui::TEXT_INPUT_TYPE_DATE:
+      if (sscanf(text.c_str(), "%d-%d-%d", &year, &month, &day) != 3) {
+        return invalid;
+      }
+      break;
+    default:
+      if (sscanf(text.c_str(), "%d-%d-%dT%d:%d", &year, &month, &day, &hour,
+                 &minute) != 5) {
+        return invalid;
+      }
+      break;
+  }
+  base::Time::Exploded exploded = {};
+  exploded.year = year;
+  exploded.month = month;
+  exploded.day_of_month = day;
+  exploded.hour = hour;
+  exploded.minute = minute;
+  base::Time time;
+  if (!base::Time::FromUTCExploded(exploded, &time)) {
+    return invalid;
+  }
+  return static_cast<double>(time.InMillisecondsSinceUnixEpoch());
+}
+
+class ShellDateTimeChooser;
+
+std::map<int, base::WeakPtr<ShellDateTimeChooser>>& DateTimePickerRequests() {
+  static base::NoDestructor<std::map<int, base::WeakPtr<ShellDateTimeChooser>>>
+      requests;
+  return *requests;
+}
+
+int NextShellPickerRequestId() {
+  static int next = 1;
+  return next++;
+}
+
+// One per document that opened a picker. Answers the page when the shell
+// sends dateTimePickerResult; a second open before that cancels the first.
+class ShellDateTimeChooser
+    : public content::DocumentService<blink::mojom::DateTimeChooser> {
+ public:
+  ShellDateTimeChooser(
+      content::RenderFrameHost& frame,
+      mojo::PendingReceiver<blink::mojom::DateTimeChooser> receiver)
+      : DocumentService(frame, std::move(receiver)) {}
+
+  ~ShellDateTimeChooser() override { Finish(false, 0); }
+
+  void OpenDateTimeDialog(blink::mojom::DateTimeDialogValuePtr value,
+                          OpenDateTimeDialogCallback callback) override {
+    Finish(false, 0);
+    const char* type_name = DateTimeTypeName(value->dialog_type);
+    content::WebContents* contents =
+        content::WebContents::FromRenderFrameHost(&render_frame_host());
+    BrowserWindowInterface* browser =
+        contents ? FindBrowserForWebContents(contents) : nullptr;
+    if (!type_name || !browser) {
+      std::move(callback).Run(false, 0);
+      return;
+    }
+    type_ = value->dialog_type;
+    callback_ = std::move(callback);
+    request_id_ = NextShellPickerRequestId();
+    DateTimePickerRequests()[request_id_] = weak_factory_.GetWeakPtr();
+
+    base::DictValue event;
+    event.Set("event", "dateTimePickerRequested");
+    event.Set("requestId", request_id_);
+    event.Set("inputType", type_name);
+    event.Set("value", DateTimeToShell(type_, value->dialog_value));
+    event.Set("min", DateTimeToShell(type_, value->minimum));
+    event.Set("max", DateTimeToShell(type_, value->maximum));
+    DispatchRuntimeEvent(GetBrowserWidget(browser), std::move(event));
+  }
+
+  // The page closed the picker itself (the input lost focus or went away).
+  void CloseDateTimeDialog() override {
+    const int request_id = request_id_;
+    Finish(false, 0);
+    if (request_id) {
+      base::DictValue event;
+      event.Set("event", "dateTimePickerClosed");
+      event.Set("requestId", request_id);
+      DispatchRuntimeEvent(std::move(event));
+    }
+  }
+
+  void Complete(const base::DictValue& command) {
+    if (command.FindBool("canceled").value_or(false)) {
+      Finish(false, 0);
+      return;
+    }
+    const std::string* text = command.FindString("value");
+    if (!text) {
+      Finish(false, 0);
+      return;
+    }
+    // An empty value clears the input, as the clear button of Android's
+    // picker does; NaN is how Blink spells that.
+    const double value = text->empty()
+                             ? std::numeric_limits<double>::quiet_NaN()
+                             : DateTimeFromShell(type_, *text);
+    if (!text->empty() && std::isnan(value)) {
+      LOG(WARNING) << "OHOS date picker returned an unreadable value " << *text;
+      Finish(false, 0);
+      return;
+    }
+    Finish(true, value);
+  }
+
+ private:
+  void Finish(bool success, double value) {
+    if (request_id_) {
+      DateTimePickerRequests().erase(request_id_);
+      request_id_ = 0;
+    }
+    if (callback_) {
+      std::move(callback_).Run(success, value);
+    }
+  }
+
+  ui::TextInputType type_ = ui::TEXT_INPUT_TYPE_NONE;
+  int request_id_ = 0;
+  OpenDateTimeDialogCallback callback_;
+  base::WeakPtrFactory<ShellDateTimeChooser> weak_factory_{this};
+};
+
+// --- <select> popups. --------------------------------------------------------
+
+const char* MenuItemTypeShellName(blink::mojom::MenuItem::Type type) {
+  switch (type) {
+    case blink::mojom::MenuItem::Type::kOption:
+    case blink::mojom::MenuItem::Type::kCheckableOption:
+      return "option";
+    case blink::mojom::MenuItem::Type::kGroup:
+      return "group";
+    case blink::mojom::MenuItem::Type::kSeparator:
+      return "separator";
+    case blink::mojom::MenuItem::Type::kSubMenu:
+      return "group";
+  }
+  return "option";
+}
+
+std::map<int, mojo::Remote<blink::mojom::PopupMenuClient>>&
+SelectPopupRequests() {
+  static base::NoDestructor<
+      std::map<int, mojo::Remote<blink::mojom::PopupMenuClient>>>
+      requests;
+  return *requests;
+}
+
+}  // namespace
+
+void BindAuraShellDateTimeChooser(
+    content::RenderFrameHost* frame,
+    mojo::PendingReceiver<blink::mojom::DateTimeChooser> receiver) {
+  // DocumentService owns itself and goes with the document.
+  new ShellDateTimeChooser(*frame, std::move(receiver));
+}
+
+void CompleteShellDateTimePicker(const base::DictValue& command) {
+  const std::optional<int> request_id = command.FindInt("requestId");
+  if (!request_id) {
+    return;
+  }
+  auto it = DateTimePickerRequests().find(*request_id);
+  if (it == DateTimePickerRequests().end() || !it->second) {
+    return;
+  }
+  it->second->Complete(command);
+}
+
+void ShowShellSelectPopup(
+    content::RenderFrameHost* frame,
+    mojo::PendingRemote<blink::mojom::PopupMenuClient> client,
+    int32_t selected_item,
+    std::vector<blink::mojom::MenuItemPtr> items,
+    bool allow_multiple_selection) {
+  mojo::Remote<blink::mojom::PopupMenuClient> remote(std::move(client));
+  content::WebContents* contents =
+      content::WebContents::FromRenderFrameHost(frame);
+  BrowserWindowInterface* browser =
+      contents ? FindBrowserForWebContents(contents) : nullptr;
+  if (!browser) {
+    remote->DidCancel();
+    return;
+  }
+  const int request_id = NextShellPickerRequestId();
+  // The page took the menu back (the <select> went away or lost focus).
+  remote.set_disconnect_handler(base::BindOnce(
+      [](int request_id) {
+        if (SelectPopupRequests().erase(request_id)) {
+          base::DictValue event;
+          event.Set("event", "selectPopupClosed");
+          event.Set("requestId", request_id);
+          DispatchRuntimeEvent(std::move(event));
+        }
+      },
+      request_id));
+  SelectPopupRequests()[request_id] = std::move(remote);
+
+  base::ListValue list;
+  for (const blink::mojom::MenuItemPtr& item : items) {
+    base::DictValue entry;
+    entry.Set("label", item->label.value_or(std::string()));
+    entry.Set("type", MenuItemTypeShellName(item->type));
+    entry.Set("enabled", item->enabled);
+    entry.Set("checked", item->checked);
+    list.Append(std::move(entry));
+  }
+  base::DictValue event;
+  event.Set("event", "selectPopupRequested");
+  event.Set("requestId", request_id);
+  event.Set("selectedIndex", selected_item);
+  event.Set("multiple", allow_multiple_selection);
+  event.Set("options", std::move(list));
+  DispatchRuntimeEvent(GetBrowserWidget(browser), std::move(event));
+}
+
+void CompleteShellSelectPopup(const base::DictValue& command) {
+  const std::optional<int> request_id = command.FindInt("requestId");
+  if (!request_id) {
+    return;
+  }
+  auto it = SelectPopupRequests().find(*request_id);
+  if (it == SelectPopupRequests().end()) {
+    return;
+  }
+  mojo::Remote<blink::mojom::PopupMenuClient> remote = std::move(it->second);
+  SelectPopupRequests().erase(it);
+  const base::ListValue* indices = command.FindList("indices");
+  if (command.FindBool("canceled").value_or(false) || !indices) {
+    remote->DidCancel();
+    return;
+  }
+  std::vector<int32_t> chosen;
+  for (const base::Value& index : *indices) {
+    if (index.is_int()) {
+      chosen.push_back(index.GetInt());
+    }
+  }
+  remote->DidAcceptIndices(chosen);
 }
 
 }  // namespace chrome::ohos

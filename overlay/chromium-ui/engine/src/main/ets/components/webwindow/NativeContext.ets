@@ -211,7 +211,8 @@ export interface BrowserRuntimeEvent {
     'sitePermissionCancelled' |
     'browserControlsRatio' | 'findResult' | 'pageText' |
     'contextMenuRequested' | 'externalUrlRequested' | 'popupBlocked' |
-    'fileOpenRequested' |
+    'fileOpenRequested' | 'dateTimePickerRequested' | 'dateTimePickerClosed' |
+    'selectPopupRequested' | 'selectPopupClosed' |
     // Profile data; read these through shellEvent<T>() (ShellServiceTypes).
     'bookmarkList' | 'bookmarkCreated' | 'bookmarksChanged' |
     'historyResults' | 'historyChanged' | 'autocompleteResults' | 'topSites' |
@@ -331,6 +332,24 @@ export interface BrowserRuntimeEvent {
   // for Chromium's own pickers.
   acceptTypes?: string[];
   capture?: boolean;
+  // dateTimePickerRequested (phone only): which picker, and the input's value,
+  // min and max as HTML value strings -- '2026-10-03',
+  // '2026-10-03T14:30', '2026-10', '14:30', '2026-W40' -- each empty when
+  // unset. Answer with dateTimePickerResult { requestId, value } in the same
+  // form ('' clears the input) or { requestId, canceled: true }.
+  // dateTimePickerClosed / selectPopupClosed: the page took the request with
+  // `requestId` back; close that picker without answering.
+  inputType?: 'date' | 'datetime-local' | 'month' | 'time' | 'week';
+  value?: string;
+  min?: string;
+  max?: string;
+  // selectPopupRequested (phone only): a <select>'s entries in order, which
+  // one is selected, and whether several may be. Answer with
+  // selectPopupResult { requestId, indices } -- indices into `options` -- or
+  // { requestId, canceled: true }.
+  options?: SelectPopupOption[];
+  selectedIndex?: number;
+  multiple?: boolean;
   presentation?: 'popup' | 'sheet';
   menuSessionId?: number;
   items?: PwaMenuItemState[];
@@ -341,6 +360,15 @@ export interface BrowserRuntimeEvent {
   known?: boolean;
   isDefault?: boolean;
   huaweiWalletAvailable?: boolean;
+}
+
+// One entry of a <select>: an option, an <optgroup> heading (not
+// selectable), or a separator (<hr>).
+export interface SelectPopupOption {
+  label: string;
+  type: 'option' | 'group' | 'separator';
+  enabled: boolean;
+  checked: boolean;
 }
 
 // A file that was dragged into the app. The engine has already copied it out
@@ -491,6 +519,9 @@ export interface BrowserCommandPayload {
   paths?: string[];
   fileTypeIndex?: number;
   canceled?: boolean;
+  // selectPopupResult: the chosen entries, as indices into the event's
+  // `options`.
+  indices?: number[];
   granted?: string[];
   denied?: string[];
   location?: 'allowed' | 'denied' | 'notDetermined';

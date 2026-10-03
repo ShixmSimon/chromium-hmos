@@ -11,6 +11,7 @@
 #include "base/functional/callback_forward.h"
 #include "base/values.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "third_party/blink/public/mojom/choosers/date_time_chooser.mojom-forward.h"
 #include "third_party/blink/public/mojom/webshare/webshare.mojom-forward.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
 #include "ui/gfx/geometry/insets.h"
@@ -167,6 +168,11 @@ bool RequestAuraShellSystemShare(content::WebContents* contents);
 void BindAuraShellShareService(
     content::RenderFrameHost* frame,
     mojo::PendingReceiver<blink::mojom::ShareService> receiver);
+// <input type=date|time|datetime-local|month|week> on a phone: asks the shell
+// for its own picker with dateTimePickerRequested.
+void BindAuraShellDateTimeChooser(
+    content::RenderFrameHost* frame,
+    mojo::PendingReceiver<blink::mojom::DateTimeChooser> receiver);
 bool RequestAuraShellSystemCast(content::WebContents* contents);
 bool RequestAuraShellSystemAction(const std::string& action);
 

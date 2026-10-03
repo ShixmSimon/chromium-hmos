@@ -413,9 +413,14 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   AppendSwitchWithValue(&arguments, "--lang", config.application_locale);
 
   // A repeated --enable-features switch would replace this list.
-  arguments.push_back(config.ui_family == "mobile_phone"
-                          ? "--enable-features=UseOzonePlatform,OverlayScrollbar"
-                          : "--enable-features=UseOzonePlatform");
+  //
+  // OhosExternalPopupMenus (chrome_client_impl.cc): on a phone a <select>
+  // opens the shell's own picker, as Android opens its own.
+  arguments.push_back(
+      config.ui_family == "mobile_phone"
+          ? "--enable-features=UseOzonePlatform,OverlayScrollbar,"
+            "OhosExternalPopupMenus"
+          : "--enable-features=UseOzonePlatform");
 
   if (config.ui_family == "mobile_phone") {
     arguments.push_back("--use-mobile-user-agent");
@@ -443,6 +448,13 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
             "TextDetector,WebShare,MediaCapture,OrientationEvent"
           : "--enable-blink-features=BarcodeDetector,FaceDetector,"
             "TextDetector,WebShare,MediaCapture");
+
+  // Without InputMultipleFieldsUI, date and time inputs are one field that
+  // opens a picker, which on a phone is the shell's own
+  // (BindAuraShellDateTimeChooser) -- Android's status for it too.
+  if (config.ui_family == "mobile_phone") {
+    arguments.push_back("--disable-blink-features=InputMultipleFieldsUI");
+  }
 
   // Reader mode needs the renderer to say whether a page is an article, and
   // the agent that answers is only created when this switch is present --

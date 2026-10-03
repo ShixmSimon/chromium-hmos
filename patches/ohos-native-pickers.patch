@@ -1,0 +1,132 @@
+<select> and date/time inputs open the HarmonyOS shell's own pickers.
+
+Android shows a <select> and the date, time, month and week inputs with
+system pickers; OHOS fell through to Blink's desktop dropdown and calendar,
+which are small and fiddly on a phone. On the phone UI the engine now
+- turns on kOhosExternalPopupMenus (defined here in chrome_client_impl.cc),
+  so a <select> uses ExternalPopupMenu, and RenderFrameHostImpl hands the
+  menu to a handler chrome registers (content/public/browser/
+  ohos_popup_menu.h, in the overlay) instead of a RenderViewHostDelegateView
+  that only exists with USE_EXTERNAL_POPUP_MENU;
+- turns off InputMultipleFieldsUI, so date inputs use ExternalDateTimeChooser,
+  served by chrome::ohos::BindAuraShellDateTimeChooser.
+Both send the request to the shell as runtime events.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+and ohos-web-share.patch applied. Apply with:
+  git apply ohos-native-pickers.patch
+
+diff --git a/chrome/browser/chrome_browser_interface_binders.cc b/chrome/browser/chrome_browser_interface_binders.cc
+index 9dd9d5d..ab84098 100644
+--- a/chrome/browser/chrome_browser_interface_binders.cc
++++ b/chrome/browser/chrome_browser_interface_binders.cc
+@@ -130,6 +130,7 @@
+ 
+ #if BUILDFLAG(IS_OHOS)
+ #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"  // nogncheck
++#include "third_party/blink/public/mojom/choosers/date_time_chooser.mojom.h"
+ #include "third_party/blink/public/mojom/webshare/webshare.mojom.h"
+ #endif
+ 
+@@ -565,6 +566,10 @@ void PopulateChromeFrameBinders(
+ #if BUILDFLAG(IS_OHOS)
+   map->Add<blink::mojom::ShareService>(
+       &chrome::ohos::BindAuraShellShareService);
++  // Asked for only when InputMultipleFieldsUI is off, which the engine does
++  // on a phone: date and time inputs then open the shell's own picker.
++  map->Add<blink::mojom::DateTimeChooser>(
++      &chrome::ohos::BindAuraShellDateTimeChooser);
+ #endif
+ 
+   map->Add<network_hints::mojom::NetworkHintsHandler>(&BindNetworkHintsHandler);
+diff --git a/content/browser/renderer_host/render_frame_host_impl.cc b/content/browser/renderer_host/render_frame_host_impl.cc
+index 7c40405..36e5e6a 100644
+--- a/content/browser/renderer_host/render_frame_host_impl.cc
++++ b/content/browser/renderer_host/render_frame_host_impl.cc
+@@ -4,6 +4,13 @@
+ 
+ #include "content/browser/renderer_host/render_frame_host_impl.h"
+ 
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "base/no_destructor.h"
++#include "content/public/browser/ohos_popup_menu.h"  // nogncheck
++#endif
++
+ #include <algorithm>
+ #include <cstdint>
+ #include <deque>
+@@ -9989,6 +9996,21 @@ void RenderFrameHostImpl::BubbleLogicalScrollInParentFrame(
+   }
+ }
+ 
++#if BUILDFLAG(IS_OHOS)
++namespace {
++
++OhosPopupMenuHandler& GetOhosPopupMenuHandler() {
++  static base::NoDestructor<OhosPopupMenuHandler> handler;
++  return *handler;
++}
++
++}  // namespace
++
++void SetOhosPopupMenuHandler(OhosPopupMenuHandler handler) {
++  GetOhosPopupMenuHandler() = std::move(handler);
++}
++#endif  // BUILDFLAG(IS_OHOS)
++
+ void RenderFrameHostImpl::ShowPopupMenu(
+     mojo::PendingRemote<blink::mojom::PopupMenuClient> popup_client,
+     const gfx::Rect& bounds,
+@@ -10044,6 +10066,19 @@ void RenderFrameHostImpl::ShowPopupMenu(
+   view->ShowPopupMenu(this, std::move(popup_client), transformed_bounds,
+                       font_size, selected_item, std::move(menu_items),
+                       right_aligned, allow_multiple_selection);
++#elif BUILDFLAG(IS_OHOS)
++  // The renderer only sends this when the engine turned on external popups
++  // (kOhosExternalPopupMenus); the shell shows its own picker. Nothing to
++  // show it with, or a page that is not on screen, cancels as above.
++  OhosPopupMenuHandler& handler = GetOhosPopupMenuHandler();
++  if (!IsActive() || delegate()->GetVisibility() != Visibility::VISIBLE ||
++      !handler) {
++    mojo::Remote<blink::mojom::PopupMenuClient>(std::move(popup_client))
++        ->DidCancel();
++    return;
++  }
++  handler.Run(this, std::move(popup_client), selected_item,
++              std::move(menu_items), allow_multiple_selection);
+ #endif
+ }
+ 
+diff --git a/third_party/blink/renderer/core/page/chrome_client_impl.cc b/third_party/blink/renderer/core/page/chrome_client_impl.cc
+index 8a9acc6..f44b9dc 100644
+--- a/third_party/blink/renderer/core/page/chrome_client_impl.cc
++++ b/third_party/blink/renderer/core/page/chrome_client_impl.cc
+@@ -128,6 +128,14 @@
+ 
+ namespace blink {
+ 
++#if BUILDFLAG(IS_OHOS)
++// A <select> opens the HarmonyOS shell's own picker instead of Blink's
++// desktop dropdown, as Android opens its own. The engine turns this on for
++// the phone UI; there is no Blink runtime feature for it because adding one
++// regenerates Blink's feature table.
++BASE_FEATURE(kOhosExternalPopupMenus, base::FEATURE_DISABLED_BY_DEFAULT);
++#endif
++
+ namespace {
+ 
+ const char* UIElementTypeToString(ChromeClient::UIElementType ui_element_type) {
+@@ -1026,6 +1034,11 @@ PopupMenu* ChromeClientImpl::OpenPopupMenu(LocalFrame& frame,
+   if (use_external_popup_menus_) {
+     return MakeGarbageCollected<ExternalPopupMenu>(frame, select);
+   }
++#if BUILDFLAG(IS_OHOS)
++  if (base::FeatureList::IsEnabled(kOhosExternalPopupMenus)) {
++    return MakeGarbageCollected<ExternalPopupMenu>(frame, select);
++  }
++#endif
+ 
+   DCHECK(RuntimeEnabledFeatures::PagePopupEnabled());
+   return MakeGarbageCollected<InternalPopupMenu>(this, select);

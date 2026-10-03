@@ -395,6 +395,9 @@ Chromium 自己的安装确认框,用户确认后才装。
 | `shareRequested` | 否 | `HuaweiShareAdapter.sharePage(context, event.url, event.title)`。来自网页 `navigator.share()` 时 `fromPage` 为 true,另带 `text`,`url` 可能为空 |
 | `externalUrlRequested` | 否 | 交给别的应用打开的链接:`url`(Android intent: 链接已转成对应 scheme)、`fallbackUrl`(没有应用接时打开的网页,可能为空)、`initiator`(发起网页的 origin;浏览器自己发起时为空)。询问用户后用系统打开 |
 | `popupBlocked` | 否 | 弹窗被拦截:`pageUrl`、`origin`、`popupUrl`、`count`。显示提示;"显示"发 `showBlockedPopups`,"始终允许"发 `setSiteSetting { origin, type: 'popups', setting: 'allow' }` |
+| `dateTimePickerRequested` | **是** | 仅手机。`inputType`(`date`/`datetime-local`/`month`/`time`/`week`)、`value`/`min`/`max`(HTML 值字符串,如 `2026-10-03`、`14:30`、`2026-W40`,未设为空)。用系统的日期/时间选择器选好后发 `dateTimePickerResult { requestId, value }`(`''` 表示清空),取消时发 `{ requestId, canceled: true }` |
+| `selectPopupRequested` | **是** | 仅手机。`options`(`{ label, type: 'option'\|'group'\|'separator', enabled, checked }[]`)、`selectedIndex`、`multiple`。选好后发 `selectPopupResult { requestId, indices }`(下标对应 `options`),取消时发 `{ requestId, canceled: true }` |
+| `dateTimePickerClosed`、`selectPopupClosed` | 否 | 网页收回了 `requestId` 那次请求(输入框失焦或被移除),直接关掉对应的选择器,不用回复 |
 | `fileOpenRequested` | 否 | `path` 加 `action`:`open` 打开文件,`openFolder` 打开文件夹,`reveal` 在文件管理里定位这个文件 |
 | `systemActionRequested` | 否 | `SystemIntegrationAdapter.handle(context, event.action)` |
 | `castRequested` | 否 | 投屏选择器。参考实现在 `entry/.../CurrentTabCastSession.ets`,还没有移进 HAR。 |

@@ -22,7 +22,8 @@ export {
   BrowserStateSnapshot,
   BrowserTabState,
   PwaMenuButtonState,
-  PwaMenuItemState
+  PwaMenuItemState,
+  SelectPopupOption
 } from './src/main/ets/components/webwindow/NativeContext';
 export { BrowserCommandChannel } from './src/main/ets/utils/BrowserCommandChannel';
 export { ShellDownloadDirectory } from './src/main/ets/utils/ShellDownloadDirectory';
