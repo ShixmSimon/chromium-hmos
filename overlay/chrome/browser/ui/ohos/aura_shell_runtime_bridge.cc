@@ -155,6 +155,7 @@
 #include "chrome/browser/web_applications/web_app_icon_manager.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
+#include "chrome/browser/ui/web_applications/web_app_dialog_utils.h"  // nogncheck
 #include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "base/scoped_multi_source_observation.h"
 #include "components/find_in_page/find_notification_details.h"
@@ -2477,6 +2478,7 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
   state.Set("zoomPercent", 100);
   state.Set("inReaderMode", false);
   state.Set("readerModeAvailable", false);
+  state.Set("canInstallWebApp", false);
   state.Set("canGoBack", false);
   state.Set("canGoForward", false);
   state.Set("isPwaWindow", false);
@@ -2628,6 +2630,12 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
     state.Set("zoomPercent", ShellZoomPercent(active));
     state.Set("inReaderMode", IsInReaderMode(active));
     state.Set("readerModeAvailable", IsReaderModeAvailable(active));
+    // Whether the shell's menu may offer installApp for this page: an
+    // ordinary tab of a profile that allows it, on a page not already open
+    // as an installed app.
+    state.Set("canInstallWebApp",
+              !is_pwa_window && url.SchemeIsHTTPOrHTTPS() &&
+                  web_app::CanCreateWebApp(browser));
     state.Set("canGoBack", active->GetController().CanGoBack());
     state.Set("canGoForward", active->GetController().CanGoForward());
     if (is_pwa_window) {
@@ -3154,6 +3162,18 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
   }
   if (*name == "speechRecognitionEvent") {
     ForwardShellSpeechEvent(command);
+    return;
+  }
+  if (*name == "installWebApp") {
+    // Chromium's own install dialog, then pwaInstalled when it is done.
+    BrowserWindowInterface* browser = FindBrowserForWidget(widget);
+    if (!browser) {
+      browser = GetActiveBrowser();
+    }
+    if (browser && web_app::CanCreateWebApp(browser)) {
+      web_app::CreateWebAppFromCurrentWebContents(
+          browser, web_app::WebAppInstallFlow::kInstallSite);
+    }
     return;
   }
   if (*name == "launchWebApp") {
@@ -4441,6 +4461,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "contactsPickerResult",
       "speechRecognitionEvent",
       "launchWebApp",
+      "installWebApp",
       "exportWebAppIcon",
       "permissionResult",
       "systemPermissionState",

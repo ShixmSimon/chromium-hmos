@@ -143,6 +143,8 @@ export interface BrowserStateSnapshot {
   // Whether the distiller thinks the current page is an article. Drives
   // whether the menu offers reader mode at all.
   readerModeAvailable?: boolean;
+  // Whether this page may be installed as an app (installWebApp).
+  canInstallWebApp?: boolean;
   url: string;
   domain: string;
   title: string;
