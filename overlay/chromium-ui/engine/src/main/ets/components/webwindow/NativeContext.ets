@@ -210,7 +210,8 @@ export interface BrowserRuntimeEvent {
     'extensionActionsChanged' |
     'sitePermissionCancelled' |
     'browserControlsRatio' | 'findResult' | 'pageText' |
-    'contextMenuRequested' |
+    'contextMenuRequested' | 'externalUrlRequested' | 'popupBlocked' |
+    'fileOpenRequested' |
     // Profile data; read these through shellEvent<T>() (ShellServiceTypes).
     'bookmarkList' | 'bookmarkCreated' | 'bookmarksChanged' |
     'historyResults' | 'historyChanged' | 'autocompleteResults' | 'topSites' |
@@ -286,7 +287,28 @@ export interface BrowserRuntimeEvent {
   files?: DroppedFileRef[];
   // pageDragEnded: whether the drag ended on something that accepted it.
   dropped?: boolean;
-  action?: 'huaweiAccount' | 'huaweiWallet' | 'defaultBrowser' | 'checkForUpdates';
+  // systemActionRequested: the system page to open.
+  // fileOpenRequested: open `path` as a file ('open') or a folder
+  // ('openFolder'), or show the file in the Files app ('reveal').
+  action?: 'huaweiAccount' | 'huaweiWallet' | 'defaultBrowser' | 'checkForUpdates' |
+    'open' | 'openFolder' | 'reveal';
+  // externalUrlRequested: `url` is the link for another app (an Android
+  // intent: link already turned into its scheme), empty when only the
+  // fallback is left; fallbackUrl is the web page to open if no app takes
+  // it, empty when there is none; initiator is the page's origin, empty when
+  // the browser itself asked (a mailto: in settings).
+  fallbackUrl?: string;
+  initiator?: string;
+  // popupBlocked: the page whose window.open() was stopped (pageUrl and
+  // origin), the popup it wanted, and how many it has had blocked. Answer
+  // with the showBlockedPopups command, or allow the origin with
+  // setSiteSetting { type: 'popups', setting: 'allow' }.
+  origin?: string;
+  popupUrl?: string;
+  count?: number;
+  // shareRequested: true when a page called navigator.share(); then `text`
+  // may be set and `url` may be empty.
+  fromPage?: boolean;
   // systemPrintReady: the PDF that was printed.
   // pageDragStarted: a picture being dragged out, already written into the
   // engine's own dropped directory in the format the page loaded it in.
@@ -303,6 +325,12 @@ export interface BrowserRuntimeEvent {
   defaultName?: string;
   suffixFilters?: string[];
   fileTypeIndex?: number;
+  // filePickerRequested, from a page's <input type=file>: its accept list as
+  // written ('image/*', '.pdf'), and whether it asked for the camera or
+  // microphone instead of a file (the capture attribute). Empty and false
+  // for Chromium's own pickers.
+  acceptTypes?: string[];
+  capture?: boolean;
   presentation?: 'popup' | 'sheet';
   menuSessionId?: number;
   items?: PwaMenuItemState[];

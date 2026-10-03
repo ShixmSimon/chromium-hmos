@@ -1,0 +1,57 @@
+chrome://downloads fits a phone's width.
+
+The download card is clamp(550px, 80%, 680px) wide, and the list keeps that
+plus its margins as a minimum, so on a 377px phone the page scrolled
+sideways and each item's copy-link, show-in-folder and remove buttons sat
+off screen. Below 598px the card fills the window instead, with narrower
+margins.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-downloads-narrow.patch
+
+diff --git a/chrome/browser/resources/downloads/item.css b/chrome/browser/resources/downloads/item.css
+index 71ae0c1..95836fa 100644
+--- a/chrome/browser/resources/downloads/item.css
++++ b/chrome/browser/resources/downloads/item.css
+@@ -172,6 +172,17 @@ cr-button {
+   margin: 18px 24px;
+ }
+ 
++/* See manager.css: on a phone every pixel of the card goes to the name. */
++@media (max-width: 597px) {
++  .icon-wrapper {
++    margin: 18px 12px;
++  }
++
++  #details {
++    padding-inline-start: 0;
++  }
++}
++
+ .icon,
+ #file-icon-wrapper {
+   height: 32px;
+diff --git a/chrome/browser/resources/downloads/manager.css b/chrome/browser/resources/downloads/manager.css
+index 5d92f27..5738a7b 100644
+--- a/chrome/browser/resources/downloads/manager.css
++++ b/chrome/browser/resources/downloads/manager.css
+@@ -44,6 +44,18 @@ cr-toast-manager {
+   --cr-toast-max-width: var(--downloads-card-width);
+ }
+ 
++/* A window narrower than the card's 550px floor plus its margins -- a phone.
++ * The card fills the window instead, so its copy, show-in-folder and remove
++ * buttons are on screen rather than past its right edge. */
++@media (max-width: 597px) {
++  downloads-item,
++  #downloadsList,
++  cr-toast-manager {
++    --downloads-card-margin: 12px;
++    --downloads-card-width: calc(100% - 2 * var(--downloads-card-margin));
++  }
++}
++
+ #downloadsList {
+   min-width: calc(
+     var(--downloads-card-width) + 2 * var(--downloads-card-margin));

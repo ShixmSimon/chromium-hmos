@@ -389,10 +389,13 @@ Chromium 自己的安装确认框,用户确认后才装。
 
 | 事件 | 必须响应 | 处理方式 |
 |---|---|---|
-| `filePickerRequested` | **是** | `HarmonyFilePickerAdapter.show(context, event)`,拿到结果后发送 `filePickerResult` 命令。**出错或用户取消时也要发**,带上 `canceled: true`。 |
+| `filePickerRequested` | **是** | `HarmonyFilePickerAdapter.show(context, event)`,拿到结果后发送 `filePickerResult` 命令。**出错或用户取消时也要发**,带上 `canceled: true`。来自网页 `<input type=file>` 时另带 `acceptTypes`(accept 原样,如 `image/*`、`.pdf`)和 `capture`(网页要求直接拍摄):全是图片/视频类型时可以开图库,`capture` 为 true 时可以直接开相机。 |
 | `permissionsRequested` | **是** | `PermissionRequestAdapter.request(context, event)`,然后发送 `permissionResult` 命令。**出错时也要发**,把全部权限放进 `denied`。发完之后再上报一次 `systemPermissionState`(见下文)。 |
 | `systemPrintReady` | 否 | `SystemPrintAdapter.printPdf(context, event.filePath)` |
-| `shareRequested` | 否 | `HuaweiShareAdapter.sharePage(context, event.url, event.title)` |
+| `shareRequested` | 否 | `HuaweiShareAdapter.sharePage(context, event.url, event.title)`。来自网页 `navigator.share()` 时 `fromPage` 为 true,另带 `text`,`url` 可能为空 |
+| `externalUrlRequested` | 否 | 交给别的应用打开的链接:`url`(Android intent: 链接已转成对应 scheme)、`fallbackUrl`(没有应用接时打开的网页,可能为空)、`initiator`(发起网页的 origin;浏览器自己发起时为空)。询问用户后用系统打开 |
+| `popupBlocked` | 否 | 弹窗被拦截:`pageUrl`、`origin`、`popupUrl`、`count`。显示提示;"显示"发 `showBlockedPopups`,"始终允许"发 `setSiteSetting { origin, type: 'popups', setting: 'allow' }` |
+| `fileOpenRequested` | 否 | `path` 加 `action`:`open` 打开文件,`openFolder` 打开文件夹,`reveal` 在文件管理里定位这个文件 |
 | `systemActionRequested` | 否 | `SystemIntegrationAdapter.handle(context, event.action)` |
 | `castRequested` | 否 | 投屏选择器。参考实现在 `entry/.../CurrentTabCastSession.ets`,还没有移进 HAR。 |
 | `pwaInstalled`、`pwaMenuModel`、`pwaMenuClosed` | 否 | PWA 相关,需要时参考 `entry/` 的实现。 |
@@ -664,11 +667,12 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 | `setSiteSetting` | `origin`, `type`, `setting` | `setting` 为 `'allow' \| 'block' \| 'ask' \| 'default'`，`default` 表示删除这条单独设置。定位、摄像头、麦克风、通知、剪贴板只能对 https 网站设置；`storageAccess` 不能按单个网站设置 |
 | `setDefaultSiteSetting` | `type`, `setting` | |
 | `resetSiteSettings` | `origin` | 清除这个网站的全部权限和存储 |
+| `showBlockedPopups` | | 打开当前窗口当前标签页被拦截的全部弹窗,回应 `popupBlocked` |
 | `getAboutInfo` | `requestId` | `aboutInfo { requestId, chromiumVersion, engineCommit, userAgent, bookmarkApiVersion, browsingApiVersion, jitEnabled }`。`jitEnabled` 是 V8 这次启动实际有没有用上 JIT(启动日志里 `AuraShell JIT available` 那个判断的结果):启动配置要求 jitless、或进程拿不到可执行内存时为 `false` |
 
 `types`：`history`、`cookies`、`cache`、`siteSettings`、`formData`、`passwords`、`downloads`。`timeRange`：`lastHour`、`lastDay`、`lastWeek`、`last4Weeks`、`all`。
 
-偏好键（只接受这些）：`blockThirdPartyCookies`、`doNotTrack`、`safeBrowsing`（`'off' | 'standard' | 'enhanced'`）、`preloadPages`、`popupsBlocked`、`javascriptEnabled`、`textScale`、`autofillAddresses`、`autofillCards`、`downloadAskWhereToSave`、`passwordFillRequiresAuth`。
+偏好键（只接受这些）：`blockThirdPartyCookies`、`doNotTrack`、`safeBrowsing`（`'off' | 'standard' | 'enhanced'`）、`preloadPages`、`popupsBlocked`、`javascriptEnabled`、`textScale`、`autofillAddresses`、`autofillCards`、`downloadAskWhereToSave`、`passwordFillRequiresAuth`、`forceDarkWebContents`(网页强制深色,已打开的标签页立即生效)。
 
 - `textScale` 是 50–200 的百分比。桌面版 Chromium 没有只放大文字的设置，所以这里改的是网页的默认缩放比例，整页一起放大。
 - 这个版本没有配置 Google API 密钥，`safeBrowsing` 开关能保存，但实际上很可能不起作用，设置页不要承诺有安全浏览保护。

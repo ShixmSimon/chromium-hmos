@@ -429,6 +429,10 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   // navigator.share, which upstream turns on only where it binds a share
   // service; ours sends to the shell (BindAuraShellShareService).
   //
+  // MediaCapture, stable only on Android: without it Blink drops
+  // <input capture> before FileChooserParams, and the shell cannot open the
+  // camera for it (filePickerRequested's capture field).
+  //
   // On a phone also window.orientation and orientationchange, which Android
   // ships and mobile sites and players use to tell a phone and follow its
   // rotation. Not on a tablet or PC: their desktop User-Agent is there to get
@@ -436,9 +440,9 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   arguments.push_back(
       config.ui_family == "mobile_phone"
           ? "--enable-blink-features=BarcodeDetector,FaceDetector,"
-            "TextDetector,WebShare,OrientationEvent"
+            "TextDetector,WebShare,MediaCapture,OrientationEvent"
           : "--enable-blink-features=BarcodeDetector,FaceDetector,"
-            "TextDetector,WebShare");
+            "TextDetector,WebShare,MediaCapture");
 
   // Reader mode needs the renderer to say whether a page is an article, and
   // the agent that answers is only created when this switch is present --
