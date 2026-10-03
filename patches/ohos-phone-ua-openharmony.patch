@@ -1,9 +1,10 @@
 Name the OpenHarmony version in a phone's User-Agent.
 
 A phone sends Chrome's reduced Android User-Agent. Put the OpenHarmony
-version in front of the Android token, "Mozilla/5.0 (Linux; OpenHarmony
-7.0; Android 10; K) ...", so that sites looking for HarmonyOS find it
-while everything else still reads an Android phone. The version is the
+version after the Android token, "Mozilla/5.0 (Linux; Android 10;
+OpenHarmony 7.0; K) ...", so that sites looking for HarmonyOS find it
+while everything else still reads an Android phone. In front of the
+Android token it failed Cloudflare Turnstile. The version is the
 system's (OH_GetOSFullName), major.minor, as the tablet and PC strings
 already carry it; the client hints stay Android. Tablets and PCs are
 unchanged.
@@ -16,22 +17,25 @@ Apply with:
 diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedder_support/user_agent_utils.cc
 --- a/components/embedder_support/user_agent_utils.cc
 +++ b/components/embedder_support/user_agent_utils.cc
-@@ -294,8 +294,16 @@ std::string BuildOhosUserAgent(const std::string& product, bool mobile) {
+@@ -294,9 +294,18 @@ std::string BuildOhosUserAgent(const std::string& product, bool mobile) {
    // to bot checks (Cloudflare Turnstile failed with 600010). The platform,
    // platform version, navigator.platform and navigator.plugins all follow
    // this string; see GetPlatformForUAMetadata() below.
 -  return base::StrCat({"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
 -                       "(KHTML, like Gecko) ",
+-                       product, " Mobile Safari/537.36"});
 +  //
-+  // With the OpenHarmony version in front of the Android token, as in
-+  // "Linux; OpenHarmony 7.0; Android 10; K": sites that look for HarmonyOS
-+  // find it, and everything else still reads an Android phone. The client
-+  // hints stay Android, so the string and navigator.userAgentData agree.
-+  return base::StrCat({"Mozilla/5.0 (Linux; ",
++  // With the OpenHarmony version after the Android token, as in
++  // "Linux; Android 10; OpenHarmony 7.0; K": sites that look for HarmonyOS
++  // find it, and everything else still reads an Android phone. In front of
++  // the Android token it failed Cloudflare Turnstile. The client hints stay
++  // Android, so the string and navigator.userAgentData agree.
++  return base::StrCat({"Mozilla/5.0 (Linux; Android 10; ",
 +                       major_minor.empty()
 +                           ? std::string()
 +                           : base::StrCat({"OpenHarmony ", major_minor, "; "}),
-+                       "Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) ",
-                        product, " Mobile Safari/537.36"});
++                       "K) AppleWebKit/537.36 (KHTML, like Gecko) ", product,
++                       " Mobile Safari/537.36"});
  }
  #endif  // BUILDFLAG(IS_OHOS)
+ 
