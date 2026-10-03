@@ -1082,7 +1082,13 @@ void ApplyUserAgentToAllTabs(bool mobile, bool reload) {
   }
   browsers->ForEach([mobile, reload](BrowserWindowInterface* browser) {
     TabStripModel* tabs = browser->GetTabStripModel();
-    if (!tabs) {
+    // Not an installed web app's window: its session service
+    // (AppSessionService) does not record user agent overrides and
+    // NOTREACHED()s on one, which crashed the browser as a page installed as
+    // an app moved into its window. An app keeps the agent it was given.
+    if (!tabs ||
+        browser->GetType() == BrowserWindowInterface::Type::TYPE_APP ||
+        browser->GetType() == BrowserWindowInterface::Type::TYPE_APP_POPUP) {
       return true;
     }
     for (int index = 0; index < tabs->count(); ++index) {
