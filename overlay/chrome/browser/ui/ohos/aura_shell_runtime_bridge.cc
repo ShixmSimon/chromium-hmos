@@ -182,6 +182,7 @@
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
 #include "url/gurl.h"
+#include "base/strings/escape.h"
 #include "url/url_constants.h"
 
 namespace chrome::ohos {
@@ -4869,6 +4870,65 @@ bool RequestAuraShellSystemCast(content::WebContents* contents) {
   DispatchRuntimeEvent(GetBrowserWidget(FindBrowserForWebContents(contents)),
                        std::move(event));
   return true;
+}
+
+void RequestAuraShellExternalUrl(content::WebContents* contents,
+                                 const GURL& url,
+                                 const std::string& initiator) {
+  // An Android intent URL names the app by scheme and package, and a web page
+  // to fall back on: "intent://video/BV1x#Intent;scheme=bilibili;
+  // package=tv.danmaku.bili;S.browser_fallback_url=https%3A...;end". No
+  // HarmonyOS app takes intent:, so it becomes bilibili://video/BV1x, with the
+  // fallback page for the shell to open if nothing takes that either.
+  std::string app_url = url.spec();
+  std::string fallback_url;
+  if (url.SchemeIs("intent")) {
+    const std::string spec = url.spec();
+    const size_t hash = spec.find("#Intent;");
+    const std::string target =
+        spec.substr(std::string_view("intent:").size(),
+                    hash == std::string::npos
+                        ? std::string::npos
+                        : hash - std::string_view("intent:").size());
+    std::string scheme;
+    if (hash != std::string::npos) {
+      for (const std::string& part :
+           base::SplitString(spec.substr(hash + std::string_view("#Intent;").size()),
+                             ";", base::KEEP_WHITESPACE,
+                             base::SPLIT_WANT_NONEMPTY)) {
+        if (part.starts_with("scheme=")) {
+          scheme = part.substr(std::string_view("scheme=").size());
+        } else if (part.starts_with("S.browser_fallback_url=")) {
+          fallback_url = base::UnescapeURLComponent(
+              part.substr(std::string_view("S.browser_fallback_url=").size()),
+              base::UnescapeRule::NORMAL |
+                  base::UnescapeRule::URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS |
+                  base::UnescapeRule::PATH_SEPARATORS);
+        }
+      }
+    }
+    app_url = scheme.empty() ? std::string() : scheme + ":" + target;
+    if (!GURL(fallback_url).SchemeIsHTTPOrHTTPS()) {
+      fallback_url.clear();
+    }
+  }
+  if (app_url.empty() && fallback_url.empty()) {
+    LOG(WARNING) << "OHOS external URL with nothing to open: "
+                 << url.possibly_invalid_spec();
+    return;
+  }
+  LOG(WARNING) << "OHOS external URL: " << app_url
+               << (fallback_url.empty() ? "" : " fallback " + fallback_url)
+               << " from " << initiator;
+  base::DictValue event;
+  event.Set("event", "externalUrlRequested");
+  event.Set("url", app_url);
+  event.Set("fallbackUrl", fallback_url);
+  event.Set("initiator", initiator);
+  DispatchRuntimeEvent(
+      contents ? GetBrowserWidget(FindBrowserForWebContents(contents))
+               : gfx::kNullAcceleratedWidget,
+      std::move(event));
 }
 
 bool RequestAuraShellSystemAction(const std::string& action) {

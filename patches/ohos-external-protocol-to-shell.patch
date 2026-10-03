@@ -1,0 +1,52 @@
+Hand links for other apps to the HarmonyOS shell.
+
+A site's "open in app" button navigates to the app's scheme
+(bilibili://..., or an Android intent:// URL), which Chromium sends to
+ExternalProtocolHandler::LaunchUrl. On desktop that shows a protocol dialog
+and then calls platform_util::OpenExternal; on HarmonyOS the dialog cannot
+appear over the shell and OpenExternal has nothing to call, so the button
+did nothing. Once the blocked-scheme, flood and gesture checks have let a
+link through, OHOS hands it to the shell
+(chrome::ohos::RequestAuraShellExternalUrl), which asks the reader and opens
+it through the system.
+
+Generated against Chromium 154.0.8037.51.
+
+Apply with:
+  git -C /path/to/chromium/src apply /path/to/patches/ohos-external-protocol-to-shell.patch
+
+diff --git a/chrome/browser/external_protocol/external_protocol_handler.cc b/chrome/browser/external_protocol/external_protocol_handler.cc
+--- a/chrome/browser/external_protocol/external_protocol_handler.cc
++++ b/chrome/browser/external_protocol/external_protocol_handler.cc
+@@ -27,6 +27,9 @@
+ #include "chrome/browser/external_protocol/constants.h"
+ #include "chrome/browser/platform_util.h"
+ #include "chrome/browser/profiles/profile.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"  // nogncheck
++#endif
+ #include "chrome/common/pref_names.h"
+ #include "components/prefs/pref_registry_simple.h"
+ #include "components/prefs/pref_service.h"
+@@ -545,6 +548,21 @@ void ExternalProtocolHandler::LaunchUrl(
+ 
+   g_accept_requests = false;
+ 
++#if BUILDFLAG(IS_OHOS)
++  // HarmonyOS: the protocol dialog Views would show cannot appear over the
++  // shell, and platform_util::OpenExternal has nothing to hand the link to,
++  // so a link for another app -- a site's "open in app" button -- did
++  // nothing. The shell asks the reader, as a phone browser does, and opens
++  // it through the system. Blocked schemes and the flood and gesture checks
++  // above still apply.
++  chrome::ohos::RequestAuraShellExternalUrl(
++      web_contents, escaped_url,
++      initiating_origin ? initiating_origin->GetTupleOrPrecursorTupleIfOpaque()
++                              .Serialize()
++                        : std::string());
++  return;
++#endif
++
+   // Shell integration code below doesn't work on Android - default handler
+   // checks are instead handled through the InterceptNavigationDelegate. See
+   // ExternalNavigationHandler.java.

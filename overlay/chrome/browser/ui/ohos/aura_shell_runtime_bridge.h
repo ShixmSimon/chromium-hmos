@@ -161,6 +161,14 @@ bool DispatchAuraShellRuntimeEvent(content::WebContents* contents,
 bool RequestAuraShellSystemShare(content::WebContents* contents);
 bool RequestAuraShellSystemCast(content::WebContents* contents);
 bool RequestAuraShellSystemAction(const std::string& action);
+
+// A link for another app -- bilibili://, weixin://, mailto:, tel:, or an
+// Android intent:// one -- that Chromium has let through its own checks. The
+// shell asks the reader and opens it through the system, which starts
+// whichever app claims it. `initiator` is the page's origin, for the prompt.
+void RequestAuraShellExternalUrl(content::WebContents* contents,
+                                 const GURL& url,
+                                 const std::string& initiator);
 void NotifyAuraShellWebAppInstalled(const std::string& app_id,
                                     const std::string& title,
                                     const std::string& start_url);

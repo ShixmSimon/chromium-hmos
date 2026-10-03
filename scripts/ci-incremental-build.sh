@@ -184,6 +184,7 @@ else
   # OpenHarmony/<version> at the end of the phone's User-Agent; inside the
   # platform section it failed Cloudflare Turnstile.
   apply_incremental_patch "${repo_root}/patches/ohos-phone-ua-openharmony.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-external-protocol-to-shell.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by
