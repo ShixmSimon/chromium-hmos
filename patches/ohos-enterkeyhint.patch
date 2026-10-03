@@ -1,0 +1,46 @@
+Pass a field's enterkeyhint to the HarmonyOS IME.
+
+TextInputClient cannot report it, and a new method there would rebuild
+everything that includes it. On OHOS GetTextInputFlags() carries the
+TextInputState's action above the real flags
+(ui/base/ime/ohos_text_input_action.h, in the overlay), and OhosInputMethod
+turns it into the IME's enter key: Go, Send, Next, Done and so on.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-enterkeyhint.patch
+
+diff --git a/content/browser/renderer_host/render_widget_host_view_aura.cc b/content/browser/renderer_host/render_widget_host_view_aura.cc
+index 36f75f7..a022c35 100644
+--- a/content/browser/renderer_host/render_widget_host_view_aura.cc
++++ b/content/browser/renderer_host/render_widget_host_view_aura.cc
+@@ -4,6 +4,10 @@
+ 
+ #include "content/browser/renderer_host/render_widget_host_view_aura.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "ui/base/ime/ohos_text_input_action.h"  // nogncheck
++#endif
++
+ #include <algorithm>
+ #include <cmath>
+ #include <limits>
+@@ -1775,8 +1779,17 @@ base::i18n::TextDirection RenderWidgetHostViewAura::GetTextDirection() const {
+ }
+ 
+ int RenderWidgetHostViewAura::GetTextInputFlags() const {
+-  if (text_input_manager_ && text_input_manager_->GetTextInputState())
++  if (text_input_manager_ && text_input_manager_->GetTextInputState()) {
++#if BUILDFLAG(IS_OHOS)
++    // The field's enterkeyhint rides above the flags for the HarmonyOS IME
++    // (ui/base/ime/ohos_text_input_action.h).
++    return text_input_manager_->GetTextInputState()->flags |
++           ui::PackOhosTextInputAction(
++               text_input_manager_->GetTextInputState()->action);
++#else
+     return text_input_manager_->GetTextInputState()->flags;
++#endif
++  }
+   return 0;
+ }
+ 

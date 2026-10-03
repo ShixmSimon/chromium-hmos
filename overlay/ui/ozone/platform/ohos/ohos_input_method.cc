@@ -18,6 +18,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "ui/base/ime/composition_text.h"
+#include "ui/base/ime/ohos_text_input_action.h"  // nogncheck
 #include "ui/base/ime/text_input_client.h"
 #include "ui/base/ime/text_input_mode.h"
 #include "ui/base/ime/text_input_type.h"
@@ -197,8 +198,28 @@ InputMethod_TextInputType ToOhosInputType(TextInputType type) {
   }
 }
 
+// The page's enterkeyhint first, then what the field's mode and type imply.
 InputMethod_EnterKeyType ToOhosEnterKeyType(TextInputType type,
+                                            int flags,
                                             TextInputMode mode) {
+  switch (UnpackOhosTextInputAction(flags)) {
+    case TextInputAction::kEnter:
+      return IME_ENTER_KEY_NEWLINE;
+    case TextInputAction::kDone:
+      return IME_ENTER_KEY_DONE;
+    case TextInputAction::kGo:
+      return IME_ENTER_KEY_GO;
+    case TextInputAction::kNext:
+      return IME_ENTER_KEY_NEXT;
+    case TextInputAction::kPrevious:
+      return IME_ENTER_KEY_PREVIOUS;
+    case TextInputAction::kSearch:
+      return IME_ENTER_KEY_SEARCH;
+    case TextInputAction::kSend:
+      return IME_ENTER_KEY_SEND;
+    case TextInputAction::kDefault:
+      break;
+  }
   if (mode == TEXT_INPUT_MODE_SEARCH) {
     return IME_ENTER_KEY_SEARCH;
   }
@@ -472,7 +493,7 @@ void OhosInputMethod::UpdateImeState() {
                                  : TEXT_INPUT_MODE_DEFAULT;
   const InputMethod_ErrorCode result =
       OH_InputMethodProxy_NotifyConfigurationChange(
-          input_method_proxy_, ToOhosEnterKeyType(type, mode),
+          input_method_proxy_, ToOhosEnterKeyType(type, flags, mode),
           ToOhosInputType(type, flags, mode));
   if (result != IME_ERR_OK) {
     LOG(WARNING) << "HarmonyOS IME configuration update failed result="
@@ -490,11 +511,11 @@ void OhosInputMethod::RefreshTextSnapshot(bool notify_input_method) {
   const TextInputMode input_mode = GetTextInputClient()
                                        ? GetTextInputClient()->GetTextInputMode()
                                        : TEXT_INPUT_MODE_DEFAULT;
-  snapshot.input_type = ToOhosInputType(
-      input_type,
-      GetTextInputClient() ? GetTextInputClient()->GetTextInputFlags() : 0,
-      input_mode);
-  snapshot.enter_key_type = ToOhosEnterKeyType(input_type, input_mode);
+  const int input_flags =
+      GetTextInputClient() ? GetTextInputClient()->GetTextInputFlags() : 0;
+  snapshot.input_type = ToOhosInputType(input_type, input_flags, input_mode);
+  snapshot.enter_key_type =
+      ToOhosEnterKeyType(input_type, input_flags, input_mode);
   snapshot.window_id = GetOhosApplicationWindowIdForWidget(widget_);
 
   TextInputClient* client = GetTextInputClient();

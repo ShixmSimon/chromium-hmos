@@ -190,6 +190,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-file-chooser-accept-capture.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-popup-blocked-notice.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-downloads-narrow.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-enterkeyhint.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by
