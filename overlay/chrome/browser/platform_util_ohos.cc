@@ -7,6 +7,7 @@
 #include <string>
 #include <utility>
 
+#include "base/files/file_path.h"
 #include "base/values.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "ui/gfx/native_ui_types.h"
