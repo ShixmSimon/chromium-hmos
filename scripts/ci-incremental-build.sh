@@ -178,6 +178,10 @@ else
   #
   # and retire_incremental_patch backs one out again.
 
+  # A cached Skia shader that fails to compile clears the cache in place
+  # rather than crashing the in-process GPU, and the browser with it.
+  apply_incremental_patch "${repo_root}/patches/ohos-cached-shader-no-crash.patch"
+
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by
   # content (not timestamp) keeps ninja from rebuilding files that did not
