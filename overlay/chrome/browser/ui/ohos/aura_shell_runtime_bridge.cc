@@ -5834,7 +5834,7 @@ void LaunchShellWebApp(const base::DictValue& command) {
     return;
   }
   provider->scheduler().LaunchApp(*app_id, std::nullopt, base::DoNothing(),
-                                  apps::LaunchSource::kFromShortcut);
+                                  apps::LaunchSource::kFromOtherApp);
 }
 
 // exportWebAppIcon { requestId, appId, directory } -> webAppIcon { requestId,
