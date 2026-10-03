@@ -397,6 +397,7 @@ Chromium 自己的安装确认框,用户确认后才装。
 | `popupBlocked` | 否 | 弹窗被拦截:`pageUrl`、`origin`、`popupUrl`、`count`。显示提示;"显示"发 `showBlockedPopups`,"始终允许"发 `setSiteSetting { origin, type: 'popups', setting: 'allow' }` |
 | `dateTimePickerRequested` | **是** | 仅手机。`inputType`(`date`/`datetime-local`/`month`/`time`/`week`)、`value`/`min`/`max`(HTML 值字符串,如 `2026-10-03`、`14:30`、`2026-W40`,未设为空)。用系统的日期/时间选择器选好后发 `dateTimePickerResult { requestId, value }`(`''` 表示清空),取消时发 `{ requestId, canceled: true }` |
 | `selectPopupRequested` | **是** | 仅手机。`options`(`{ label, type: 'option'\|'group'\|'separator', enabled, checked }[]`)、`selectedIndex`、`multiple`。选好后发 `selectPopupResult { requestId, indices }`(下标对应 `options`),取消时发 `{ requestId, canceled: true }` |
+| `contactsPickerRequested` | **是** | 网页 `navigator.contacts.select()`:`multiple`、`properties`(`name`/`email`/`tel`/`address`/`icon` 中网页要的)。用系统联系人选择器选好后发 `contactsPickerResult { requestId, contacts: { name?, email?, tel?, address? }[] }`(每项都是字符串数组,地址一行一条),取消时发 `{ requestId, canceled: true }` |
 | `dateTimePickerClosed`、`selectPopupClosed` | 否 | 网页收回了 `requestId` 那次请求(输入框失焦或被移除),直接关掉对应的选择器,不用回复 |
 | `fileOpenRequested` | 否 | `path` 加 `action`:`open` 打开文件,`openFolder` 打开文件夹,`reveal` 在文件管理里定位这个文件 |
 | `systemActionRequested` | 否 | `SystemIntegrationAdapter.handle(context, event.action)` |

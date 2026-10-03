@@ -104,7 +104,10 @@
 #include "components/sessions/core/tab_restore_types.h"
 #include "components/zoom/zoom_controller.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
+#include "components/payments/mojom/payment_request_data.mojom.h"
+#include "content/public/browser/ohos_contacts_picker.h"
 #include "content/public/browser/ohos_popup_menu.h"
+#include "third_party/blink/public/mojom/contacts/contacts_manager.mojom.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "third_party/blink/public/mojom/choosers/date_time_chooser.mojom.h"
 #include "third_party/blink/public/mojom/choosers/popup_menu.mojom.h"
@@ -209,6 +212,17 @@ namespace chrome::ohos {
 std::atomic<int> g_open_shell_pickers{0};
 void CompleteShellDateTimePicker(const base::DictValue& command);
 void CompleteShellSelectPopup(const base::DictValue& command);
+void CompleteShellContactsPicker(const base::DictValue& command);
+void ShowShellContactsPicker(
+    content::RenderFrameHost* frame,
+    bool multiple,
+    bool include_names,
+    bool include_emails,
+    bool include_tel,
+    bool include_addresses,
+    bool include_icons,
+    base::OnceCallback<
+        void(std::optional<std::vector<blink::mojom::ContactInfoPtr>>)> done);
 void ShowShellSelectPopup(
     content::RenderFrameHost* frame,
     mojo::PendingRemote<blink::mojom::PopupMenuClient> client,
@@ -3121,6 +3135,10 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     CompleteShellSelectPopup(command);
     return;
   }
+  if (*name == "contactsPickerResult") {
+    CompleteShellContactsPicker(command);
+    return;
+  }
 
   if (*name == "filePickerResult") {
     const std::optional<int> request_id = command.FindInt("requestId");
@@ -4159,6 +4177,8 @@ void NotifyAuraShellBrowserStarted() {
   ui::SetOhosSelectFileDialogRequestCallback(
       base::BindRepeating(&DispatchFilePickerRequest));
   content::SetOhosPopupMenuHandler(base::BindRepeating(&ShowShellSelectPopup));
+  content::SetOhosContactsPickerHandler(
+      base::BindRepeating(&ShowShellContactsPicker));
   ApplyPullToRefresh(IsAuraShellMobilePhoneUi());
   OhosWebPermissionWatcher::GetInstance().Start();
   // Only Android installs one upstream; without it screen.orientation.lock()
@@ -4258,6 +4278,7 @@ void NotifyAuraShellBrowserStopped() {
   content::WebContents::SetScreenOrientationDelegate(nullptr);
   ui::SetOhosSelectFileDialogRequestCallback({});
   content::SetOhosPopupMenuHandler({});
+  content::SetOhosContactsPickerHandler({});
   ui::CancelAllOhosSelectFileDialogs();
   GetPwaMenuSessions().clear();
   RuntimeBridgeState& state = GetState();
@@ -4374,6 +4395,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "filePickerResult",
       "dateTimePickerResult",
       "selectPopupResult",
+      "contactsPickerResult",
       "permissionResult",
       "systemPermissionState",
       "setViewportInsets",
@@ -5612,6 +5634,117 @@ void ShowShellSelectPopup(
   event.Set("multiple", allow_multiple_selection);
   event.Set("options", std::move(list));
   DispatchRuntimeEvent(GetBrowserWidget(browser), std::move(event));
+}
+
+using ContactsPickerDone = base::OnceCallback<void(
+    std::optional<std::vector<blink::mojom::ContactInfoPtr>>)>;
+
+std::map<int, ContactsPickerDone>& ContactsPickerRequests() {
+  static base::NoDestructor<std::map<int, ContactsPickerDone>> requests;
+  return *requests;
+}
+
+void ShowShellContactsPicker(content::RenderFrameHost* frame,
+                             bool multiple,
+                             bool include_names,
+                             bool include_emails,
+                             bool include_tel,
+                             bool include_addresses,
+                             bool include_icons,
+                             ContactsPickerDone done) {
+  content::WebContents* contents =
+      content::WebContents::FromRenderFrameHost(frame);
+  BrowserWindowInterface* browser =
+      contents ? FindBrowserForWebContents(contents) : nullptr;
+  if (!browser) {
+    std::move(done).Run(std::nullopt);
+    return;
+  }
+  const int request_id = NextShellPickerRequestId();
+  ContactsPickerRequests()[request_id] = std::move(done);
+  ++g_open_shell_pickers;
+
+  base::ListValue properties;
+  if (include_names) {
+    properties.Append("name");
+  }
+  if (include_emails) {
+    properties.Append("email");
+  }
+  if (include_tel) {
+    properties.Append("tel");
+  }
+  if (include_addresses) {
+    properties.Append("address");
+  }
+  if (include_icons) {
+    properties.Append("icon");
+  }
+  base::DictValue event;
+  event.Set("event", "contactsPickerRequested");
+  event.Set("requestId", request_id);
+  event.Set("multiple", multiple);
+  event.Set("properties", std::move(properties));
+  DispatchRuntimeEvent(GetBrowserWidget(browser), std::move(event));
+}
+
+std::optional<std::vector<std::string>> ReadStrings(const base::DictValue& dict,
+                                                     std::string_view key) {
+  const base::ListValue* list = dict.FindList(key);
+  if (!list) {
+    return std::nullopt;
+  }
+  std::vector<std::string> out;
+  for (const base::Value& value : *list) {
+    if (value.is_string() && !value.GetString().empty()) {
+      out.push_back(value.GetString());
+    }
+  }
+  return out;
+}
+
+// contactsPickerResult { requestId, contacts: [{ name, email, tel, address }]
+// | canceled }. Each property is a list of strings; an address is one line
+// of text, which goes into PaymentAddress.address_line.
+void CompleteShellContactsPicker(const base::DictValue& command) {
+  const std::optional<int> request_id = command.FindInt("requestId");
+  if (!request_id) {
+    return;
+  }
+  auto it = ContactsPickerRequests().find(*request_id);
+  if (it == ContactsPickerRequests().end()) {
+    return;
+  }
+  ContactsPickerDone done = std::move(it->second);
+  ContactsPickerRequests().erase(it);
+  --g_open_shell_pickers;
+  std::vector<blink::mojom::ContactInfoPtr> contacts;
+  if (const base::ListValue* list = command.FindList("contacts")) {
+    for (const base::Value& value : *list) {
+      if (!value.is_dict()) {
+        continue;
+      }
+      const base::DictValue& entry = value.GetDict();
+      auto contact = blink::mojom::ContactInfo::New();
+      contact->name = ReadStrings(entry, "name");
+      contact->email = ReadStrings(entry, "email");
+      contact->tel = ReadStrings(entry, "tel");
+      if (std::optional<std::vector<std::string>> lines =
+              ReadStrings(entry, "address")) {
+        std::vector<payments::mojom::PaymentAddressPtr> addresses;
+        for (const std::string& line : *lines) {
+          auto address = payments::mojom::PaymentAddress::New();
+          address->address_line.push_back(line);
+          addresses.push_back(std::move(address));
+        }
+        contact->address = std::move(addresses);
+      }
+      contacts.push_back(std::move(contact));
+    }
+  }
+  // Cancelled is an empty list, as the API defines it; only a picker that
+  // could not be shown is nullopt.
+  std::move(done).Run(std::move(contacts));
 }
 
 void CompleteShellSelectPopup(const base::DictValue& command) {

@@ -195,6 +195,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-scripted-print-to-system.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-native-pickers.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-date-picker.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-contacts-picker.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

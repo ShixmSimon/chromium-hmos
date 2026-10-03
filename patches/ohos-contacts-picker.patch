@@ -1,0 +1,105 @@
+navigator.contacts.select() on OHOS opens the system contact picker.
+
+ContactsManagerImpl had a provider only on Android, so the Contact Picker
+API answered null everywhere else. On OHOS ContactsProviderOhos hands the
+request to a handler chrome registers (content/public/browser/
+ohos_contacts_picker.h, in the overlay); the bridge asks the shell with
+contactsPickerRequested and answers from contactsPickerResult. The engine
+turns the ContactsManager Blink feature on.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-contacts-picker.patch
+
+diff --git a/content/browser/contacts/contacts_manager_impl.cc b/content/browser/contacts/contacts_manager_impl.cc
+index 4238bde..4647150 100644
+--- a/content/browser/contacts/contacts_manager_impl.cc
++++ b/content/browser/contacts/contacts_manager_impl.cc
+@@ -20,16 +20,74 @@
+ #include "content/browser/contacts/contacts_provider_android.h"
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "base/no_destructor.h"
++#include "content/public/browser/ohos_contacts_picker.h"  // nogncheck
++#endif
++
+ namespace content {
+ 
+ namespace {
+ 
++#if BUILDFLAG(IS_OHOS)
++OhosContactsPickerHandler& GetOhosContactsPickerHandler() {
++  static base::NoDestructor<OhosContactsPickerHandler> handler;
++  return *handler;
++}
++
++// The system's contact picker, shown by the shell (ohos_contacts_picker.h).
++class ContactsProviderOhos : public ContactsProvider {
++ public:
++  explicit ContactsProviderOhos(RenderFrameHost* frame) : frame_(frame) {}
++
++  void Select(bool multiple,
++              bool include_names,
++              bool include_emails,
++              bool include_tel,
++              bool include_addresses,
++              bool include_icons,
++              ContactsSelectedCallback callback) override {
++    const OhosContactsPickerHandler& handler = GetOhosContactsPickerHandler();
++    if (!handler) {
++      std::move(callback).Run(std::nullopt, 0, PROPERTIES_NONE);
++      return;
++    }
++    const int properties =
++        (include_names ? PROPERTIES_NAMES : 0) |
++        (include_emails ? PROPERTIES_EMAILS : 0) |
++        (include_tel ? PROPERTIES_TELS : 0) |
++        (include_addresses ? PROPERTIES_ADDRESSES : 0) |
++        (include_icons ? PROPERTIES_ICONS : 0);
++    handler.Run(
++        frame_, multiple, include_names, include_emails, include_tel,
++        include_addresses, include_icons,
++        base::BindOnce(
++            [](ContactsSelectedCallback callback, int properties,
++               std::optional<std::vector<blink::mojom::ContactInfoPtr>>
++                   contacts) {
++              // The picker does not say how many contacts there were, so
++              // the share percentage UKM records is unknown.
++              std::move(callback).Run(
++                  std::move(contacts), 0,
++                  static_cast<ContactsPickerProperties>(properties));
++            },
++            std::move(callback), properties));
++  }
++
++ private:
++  // Owned by the ContactsManagerImpl, a DocumentService of this frame.
++  raw_ptr<RenderFrameHost> frame_;
++};
++#endif  // BUILDFLAG(IS_OHOS)
++
+ std::unique_ptr<ContactsProvider> CreateProvider(
+     RenderFrameHost& render_frame_host) {
+   if (render_frame_host.GetParentOrOuterDocument())
+     return nullptr;  // This API is only supported on the main frame.
+ #if BUILDFLAG(IS_ANDROID)
+   return std::make_unique<ContactsProviderAndroid>(&render_frame_host);
++#elif BUILDFLAG(IS_OHOS)
++  return std::make_unique<ContactsProviderOhos>(&render_frame_host);
+ #else
+   return nullptr;
+ #endif
+@@ -54,6 +112,12 @@ void OnContactsSelected(
+ 
+ }  // namespace
+ 
++#if BUILDFLAG(IS_OHOS)
++void SetOhosContactsPickerHandler(OhosContactsPickerHandler handler) {
++  GetOhosContactsPickerHandler() = std::move(handler);
++}
++#endif
++
+ // static
+ void ContactsManagerImpl::Create(
+     RenderFrameHost* render_frame_host,

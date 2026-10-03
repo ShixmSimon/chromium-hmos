@@ -22,6 +22,7 @@ export {
   BrowserStateSnapshot,
   BrowserTabState,
   PwaMenuButtonState,
+  PickedContact,
   PwaMenuItemState,
   SelectPopupOption
 } from './src/main/ets/components/webwindow/NativeContext';

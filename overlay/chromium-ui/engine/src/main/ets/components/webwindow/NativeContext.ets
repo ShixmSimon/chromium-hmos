@@ -212,7 +212,7 @@ export interface BrowserRuntimeEvent {
     'browserControlsRatio' | 'findResult' | 'pageText' |
     'contextMenuRequested' | 'externalUrlRequested' | 'popupBlocked' |
     'fileOpenRequested' | 'dateTimePickerRequested' | 'dateTimePickerClosed' |
-    'selectPopupRequested' | 'selectPopupClosed' |
+    'selectPopupRequested' | 'selectPopupClosed' | 'contactsPickerRequested' |
     // Profile data; read these through shellEvent<T>() (ShellServiceTypes).
     'bookmarkList' | 'bookmarkCreated' | 'bookmarksChanged' |
     'historyResults' | 'historyChanged' | 'autocompleteResults' | 'topSites' |
@@ -349,7 +349,13 @@ export interface BrowserRuntimeEvent {
   // { requestId, canceled: true }.
   options?: SelectPopupOption[];
   selectedIndex?: number;
+  // selectPopupRequested, contactsPickerRequested: whether several may be
+  // chosen.
   multiple?: boolean;
+  // contactsPickerRequested: what the page asked to know about each contact.
+  // Answer with contactsPickerResult { requestId, contacts } or
+  // { requestId, canceled: true }.
+  properties?: ('name' | 'email' | 'tel' | 'address' | 'icon')[];
   presentation?: 'popup' | 'sheet';
   menuSessionId?: number;
   items?: PwaMenuItemState[];
@@ -360,6 +366,16 @@ export interface BrowserRuntimeEvent {
   known?: boolean;
   isDefault?: boolean;
   huaweiWalletAvailable?: boolean;
+}
+
+// A contact the user chose in the system picker, for contactsPickerResult.
+// Only the properties the request asked for need be filled; an address is
+// one line of text.
+export interface PickedContact {
+  name?: string[];
+  email?: string[];
+  tel?: string[];
+  address?: string[];
 }
 
 // One entry of a <select>: an option, an <optgroup> heading (not
@@ -522,6 +538,8 @@ export interface BrowserCommandPayload {
   // selectPopupResult: the chosen entries, as indices into the event's
   // `options`.
   indices?: number[];
+  // contactsPickerResult: the chosen contacts; empty when none were.
+  contacts?: PickedContact[];
   granted?: string[];
   denied?: string[];
   location?: 'allowed' | 'denied' | 'notDetermined';
