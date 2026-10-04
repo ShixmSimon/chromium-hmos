@@ -31,8 +31,8 @@ constexpr char kSweptPref[] = "ohos.passwords_saved_without_protection_cleared";
 
 void RegisterPasswordCleanupPrefs(PrefRegistrySimple* registry) {
   registry->RegisterBooleanPref(kSweptPref, false);
-  // On by default: a saved password should not go into a page until the
-  // person holding the phone has shown they are the person who saved it.
+  // No longer read: filling always asks (ohos-password-fill-always-auth.patch).
+  // Still registered so profiles that stored a value keep loading cleanly.
   registry->RegisterBooleanPref("ohos.password_fill_requires_auth", true);
   // Off by default: HarmonyOS's Password Vault fills and saves instead of
   // Chromium only when the user turns it on (password_vault_ohos.h).

@@ -686,11 +686,11 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 
 `types`：`history`、`cookies`、`cache`、`siteSettings`、`formData`、`passwords`、`downloads`。`timeRange`：`lastHour`、`lastDay`、`lastWeek`、`last4Weeks`、`all`。
 
-偏好键（只接受这些）：`blockThirdPartyCookies`、`doNotTrack`、`safeBrowsing`（`'off' | 'standard' | 'enhanced'`）、`preloadPages`、`popupsBlocked`、`javascriptEnabled`、`textScale`、`autofillAddresses`、`autofillCards`、`downloadAskWhereToSave`、`passwordFillRequiresAuth`、`passwordVault`、`forceDarkWebContents`(网页强制深色,已打开的标签页立即生效)。
+偏好键（只接受这些）：`blockThirdPartyCookies`、`doNotTrack`、`safeBrowsing`（`'off' | 'standard' | 'enhanced'`）、`preloadPages`、`popupsBlocked`、`javascriptEnabled`、`textScale`、`autofillAddresses`、`autofillCards`、`downloadAskWhereToSave`、`passwordVault`、`forceDarkWebContents`(网页强制深色,已打开的标签页立即生效)。
 
 - `textScale` 是 50–200 的百分比。桌面版 Chromium 没有只放大文字的设置，所以这里改的是网页的默认缩放比例，整页一起放大。
 - 这个版本没有配置 Google API 密钥，`safeBrowsing` 开关能保存，但实际上很可能不起作用，设置页不要承诺有安全浏览保护。
-- `passwordFillRequiresAuth` 默认开。关掉只影响"把已保存的密码填进网页"这一件事；查看、复制、编辑、导出密码永远要验证身份，没有开关。设备上没有锁屏也没有录入生物特征时，这个开关不起作用——没有东西可以拿来验证。
+- 没有 `passwordFillRequiresAuth`（已去掉）：把已保存的密码填进网页总要验证身份，和查看、复制、编辑、导出一样，没有开关。设备上没有锁屏也没有录入生物特征时没有东西可以拿来验证，照常填充。
 - `passwordVault` 默认关。打开后由系统密码保险箱填充和保存网页密码：点登录框时内核直接调起保险箱（每个表单问一次），用户选的账号由内核填进网页；登录成功后保险箱询问是否保存，同时 Chromium 不弹提示、悄悄存一份，关掉开关后照常可用。打开期间 Chromium 自己的填充建议、自动填充和强密码提示都不出现。保险箱调用由外壳用 `registerShellSystemService('passwordvault', …)` 实现（`autoFillManager` 的 ViewData 接口要 API 26，引擎 HAR 按 API 20 编译）。保险箱要求设备设了锁屏密码，外壳只在可用时让开关可点。
 
 `passwordvault` 系统服务（外壳实现，内核调用）：
@@ -704,7 +704,7 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 
 | 什么时候验证身份 | 能不能关 |
 |---|---|
-| 把密码填进网页 | 能，`passwordFillRequiresAuth` |
+| 把密码填进网页 | 不能 |
 | 查看、复制、编辑、导出密码 | 不能 |
 
 - 验证界面是鸿蒙自己的，`userauth` 服务在 HAR 里（`UserAuthService.ets`），外壳不用注册也不用实现。内核不自己画密码输入框。

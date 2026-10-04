@@ -23,7 +23,6 @@
 //   autofillAddresses       bool
 //   autofillCards           bool
 //   downloadAskWhereToSave  bool
-//   passwordFillRequiresAuth bool
 //   passwordVault           bool   (HarmonyOS's Password Vault fills and
 //                           saves; Chromium keeps a silent copy)
 // Unknown keys and values of the wrong type are logged and ignored. A pref
@@ -60,7 +59,6 @@ namespace {
 
 // Registered in shell_password_cleanup_ohos.cc alongside the other OHOS
 // password prefs, since that is where this platform's password state lives.
-constexpr char kPasswordFillRequiresAuth[] = "ohos.password_fill_requires_auth";
 constexpr char kPasswordVault[] = "ohos.password_vault_enabled";
 
 // --- Plain boolean prefs: one line each. ----------------------------------
@@ -75,11 +73,9 @@ constexpr BoolPref kBoolPrefs[] = {
     {"autofillAddresses", autofill::prefs::kAutofillProfileEnabled},
     {"autofillCards", autofill::prefs::kAutofillCreditCardEnabled},
     {"downloadAskWhereToSave", prefs::kPromptForDownload},
-    // Whether filling a saved password into a page asks the user to prove who
-    // they are first. Showing, copying, editing and exporting always ask and
-    // have no setting; this covers filling alone, which is the one the
-    // product wanted to be able to turn off.
-    {"passwordFillRequiresAuth", kPasswordFillRequiresAuth},
+    // No passwordFillRequiresAuth: filling a saved password always asks the
+    // user to prove who they are, like showing, copying, editing and
+    // exporting (ohos-password-fill-always-auth.patch).
     // Whether HarmonyOS's Password Vault fills and saves passwords in place
     // of Chromium's suggestions and save prompt. The shell only offers the
     // switch when the vault can work (a lock screen is set).
