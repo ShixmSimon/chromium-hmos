@@ -1,23 +1,37 @@
 Draw emoji-presentation text in HarmonyOS's colour emoji font.
 
-Skia's custom font managers, which OhosFontManager wraps, understand CJK
-language tags and nothing else: asked for a character with "und-Zsye", the
-tag Blink adds for emoji presentation, they return the first font that has
-it. A keycap emoji ("0", U+FE0F, U+20E3) is asked for with its digit, which
-HarmonyOS Sans -- or the user's theme font -- has, so the sequence was shaped
-in a text font and U+20E3 drew as a box (ArkWeb draws the keycap). Emoji
-requests now go to the system's colour emoji families first, as Android's
-font manager does.
+Skia's custom font managers understand CJK language tags and nothing else:
+asked for a character with "und-Zsye", the tag Blink adds for emoji
+presentation, they return the first font that has it. A keycap emoji
+("0", U+FE0F, U+20E3) is asked for with its digit, which HarmonyOS Sans --
+or the user's theme font -- has, so the sequence was shaped in a text font
+and U+20E3 drew as a box (ArkWeb draws the keycap).
+
+OhosFontManager now sends emoji-presentation requests to the system's colour
+emoji fonts first, as Android's font manager does, and wraps the system
+manager even when no theme font is set (the theme side is then empty) --
+it used to exist only with a theme font, so most phones never reached it.
+When the directory scan leaves the emoji fonts out of the family list, the
+"*Emoji*" files in the font directories are loaded directly. What was found
+is logged once per process.
 
 Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
 applied. Apply with:
   git apply ohos-emoji-font-fallback.patch
 
 diff --git a/skia/ext/font_utils.cc b/skia/ext/font_utils.cc
-index 4f16466..ddea78e 100644
+index 4f16466..1d4d167 100644
 --- a/skia/ext/font_utils.cc
 +++ b/skia/ext/font_utils.cc
-@@ -464,10 +464,31 @@ bool HasFontStyles(const sk_sp<SkFontStyleSet>& styles) {
+@@ -17,6 +17,7 @@
+ 
+ #include "base/check.h"
+ #include "base/command_line.h"
++#include "base/files/file_enumerator.h"
+ #include "base/files/file_path.h"
+ #include "base/files/file_util.h"
+ #include "base/logging.h"
+@@ -464,10 +465,36 @@ bool HasFontStyles(const sk_sp<SkFontStyleSet>& styles) {
    return styles && styles->count() > 0;
  }
  
@@ -42,15 +56,21 @@ index 4f16466..ddea78e 100644
 +
  class OhosFontManager final : public SkFontMgr {
   public:
-   OhosFontManager(sk_sp<SkFontMgr> theme, sk_sp<SkFontMgr> system)
+-  OhosFontManager(sk_sp<SkFontMgr> theme, sk_sp<SkFontMgr> system)
 -      : theme_(std::move(theme)), system_(std::move(system)) {}
++  // `theme` may be empty (SkFontMgr::RefEmpty()) when no theme font is set.
++  // `emoji_files` are the font files whose names mention emoji, loaded
++  // directly when the system manager has no colour emoji family.
++  OhosFontManager(sk_sp<SkFontMgr> theme,
++                  sk_sp<SkFontMgr> system,
++                  const std::vector<std::string>& emoji_files)
 +      : theme_(std::move(theme)),
 +        system_(std::move(system)),
-+        emoji_families_(FindEmojiFamilies(*system_)) {}
++        emoji_typefaces_(FindEmojiTypefaces(*system_, emoji_files)) {}
  
   private:
    int onCountFamilies() const override {
-@@ -527,6 +548,17 @@ class OhosFontManager final : public SkFontMgr {
+@@ -527,6 +554,17 @@ class OhosFontManager final : public SkFontMgr {
        const char* bcp47[],
        int bcp47_count,
        SkUnichar character) const override {
@@ -68,34 +88,56 @@ index 4f16466..ddea78e 100644
      if (!IsSansGenericFamily(family)) {
        if (HasFontStyles(theme_->matchFamily(family))) {
          sk_sp<SkTypeface> typeface = theme_->matchFamilyStyle(family, style);
-@@ -586,8 +618,41 @@ class OhosFontManager final : public SkFontMgr {
+@@ -586,8 +624,63 @@ class OhosFontManager final : public SkFontMgr {
      return system_->legacyMakeTypeface(family, style);
    }
  
-+  static std::vector<int> FindEmojiFamilies(const SkFontMgr& manager) {
-+    std::vector<int> families;
++  static std::vector<sk_sp<SkTypeface>> FindEmojiTypefaces(
++      const SkFontMgr& manager,
++      const std::vector<std::string>& emoji_files) {
++    std::vector<sk_sp<SkTypeface>> typefaces;
 +    for (int index = 0; index < manager.countFamilies(); ++index) {
 +      SkString name;
 +      manager.getFamilyName(index, &name);
-+      if (!name.contains("Emoji")) {
++      if (!name.contains("Emoji") && !name.contains("emoji")) {
 +        continue;
 +      }
 +      sk_sp<SkFontStyleSet> styles = manager.createStyleSet(index);
 +      sk_sp<SkTypeface> typeface =
 +          styles ? styles->matchStyle(SkFontStyle()) : nullptr;
-+      if (typeface && HasColorGlyphs(*typeface)) {
-+        families.push_back(index);
++      const bool color = typeface && HasColorGlyphs(*typeface);
++      LOG(INFO) << "OHOS emoji family: " << name.c_str()
++                << " color=" << color;
++      if (color) {
++        typefaces.push_back(std::move(typeface));
 +      }
 +    }
-+    return families;
++    // The directory scanner can leave a bitmap-only emoji font out of the
++    // family list; load the files themselves then.
++    if (typefaces.empty()) {
++      for (const std::string& path : emoji_files) {
++        sk_sp<SkTypeface> typeface = manager.makeFromFile(path.c_str());
++        SkString name;
++        if (typeface) {
++          typeface->getFamilyName(&name);
++        }
++        const bool color = typeface && HasColorGlyphs(*typeface);
++        LOG(INFO) << "OHOS emoji file: " << path << " loaded=" << !!typeface
++                  << " family=" << name.c_str() << " color=" << color;
++        if (color) {
++          typefaces.push_back(std::move(typeface));
++        }
++      }
++    }
++    LOG(INFO) << "OHOS emoji fonts: " << typefaces.size() << " of "
++              << manager.countFamilies() << " families";
++    return typefaces;
 +  }
 +
 +  sk_sp<SkTypeface> MatchEmoji(const SkFontStyle& style,
 +                               SkUnichar character) const {
-+    for (int index : emoji_families_) {
-+      sk_sp<SkFontStyleSet> styles = system_->createStyleSet(index);
-+      sk_sp<SkTypeface> typeface = styles ? styles->matchStyle(style) : nullptr;
-+      if (typeface && typeface->unicharToGlyph(character)) {
++    for (const sk_sp<SkTypeface>& typeface : emoji_typefaces_) {
++      if (typeface->unicharToGlyph(character)) {
 +        return typeface;
 +      }
 +    }
@@ -104,9 +146,45 @@ index 4f16466..ddea78e 100644
 +
    const sk_sp<SkFontMgr> theme_;
    const sk_sp<SkFontMgr> system_;
-+  // Indexes into `system_` of its colour emoji families ("HMOS Color Emoji"
-+  // on a phone), found once: the family list does not change.
-+  const std::vector<int> emoji_families_;
++  // The colour emoji fonts ("HMOS Color Emoji" on a phone), found once: the
++  // font list does not change.
++  const std::vector<sk_sp<SkTypeface>> emoji_typefaces_;
  };
  
  sk_sp<SkFontMgr> MakeOhosFontManager(
+@@ -631,15 +724,30 @@ sk_sp<SkFontMgr> MakeOhosFontManager(
+     }
+   }
+ 
+-  sk_sp<SkFontMgr> manager = system_manager;
++  // Wrapped even without a theme font: OhosFontManager is also what sends
++  // emoji-presentation requests to the colour emoji font, which the
++  // directory manager alone cannot do.
++  std::vector<std::string> emoji_files;
++  for (const std::string& directory : config.directories) {
++    base::FileEnumerator files(base::FilePath(directory), /*recursive=*/false,
++                               base::FileEnumerator::FILES,
++                               FILE_PATH_LITERAL("*Emoji*"));
++    for (base::FilePath file = files.Next(); !file.empty();
++         file = files.Next()) {
++      emoji_files.push_back(file.value());
++    }
++  }
++  sk_sp<SkFontMgr> theme_manager;
+   if (!theme_fonts.empty()) {
+-    sk_sp<SkFontMgr> theme_manager = SkFontMgr_New_Custom_Data(
++    theme_manager = SkFontMgr_New_Custom_Data(
+         SkSpan<sk_sp<SkData>>(theme_fonts.data(), theme_fonts.size()));
+-    if (theme_manager && theme_manager->countFamilies() > 0) {
+-      manager = sk_make_sp<OhosFontManager>(std::move(theme_manager),
+-                                            std::move(system_manager));
++    if (!theme_manager || theme_manager->countFamilies() == 0) {
++      theme_manager = nullptr;
+     }
+   }
++  sk_sp<SkFontMgr> manager = sk_make_sp<OhosFontManager>(
++      theme_manager ? std::move(theme_manager) : SkFontMgr::RefEmpty(),
++      std::move(system_manager), emoji_files);
+ 
+   SkString resolved_family;
+   if (manager) {
