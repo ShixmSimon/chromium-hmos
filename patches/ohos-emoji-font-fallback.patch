@@ -20,7 +20,7 @@ applied. Apply with:
   git apply ohos-emoji-font-fallback.patch
 
 diff --git a/skia/ext/font_utils.cc b/skia/ext/font_utils.cc
-index 4f16466..1d4d167 100644
+index 4f16466..c25833e 100644
 --- a/skia/ext/font_utils.cc
 +++ b/skia/ext/font_utils.cc
 @@ -17,6 +17,7 @@
@@ -88,7 +88,7 @@ index 4f16466..1d4d167 100644
      if (!IsSansGenericFamily(family)) {
        if (HasFontStyles(theme_->matchFamily(family))) {
          sk_sp<SkTypeface> typeface = theme_->matchFamilyStyle(family, style);
-@@ -586,8 +624,63 @@ class OhosFontManager final : public SkFontMgr {
+@@ -586,8 +624,80 @@ class OhosFontManager final : public SkFontMgr {
      return system_->legacyMakeTypeface(family, style);
    }
  
@@ -122,8 +122,25 @@ index 4f16466..1d4d167 100644
 +          typeface->getFamilyName(&name);
 +        }
 +        const bool color = typeface && HasColorGlyphs(*typeface);
++        // Diagnostic: whether the file could be read at all, and what kind
++        // of file it starts like (00010000 / 'true' / 'OTTO' / 'ttcf').
++        std::string head;
++        if (!typeface) {
++          uint8_t bytes[8] = {};
++          const std::optional<uint64_t> read =
++              base::ReadFile(base::FilePath(path), base::span(bytes));
++          static constexpr char kHex[] = "0123456789abcdef";
++          for (uint8_t byte : bytes) {
++            head.push_back(kHex[byte >> 4]);
++            head.push_back(kHex[byte & 0xf]);
++          }
++          if (!read) {
++            head = "unreadable";
++          }
++        }
 +        LOG(INFO) << "OHOS emoji file: " << path << " loaded=" << !!typeface
-+                  << " family=" << name.c_str() << " color=" << color;
++                  << " family=" << name.c_str() << " color=" << color
++                  << " head=" << head;
 +        if (color) {
 +          typefaces.push_back(std::move(typeface));
 +        }
@@ -152,7 +169,7 @@ index 4f16466..1d4d167 100644
  };
  
  sk_sp<SkFontMgr> MakeOhosFontManager(
-@@ -631,15 +724,30 @@ sk_sp<SkFontMgr> MakeOhosFontManager(
+@@ -631,15 +741,30 @@ sk_sp<SkFontMgr> MakeOhosFontManager(
      }
    }
  
