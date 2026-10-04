@@ -69,19 +69,27 @@ export class SystemIntegrationAdapter {
     await context.startAbility(implicitWant);
   }
 
+  // HarmonyOS has no public API for an app to make itself the default
+  // browser: defaultAppManager only answers whether it is. The settings page
+  // that chooses one is "Apps & services > Default browser", reached with the
+  // settings key the settings search uses for it. The choice itself only
+  // takes a real touch -- settings rejects injected clicks there.
+  //
+  // Opening a web page with a picker requested did nothing: with a default
+  // browser already set the system skipped the picker and the page opened in
+  // that browser.
   private static async openDefaultBrowserSettings(context: common.UIAbilityContext): Promise<void> {
-    // HarmonyOS does not expose a public API for third-party applications to
-    // set the default browser directly. Force the system picker and include
-    // the caller so Chromium is selectable even though it initiated the Want.
-    await context.startAbility({
-      action: 'ohos.want.action.viewData',
-      entities: [ 'entity.system.browsable' ],
-      uri: 'https://www.bing.com/',
-      parameters: {
-        'ohos.ability.params.showDefaultPicker': true,
-        showCaller: true
-      }
-    });
+    try {
+      await context.startAbility({
+        bundleName: 'com.huawei.hmos.settings',
+        abilityName: 'com.huawei.hmos.settings.MainAbility',
+        uri: 'default_browser_settings'
+      });
+    } catch (error) {
+      // Older settings: the app's own page, which has the same entry.
+      console.warn(`Default browser settings unavailable: ${(error as Error).message}`);
+      await SystemIntegrationAdapter.openAppSettings(context);
+    }
   }
 
   private static async checkForUpdates(context: common.UIAbilityContext): Promise<void> {
