@@ -200,6 +200,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-nfc.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-password-vault.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-popup-below-browser-controls.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-location-bar-bubble-below-shell.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

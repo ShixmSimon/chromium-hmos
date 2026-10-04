@@ -1,0 +1,116 @@
+Hang location-bar bubbles below the shell's top bar.
+
+The save password bubble, and every other LocationBarBubbleDelegateView,
+points at a button in Chromium's toolbar or location bar. This port draws its
+browser UI in ArkTS: that toolbar is hidden at the top of the window, under
+the status bar and the address bar the shell draws over the page, so these
+bubbles opened with their title -- and on the save password bubble its
+picture -- behind them. On OHOS they now hang from the line just below the
+shell's top bar, centred, the way the page-info bubbles already do
+(GetPageInfoAnchorRect, ohos-phone-dialogs.patch).
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-location-bar-bubble-below-shell.patch
+
+diff --git a/chrome/browser/ui/views/location_bar/location_bar_bubble_delegate_view.cc b/chrome/browser/ui/views/location_bar/location_bar_bubble_delegate_view.cc
+index 6484689..50f3c69 100644
+--- a/chrome/browser/ui/views/location_bar/location_bar_bubble_delegate_view.cc
++++ b/chrome/browser/ui/views/location_bar/location_bar_bubble_delegate_view.cc
+@@ -8,6 +8,9 @@
+ #include "base/functional/bind.h"
+ #include "build/build_config.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/bubble_anchor_util.h"
++#endif
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
+ #include "chrome/browser/ui/layout_constants.h"
+@@ -150,6 +153,12 @@ void LocationBarBubbleDelegateView::ShowForReason(DisplayReason reason,
+   set_adjust_if_offscreen(true);
+   GetBubbleFrameView()->SetPreferredArrowAdjustment(
+       views::BubbleFrameView::PreferredArrowAdjustment::kOffset);
++#if BUILDFLAG(IS_OHOS)
++  // Hung below the shell's top bar; see GetAnchorRect().
++  if (BrowserForAnchor()) {
++    SetArrow(views::BubbleBorder::TOP_CENTER);
++  }
++#endif
+ 
+   if (reason == USER_GESTURE) {
+     GetWidget()->Show();
+@@ -204,6 +213,30 @@ gfx::Rect LocationBarBubbleDelegateView::GetAnchorBoundsInScreen() const {
+   return bounds;
+ }
+ 
++#if BUILDFLAG(IS_OHOS)
++BrowserWindowInterface* LocationBarBubbleDelegateView::BrowserForAnchor()
++    const {
++  tabs::TabInterface* const tab =
++      web_contents() ? tabs::TabInterface::MaybeGetFromContents(web_contents())
++                     : nullptr;
++  return tab ? tab->GetBrowserWindowInterface() : nullptr;
++}
++
++// These bubbles point at a button in Chromium's toolbar or location bar.
++// This port draws its browser UI in ArkTS: that toolbar is hidden at the top
++// of the window, under the status bar and the address bar the shell draws
++// over the page, so a bubble hanging from it had its title -- and on the save
++// password bubble its picture -- hidden behind them. Hang it from the line
++// just below the shell's top bar instead, across the window's top centre,
++// the way the page-info bubbles already are (GetPageInfoAnchorRect).
++gfx::Rect LocationBarBubbleDelegateView::GetAnchorRect() const {
++  if (BrowserWindowInterface* browser = BrowserForAnchor()) {
++    return bubble_anchor_util::GetPageInfoAnchorRect(browser);
++  }
++  return BubbleDialogDelegateView::GetAnchorRect();
++}
++#endif
++
+ void LocationBarBubbleDelegateView::AdjustForFullscreen(
+     const gfx::Rect& screen_bounds) {
+   if (GetAnchorView()) {
+diff --git a/chrome/browser/ui/views/location_bar/location_bar_bubble_delegate_view.h b/chrome/browser/ui/views/location_bar/location_bar_bubble_delegate_view.h
+index 95bb443..8b6c7ce 100644
+--- a/chrome/browser/ui/views/location_bar/location_bar_bubble_delegate_view.h
++++ b/chrome/browser/ui/views/location_bar/location_bar_bubble_delegate_view.h
+@@ -7,6 +7,7 @@
+ 
+ #include "base/callback_list.h"
+ #include "base/memory/raw_ptr.h"
++#include "build/build_config.h"
+ #include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
+ #include "content/public/browser/web_contents_observer.h"
+ #include "ui/base/metadata/metadata_header_macros.h"
+@@ -15,6 +16,8 @@
+ #include "ui/views/event_monitor.h"
+ #include "ui/views/metadata/view_factory.h"
+ 
++class BrowserWindowInterface;
++
+ namespace content {
+ class WebContents;
+ }  // namespace content
+@@ -78,6 +81,9 @@ class LocationBarBubbleDelegateView : public views::BubbleDialogDelegateView,
+ 
+   // views::BubbleDialogDelegateView:
+   gfx::Rect GetAnchorBoundsInScreen() const override;
++#if BUILDFLAG(IS_OHOS)
++  gfx::Rect GetAnchorRect() const override;
++#endif
+ 
+   // If the bubble is not anchored to a view, places the bubble in the top right
+   // (left in RTL) of the |screen_bounds| that contain web contents's browser
+@@ -86,6 +92,11 @@ class LocationBarBubbleDelegateView : public views::BubbleDialogDelegateView,
+   void AdjustForFullscreen(const gfx::Rect& screen_bounds);
+ 
+  protected:
++#if BUILDFLAG(IS_OHOS)
++  // The browser window of the tab the bubble belongs to, if any.
++  BrowserWindowInterface* BrowserForAnchor() const;
++#endif
++
+   // The class listens for WebContentsView events and closes the bubble. Useful
+   // for bubbles that do not start out focused but need to close when the user
+   // interacts with the web view.
