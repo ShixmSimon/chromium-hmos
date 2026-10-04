@@ -28,7 +28,7 @@ namespace chrome::ohos {
 
 namespace {
 
-// The HAR service; see PasswordVaultService.ets.
+// Answered by the shell; see password_vault_ohos.h and SHELL_CONTRACT.md.
 constexpr char kService[] = "passwordvault";
 
 using autofill::FieldRendererId;

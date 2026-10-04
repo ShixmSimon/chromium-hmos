@@ -13,7 +13,6 @@ import { SystemServiceBridge, SystemServiceEmitter, SystemServiceHandler,
 import { BackgroundAudioService } from './BackgroundAudioService';
 import { NotificationService } from './NotificationService';
 import { OrientationService } from './OrientationService';
-import { PasswordVaultService } from './PasswordVaultService';
 import { ShapeDetectionService } from './ShapeDetectionService';
 import { TtsService } from './TtsService';
 import { UserAuthService } from './UserAuthService';
@@ -54,6 +53,5 @@ export function registerSystemServices(bridge: SystemServiceBridge,
   bridge.register('orientation', (): SystemServiceHandler => new OrientationService(context));
   bridge.register('shape', (): SystemServiceHandler => new ShapeDetectionService());
   bridge.register('userauth', (): SystemServiceHandler => new UserAuthService());
-  bridge.register('passwordvault', (): SystemServiceHandler => new PasswordVaultService(context));
   bridge.register('backgroundaudio', (): SystemServiceHandler => new BackgroundAudioService(context));
 }

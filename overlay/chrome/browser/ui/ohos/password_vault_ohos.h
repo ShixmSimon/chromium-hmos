@@ -20,9 +20,13 @@ namespace chrome::ohos {
 //
 // The vault only answers apps that describe their login fields to it through
 // autoFillManager: reporting a field to the IME as a username or password
-// changes the keyboard and nothing else. So the engine HAR's "passwordvault"
-// service makes those calls, and this is the Chromium side of it. Passwords
-// go from Chromium to the HAR and back; the shell never sees one.
+// changes the keyboard and nothing else. Those calls are made by a
+// "passwordvault" system service, and this is the Chromium side of it.
+//
+// The shell answers that service (registerShellSystemService), not the
+// engine HAR: autoFillManager's ViewData API is API 26, and the HAR builds
+// for API 20. Passwords cross to the shell's ArkTS in memory only, on their
+// way to and from the vault.
 //
 // Only used while password_manager::IsOhosPasswordVaultOn() is true.
 
