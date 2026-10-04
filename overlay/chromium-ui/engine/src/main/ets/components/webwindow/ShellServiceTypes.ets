@@ -115,6 +115,8 @@ export type ShellPrefKey =
   'blockThirdPartyCookies' | 'doNotTrack' | 'safeBrowsing' | 'preloadPages' |
   'popupsBlocked' | 'javascriptEnabled' | 'textScale' | 'autofillAddresses' |
   'autofillCards' | 'downloadAskWhereToSave' | 'passwordFillRequiresAuth' |
+  // HarmonyOS's Password Vault fills and saves; Chromium keeps a silent copy.
+  'passwordVault' |
   // Blink's auto dark mode for pages that have none; open tabs follow at once.
   'forceDarkWebContents';
 
