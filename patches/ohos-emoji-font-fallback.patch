@@ -1,0 +1,112 @@
+Draw emoji-presentation text in HarmonyOS's colour emoji font.
+
+Skia's custom font managers, which OhosFontManager wraps, understand CJK
+language tags and nothing else: asked for a character with "und-Zsye", the
+tag Blink adds for emoji presentation, they return the first font that has
+it. A keycap emoji ("0", U+FE0F, U+20E3) is asked for with its digit, which
+HarmonyOS Sans -- or the user's theme font -- has, so the sequence was shaped
+in a text font and U+20E3 drew as a box (ArkWeb draws the keycap). Emoji
+requests now go to the system's colour emoji families first, as Android's
+font manager does.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-emoji-font-fallback.patch
+
+diff --git a/skia/ext/font_utils.cc b/skia/ext/font_utils.cc
+index 4f16466..ddea78e 100644
+--- a/skia/ext/font_utils.cc
++++ b/skia/ext/font_utils.cc
+@@ -464,10 +464,31 @@ bool HasFontStyles(const sk_sp<SkFontStyleSet>& styles) {
+   return styles && styles->count() > 0;
+ }
+ 
++// Whether Blink asked for emoji presentation: GetBcp47LocaleForRequest adds
++// "und-Zsye" for an emoji sequence, a keycap, or a character followed by
++// U+FE0F.
++bool WantsEmojiPresentation(const char* bcp47[], int bcp47_count) {
++  for (int index = 0; index < bcp47_count; ++index) {
++    if (bcp47[index] &&
++        std::string_view(bcp47[index]).find("Zsye") != std::string_view::npos) {
++      return true;
++    }
++  }
++  return false;
++}
++
++bool HasColorGlyphs(const SkTypeface& typeface) {
++  return typeface.getTableSize(SkSetFourByteTag('C', 'B', 'D', 'T')) > 0 ||
++         typeface.getTableSize(SkSetFourByteTag('C', 'O', 'L', 'R')) > 0 ||
++         typeface.getTableSize(SkSetFourByteTag('s', 'b', 'i', 'x')) > 0;
++}
++
+ class OhosFontManager final : public SkFontMgr {
+  public:
+   OhosFontManager(sk_sp<SkFontMgr> theme, sk_sp<SkFontMgr> system)
+-      : theme_(std::move(theme)), system_(std::move(system)) {}
++      : theme_(std::move(theme)),
++        system_(std::move(system)),
++        emoji_families_(FindEmojiFamilies(*system_)) {}
+ 
+  private:
+   int onCountFamilies() const override {
+@@ -527,6 +548,17 @@ class OhosFontManager final : public SkFontMgr {
+       const char* bcp47[],
+       int bcp47_count,
+       SkUnichar character) const override {
++    // The custom font managers know CJK language tags and nothing else, so
++    // they answer an emoji request with the first font that has the
++    // character. A keycap emoji ("0", U+FE0F, U+20E3) asks with its digit:
++    // HarmonyOS Sans -- or the theme font -- has it, the sequence was shaped
++    // in a text font and U+20E3 drew as a box. Go to the colour emoji font
++    // first, as Android's font manager does for "und-Zsye".
++    if (WantsEmojiPresentation(bcp47, bcp47_count)) {
++      if (sk_sp<SkTypeface> emoji = MatchEmoji(style, character)) {
++        return emoji;
++      }
++    }
+     if (!IsSansGenericFamily(family)) {
+       if (HasFontStyles(theme_->matchFamily(family))) {
+         sk_sp<SkTypeface> typeface = theme_->matchFamilyStyle(family, style);
+@@ -586,8 +618,41 @@ class OhosFontManager final : public SkFontMgr {
+     return system_->legacyMakeTypeface(family, style);
+   }
+ 
++  static std::vector<int> FindEmojiFamilies(const SkFontMgr& manager) {
++    std::vector<int> families;
++    for (int index = 0; index < manager.countFamilies(); ++index) {
++      SkString name;
++      manager.getFamilyName(index, &name);
++      if (!name.contains("Emoji")) {
++        continue;
++      }
++      sk_sp<SkFontStyleSet> styles = manager.createStyleSet(index);
++      sk_sp<SkTypeface> typeface =
++          styles ? styles->matchStyle(SkFontStyle()) : nullptr;
++      if (typeface && HasColorGlyphs(*typeface)) {
++        families.push_back(index);
++      }
++    }
++    return families;
++  }
++
++  sk_sp<SkTypeface> MatchEmoji(const SkFontStyle& style,
++                               SkUnichar character) const {
++    for (int index : emoji_families_) {
++      sk_sp<SkFontStyleSet> styles = system_->createStyleSet(index);
++      sk_sp<SkTypeface> typeface = styles ? styles->matchStyle(style) : nullptr;
++      if (typeface && typeface->unicharToGlyph(character)) {
++        return typeface;
++      }
++    }
++    return nullptr;
++  }
++
+   const sk_sp<SkFontMgr> theme_;
+   const sk_sp<SkFontMgr> system_;
++  // Indexes into `system_` of its colour emoji families ("HMOS Color Emoji"
++  // on a phone), found once: the family list does not change.
++  const std::vector<int> emoji_families_;
+ };
+ 
+ sk_sp<SkFontMgr> MakeOhosFontManager(
