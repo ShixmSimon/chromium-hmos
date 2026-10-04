@@ -34,6 +34,9 @@ void RegisterPasswordCleanupPrefs(PrefRegistrySimple* registry) {
   // On by default: a saved password should not go into a page until the
   // person holding the phone has shown they are the person who saved it.
   registry->RegisterBooleanPref("ohos.password_fill_requires_auth", true);
+  // Off by default: HarmonyOS's Password Vault fills and saves instead of
+  // Chromium only when the user turns it on (password_vault_ohos.h).
+  registry->RegisterBooleanPref("ohos.password_vault_enabled", false);
 }
 
 void ClearPasswordsSavedWithoutProtection(Profile* profile) {

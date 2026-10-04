@@ -23,6 +23,9 @@
 //   autofillAddresses       bool
 //   autofillCards           bool
 //   downloadAskWhereToSave  bool
+//   passwordFillRequiresAuth bool
+//   passwordVault           bool   (HarmonyOS's Password Vault fills and
+//                           saves; Chromium keeps a silent copy)
 // Unknown keys and values of the wrong type are logged and ignored. A pref
 // that policy controls is read but not written.
 
@@ -58,6 +61,7 @@ namespace {
 // Registered in shell_password_cleanup_ohos.cc alongside the other OHOS
 // password prefs, since that is where this platform's password state lives.
 constexpr char kPasswordFillRequiresAuth[] = "ohos.password_fill_requires_auth";
+constexpr char kPasswordVault[] = "ohos.password_vault_enabled";
 
 // --- Plain boolean prefs: one line each. ----------------------------------
 
@@ -76,6 +80,10 @@ constexpr BoolPref kBoolPrefs[] = {
     // have no setting; this covers filling alone, which is the one the
     // product wanted to be able to turn off.
     {"passwordFillRequiresAuth", kPasswordFillRequiresAuth},
+    // Whether HarmonyOS's Password Vault fills and saves passwords in place
+    // of Chromium's suggestions and save prompt. The shell only offers the
+    // switch when the vault can work (a lock screen is set).
+    {"passwordVault", kPasswordVault},
     // Blink's auto dark mode, the same pref Android's "darken websites"
     // drives. PrefWatcher already observes it, so open tabs repaint at once.
     {"forceDarkWebContents", prefs::kWebKitForceDarkModeEnabled},
