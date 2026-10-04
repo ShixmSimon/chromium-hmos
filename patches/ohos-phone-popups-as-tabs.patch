@@ -1,0 +1,62 @@
+Open a page's popups as tabs on a phone.
+
+A window.open() with window features -- "Sign in with Google", payments --
+became a Browser window of its own (TYPE_POPUP). A phone shows one full-screen
+browser window, and the shell could only draw the popup as a floating box
+clamped to a third of the screen, its page cut off under the status bar.
+On the phone UI, AddWebContents now turns NEW_POPUP and NEW_WINDOW from a
+normal browser into a foreground tab, as Chrome on Android does; the opener
+link survives, so the page can still postMessage to it and window.close() it,
+and the tab joins the opener's group.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-phone-popups-as-tabs.patch
+
+diff --git a/chrome/browser/ui/browser_tabstrip.cc b/chrome/browser/ui/browser_tabstrip.cc
+index dfd71b4..a30587a 100644
+--- a/chrome/browser/ui/browser_tabstrip.cc
++++ b/chrome/browser/ui/browser_tabstrip.cc
+@@ -6,6 +6,7 @@
+ 
+ #include "build/build_config.h"
+ #if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+ #include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
+ #endif
+ 
+@@ -112,6 +113,22 @@ content::WebContents* AddWebContents(
+   // Can't create a new contents for the current tab - invalid case.
+   DCHECK(disposition != WindowOpenDisposition::CURRENT_TAB);
+ 
++#if BUILDFLAG(IS_OHOS)
++  // A phone shows one browser window, full screen. A popup -- window.open()
++  // with window features, which is how sites open "Sign in with Google" or a
++  // payment -- became a Browser window of its own, which the shell could only
++  // draw as a small floating box clamped to a third of the screen, its page
++  // cut off. Open it as a tab, as Chrome on Android does: the opener link
++  // survives, so the page can still talk to it and window.close() it, and the
++  // tab joins the opener's group below.
++  if (chrome::ohos::IsAuraShellMobilePhoneUi() &&
++      browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL &&
++      (disposition == WindowOpenDisposition::NEW_POPUP ||
++       disposition == WindowOpenDisposition::NEW_WINDOW)) {
++    disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
++  }
++#endif  // BUILDFLAG(IS_OHOS)
++
+   NavigateParams params(browser, std::move(new_contents));
+   params.source_contents = source_contents;
+   params.url = target_url;
+@@ -139,9 +156,8 @@ content::WebContents* AddWebContents(
+   // what this adds, with the opener first, so the reader can get back to the
+   // page they were on from inside the group.
+   //
+-  // Only for a new tab. A window.open() carrying window features is a popup
+-  // and arrives here as NEW_POPUP; it keeps its own window, because a page
+-  // that asked for one is usually a login or a payment that is watching it.
++  // Only for a new tab -- which on a phone a popup has become above. Elsewhere
++  // a popup keeps its own window.
+   if (!params.group &&
+       (disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB ||
+        disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB)) {
