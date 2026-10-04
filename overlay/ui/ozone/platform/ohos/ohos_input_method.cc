@@ -654,20 +654,56 @@ void OhosInputMethod::HandleExtend(InputMethod_ExtendAction action) {
   RefreshTextSnapshot(true);
 }
 
+// `start` and `end` are not a selection inside `text`. They say which part
+// of the field the preview replaces, in UTF-16 offsets from the start of the
+// field (InputMethodEngine setPreviewText):
+//   -1, -1        the whole current preview, or the cursor if there is none
+//   start == end  nothing; `text` goes in at that offset
+//   start != end  the field's text in [start, end)
+// An English keyboard commits "hell" as typed, and picking the suggestion
+// "Hello" asks for "Hello" over [0, 4). Taken as a selection inside the new
+// preview, that range was ignored and "Hello" went in after "hell".
 void OhosInputMethod::HandlePreviewText(std::u16string text,
                                         int32_t start,
                                         int32_t end) {
-  if (!GetTextInputClient() || IsTextInputTypeNone()) {
+  TextInputClient* client = GetTextInputClient();
+  if (!client || IsTextInputTypeNone()) {
     return;
   }
   CompositionText composition;
-  composition.text = std::move(text);
-  const size_t selection_start = std::min(
-      static_cast<size_t>(std::max(start, 0)), composition.text.size());
-  const size_t selection_end =
-      std::min(static_cast<size_t>(std::max(end, 0)), composition.text.size());
-  composition.selection = gfx::Range(selection_start, selection_end);
-  GetTextInputClient()->SetCompositionText(composition);
+  if (start >= 0 && end >= start) {
+    const gfx::Range target(static_cast<size_t>(start),
+                            static_cast<size_t>(end));
+    gfx::Range current;
+    std::u16string current_text;
+    if (client->HasCompositionText() &&
+        client->GetCompositionTextRange(&current) &&
+        current.GetMin() <= target.GetMin() &&
+        target.GetMax() <= current.GetMax() &&
+        client->GetTextFromRange(current, &current_text) &&
+        current_text.size() == current.length()) {
+      // Inside the preview already showing: edit that preview in place, so
+      // it stays one composition rather than being committed piecemeal.
+      const size_t from = target.GetMin() - current.GetMin();
+      current_text.replace(from, target.length(), text);
+      composition.text = std::move(current_text);
+      composition.selection = gfx::Range(from + text.size());
+    } else {
+      // Committed text: commit any preview first, then make the range the
+      // selection, which a new composition replaces.
+      if (client->HasCompositionText()) {
+        client->ConfirmCompositionText(/*keep_selection=*/true);
+      }
+      client->SetEditableSelectionRange(target);
+      composition.text = std::move(text);
+      composition.selection = gfx::Range(composition.text.size());
+    }
+  } else {
+    composition.text = std::move(text);
+    composition.selection = gfx::Range(composition.text.size());
+  }
+  client->SetCompositionText(composition);
+  RefreshTextSnapshot(true);
   NotifyCursorRect();
 }
 
