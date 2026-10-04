@@ -189,7 +189,7 @@ void OfferVaultSave(const password_manager::PasswordForm& credentials) {
   base::DictValue args;
   args.Set("url", credentials.url.spec());
   args.Set("username", base::UTF16ToUTF8(credentials.username_value));
-  args.Set("password", base::UTF16ToUTF8(credentials.password_value));
+  args.Set("password", base::UTF16ToUTF8(credentials.password_value.value()));
   ohos_system_service::Call(kService, "save", std::move(args),
                             base::DoNothing());
 }
