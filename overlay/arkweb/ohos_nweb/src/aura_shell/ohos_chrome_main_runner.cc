@@ -417,10 +417,16 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   // OhosExternalPopupMenus (chrome_client_impl.cc): on a phone a <select>
   // and date and time inputs open the shell's own pickers, as Android opens
   // its own.
+  //
+  // TouchTextEditingRedesign (ui_base_features.cc, on by default only on
+  // ChromeOS): in a text field, long press then drag moves the caret or the
+  // selection with a magnifier above the finger, and a horizontal swipe moves
+  // the caret -- what a phone user expects from any text field. Without it
+  // Aura offers only the handles.
   arguments.push_back(
       config.ui_family == "mobile_phone"
           ? "--enable-features=UseOzonePlatform,OverlayScrollbar,"
-            "OhosExternalPopupMenus"
+            "OhosExternalPopupMenus,TouchTextEditingRedesign"
           : "--enable-features=UseOzonePlatform");
 
   if (config.ui_family == "mobile_phone") {
