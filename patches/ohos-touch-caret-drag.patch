@@ -1,0 +1,86 @@
+Drag the caret by pressing on it, and keep the magnifier below the shell bar.
+
+On a phone people press the caret itself and drag it, as in any HarmonyOS
+text field; Chromium only takes the handle below it, and touches on the
+text line above the handle deliberately fall through. On OHOS, for the
+insertion handle only, a touch on the caret line within a touch radius
+counts as a touch on the handle, so pressing the caret and dragging moves
+it, and tapping it toggles the menu. Selection handles are unchanged.
+
+The magnifier sits above the caret and is kept inside its parent layer,
+which was the root window's, whose top is under the shell's status and
+address bars; near the top of a page it slid under them. On OHOS it is
+parented to the page's own layer, which begins below the bars.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+and ohos-touch-menu-below-shell-bar.patch applied. Apply with:
+  git apply ohos-touch-caret-drag.patch
+
+diff --git a/ui/touch_selection/touch_handle.cc b/ui/touch_selection/touch_handle.cc
+index d4f3d42..94bf417 100644
+--- a/ui/touch_selection/touch_handle.cc
++++ b/ui/touch_selection/touch_handle.cc
+@@ -10,6 +10,7 @@
+ 
+ #include "base/check_op.h"
+ #include "base/notreached.h"
++#include "build/build_config.h"
+ 
+ namespace ui {
+ 
+@@ -181,11 +182,28 @@ bool TouchHandle::WillHandleTouchEvent(const MotionEvent& event) {
+                      kMaxTouchMajorForHitTesting) *
+           0.5f;
+       const gfx::RectF drawable_bounds = drawable_->GetVisibleBounds();
++      bool on_caret = false;
++#if BUILDFLAG(IS_OHOS)
++      // On a phone the caret itself is what people press and drag to move
++      // it, as in any HarmonyOS text field; the handle below it is easy to
++      // miss. For the insertion handle only, a touch on the caret line --
++      // within a touch radius of it, between its top and bottom -- counts
++      // as a touch on the handle. Selection handles keep the rule below, so
++      // the text around a selection stays tappable.
++      if (orientation_ == TouchHandleOrientation::CENTER) {
++        const gfx::RectF caret(focus_top_.x() - touch_radius, focus_top_.y(),
++                               2 * touch_radius,
++                               focus_bottom_.y() - focus_top_.y());
++        on_caret = caret.Contains(touch_point);
++      }
++#endif
+       // Only use the touch radius for targeting if the touch is at or below
+       // the drawable area. This makes it easier to interact with the line of
+       // text above the drawable.
+-      if (touch_point.y() < drawable_bounds.y() ||
+-          !RectIntersectsCircle(drawable_bounds, touch_point, touch_radius)) {
++      if (!on_caret &&
++          (touch_point.y() < drawable_bounds.y() ||
++           !RectIntersectsCircle(drawable_bounds, touch_point,
++                                 touch_radius))) {
+         EndDrag();
+         return false;
+       }
+diff --git a/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc b/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
+index 020c8af..f68b791 100644
+--- a/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
++++ b/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
+@@ -418,10 +418,20 @@ void TouchSelectionControllerClientAura::ShowMagnifier() {
+   // Convert focus bound to root window coordinates.
+   gfx::Point focus_start = focus_bound_in_context.edge_start_rounded();
+   gfx::Point focus_end = focus_bound_in_context.edge_end_rounded();
++#if BUILDFLAG(IS_OHOS)
++  // The magnifier sits above the caret and is kept inside its parent layer.
++  // The root window's top is under the phone shell's status and address
++  // bars, so near the top of a page the magnifier slid under them. The
++  // page's own layer begins where the page does -- below the bars, since the
++  // shell's browser controls move it down -- so keep it in there.
++  touch_selection_magnifier_->ShowFocusBound(context->layer(), focus_start,
++                                             focus_end);
++#else
+   aura::Window::ConvertPointToTarget(context, root_window, &focus_start);
+   aura::Window::ConvertPointToTarget(context, root_window, &focus_end);
+   touch_selection_magnifier_->ShowFocusBound(root_window->layer(), focus_start,
+                                              focus_end);
++#endif
+ }
+ 
+ void TouchSelectionControllerClientAura::HideMagnifier() {
