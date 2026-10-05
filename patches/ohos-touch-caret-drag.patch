@@ -189,7 +189,7 @@ index 97447c2..8012d6e 100644
  
    // Factory used for cancelling in-flight OpenMenu requests.
 diff --git a/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc b/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
-index 020c8af..1d3000b 100644
+index 020c8af..c3c8fb1 100644
 --- a/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
 +++ b/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
 @@ -24,6 +24,7 @@
@@ -216,7 +216,7 @@ index 020c8af..1d3000b 100644
 +  aura::Window::ConvertPointToTarget(context, root_window, &page_origin);
 +  ui::Layer* root_layer = root_window->layer();
 +  if (!ohos_magnifier_parent_) {
-+    ohos_magnifier_parent_ = std::make_unique<ui::Layer>(ui::LAYER_NOT_DRAWN);
++    ohos_magnifier_parent_ = ui::Layer::Create(ui::LAYER_NOT_DRAWN);
 +    ohos_magnifier_parent_->SetName("OhosTouchMagnifierParent");
 +  }
 +  if (ohos_magnifier_parent_->parent() != root_layer) {
