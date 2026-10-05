@@ -45,6 +45,9 @@ constexpr ShellServiceCommand kShellServiceCommands[] = {
     {"removeBookmarks", &HandleBookmarksCommand},
     {"exportBookmarks", &HandleBookmarksCommand},
     {"importBookmarks", &HandleBookmarksCommand},
+    // Cloud sync, by UUID (bookmarkApiVersion 4).
+    {"getBookmarksForSync", &HandleBookmarksCommand},
+    {"applyBookmarks", &HandleBookmarksCommand},
     // History, and the omnibox data built on it.
     {"queryHistory", &HandleHistoryCommand},
     {"removeHistoryItems", &HandleHistoryCommand},
