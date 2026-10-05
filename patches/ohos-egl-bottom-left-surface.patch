@@ -1,0 +1,34 @@
+Keep the EGL window surface bottom-left on OHOS.
+
+ANGLE's Vulkan backend reports EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE as
+the optimal orientation, so NativeViewGLSurfaceEGL created a top-left
+surface. Drawing to it was right, but copies out of it were upside down:
+backdrop-filter and the touch selection magnifier, which read their
+backdrop from the framebuffer, showed the page mirrored about the middle
+of the screen (the magnifier showed the blank area at the bottom as an
+opaque capsule). On OHOS the surface keeps the usual bottom-left origin and
+ANGLE flips it when presenting.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-egl-bottom-left-surface.patch
+
+diff --git a/ui/gl/gl_surface_egl.cc b/ui/gl/gl_surface_egl.cc
+index 6f03a4e..d109f62 100644
+--- a/ui/gl/gl_surface_egl.cc
++++ b/ui/gl/gl_surface_egl.cc
+@@ -388,7 +388,13 @@ bool NativeViewGLSurfaceEGL::Initialize(GLSurfaceFormat format) {
+     egl_window_attributes.push_back(EGL_TRUE);
+   }
+ 
+-  if (display_->ext->b_EGL_ANGLE_surface_orientation) {
++  // OHOS: ANGLE's Vulkan backend asks for an inverted-Y window surface, but
++  // a copy out of that surface -- what backdrop-filter and the touch
++  // magnifier read their backdrop from -- came out upside down: the backdrop
++  // showed the page mirrored about the middle of the screen. Keep the usual
++  // bottom-left surface; ANGLE flips it when presenting.
++  if (display_->ext->b_EGL_ANGLE_surface_orientation &&
++      !BUILDFLAG(IS_OHOS)) {
+     EGLint attrib;
+     eglGetConfigAttrib(display_->GetDisplay(), GetConfig(),
+                        EGL_OPTIMAL_SURFACE_ORIENTATION_ANGLE, &attrib);
