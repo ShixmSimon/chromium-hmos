@@ -381,6 +381,9 @@ export interface BookmarkOpResultEvent extends ShellServiceEvent {
   // moveBookmarks and removeBookmarks: the ids that were skipped. The rest of
   // the batch still went through.
   failedIds?: string[];
+  // applyBookmarks: the UUIDs that were refused (with error 'someRefused').
+  // The rest of the batch still went through.
+  failedUuids?: string[];
 }
 
 export type BookmarkOpError =
@@ -395,7 +398,64 @@ export type BookmarkOpError =
   // Not a valid URL, or a URL was set on a folder.
   | 'invalidUrl'
   // Anything else, including a bookmark managed by policy.
-  | 'unknown';
+  | 'unknown'
+  // applyBookmarks: some ops were refused; see failedUuids.
+  | 'someRefused';
+
+// Cloud sync (bookmarkApiVersion 4). Nodes and writes keyed by Chromium's
+// bookmark UUID, which is the same on every device, unlike the local id.
+
+// getBookmarksForSync -> bookmarksForSync: every node, the three permanent
+// folders included, parents before children and siblings in order. Managed
+// bookmarks are left out.
+export interface SyncBookmarkNode {
+  // Lowercase, 36 characters.
+  uuid: string;
+  // '' for the three permanent folders.
+  parentUuid: string;
+  isFolder: boolean;
+  title: string;
+  // '' for a folder.
+  url: string;
+  // Position in the parent, from 0.
+  index: number;
+  // Milliseconds since the epoch.
+  dateAdded: number;
+  // Only on the three permanent folders, whose UUIDs are fixed: bookmarkBar
+  // 0bc5d13f-2cba-5d74-951f-3f233fe6c908, other
+  // 82b081ec-3dd3-529c-8475-ab6c344590dd, mobile
+  // 4cf2e351-0e85-532b-bb37-df045d8f8d0f.
+  rootType?: 'mobile' | 'bookmarkBar' | 'other';
+}
+
+export interface BookmarksForSyncEvent extends ShellServiceEvent {
+  requestId: number;
+  nodes: SyncBookmarkNode[];
+}
+
+// applyBookmarks: in array order, in one batch (one bookmarksChanged after).
+// upsert creates the node with this UUID when it does not exist, otherwise
+// edits it and moves it when the parent or index differ; a parentUuid that
+// names nothing puts it in the mobile folder, which is not a failure. A
+// different isFolder from the existing node is refused. remove takes a folder
+// with everything in it; a UUID that names nothing is not a failure. The
+// three permanent folders are only checked, never changed.
+export interface SyncBookmarkUpsert {
+  op: 'upsert';
+  uuid: string;
+  parentUuid: string;
+  isFolder: boolean;
+  title: string;
+  url: string;
+  index: number;
+}
+
+export interface SyncBookmarkRemove {
+  op: 'remove';
+  uuid: string;
+}
+
+export type SyncBookmarkOp = SyncBookmarkUpsert | SyncBookmarkRemove;
 
 // getRecentBookmarks: the bookmarks added most recently, newest first. URLs
 // only -- a folder is not somewhere to go back to.
@@ -522,7 +582,8 @@ export interface AboutInfoEvent extends ShellServiceEvent {
   // Which bookmark commands this engine understands: 1 is the original set,
   // 2 adds insertion positions, bookmarkOpResult, childCount, rootType, the
   // batch commands and the two lookups, 3 adds importBookmarks and
-  // exportBookmarks. Absent means 1. Read it once at startup instead of
+  // exportBookmarks, 4 adds getBookmarksForSync and applyBookmarks (by UUID,
+  // for cloud sync). Absent means 1. Read it once at startup instead of
   // probing each command with a timeout.
   bookmarkApiVersion?: number;
   // Whether V8 runs with its JIT this launch: false when the launch config

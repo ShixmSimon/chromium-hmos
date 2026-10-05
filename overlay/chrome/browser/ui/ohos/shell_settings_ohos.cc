@@ -77,10 +77,11 @@ void GetAboutInfo(const ShellCommandContext& context,
   event.Set("userAgent", embedder_support::GetUserAgent());
   // What the bookmarks commands understand. 1 was the original set; 2 adds
   // insertion positions, operation results, child counts, root types, batch
-  // moves and removals, URL lookup and path lookup; 3 adds import and export.
+  // moves and removals, URL lookup and path lookup; 3 adds import and export;
+  // 4 adds getBookmarksForSync and applyBookmarks, by UUID, for cloud sync.
   // A shell reads it once at startup instead of probing each new command with
   // a timeout.
-  event.Set("bookmarkApiVersion", 3);
+  event.Set("bookmarkApiVersion", 4);
   // What the browsing commands understand. 1 was the set the browsing-UI
   // round added -- permissions, load progress, tab ids, thumbnails, recently
   // closed, desktop site, reader mode; 2 adds tab groups, which is groupId

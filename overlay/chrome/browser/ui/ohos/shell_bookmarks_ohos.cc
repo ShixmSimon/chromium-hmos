@@ -34,6 +34,7 @@
 #include "base/task/thread_pool.h"
 #include "base/values.h"
 #include "base/task/task_traits.h"
+#include "base/uuid.h"
 #include "chrome/browser/bookmarks/bookmark_html_writer.h"
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -618,6 +619,210 @@ void RemoveBookmarks(const ShellCommandContext& context,
   ReplyOpResult(context, command, error, std::move(failed_ids));
 }
 
+// --- Cloud sync: bookmarks by UUID. ---------------------------------------
+//
+// The shell keeps a table of every node keyed by its UUID, which ArkData
+// syncs through Huawei Cloud Space; a local id means nothing on another
+// device. Two commands are all it needs: a full snapshot to diff the table
+// against, and a batch of writes coming back from it. Titles and URLs are
+// never logged.
+
+constexpr char kBookmarksForSyncEvent[] = "bookmarksForSync";
+constexpr char kSyncLog[] = "OHOS bookmark sync: ";
+// Past this the shell may want pages; until then one reply is simpler.
+constexpr size_t kLargeSyncSnapshot = 5000;
+
+const BookmarkNode* NodeByUuid(BookmarkModel* model, const base::Uuid& uuid) {
+  return uuid.is_valid()
+             ? model->GetNodeByUuid(
+                   uuid,
+                   BookmarkModel::NodeTypeForUuidLookup::kLocalOrSyncableNodes)
+             : nullptr;
+}
+
+base::Uuid ReadUuid(const base::DictValue& dict, std::string_view key) {
+  const std::string* text = dict.FindString(key);
+  return text ? base::Uuid::ParseCaseInsensitive(*text) : base::Uuid();
+}
+
+base::DictValue ToSyncNode(BookmarkModel* model, const BookmarkNode* node) {
+  const std::string_view root = RootTypeOf(model, node);
+  const BookmarkNode* parent = node->parent();
+  base::DictValue result;
+  result.Set("uuid", node->uuid().AsLowercaseString());
+  // The three permanent folders are the tops; their parent is the invisible
+  // root, which no other device needs to know about.
+  result.Set("parentUuid", !root.empty() || !parent
+                               ? std::string()
+                               : parent->uuid().AsLowercaseString());
+  result.Set("isFolder", node->is_folder());
+  result.Set("title", std::u16string_view(node->GetTitle()));
+  result.Set("url", node->is_url() ? node->url().spec() : std::string());
+  result.Set("index", static_cast<int>(IndexInParent(node)));
+  result.Set("dateAdded", ToShellTime(node->date_added()));
+  if (!root.empty()) {
+    result.Set("rootType", root);
+  }
+  return result;
+}
+
+// getBookmarksForSync {requestId} -> bookmarksForSync {requestId, nodes}.
+// Breadth first from the permanent folders, so every parent comes before its
+// children and siblings come in order. Managed bookmarks are left out: policy
+// puts them on every device by itself.
+void GetBookmarksForSync(const ShellCommandContext& context,
+                         BookmarkModel* model,
+                         const base::DictValue& command) {
+  std::vector<const BookmarkNode*> queue = {
+      model->bookmark_bar_node(), model->other_node(), model->mobile_node()};
+  base::ListValue nodes;
+  for (size_t i = 0; i < queue.size(); ++i) {
+    const BookmarkNode* node = queue[i];
+    if (!node || IsManaged(model, node)) {
+      continue;
+    }
+    nodes.Append(ToSyncNode(model, node));
+    for (const auto& child : node->children()) {
+      queue.push_back(child.get());
+    }
+  }
+  if (nodes.size() > kLargeSyncSnapshot) {
+    LOG(WARNING) << kSyncLog << "large snapshot, " << nodes.size()
+                 << " nodes; the shell may want to page";
+  }
+  LOG(WARNING) << kSyncLog << "snapshot of " << nodes.size() << " nodes";
+  base::DictValue event;
+  event.Set("event", kBookmarksForSyncEvent);
+  event.Set("requestId", ReadRequestId(command));
+  event.Set("nodes", std::move(nodes));
+  ReplyToShell(context, std::move(event));
+}
+
+// One upsert. False when it has to be refused; the node is then left as it
+// was.
+bool ApplyUpsert(BookmarkModel* model,
+                 const base::DictValue& op,
+                 const base::Uuid& uuid) {
+  const bool is_folder = op.FindBool("isFolder").value_or(false);
+  const BookmarkNode* node = NodeByUuid(model, uuid);
+  // The permanent folders are the same on every device: checked, not changed.
+  if (node && !RootTypeOf(model, node).empty()) {
+    return is_folder;
+  }
+  if (node && (node->is_folder() != is_folder || IsManaged(model, node))) {
+    return false;
+  }
+  std::optional<GURL> url;
+  if (!is_folder) {
+    url = ReadUrl(op);
+    if (!url) {
+      return false;
+    }
+  }
+  // A parent that has not arrived yet: park the node in the mobile folder.
+  // The shell moves it into place once the parent comes.
+  const BookmarkNode* parent = NodeByUuid(model, ReadUuid(op, "parentUuid"));
+  if (!CanHoldChildren(model, parent) ||
+      (node && (parent == node || bookmarks::IsDescendantOf(parent, node)))) {
+    parent = model->mobile_node();
+  }
+  const std::u16string title = ReadTitle(op);
+  if (!node) {
+    const size_t index = ReadInsertionIndex(op, parent);
+    node = is_folder ? model->AddFolder(parent, index, title,
+                                        /*meta_info=*/nullptr,
+                                        /*creation_time=*/std::nullopt, uuid)
+                     : model->AddURL(parent, index, title, *url,
+                                     /*meta_info=*/nullptr,
+                                     /*creation_time=*/std::nullopt, uuid);
+    return node != nullptr;
+  }
+  if (node->GetTitle() != title) {
+    model->SetTitle(node, title, kEditSource);
+  }
+  if (url && node->url() != *url) {
+    model->SetURL(node, *url, kEditSource);
+  }
+  // Move takes the index the node should have before it leaves its old place,
+  // so moving down within one folder needs one more.
+  size_t index = ReadInsertionIndex(op, parent);
+  if (node->parent() != parent || IndexInParent(node) != index) {
+    if (node->parent() == parent && IndexInParent(node) < index) {
+      index = std::min(index + 1, parent->children().size());
+    }
+    model->Move(node, parent, index);
+  }
+  return true;
+}
+
+// applyBookmarks {requestId, origin, ops: [upsert or remove, ...]}
+// -> bookmarkOpResult {requestId, ok, error?, failedUuids?}. In order, in one
+// batch, so the shell hears one bookmarksChanged at the end.
+void ApplyBookmarks(const ShellCommandContext& context,
+                    BookmarkModel* model,
+                    const base::DictValue& command) {
+  const base::ListValue* ops = command.FindList("ops");
+  const std::string* origin = command.FindString("origin");
+  base::ListValue failed;
+  size_t upserts = 0;
+  size_t removes = 0;
+  if (ops) {
+    model->BeginExtensiveChanges();
+    for (const base::Value& value : *ops) {
+      const base::DictValue* op = value.GetIfDict();
+      const std::string* kind = op ? op->FindString("op") : nullptr;
+      const std::string* uuid_text = op ? op->FindString("uuid") : nullptr;
+      const base::Uuid uuid = op ? ReadUuid(*op, "uuid") : base::Uuid();
+      if (!kind || !uuid.is_valid()) {
+        failed.Append(uuid_text ? *uuid_text : std::string());
+        continue;
+      }
+      if (*kind == "remove") {
+        ++removes;
+        const BookmarkNode* node = NodeByUuid(model, uuid);
+        if (!node) {
+          continue;  // Already gone, which is what was asked for.
+        }
+        if (!RootTypeOf(model, node).empty() || IsManaged(model, node)) {
+          failed.Append(*uuid_text);
+          continue;
+        }
+        model->Remove(node, kEditSource, FROM_HERE);
+      } else if (*kind == "upsert") {
+        ++upserts;
+        if (!ApplyUpsert(model, *op, uuid)) {
+          failed.Append(*uuid_text);
+        }
+      } else {
+        failed.Append(*uuid_text);
+      }
+    }
+    model->EndExtensiveChanges();
+  }
+  LOG(WARNING) << kSyncLog << "applied from "
+               << (origin ? *origin : std::string("?")) << ": " << upserts
+               << " upserts, " << removes << " removes, " << failed.size()
+               << " failed";
+  for (const base::Value& uuid : failed) {
+    LOG(WARNING) << kSyncLog << "refused " << uuid.GetString();
+  }
+  const std::optional<int> request_id = command.FindInt("requestId");
+  if (!request_id) {
+    return;
+  }
+  base::DictValue event;
+  event.Set("event", kBookmarkOpResultEvent);
+  event.Set("requestId", *request_id);
+  event.Set("ok", ops && failed.empty());
+  if (!ops) {
+    event.Set("error", kErrUnknown);
+  } else if (!failed.empty()) {
+    event.Set("error", "someRefused");
+    event.Set("failedUuids", std::move(failed));
+  }
+  ReplyToShell(context, std::move(event));
+}
+
 void RemoveBookmark(const ShellCommandContext& context,
                     BookmarkModel* model,
                     const base::DictValue& command) {
@@ -949,6 +1154,8 @@ constexpr BookmarksCommand kCommands[] = {
     {"removeBookmarks", &RemoveBookmarks},
     {"exportBookmarks", &ExportBookmarks},
     {"importBookmarks", &ImportBookmarks},
+    {"getBookmarksForSync", &GetBookmarksForSync},
+    {"applyBookmarks", &ApplyBookmarks},
 };
 
 base::span<const std::string_view> CommandNames() {

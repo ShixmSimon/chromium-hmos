@@ -28,7 +28,8 @@ import {
   ShellPrefKey,
   SitePermissionDecision,
   SiteSettingType,
-  SiteSettingValue
+  SiteSettingValue,
+  SyncBookmarkOp
 } from './ShellServiceTypes';
 
 export interface WindowRect {
@@ -495,6 +496,8 @@ export interface BrowserCommandPayload {
   // the engine cannot know: it tracks openers by session id and these tabs
   // are new.
   openerIds?: string[];
+  // applyBookmarks: the writes, in order. Its `origin` is 'sync', for logs.
+  ops?: SyncBookmarkOp[];
   // importBookmarks and exportBookmarks: an absolute path inside the app
   // sandbox. The shell owns the system file picker and the copy in or out;
   // the engine only reads and writes this path.

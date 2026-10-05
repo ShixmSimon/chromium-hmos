@@ -529,7 +529,8 @@ function report() {
 
 `aboutInfo` 里的 `bookmarkApiVersion` 说明这份引擎支持到哪一版：`1` 是最初
 的一组命令，`2` 加上插入位置、操作结果、`childCount`/`rootType`、批量命令和两个
-查询，`3` 加上导入导出。外壳启动时读一次，不必逐条用超时去探测。
+查询，`3` 加上导入导出，`4` 加上云同步用的两条按 UUID 的命令（见下文"书签云同步"）。
+外壳启动时读一次，不必逐条用超时去探测。
 
 | 命令 | 参数 | 返回 |
 |---|---|---|
@@ -548,6 +549,48 @@ function report() {
 | `removeBookmarks` | `ids`, `requestId?` | |
 | `exportBookmarks` | `requestId`, `path` | `bookmarkExportDone { requestId, ok, bookmarkCount, folderCount, error? }` |
 | `importBookmarks` | `requestId`, `path`, `parentId?`, `title?` | `bookmarkImportDone { requestId, ok, folderId, bookmarkCount, folderCount, skippedCount, error? }` |
+| `getBookmarksForSync` | `requestId` | `bookmarksForSync { requestId, nodes: SyncBookmarkNode[] }`（版本 4） |
+| `applyBookmarks` | `requestId`, `origin`, `ops: SyncBookmarkOp[]` | `bookmarkOpResult { requestId, ok, error?, failedUuids? }`（版本 4） |
+
+**书签云同步（`bookmarkApiVersion` 4）**
+
+外壳用鸿蒙端云同步在同一华为账号的设备间同步书签。本机 `id` 换了设备就对不上，这两条命令都按 Chromium 书签的 UUID：
+
+```
+getBookmarksForSync { requestId }
+  -> bookmarksForSync { requestId, nodes: SyncBookmarkNode[] }
+
+SyncBookmarkNode {
+  uuid,          // 小写 36 位
+  parentUuid,    // 三个根文件夹为 ''
+  isFolder, title,
+  url,           // 文件夹为 ''
+  index,         // 在父文件夹里的位置，从 0 开始
+  dateAdded,     // 毫秒
+  rootType?      // 'mobile' | 'bookmarkBar' | 'other'，仅三个根文件夹
+}
+```
+
+- 含三个根文件夹本身，UUID 固定：书签栏 `0bc5d13f-2cba-5d74-951f-3f233fe6c908`、其他书签 `82b081ec-3dd3-529c-8475-ab6c344590dd`、移动设备书签 `4cf2e351-0e85-532b-bb37-df045d8f8d0f`。
+- 广度优先：父在子前，同一父文件夹里按 `index` 升序。策略管理的书签不返回。无痕窗口发的命令读普通 Profile 的书签。
+- 一次回完，不分页；超过 5000 条时日志里会有一行 `OHOS bookmark sync: large snapshot`。
+
+```
+applyBookmarks { requestId, origin: 'sync', ops: SyncBookmarkOp[] }
+  -> bookmarkOpResult { requestId, ok, error?, failedUuids? }
+
+SyncBookmarkOp =
+  | { op: 'upsert', uuid, parentUuid, isFolder, title, url, index }
+  | { op: 'remove', uuid }
+```
+
+- 按数组顺序执行，整批一次 `BeginExtensiveChanges` / `EndExtensiveChanges`，结束后只推一次 `bookmarksChanged`。
+- `upsert`：UUID 不存在就在 `parentUuid` 下的 `index` 处用这个 UUID 新建；存在就改标题、网址，父文件夹或位置不同时移动。`isFolder` 和现有节点不一致、网址无效、策略管理的节点：拒绝，UUID 进 `failedUuids`。`parentUuid` 找不到（或会造成环）时放进"移动设备书签"，不算失败。`index` 超出范围按末尾。
+- `remove`：文件夹连同子孙一起删；UUID 不存在不算失败。
+- 三个根文件夹：`upsert` 只校验（必须是文件夹），不改；`remove` 拒绝。
+- 有被拒绝的 op 时 `ok: false`、`error: 'someRefused'`，其余 op 照常生效；`ops` 缺失时 `error: 'unknown'`。
+- 写入后照常推 `bookmarksChanged`，外壳重新取快照比对即可，不需要另外防回环。`origin` 只用于日志。
+- 日志前缀 `OHOS bookmark sync:`，只打条数和 UUID，不打标题和网址。
 
 ```
 BookmarkNode {
