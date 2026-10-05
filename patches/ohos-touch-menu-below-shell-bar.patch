@@ -1,0 +1,79 @@
+Open the touch selection menu below the selection under the shell's top bar.
+
+The quick menu (Cut / Copy / Select all) goes above the selection unless
+that would leave the screen. On a phone the shell's status and address bars
+cover the top of the window, which still counts as on screen, so for a
+field near the top of the page the menu opened under the address bar, half
+hidden. On OHOS, where there is no room for it between the selection and
+the top of the visible page, the anchor is stretched to the top of the
+screen so the bubble goes below the selection instead.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-touch-menu-below-shell-bar.patch
+
+diff --git a/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc b/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
+index 4572571..020c8af 100644
+--- a/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
++++ b/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
+@@ -4,11 +4,13 @@
+ 
+ #include "content/browser/renderer_host/input/touch_selection_controller_client_aura.h"
+ 
++#include <algorithm>
+ #include <set>
+ 
+ #include "base/functional/bind.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/observer_list.h"
++#include "build/build_config.h"
+ #include "content/browser/renderer_host/render_widget_host_delegate.h"
+ #include "content/browser/renderer_host/render_widget_host_impl.h"
+ #include "content/browser/renderer_host/render_widget_host_view_aura.h"
+@@ -22,6 +24,8 @@
+ #include "ui/base/data_transfer_policy/data_transfer_endpoint.h"
+ #include "ui/base/mojom/menu_source_type.mojom.h"
+ #include "ui/base/ui_base_features.h"
++#include "ui/display/display.h"
++#include "ui/display/screen.h"
+ #include "ui/events/event_observer.h"
+ #include "ui/gfx/geometry/point_conversions.h"
+ #include "ui/gfx/geometry/rect_conversions.h"
+@@ -329,9 +333,36 @@ void TouchSelectionControllerClientAura::ShowQuickMenu() {
+                                          ->GetEndHandleRect()
+                                          .size());
+ 
++            gfx::Rect screen_anchor_rect =
++                weak_this->rwhva_->ConvertRectToScreen(anchor_rect);
++#if BUILDFLAG(IS_OHOS)
++            // The menu goes above the selection unless that would leave the
++            // screen. On a phone the shell's top bar covers the top of the
++            // window, which still counts as on screen, so near the top of
++            // the page the menu opened under the address bar, half hidden.
++            // Where there is no room for it between the selection and the
++            // top of the visible page, stretch the anchor up to the top of
++            // the screen: with no room left above, the bubble goes below.
++            // The page's top is where its origin lands on screen, which
++            // includes the offset the shell's browser controls move it by.
++            constexpr int kOhosRoomForMenu = 64;
++            const int page_top =
++                weak_this->rwhva_->ConvertRectToScreen(gfx::Rect()).y();
++            if (screen_anchor_rect.y() - kOhosRoomForMenu < page_top) {
++              const int screen_top =
++                  display::Screen::Get()
++                      ->GetDisplayMatching(screen_anchor_rect)
++                      .work_area()
++                      .y();
++              screen_anchor_rect.SetByBounds(
++                  screen_anchor_rect.x(),
++                  std::min(screen_top, screen_anchor_rect.y()),
++                  screen_anchor_rect.right(), screen_anchor_rect.bottom());
++            }
++#endif  // BUILDFLAG(IS_OHOS)
+             ui::TouchSelectionMenuRunner::GetInstance()->OpenMenu(
+                 weak_this->active_menu_client_->GetWeakPtr(),
+-                weak_this->rwhva_->ConvertRectToScreen(anchor_rect),
++                screen_anchor_rect,
+                 gfx::ToRoundedSize(max_handle_size),
+                 weak_this->rwhva_->GetNativeView()->GetToplevelWindow(),
+                 can_paste);
