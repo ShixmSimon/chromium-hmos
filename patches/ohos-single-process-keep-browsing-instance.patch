@@ -1,0 +1,49 @@
+Keep the BrowsingInstance across navigations in single-process OHOS.
+
+A phone runs Chromium single-process: every page shares the one in-process
+renderer with Chromium's own WebUI (the omnibox popup, chrome:// pages), so
+that process always holds WebUI bindings. ShouldSwapBrowsingInstances-
+ForNavigation counted the process's bindings as the current page being
+WebUI, and since an ordinary page is never acceptable for WebUI, every
+main-frame navigation forced a security BrowsingInstance swap. Measured on
+device (chrome://process-internals): a.html in BI 33, the page it opened
+with window.open() in BI 34 after loading. The swap severs window.opener,
+so the opened page could not postMessage back and "Sign in with Google"
+popups never completed. In single-process mode the process bindings are no
+longer counted; whether the current page is WebUI is still checked.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-single-process-keep-browsing-instance.patch
+
+diff --git a/content/browser/renderer_host/render_frame_host_manager.cc b/content/browser/renderer_host/render_frame_host_manager.cc
+index f840f24..5210e0a 100644
+--- a/content/browser/renderer_host/render_frame_host_manager.cc
++++ b/content/browser/renderer_host/render_frame_host_manager.cc
+@@ -2833,8 +2833,24 @@ RenderFrameHostManager::ShouldSwapBrowsingInstancesForNavigation(
+ 
+   // For security, we should transition between processes when one is a Web UI
+   // page and one isn't, or if the WebUI types differ.
+-  if (ChildProcessSecurityPolicyImpl::GetInstance()->HasWebUIBindings(
+-          render_frame_host_->GetProcess()->GetDeprecatedID()) ||
++  bool current_process_has_webui_bindings =
++      ChildProcessSecurityPolicyImpl::GetInstance()->HasWebUIBindings(
++          render_frame_host_->GetProcess()->GetDeprecatedID());
++#if BUILDFLAG(IS_OHOS)
++  // A phone runs single-process: every page shares the one in-process
++  // renderer with Chromium's own WebUI (the omnibox popup, chrome:// pages),
++  // so that process always holds WebUI bindings and they say nothing about
++  // this frame. Counting them sent every main-frame navigation down the
++  // WebUI branch below, where an ordinary page is never "acceptable for
++  // WebUI", so every navigation swapped BrowsingInstance -- which severs
++  // window.opener: a page opened with window.open() lost its opener as soon
++  // as it loaded, and "Sign in with Google" popups could not report back.
++  // Whether the current page itself is WebUI is still checked.
++  if (RenderProcessHost::run_renderer_in_process()) {
++    current_process_has_webui_bindings = false;
++  }
++#endif
++  if (current_process_has_webui_bindings ||
+       WebUIControllerFactoryRegistry::GetInstance()->UseWebUIForURL(
+           browser_context, current_effective_url)) {
+     // If so, force a swap if destination is not an acceptable URL for Web UI.

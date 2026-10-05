@@ -204,6 +204,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-emoji-font-fallback.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-password-fill-always-auth.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-phone-popups-as-tabs.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-single-process-keep-browsing-instance.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by
