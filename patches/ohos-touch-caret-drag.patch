@@ -1,16 +1,23 @@
 Drag the caret by pressing on it, and keep the magnifier below the shell bar.
 
 On a phone people press the caret itself and drag it, as in any HarmonyOS
-text field; Chromium only takes the handle below it, and touches on the
-text line above the handle deliberately fall through. On OHOS, for the
-insertion handle only, a touch on the caret line within a touch radius
-counts as a touch on the handle, so pressing the caret and dragging moves
-it, and tapping it toggles the menu. Selection handles are unchanged.
+text field. Chromium only takes the handle below it, and touches on the
+text line above the handle deliberately fall through. On OHOS:
 
-The magnifier sits above the caret and is kept inside its parent layer,
-which was the root window's, whose top is under the shell's status and
-address bars; near the top of a page it slid under them. On OHOS it is
-parented to the page's own layer, which begins below the bars.
+- For the insertion handle only, a touch on the caret line within a touch
+  radius counts as a touch on the handle: pressing the caret and dragging
+  moves it, tapping it toggles the menu. Selection handles are unchanged.
+- After typing, handles are off and TouchSelectionController dropped the
+  caret's bounds, so the first press on the caret selected a word and only
+  the second moved it. The caret's bounds are kept while handles are off,
+  and a press on the caret brings the insertion handle back and gives it
+  the touch.
+- The magnifier sits above the caret and is kept inside its parent layer,
+  the root window's, whose top is under the shell's status and address
+  bars. It is now parented to a transparent layer in the root layer that
+  covers only the visible page, so it stays below the bars and its backdrop
+  zoom still sees the page. (Parented to the page's own layer, as the first
+  version of this patch did, it saw nothing and drew opaque.)
 
 Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
 and ohos-touch-menu-below-shell-bar.patch applied. Apply with:
@@ -59,25 +66,172 @@ index d4f3d42..94bf417 100644
          EndDrag();
          return false;
        }
+diff --git a/ui/touch_selection/touch_selection_controller.h b/ui/touch_selection/touch_selection_controller.h
+index 480bbf6..7dd63c0 100644
+--- a/ui/touch_selection/touch_selection_controller.h
++++ b/ui/touch_selection/touch_selection_controller.h
+@@ -8,6 +8,7 @@
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/weak_ptr.h"
+ #include "base/time/time.h"
++#include "build/build_config.h"
+ #include "ui/events/types/event_type.h"
+ #include "ui/gfx/geometry/point.h"
+ #include "ui/gfx/geometry/point_f.h"
+@@ -299,6 +300,13 @@ class UI_TOUCH_SELECTION_EXPORT TouchSelectionController
+ 
+   bool show_touch_handles_;
+ 
++#if BUILDFLAG(IS_OHOS)
++  // The caret's bounds while touch handles are not shown (after typing),
++  // which HideHandles() otherwise forgets; empty when there is no caret.
++  gfx::SelectionBound ohos_hidden_caret_start_;
++  gfx::SelectionBound ohos_hidden_caret_end_;
++#endif
++
+   // Whether a swipe-to-move-cursor gesture is activated.
+   bool swipe_to_move_cursor_activated_ = false;
+ 
+diff --git a/ui/touch_selection/touch_selection_controller.cc b/ui/touch_selection/touch_selection_controller.cc
+index e11ec2b..a2964ab 100644
+--- a/ui/touch_selection/touch_selection_controller.cc
++++ b/ui/touch_selection/touch_selection_controller.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "ui/touch_selection/touch_selection_controller.h"
+ 
++#include <algorithm>
+ #include <memory>
+ 
+ #include "base/auto_reset.h"
+@@ -75,6 +76,19 @@ void TouchSelectionController::OnSelectionBoundsChanged(
+   if (start == start_ && end_ == end)
+     return;
+ 
++#if BUILDFLAG(IS_OHOS)
++  // After typing, handles are off and the caret's position is dropped with
++  // them, so a press on the caret could not be told from a press on text
++  // and selected a word. Keep it, so WillHandleTouchEventImpl() can bring
++  // the insertion handle back for a press on the caret.
++  const bool is_caret = start.HasHandle() && end.HasHandle() &&
++                        start.type() == gfx::SelectionBound::CENTER &&
++                        end.type() == gfx::SelectionBound::CENTER;
++  ohos_hidden_caret_start_ =
++      is_caret && !show_touch_handles_ ? start : gfx::SelectionBound();
++  ohos_hidden_caret_end_ =
++      is_caret && !show_touch_handles_ ? end : gfx::SelectionBound();
++#endif
+   if (!start.HasHandle() || !end.HasHandle() || !show_touch_handles_) {
+     HideHandles();
+     return;
+@@ -393,6 +407,31 @@ const gfx::PointF& TouchSelectionController::GetEndPosition() const {
+ 
+ bool TouchSelectionController::WillHandleTouchEventImpl(
+     const MotionEvent& event) {
++#if BUILDFLAG(IS_OHOS)
++  // A press on the caret while its handle is off (after typing): bring the
++  // insertion handle back at the caret and give it the touch, so the first
++  // press drags the caret instead of selecting a word.
++  if (event.GetAction() == MotionEvent::Action::DOWN &&
++      active_status_ == ActiveStatus::kInactive &&
++      ohos_hidden_caret_start_.HasHandle()) {
++    const gfx::PointF touch(event.GetX(), event.GetY());
++    const float radius =
++        std::clamp(event.GetTouchMajor(), 20.f, 36.f) * 0.5f;
++    const gfx::PointF top = ohos_hidden_caret_start_.edge_start();
++    const gfx::PointF bottom = ohos_hidden_caret_start_.edge_end();
++    const gfx::RectF caret(top.x() - radius, top.y(), 2 * radius,
++                           bottom.y() - top.y());
++    if (caret.Contains(touch)) {
++      const gfx::SelectionBound start = ohos_hidden_caret_start_;
++      const gfx::SelectionBound end = ohos_hidden_caret_end_;
++      show_touch_handles_ = true;
++      OnSelectionBoundsChanged(start, end);
++      if (active_status_ == ActiveStatus::kInsertionActive) {
++        return insertion_handle_->WillHandleTouchEvent(event);
++      }
++    }
++  }
++#endif
+   show_touch_handles_ = true;
+   if (config_.enable_longpress_drag_selection &&
+       longpress_drag_selector_.WillHandleTouchEvent(event)) {
+diff --git a/content/browser/renderer_host/input/touch_selection_controller_client_aura.h b/content/browser/renderer_host/input/touch_selection_controller_client_aura.h
+index 97447c2..8012d6e 100644
+--- a/content/browser/renderer_host/input/touch_selection_controller_client_aura.h
++++ b/content/browser/renderer_host/input/touch_selection_controller_client_aura.h
+@@ -7,6 +7,7 @@
+ 
+ #include <memory>
+ 
++#include "build/build_config.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/weak_ptr.h"
+ #include "base/observer_list.h"
+@@ -17,6 +18,7 @@
+ #include "ui/touch_selection/touch_selection_menu_runner.h"
+ 
+ namespace ui {
++class Layer;
+ class TouchSelectionMagnifierAura;
+ }
+ 
+@@ -160,6 +162,11 @@ class CONTENT_EXPORT TouchSelectionControllerClientAura
+   std::unique_ptr<EnvEventObserver> env_event_observer_;
+ 
+   // Magnifier which is shown when touch dragging to adjust the selection.
++#if BUILDFLAG(IS_OHOS)
++  // The magnifier's parent: a transparent layer over the visible page, below
++  // the phone shell's bars. Declared before the magnifier so it outlives it.
++  std::unique_ptr<ui::Layer> ohos_magnifier_parent_;
++#endif
+   std::unique_ptr<ui::TouchSelectionMagnifierAura> touch_selection_magnifier_;
+ 
+   // Factory used for cancelling in-flight OpenMenu requests.
 diff --git a/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc b/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
-index 020c8af..f68b791 100644
+index 020c8af..1d3000b 100644
 --- a/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
 +++ b/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
-@@ -418,10 +418,20 @@ void TouchSelectionControllerClientAura::ShowMagnifier() {
-   // Convert focus bound to root window coordinates.
-   gfx::Point focus_start = focus_bound_in_context.edge_start_rounded();
+@@ -24,6 +24,7 @@
+ #include "ui/base/data_transfer_policy/data_transfer_endpoint.h"
+ #include "ui/base/mojom/menu_source_type.mojom.h"
+ #include "ui/base/ui_base_features.h"
++#include "ui/compositor/layer.h"
+ #include "ui/display/display.h"
+ #include "ui/display/screen.h"
+ #include "ui/events/event_observer.h"
+@@ -420,8 +421,37 @@ void TouchSelectionControllerClientAura::ShowMagnifier() {
    gfx::Point focus_end = focus_bound_in_context.edge_end_rounded();
+   aura::Window::ConvertPointToTarget(context, root_window, &focus_start);
+   aura::Window::ConvertPointToTarget(context, root_window, &focus_end);
 +#if BUILDFLAG(IS_OHOS)
 +  // The magnifier sits above the caret and is kept inside its parent layer.
 +  // The root window's top is under the phone shell's status and address
-+  // bars, so near the top of a page the magnifier slid under them. The
-+  // page's own layer begins where the page does -- below the bars, since the
-+  // shell's browser controls move it down -- so keep it in there.
-+  touch_selection_magnifier_->ShowFocusBound(context->layer(), focus_start,
-+                                             focus_end);
++  // bars, so near the top of a page it slid under them. Parent it to a
++  // transparent layer covering only the visible page -- from where the page
++  // begins on screen, which includes the shell's browser controls offset --
++  // still inside the root layer, where its backdrop zoom can see the page.
++  // (Inside the page's own layer it saw nothing and drew opaque.)
++  gfx::Point page_origin;
++  aura::Window::ConvertPointToTarget(context, root_window, &page_origin);
++  ui::Layer* root_layer = root_window->layer();
++  if (!ohos_magnifier_parent_) {
++    ohos_magnifier_parent_ = std::make_unique<ui::Layer>(ui::LAYER_NOT_DRAWN);
++    ohos_magnifier_parent_->SetName("OhosTouchMagnifierParent");
++  }
++  if (ohos_magnifier_parent_->parent() != root_layer) {
++    root_layer->Add(ohos_magnifier_parent_.get());
++  }
++  root_layer->StackAtTop(ohos_magnifier_parent_.get());
++  const gfx::Size root_size = root_layer->bounds().size();
++  const int page_top = std::clamp(page_origin.y(), 0, root_size.height());
++  ohos_magnifier_parent_->SetBounds(gfx::Rect(
++      0, page_top, root_size.width(), root_size.height() - page_top));
++  focus_start.Offset(0, -page_top);
++  focus_end.Offset(0, -page_top);
++  touch_selection_magnifier_->ShowFocusBound(ohos_magnifier_parent_.get(),
++                                             focus_start, focus_end);
 +#else
-   aura::Window::ConvertPointToTarget(context, root_window, &focus_start);
-   aura::Window::ConvertPointToTarget(context, root_window, &focus_end);
    touch_selection_magnifier_->ShowFocusBound(root_window->layer(), focus_start,
                                               focus_end);
 +#endif
