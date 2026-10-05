@@ -14,21 +14,27 @@ applied. Apply with:
   git apply ohos-egl-bottom-left-surface.patch
 
 diff --git a/ui/gl/gl_surface_egl.cc b/ui/gl/gl_surface_egl.cc
-index 6f03a4e..d109f62 100644
+index 6f03a4e..e32a267 100644
 --- a/ui/gl/gl_surface_egl.cc
 +++ b/ui/gl/gl_surface_egl.cc
-@@ -388,7 +388,13 @@ bool NativeViewGLSurfaceEGL::Initialize(GLSurfaceFormat format) {
+@@ -388,6 +388,12 @@ bool NativeViewGLSurfaceEGL::Initialize(GLSurfaceFormat format) {
      egl_window_attributes.push_back(EGL_TRUE);
    }
  
--  if (display_->ext->b_EGL_ANGLE_surface_orientation) {
 +  // OHOS: ANGLE's Vulkan backend asks for an inverted-Y window surface, but
 +  // a copy out of that surface -- what backdrop-filter and the touch
 +  // magnifier read their backdrop from -- came out upside down: the backdrop
 +  // showed the page mirrored about the middle of the screen. Keep the usual
 +  // bottom-left surface; ANGLE flips it when presenting.
-+  if (display_->ext->b_EGL_ANGLE_surface_orientation &&
-+      !BUILDFLAG(IS_OHOS)) {
++#if !BUILDFLAG(IS_OHOS)
+   if (display_->ext->b_EGL_ANGLE_surface_orientation) {
      EGLint attrib;
      eglGetConfigAttrib(display_->GetDisplay(), GetConfig(),
-                        EGL_OPTIMAL_SURFACE_ORIENTATION_ANGLE, &attrib);
+@@ -396,6 +402,7 @@ bool NativeViewGLSurfaceEGL::Initialize(GLSurfaceFormat format) {
+                           ? gfx::SurfaceOrigin::kTopLeft
+                           : gfx::SurfaceOrigin::kBottomLeft;
+   }
++#endif
+ 
+   if (surface_origin_ == gfx::SurfaceOrigin::kTopLeft) {
+     egl_window_attributes.push_back(EGL_SURFACE_ORIENTATION_ANGLE);
