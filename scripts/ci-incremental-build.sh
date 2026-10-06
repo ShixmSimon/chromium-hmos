@@ -208,6 +208,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-touch-menu-below-shell-bar.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-touch-caret-drag.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-egl-bottom-left-surface.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-password-sync.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

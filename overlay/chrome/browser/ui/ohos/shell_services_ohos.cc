@@ -82,6 +82,10 @@ constexpr ShellServiceCommand kShellServiceCommands[] = {
     {"deletePassword", &HandlePasswordsCommand},
     {"exportPasswords", &HandlePasswordsCommand},
     {"importPasswords", &HandlePasswordsCommand},
+    // Cloud sync of saved passwords (passwordApiVersion 1).
+    {"passwordSyncAuthorize", &HandlePasswordSyncCommand},
+    {"getPasswordsForSync", &HandlePasswordSyncCommand},
+    {"applyPasswords", &HandlePasswordSyncCommand},
     // Favicons, shared by every list the shell draws.
     {"getFavicons", &HandleFaviconsCommand},
 };
@@ -158,6 +162,7 @@ void EnsureShellServices(Profile* profile) {
   EnsureBookmarksObserver(profile);
   EnsureHistoryObserver(profile);
   EnsureDownloadsObserver(profile);
+  EnsurePasswordSyncObserver(profile);
 }
 
 double ToShellTime(base::Time time) {

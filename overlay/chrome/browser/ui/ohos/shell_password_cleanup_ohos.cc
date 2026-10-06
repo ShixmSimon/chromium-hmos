@@ -37,6 +37,9 @@ void RegisterPasswordCleanupPrefs(PrefRegistrySimple* registry) {
   // Off by default: HarmonyOS's Password Vault fills and saves instead of
   // Chromium only when the user turns it on (password_vault_ohos.h).
   registry->RegisterBooleanPref("ohos.password_vault_enabled", false);
+  // Set once the user has verified themselves to turn on password sync,
+  // cleared when they turn it off or sign out (shell_password_sync_ohos.cc).
+  registry->RegisterBooleanPref("ohos.password_sync_authorized", false);
 }
 
 void ClearPasswordsSavedWithoutProtection(Profile* profile) {

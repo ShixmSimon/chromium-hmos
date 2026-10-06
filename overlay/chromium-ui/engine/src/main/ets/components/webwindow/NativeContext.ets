@@ -29,7 +29,8 @@ import {
   SitePermissionDecision,
   SiteSettingType,
   SiteSettingValue,
-  SyncBookmarkOp
+  SyncBookmarkOp,
+  SyncPasswordOp
 } from './ShellServiceTypes';
 
 export interface WindowRect {
@@ -496,8 +497,9 @@ export interface BrowserCommandPayload {
   // the engine cannot know: it tracks openers by session id and these tabs
   // are new.
   openerIds?: string[];
-  // applyBookmarks: the writes, in order. Its `origin` is 'sync', for logs.
-  ops?: SyncBookmarkOp[];
+  // applyBookmarks and applyPasswords: the writes, in order. Its `origin` is
+  // 'sync', for logs.
+  ops?: SyncBookmarkOp[] | SyncPasswordOp[];
   // importBookmarks and exportBookmarks: an absolute path inside the app
   // sandbox. The shell owns the system file picker and the copy in or out;
   // the engine only reads and writes this path.
@@ -624,7 +626,9 @@ export interface BrowserCommandPayload {
   isFinal?: boolean;
   confidence?: number;
   error?: string;
-  granted?: string[];
+  // passwordSyncAuthorize: true once the user has verified themselves to turn
+  // password sync on; false to turn it off.
+  granted?: string[] | boolean;
   denied?: string[];
   location?: 'allowed' | 'denied' | 'notDetermined';
   presentation?: 'popup' | 'sheet';

@@ -7,7 +7,8 @@
 //
 //   getAboutInfo {requestId}
 //     -> "aboutInfo" {requestId, chromiumVersion, engineCommit, userAgent,
-//                     bookmarkApiVersion, browsingApiVersion, jitEnabled}
+//                     bookmarkApiVersion, browsingApiVersion, jitEnabled,
+//                     passwordApiVersion, passwordSyncAuthorized}
 
 #include <string>
 #include <string_view>
@@ -89,6 +90,12 @@ void GetAboutInfo(const ShellCommandContext& context,
   // and closeTabById, and the openedInGroup event; 3 adds reading and
   // restoring where the reader is in a page, for app continuation.
   event.Set("browsingApiVersion", 3);
+  // What the password sync commands understand. 1 is passwordSyncAuthorize,
+  // getPasswordsForSync, applyPasswords and the passwordsChanged event. The
+  // shell offers password sync only from 1.
+  event.Set("passwordApiVersion", 1);
+  event.Set("passwordSyncAuthorized",
+            IsPasswordSyncAuthorized(context.profile));
   // Whether V8 runs with its JIT this launch. The runner decides it before
   // Chromium starts (the "AuraShell JIT available" line in its log) and,
   // when the launch config asks for jitless or the process cannot map

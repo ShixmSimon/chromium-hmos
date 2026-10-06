@@ -157,11 +157,20 @@ bool HandlePasswordsCommand(const ShellCommandContext& context,
 bool HandleSettingsCommand(const ShellCommandContext& context,
                            std::string_view name,
                            const base::DictValue& command);
+// Cloud sync of saved passwords: the authorization, a snapshot with plain
+// text, writes by site and username. See shell_password_sync_ohos.cc.
+bool HandlePasswordSyncCommand(const ShellCommandContext& context,
+                               std::string_view name,
+                               const base::DictValue& command);
+// For aboutInfo.passwordSyncAuthorized.
+bool IsPasswordSyncAuthorized(Profile* profile);
 
 // Each starts its area's observers for `profile`; idempotent.
 void EnsureBookmarksObserver(Profile* profile);
 void EnsureHistoryObserver(Profile* profile);
 void EnsureDownloadsObserver(Profile* profile);
+// Only while password sync is authorized.
+void EnsurePasswordSyncObserver(Profile* profile);
 
 }  // namespace chrome::ohos
 

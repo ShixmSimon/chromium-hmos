@@ -725,7 +725,7 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 | `exportWebAppIcon` | `requestId`, `appId`, `directory` | 把网页应用的图标写成 `<directory>/<appId>.png`(192px 或更大的最小一张),回 `webAppIcon { requestId, appId, title, path }`,没有图标时 `path` 为空 |
 | `restoreLastSession` | `restore`, `mainWindowOnly?` | 回应 `lastSessionRestorable`。`mainWindowOnly` 为 true 时只把上次主窗口的标签（带前进后退历史）加进当前窗口，回 `lastSessionRestored { count }`；否则恢复上次的所有窗口 |
 | `showBlockedPopups` | | 打开当前窗口当前标签页被拦截的全部弹窗,回应 `popupBlocked` |
-| `getAboutInfo` | `requestId` | `aboutInfo { requestId, chromiumVersion, engineCommit, userAgent, bookmarkApiVersion, browsingApiVersion, jitEnabled }`。`jitEnabled` 是 V8 这次启动实际有没有用上 JIT(启动日志里 `AuraShell JIT available` 那个判断的结果):启动配置要求 jitless、或进程拿不到可执行内存时为 `false` |
+| `getAboutInfo` | `requestId` | `aboutInfo { requestId, chromiumVersion, engineCommit, userAgent, bookmarkApiVersion, browsingApiVersion, jitEnabled, passwordApiVersion, passwordSyncAuthorized }`。`passwordApiVersion` 为 `1` 时支持密码云同步(见"密码云同步"),`passwordSyncAuthorized` 是当前授权状态。`jitEnabled` 是 V8 这次启动实际有没有用上 JIT(启动日志里 `AuraShell JIT available` 那个判断的结果):启动配置要求 jitless、或进程拿不到可执行内存时为 `false` |
 
 `types`：`history`、`cookies`、`cache`、`siteSettings`、`formData`、`passwords`、`downloads`。`timeRange`：`lastHour`、`lastDay`、`lastWeek`、`last4Weeks`、`all`。
 
@@ -781,6 +781,22 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 - `id` 在同一次运行中稳定(按网站 + 用户名分配),改密码不换 id,改用户名换 id。
 - 无痕窗口里发的这些命令读写的是普通 Profile 的密码,和 Chromium 一致。
 - 内核不缓存交给外壳的明文,任何日志都不带明文、用户名、备注。联调时 hilog 里搜 `OHOS passwords:`,只有条数、id 和结果。
+
+**密码云同步（`passwordApiVersion` 1）**
+
+外壳用"关系型数据库端云同步 + 云空间"在同一华为账号的鸿蒙设备之间同步 Chromium 存的密码,做法和书签同步一样:外壳维护同步表,在 Chromium 和表之间搬运。条目按 `signonRealm + username` 区分,"一律不保存"的记录只按 `signonRealm`。只读写普通 Profile 的本地存储;Android 应用凭据、通行密钥、联合登录(无密码)不参与。
+
+| 命令 | 参数 | 回包 |
+|---|---|---|
+| `passwordSyncAuthorize` | `granted` | 无回包。`true`:外壳已完成系统身份验证,内核持久保存授权(Profile 偏好 `ohos.password_sync_authorized`,重启后仍有效);`false`:撤销。状态看 `aboutInfo.passwordSyncAuthorized`。无痕窗口发的忽略 |
+| `getPasswordsForSync` | `requestId` | `passwordsForSync { requestId, ok, error?, entries: SyncPasswordEntry[] }`。`SyncPasswordEntry`:`{ signonRealm, origin, username, password, note, blocked, dateCreated, dateLastUsed }`,含明文;`blocked` 为 true 的记录用户名、密码、备注都是 `''`;时间是毫秒,未知为 `-1`。同一 `signonRealm + username` 存了多份(在不同页面保存过)时只回最近修改的一份 |
+| `applyPasswords` | `requestId`, `origin: 'sync'`, `ops: SyncPasswordOp[]` | `passwordOpResult { requestId, ok, error?, failedKeys? }`。按数组顺序执行,后面的操作能看到前面的结果 |
+
+- `upsert { signonRealm, origin, username, password, note, blocked, dateCreated, dateLastUsed }`:已有就改——这个网站和用户名下存的每一份都改成传入的密码和备注,`dateLastUsed` 比本地新时也更新,网址不动;没有就新建,`dateCreated` 用传入的值(无效时用当前时间),`origin` 不是 http(s) 网址时用 `signonRealm`。`blocked: true` 只保证该网站"一律不保存",已有就不动。非 `blocked` 的 `upsert` 密码为空算失败。
+- `remove { signonRealm, username, blocked }`:删掉对应的全部记录,不存在不算失败。
+- 错误:未授权时 `getPasswordsForSync`、`applyPasswords` 都回 `ok: false, error: 'notAuthorized'`(整批拒绝);个别操作失败时 `ok: false, error: 'someRefused'`,`failedKeys` 里是失败条目的 `signonRealm + "\n" + username`(`signonRealm` 不是 http(s) 网址、缺字段、`upsert` 缺密码);读不到密码库时 `error: 'unknown'`。上一批还没写完时新的一批排队,依次执行。
+- `passwordsChanged { revision }`(广播,新事件):密码库有增删改(网页保存、外壳自绘页修改删除、导入、`applyPasswords`)后推一次,200ms 内的多次变化合并;`applyPasswords` 整批写完只推一次。只更新最后使用时间(填充密码)时不推。不带明文和条目,外壳收到后用 `getPasswordsForSync` 读。`revision` 只增不减(以时钟起算,重启后也比之前大)。只在已授权时推。外壳写入后照常会收到,靠比对防回环。
+- 日志关键字 `OHOS password sync:`,只有条数、结果;不打用户名、密码、备注。明文只经过运行时通道交给外壳,不写文件。
 
 权限类型：`location`、`camera`、`microphone`、`notifications`、`javascript`、`popups`、`sound`、`clipboard`、`storageAccess`。没有 `autoplay`：桌面版 Chromium 实际上不执行这项设置，要控制声音请用 `sound`。
 

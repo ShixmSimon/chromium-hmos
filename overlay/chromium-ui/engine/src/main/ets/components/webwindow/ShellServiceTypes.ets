@@ -586,6 +586,12 @@ export interface AboutInfoEvent extends ShellServiceEvent {
   // for cloud sync). Absent means 1. Read it once at startup instead of
   // probing each command with a timeout.
   bookmarkApiVersion?: number;
+  // Which password sync commands this engine understands: 1 is
+  // passwordSyncAuthorize, getPasswordsForSync, applyPasswords and
+  // passwordsChanged. Absent means none.
+  passwordApiVersion?: number;
+  // Whether the user has authorized password sync on this profile.
+  passwordSyncAuthorized?: boolean;
   // Whether V8 runs with its JIT this launch: false when the launch config
   // asked for jitless or the process could not map executable memory.
   jitEnabled?: boolean;
@@ -657,6 +663,81 @@ export interface PasswordsImportedEvent extends ShellServiceEvent {
   // a field too long.
   failed: number;
   reason?: PasswordCommandFailure;
+}
+
+// Cloud sync of saved passwords (passwordApiVersion 1). Entries are keyed by
+// signonRealm and username, a "never save" entry by signonRealm alone. Only
+// the profile's own store, web credentials only: no Android app credentials,
+// no passkeys, no federated sign-ins. getPasswordsForSync and applyPasswords
+// are refused with 'notAuthorized' until passwordSyncAuthorize {granted: true}.
+
+// getPasswordsForSync -> passwordsForSync: one entry per signonRealm and
+// username, the most recently changed when Chromium holds several.
+export interface SyncPasswordEntry {
+  signonRealm: string;
+  // The page the form was on.
+  origin: string;
+  // '' for a "never save" entry, as are password and note.
+  username: string;
+  password: string;
+  note: string;
+  // The user chose "never save" for this site.
+  blocked: boolean;
+  // Milliseconds since the epoch; -1 when unknown.
+  dateCreated: number;
+  dateLastUsed: number;
+}
+
+export type PasswordSyncError = 'notAuthorized' | 'someRefused' | 'unknown';
+
+export interface PasswordsForSyncEvent extends ShellServiceEvent {
+  requestId: number;
+  ok: boolean;
+  error?: PasswordSyncError;
+  entries: SyncPasswordEntry[];
+}
+
+// applyPasswords: in array order, told once by passwordsChanged after.
+// upsert edits every form saved for the signonRealm and username -- the
+// password, the note, a later dateLastUsed -- or creates one with this
+// dateCreated; a blocked upsert only makes sure the site is never saved.
+// remove deletes them; nothing to delete is not a failure.
+export interface SyncPasswordUpsert {
+  op: 'upsert';
+  signonRealm: string;
+  origin: string;
+  username: string;
+  password: string;
+  note: string;
+  blocked: boolean;
+  dateCreated: number;
+  dateLastUsed: number;
+}
+
+export interface SyncPasswordRemove {
+  op: 'remove';
+  signonRealm: string;
+  username: string;
+  blocked: boolean;
+}
+
+export type SyncPasswordOp = SyncPasswordUpsert | SyncPasswordRemove;
+
+export interface PasswordOpResultEvent extends ShellServiceEvent {
+  requestId: number;
+  ok: boolean;
+  error?: PasswordSyncError;
+  // someRefused: signonRealm + '\n' + username of each op not written.
+  failedKeys?: string[];
+}
+
+// Something in the store changed: saved, edited, deleted, imported or
+// written by applyPasswords; a burst within 200 ms is told once. Not sent
+// when a fill only moved a last-used time, nor while sync is not authorized.
+// Carries no entries: read them with getPasswordsForSync.
+export interface PasswordsChangedEvent extends ShellServiceEvent {
+  // Only rises.
+  revision: number;
 }
 
 export function shellEvent<T>(event: Object): T {
