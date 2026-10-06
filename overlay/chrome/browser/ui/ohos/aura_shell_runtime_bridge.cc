@@ -4120,12 +4120,16 @@ blink::UserAgentOverride AuraShellDesktopSiteUserAgent() {
       embedder_support::GetUserAgentForOhos(/*mobile=*/false);
   desktop.ua_metadata_override =
       embedder_support::GetUserAgentMetadataForOhos(/*mobile=*/false);
-  if (IsAuraShellMobilePhoneUi()) {
-    return desktop;
-  }
   // "Mozilla/5.0 (Tablet; OpenHarmony 7.0) ... Chrome/154.0.0.0 ..." is what
   // a tablet sends anyway, so asking for the desktop site there changed
   // nothing: sites kept serving their tablet pages.
+  //
+  // A phone sent that string too, but its client hints and navigator.platform
+  // say Android for the whole process (--use-mobile-user-agent): a UA naming
+  // OpenHarmony with hints naming Android reads as a spoofed browser, and
+  // Cloudflare's check failed on every desktop site. It asks the way Chrome
+  // on Android does instead (chrome/browser/android/content/content_utils.cc),
+  // which Cloudflare knows: Linux in the string and in the hints.
   const std::string& ohos = desktop.ua_string_override;
   const size_t chrome = ohos.find("Chrome/");
   if (chrome == std::string::npos) {
@@ -4141,12 +4145,19 @@ blink::UserAgentOverride AuraShellDesktopSiteUserAgent() {
        " Safari/537.36"});
   blink::UserAgentMetadata& metadata = *desktop.ua_metadata_override;
   metadata.platform = "Linux";
-  int32_t major = 0;
-  int32_t minor = 0;
-  int32_t bugfix = 0;
-  base::SysInfo::OperatingSystemVersionNumbers(&major, &minor, &bugfix);
-  metadata.platform_version =
-      base::StringPrintf("%d.%d.%d", major, minor, bugfix);
+  if (IsAuraShellMobilePhoneUi()) {
+    // As Chrome on Android: no platform version and no model.
+    metadata.platform_version = std::string();
+    metadata.model = std::string();
+  } else {
+    int32_t major = 0;
+    int32_t minor = 0;
+    int32_t bugfix = 0;
+    base::SysInfo::OperatingSystemVersionNumbers(&major, &minor, &bugfix);
+    metadata.platform_version =
+        base::StringPrintf("%d.%d.%d", major, minor, bugfix);
+  }
+  metadata.wow64 = false;
   metadata.architecture = "x86";
   metadata.bitness = "64";
   metadata.mobile = false;
