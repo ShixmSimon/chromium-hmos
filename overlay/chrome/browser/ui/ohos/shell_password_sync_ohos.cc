@@ -136,7 +136,32 @@ PasswordForm::Scheme SchemeForRealm(const std::string& signon_realm) {
              : PasswordForm::Scheme::kBasic;
 }
 
-class LoginsRequest;
+class PasswordSync;
+
+// One read of everything in the store.
+class LoginsRequest : public PasswordStoreConsumer {
+ public:
+  using Callback =
+      base::OnceCallback<void(std::optional<std::vector<StoredCredential>>)>;
+
+  LoginsRequest(base::WeakPtr<PasswordSync> owner, Callback callback)
+      : owner_(std::move(owner)), callback_(std::move(callback)) {}
+  ~LoginsRequest() override = default;
+
+  base::WeakPtr<PasswordStoreConsumer> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
+
+  // PasswordStoreConsumer:
+  void OnGetPasswordStoreResultsOrErrorFrom(
+      PasswordStoreInterface* store,
+      password_manager::LoginsResultOrError results_or_error) override;
+
+ private:
+  const base::WeakPtr<PasswordSync> owner_;
+  Callback callback_;
+  base::WeakPtrFactory<LoginsRequest> weak_factory_{this};
+};
 
 // The sync side of one profile's password store: the authorization, the
 // snapshot and writes, and the change notice.
@@ -434,44 +459,23 @@ class PasswordSync : public PasswordStoreInterface::Observer {
   base::WeakPtrFactory<PasswordSync> weak_factory_{this};
 };
 
-// One read of everything in the store.
-class LoginsRequest : public PasswordStoreConsumer {
- public:
-  using Callback =
-      base::OnceCallback<void(std::optional<std::vector<StoredCredential>>)>;
-
-  LoginsRequest(base::WeakPtr<PasswordSync> owner, Callback callback)
-      : owner_(std::move(owner)), callback_(std::move(callback)) {}
-  ~LoginsRequest() override = default;
-
-  base::WeakPtr<PasswordStoreConsumer> GetWeakPtr() {
-    return weak_factory_.GetWeakPtr();
-  }
-
-  // PasswordStoreConsumer:
-  void OnGetPasswordStoreResultsOrErrorFrom(
-      PasswordStoreInterface* store,
-      password_manager::LoginsResultOrError results_or_error) override {
-    std::optional<std::vector<StoredCredential>> logins;
-    if (auto* result =
-            std::get_if<password_manager::LoginsResult>(&results_or_error)) {
-      logins = std::move(*result);
-    }
-    Callback callback = std::move(callback_);
-    // Not from inside the store's own callback.
-    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE,
-        base::BindOnce(&PasswordSync::Forget, owner_, base::Unretained(this)));
-    std::move(callback).Run(std::move(logins));
-  }
-
- private:
-  const base::WeakPtr<PasswordSync> owner_;
-  Callback callback_;
-  base::WeakPtrFactory<LoginsRequest> weak_factory_{this};
-};
-
 PasswordSync::~PasswordSync() = default;
+
+void LoginsRequest::OnGetPasswordStoreResultsOrErrorFrom(
+    PasswordStoreInterface* store,
+    password_manager::LoginsResultOrError results_or_error) {
+  std::optional<std::vector<StoredCredential>> logins;
+  if (auto* result =
+          std::get_if<password_manager::LoginsResult>(&results_or_error)) {
+    logins = std::move(*result);
+  }
+  Callback callback = std::move(callback_);
+  // Not from inside the store's own callback.
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(&PasswordSync::Forget, owner_, base::Unretained(this)));
+  std::move(callback).Run(std::move(logins));
+}
 
 void PasswordSync::Forget(LoginsRequest* request) {
   std::erase_if(requests_, [request](const auto& entry) {
