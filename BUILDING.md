@@ -42,11 +42,28 @@ autoninja -C out/plan_kirin_pc \
   chrome libweb_engine web_render libnweb_render
 ```
 
-The tested configuration uses Chromium branding, keeps V8 JavaScript enabled
-in JITless mode, and executes WebAssembly through the DrumBrake interpreter.
+The build uses Chromium branding and includes the V8 JIT compilers
+(Sparkplug, Maglev and TurboFan). At launch the runner probes whether the
+process may map executable memory: where it may -- tablets and 2in1, and a
+phone running a debug-signed package -- JIT is on; where it may not -- a
+released phone package -- or when the startup configuration asks for it, V8
+runs with `--jitless` and JavaScript is interpreted (about five times slower
+on a simple loop on a phone). `aboutInfo.jitEnabled` reports the current
+launch.
+
+WebAssembly needs the DrumBrake interpreter when V8 is JITless, and the
+build has it off (`v8_enable_drumbrake = false`), so a JITless launch has no
+`WebAssembly` object at all. Turning it on changes the runner's `args.gn` and
+rebuilds V8 and what depends on it.
 It also enables the Chromium AAC/H.264 build switches used by the validated
 test package. Those switches do not grant codec patent or distribution rights;
 distributors remain responsible for the licenses required in their markets.
+
+Incremental CI reuses the runner's `${CHROMIUM_SRC}/${OUT_DIR}/args.gn`
+(`OUT_DIR` defaults to `out/ohos_arm64`); it does not copy this repository's
+`config/args.plan_kirin_pc.gn`. That file is kept identical to the runner's
+`args.gn`; change both together, or the repository describes a build that CI
+does not make.
 
 ## HAP
 

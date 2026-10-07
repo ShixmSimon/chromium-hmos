@@ -2,6 +2,8 @@
 
 写给执行 150 → 154 升级的人。读完这份就能动手，不需要回看会话记录。
 
+当前配置说明：本文保留迁移时的历史配置和排障记录，下文关于关闭 JIT 的描述不代表当前配置。现在构建包含 JIT 编译器，启动时探测：能映射可执行内存就启用（平板、2in1、调试签名的手机包），不能就以 JITless 运行（手机正式包），本次启动以 `aboutInfo.jitEnabled` 为准。JITless 时没有 WebAssembly，因为 DrumBrake 解释器未编入。增量 CI 使用 runner 的 `out/ohos_arm64/args.gn`（可通过 `OUT_DIR` 覆盖），仓库的 `config/args.plan_kirin_pc.gn` 与之保持一致。
+
 ---
 
 ## 1. 现状
