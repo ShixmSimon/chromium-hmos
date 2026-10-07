@@ -42,9 +42,11 @@ int64_t UniqueId(const ui::BrowserAccessibility* node) {
 ohos_accessibility::Snapshot EmptySnapshot() {
   ohos_accessibility::Snapshot snapshot;
   ohos_accessibility::Node root;
+  root.id = ohos_accessibility::kRootId;
+  root.parent = ohos_accessibility::kRootParentId;
   root.role = "Web";
-  snapshot.nodes.emplace(0, std::move(root));
-  snapshot.order.push_back(0);
+  snapshot.nodes.emplace(ohos_accessibility::kRootId, std::move(root));
+  snapshot.order.push_back(ohos_accessibility::kRootId);
   return snapshot;
 }
 
@@ -148,7 +150,10 @@ void Perform(gfx::AcceleratedWidget widget,
   if (found == targets.end()) return;
   auto* manager = ui::BrowserAccessibilityManager::FromID(found->second.tree);
   auto* node = manager ? manager->GetFromID(found->second.node) : nullptr;
-  if (!node || UniqueId(node) != id) return;
+  // The root goes to ArkUI as kRootId, everything else by its unique id.
+  if (!node || (id != ohos_accessibility::kRootId && UniqueId(node) != id)) {
+    return;
+  }
   ui::AXActionData data;
   data.target_tree_id = found->second.tree;
   data.target_node_id = found->second.node;
@@ -216,14 +221,17 @@ void UpdateShellAccessibility(gfx::AcceleratedWidget widget,
   }
   snapshot.nodes.clear();
   snapshot.order.clear();
-  snapshot.root = UniqueId(root);
+  snapshot.root = ohos_accessibility::kRootId;
   std::map<int64_t, Target> targets;
-  std::vector<std::pair<ui::BrowserAccessibility*, int64_t>> pending = {{root, -1}};
+  std::vector<std::pair<ui::BrowserAccessibility*, int64_t>> pending = {
+      {root, ohos_accessibility::kRootParentId}};
   while (!pending.empty()) {
     auto [accessible, parent] = pending.back();
     pending.pop_back();
     ohos_accessibility::Node node;
-    node.id = UniqueId(accessible);
+    node.id = parent == ohos_accessibility::kRootParentId
+                  ? ohos_accessibility::kRootId
+                  : UniqueId(accessible);
     if (snapshot.nodes.contains(node.id)) continue;
     node.parent = parent;
     node.role = ComponentRole(accessible->GetRole());

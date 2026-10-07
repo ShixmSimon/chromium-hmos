@@ -13,6 +13,12 @@ struct OH_NativeXComponent;
 
 namespace ohos_accessibility {
 
+// ArkUI's convention for a provider's tree: asked for element -1, it wants
+// the root back with id 0 and this as its parent id, or it ignores the whole
+// tree (docs: ui/ndk-accessibility-xcomponent.md).
+inline constexpr int64_t kRootId = 0;
+inline constexpr int64_t kRootParentId = -2100000;
+
 enum class Action { kClick, kFocus, kClearFocus, kSetText, kScrollForward,
                     kScrollBackward };
 

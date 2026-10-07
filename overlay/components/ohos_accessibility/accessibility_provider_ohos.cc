@@ -96,6 +96,13 @@ bool Fill(const Provider& provider, const Node& node,
   OH_ArkUI_AccessibilityElementInfoSetChecked(info, node.checked);
   OH_ArkUI_AccessibilityElementInfoSetSelected(info, node.selected);
   OH_ArkUI_AccessibilityElementInfoSetScrollable(info, node.scrollable);
+  // Only nodes a reader has something to say about or do with are stops of
+  // their own; containers are not, but what is inside them still is.
+  const bool meaningful = !node.name.empty() || !node.value.empty() ||
+                          node.focusable || node.clickable || node.editable ||
+                          node.checkable;
+  OH_ArkUI_AccessibilityElementInfoSetAccessibilityLevel(
+      info, node.id != provider.snapshot.root && meaningful ? "yes" : "no");
   std::vector<ArkUI_AccessibleAction> actions = {
       {ARKUI_ACCESSIBILITY_NATIVE_ACTION_TYPE_GAIN_ACCESSIBILITY_FOCUS, ""},
       {ARKUI_ACCESSIBILITY_NATIVE_ACTION_TYPE_CLEAR_ACCESSIBILITY_FOCUS, ""}};
@@ -391,9 +398,11 @@ bool RegisterProvider(const std::string& component_id,
     provider.generation = ++next_generation;
     provider.instance = component_id + ":" + std::to_string(provider.generation);
     Node root;
+    root.id = kRootId;
+    root.parent = kRootParentId;
     root.role = "Web";
-    provider.snapshot.nodes.emplace(0, std::move(root));
-    provider.snapshot.order.push_back(0);
+    provider.snapshot.nodes.emplace(kRootId, std::move(root));
+    provider.snapshot.order.push_back(kRootId);
     Providers().insert_or_assign(component_id, std::move(provider));
   }
   std::string instance;
@@ -463,10 +472,13 @@ void ClearSnapshot(const std::string& component_id, uint64_t generation,
   provider.focused = -1;
   provider.snapshot = Snapshot();
   Node root;
+  root.id = kRootId;
+  root.parent = kRootParentId;
   root.role = "Web";
-  provider.snapshot.nodes.emplace(0, std::move(root));
-  provider.snapshot.order.push_back(0);
-  SendEvent(provider, 0, ARKUI_ACCESSIBILITY_NATIVE_EVENT_TYPE_PAGE_CONTENT_UPDATE);
+  provider.snapshot.nodes.emplace(kRootId, std::move(root));
+  provider.snapshot.order.push_back(kRootId);
+  SendEvent(provider, kRootId,
+            ARKUI_ACCESSIBILITY_NATIVE_EVENT_TYPE_PAGE_CONTENT_UPDATE);
 }
 
 }
