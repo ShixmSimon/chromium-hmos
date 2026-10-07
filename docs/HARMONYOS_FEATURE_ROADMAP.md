@@ -15,7 +15,7 @@
 | 3 | 鸿蒙系统画中画 | 已有 Chromium 应用内小窗口，未接系统画中画；退后台后的现象尚未真机确认 | 待开始 | 视频可进入系统画中画；切换应用后按系统规则继续显示；播放控制、关闭、恢复及资源释放正常 |
 | 4 | 媒体控制卡片封面 | 真机确认普通封面可显示，但空 URI 无法清除旧图；固定中性占位图修复 `ea81d58` 已通过 154 内核及引擎 HAR 增量 CI，见 [实现与验收](OHOS_MEDIA_ARTWORK.md) | 待真机验证 | 封面显示、更新及无封面替换正常；网页缓存可回收，无痕网页图片不落盘，允许固定占位文件 |
 | 5 | WebOTP 短信验证码 | 按维护者决定不接入短信后端；沿用上游非 Android 分支的空 provider，见下方备注 | 不实施 | 保持无本机短信读取后端，不申请短信权限，不将此项列为待补齐功能 |
-| 6 | Web Push | 已有网页通知，未接通推送后端及系统消息接收链路 | 待开始 | 确定服务架构；网站可订阅、取消订阅，消息可投递到 Service Worker；验证前后台及冷启动场景，不把通知弹出当作推送完成 |
+| 6 | Web Push | 按维护者决定不接入推送后端，不部署自有推送网关；已有网页通知不等于 Web Push | 不实施 | 保留现有网页通知，不将网站推送订阅及后台消息投递列入开发队列 |
 | 7 | Safe Browsing | runner 实际配置 safe_browsing_mode = 0 | 待开始 | 确定可用服务及接入条件；验证威胁检测、警告页面、更新和失败处理，不能仅修改 GN 开关 |
 | 8 | Widevine DRM | runner 实际配置 enable_widevine = false，未接鸿蒙 CDM | 待开始 | 取得可用且获授权的平台 CDM 及部署路径；完成 EME、许可证获取和真机受保护内容播放验证，参见 DRM_AND_MEDIA.md |
 | 9 | 通行密钥同步 | 当前 HUKS 平台认证器密钥不出设备，标记不可备份；已有密码同步不覆盖此项 | 待开始 | 先设计可同步凭据方案及信任模型；保留现有本机凭据的安全语义，验证跨设备注册、登录、恢复及撤销，不直接导出现有 HUKS 私钥 |
@@ -26,6 +26,10 @@
 维护者已决定不开发短信验证码功能。当前适配层没有替换短信 provider，沿用 Chromium 154 的 [`content/browser/sms/sms_provider.cc` 中 `SmsProvider::Create()`](https://github.com/chromium/chromium/blob/743f26418a267dd97c3c1c71d786038ae68cfc8f/content/browser/sms/sms_provider.cc#L27)：Android 创建 `SmsProviderGms`，非 Android 分支返回 `nullptr`；鸿蒙走后者。这是明确保留的空后端，不是待实现占位任务。
 
 `content/browser/sms/sms_fetcher_impl.cc` 只有在 provider 非空时才调用本机短信 `Retrieve()`。这里的空实现只说明没有本机短信后端，不表示 WebOTP JavaScript 接口已被隐藏，也不承诺调用会立即返回“不支持”。本次仅记录产品决定和代码入口，不修改运行时行为。
+
+## Web Push：明确不实施
+
+维护者已决定不开发 Web Push。此前讨论的华为推送适配方案还需要标准 Web Push 网关或可接入的第三方推送服务，涉及服务端、应用凭据及持续运维。本项目不开展该方案，保持当前未接入推送后端的状态；现有网页通知能力保留。本次只记录范围决定，不修改通知、Service Worker 或网页 API 的运行时行为。
 
 ## 第一项：网页系统无障碍
 
