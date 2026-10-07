@@ -69,6 +69,7 @@ class SystemMediaControlsOhos : public SystemMediaControls {
                        SkBitmap bitmap,
                        ohos_system_service::Reply reply);
   void OnThumbnailReady(uint64_t generation,
+                        bool placeholder,
                         std::shared_ptr<ArtworkFile> artwork);
   void SetBackgroundAudio(bool running);
   void SetCommandEnabled(AVSession_ControlCommand command, bool enabled);
@@ -95,6 +96,7 @@ class SystemMediaControlsOhos : public SystemMediaControls {
   std::shared_ptr<std::atomic<uint64_t>> artwork_generation_;
   std::shared_ptr<ArtworkFile> artwork_;
   std::shared_ptr<ArtworkFile> published_artwork_;
+  std::shared_ptr<ArtworkFile> placeholder_artwork_;
 
   base::ObserverList<SystemMediaControlsObserver> observers_;
 

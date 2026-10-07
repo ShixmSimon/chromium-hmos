@@ -17,7 +17,7 @@ async function initializeArtworkCache(context: common.UIAbilityContext): Promise
     }
     const names = await fileIo.listFile(directory);
     for (const name of names) {
-      if (/^artwork-[a-fA-F0-9]+\.png$/.test(name)) {
+      if (/^artwork-[a-fA-F0-9]+\.png$/.test(name) || name === 'placeholder-v1.png') {
         await fileIo.unlink(`${directory}/${name}`);
       }
     }

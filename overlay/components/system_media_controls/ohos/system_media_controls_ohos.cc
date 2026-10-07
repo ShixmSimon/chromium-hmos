@@ -32,6 +32,7 @@
 #include "services/media_session/public/cpp/media_position.h"
 #include "skia/ext/image_operations.h"
 #include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/codec/png_codec.h"
 
 namespace system_media_controls {
@@ -133,9 +134,10 @@ struct SystemMediaControlsOhos::ArtworkFile {
   base::FilePath path;
   std::string uri;
   scoped_refptr<base::SequencedTaskRunner> task_runner;
+  bool delete_on_release = true;
 
   ~ArtworkFile() {
-    if (!path.empty()) {
+    if (delete_on_release && !path.empty()) {
       task_runner->PostTask(
           FROM_HERE, base::BindOnce(
                          [](base::FilePath path) {
@@ -154,8 +156,28 @@ struct SystemMediaControlsOhos::ArtworkFile {
       scoped_refptr<base::SequencedTaskRunner> task_runner,
       std::shared_ptr<std::atomic<uint64_t>> current_generation,
       uint64_t generation) {
-    if (current_generation->load() != generation || bitmap.drawsNothing()) {
+    if (current_generation->load() != generation) {
       return nullptr;
+    }
+    const bool placeholder = bitmap.drawsNothing();
+    if (placeholder) {
+      auto artwork = std::make_shared<ArtworkFile>();
+      artwork->task_runner = std::move(task_runner);
+      artwork->path = directory.AppendASCII("placeholder-v1.png");
+      artwork->uri = uri_directory + "/placeholder-v1.png";
+      artwork->delete_on_release = false;
+      if (!base::PathExists(artwork->path)) {
+        if (!bitmap.tryAllocN32Pixels(128, 128)) {
+          return nullptr;
+        }
+        bitmap.eraseColor(SkColorSetRGB(0xe5, 0xe7, 0xeb));
+        auto encoded = gfx::PNGCodec::EncodeBGRASkBitmap(bitmap, false);
+        if (!encoded || !base::WriteFile(artwork->path, *encoded)) {
+          base::DeleteFile(artwork->path);
+          return nullptr;
+        }
+      }
+      return current_generation->load() == generation ? artwork : nullptr;
     }
     constexpr int kMaxDimension = 512;
     const int longest = std::max(bitmap.width(), bitmap.height());
@@ -242,6 +264,7 @@ bool SystemMediaControlsOhos::Initialize() {
   }
   relay_ = new Relay{base::SequencedTaskRunner::GetCurrentDefault(),
                      weak_factory_.GetWeakPtr()};
+  ClearThumbnail();
   return true;
 }
 
@@ -382,25 +405,44 @@ void SystemMediaControlsOhos::EncodeThumbnail(
   if (!reply.ok || !directory || !uri_directory || directory->empty() ||
       !base::FilePath(*directory).IsAbsolute() ||
       !uri_directory->starts_with("file:///")) {
-    ClearThumbnail();
+    if (placeholder_artwork_) {
+      ClearThumbnail();
+    } else {
+      image_uri_.clear();
+      artwork_.reset();
+      published_artwork_.reset();
+    }
     LOG(WARNING) << "Media artwork cache unavailable";
     return;
   }
+  const bool placeholder = bitmap.drawsNothing();
   artwork_task_runner_->PostTaskAndReplyWithResult(
       FROM_HERE,
       base::BindOnce(&ArtworkFile::Encode, std::move(bitmap),
                      base::FilePath(*directory), *uri_directory,
                      artwork_task_runner_, artwork_generation_, generation),
       base::BindOnce(&SystemMediaControlsOhos::OnThumbnailReady,
-                     weak_factory_.GetWeakPtr(), generation));
+                     weak_factory_.GetWeakPtr(), generation, placeholder));
 }
 
 void SystemMediaControlsOhos::OnThumbnailReady(
     uint64_t generation,
+    bool placeholder,
     std::shared_ptr<ArtworkFile> artwork) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (generation != artwork_generation_->load()) {
     return;
+  }
+  if (!artwork) {
+    if (!placeholder) {
+      ClearThumbnail();
+    } else {
+      LOG(WARNING) << "Media artwork placeholder unavailable";
+    }
+    return;
+  }
+  if (placeholder) {
+    placeholder_artwork_ = artwork;
   }
   artwork_ = std::move(artwork);
   metadata_generation_ = generation;
@@ -426,11 +468,19 @@ void SystemMediaControlsOhos::ClearPosition() {
 void SystemMediaControlsOhos::ClearThumbnail() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   metadata_generation_ = ++*artwork_generation_;
-  image_uri_.clear();
-  artwork_.reset();
+  artwork_ = placeholder_artwork_;
+  image_uri_ = artwork_ ? artwork_->uri : std::string();
   published_artwork_.reset();
   if (session_) {
-    UpdateDisplay();
+    if (artwork_) {
+      UpdateDisplay();
+    } else {
+      ohos_system_service::Call(
+          "mediaartwork", "location", base::DictValue(),
+          base::BindOnce(&SystemMediaControlsOhos::EncodeThumbnail,
+                         weak_factory_.GetWeakPtr(), metadata_generation_,
+                         SkBitmap()));
+    }
   }
 }
 
@@ -444,6 +494,9 @@ void SystemMediaControlsOhos::ClearMetadata() {
 
 void SystemMediaControlsOhos::UpdateDisplay() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (image_uri_.empty()) {
+    return;
+  }
   OH_AVMetadataBuilder* builder = nullptr;
   if (OH_AVMetadataBuilder_Create(&builder) != AVMETADATA_SUCCESS ||
       !builder) {
