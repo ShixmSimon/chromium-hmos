@@ -2803,6 +2803,18 @@ void ApplyViewportInsets(content::WebContents* contents, int bottom_dip) {
   if (content::RenderWidgetHostView* view =
           contents->GetRenderWidgetHostView()) {
     view->SetInsets(gfx::Insets::TLBR(0, 0, std::max(0, bottom_dip), 0));
+    // While the keyboard is up, make sure the page was told. SetInsets() only
+    // synchronizes when the value changes, and a change it made while the
+    // widget could not synchronize (an update in flight, a page between
+    // navigations) was never resent: the view kept the keyboard's inset and
+    // the page went on laying out behind the keyboard, until the app
+    // restarted. This sends nothing when the page already has it, and runs
+    // on the poll, so a lost update is resent within one tick.
+    if (bottom_dip > 0 && view->GetRenderWidgetHost() &&
+        view->GetRenderWidgetHost()->SynchronizeVisualProperties()) {
+      LOG(WARNING) << "OHOS viewport inset: resent bottom=" << bottom_dip
+                   << " to view=" << view;
+    }
   }
 }
 
