@@ -9,7 +9,7 @@ const source = readFileSync(sourceUrl, 'utf8')
   .replace(/^import .*;\r?\n/gm, '')
   .replace('@Component', '')
   .replace('export struct PictureInPictureSurface', 'class PictureInPictureSurface')
-  .replace(/@Prop /g, '');
+  .replace(/@(Prop|State) /g, '');
 const methods = source.slice(0, source.indexOf('  build() {')) + '\n}\n';
 const executable = stripTypeScriptTypes(methods) + '\nglobalThis.Surface = PictureInPictureSurface;';
 
@@ -71,8 +71,11 @@ function fixture() {
 
 test('system close pauses only the matching Chromium PiP window', async () => {
   const current = fixture();
+  assert.equal(current.surface.systemWindowActive, false);
   await current.surface.start();
+  assert.equal(current.surface.systemWindowActive, true);
   current.state(4);
+  assert.equal(current.surface.systemWindowActive, false);
   assert.equal(current.commands.at(-1).pipAction, 'close');
   assert.equal(current.commands.at(-1).pipWidget, 42);
   assert.equal(current.timers.size, 0);
@@ -83,8 +86,19 @@ test('restore requests return to the opener instead of pause', async () => {
   const current = fixture();
   await current.surface.start();
   current.state(5);
+  assert.equal(current.surface.systemWindowActive, true);
   current.state(4);
+  assert.equal(current.surface.systemWindowActive, false);
   assert.equal(current.commands.at(-1).pipAction, 'restore');
+});
+
+test('lifecycle failure restores the in-app surface presentation', async () => {
+  const current = fixture();
+  await current.surface.start();
+  const surfaceController = current.surface.surfaceController;
+  current.state(6);
+  assert.equal(current.surface.systemWindowActive, false);
+  assert.equal(current.surface.surfaceController, surfaceController);
 });
 
 test('disposal during creation never starts the obsolete window', async () => {
@@ -121,6 +135,7 @@ test('start rejection preserves the Chromium in-app window', async () => {
   current.controller.startPiP = async () => { throw new Error('unsupported'); };
   await current.surface.start();
   assert.equal(current.commands.length, 0);
+  assert.equal(current.surface.systemWindowActive, false);
   assert.equal(current.listeners.size, 0);
   assert.equal(current.timers.size, 0);
 });

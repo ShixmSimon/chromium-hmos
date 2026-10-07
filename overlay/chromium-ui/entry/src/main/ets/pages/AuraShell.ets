@@ -294,7 +294,7 @@ struct AuraShell {
         y: this.auxiliaryTopVp(view.state.widget)
       })
       // Popups Chromium anchors to the page draw their own shadow and border.
-      .shadow(view.state.anchored === true ? { radius: 0 } :
+      .shadow(view.state.anchored === true || view.state.pictureInPicture === true ? { radius: 0 } :
         { radius: 16, color: $r('app.color.shadow'), offsetY: 4 })
       // Default, not Block: Block keeps the touch test away from this Stack's
       // own children, and the Stack is not a touch target itself, so every

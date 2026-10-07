@@ -101,7 +101,19 @@ document.querySelector('#remove').onclick = () => {
   enter.disabled = true;
 };
 video.addEventListener('leavepictureinpicture', () => {
-  status.textContent = `已离开画中画，视频状态：${video.paused ? '暂停' : '播放'}`;
+  status.textContent = '已离开画中画，等待播放状态同步…';
+  setTimeout(() => {
+    if (!document.pictureInPictureElement) {
+      status.textContent = `已离开画中画，视频状态：${video.paused ? '暂停' : '播放'}`;
+    }
+  }, 300);
 });
+for (const eventName of ['pause', 'playing']) {
+  video.addEventListener(eventName, () => {
+    if (!document.pictureInPictureElement) {
+      status.textContent = `视频状态：${video.paused ? '暂停' : '播放'}`;
+    }
+  });
+}
 </script>
 </html>

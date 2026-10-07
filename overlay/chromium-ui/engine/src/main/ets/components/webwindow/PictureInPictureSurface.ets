@@ -7,6 +7,7 @@ import { BrowserCommandPayload, BrowserRuntimeEvent, INativeContext } from './Na
 export struct PictureInPictureSurface {
   @Prop componentId: string = '';
   @Prop widget: number = 0;
+  @State private systemWindowActive: boolean = false;
   private surfaceController: XComponentController = new XComponentController();
   private nativeContext: INativeContext | undefined = undefined;
   private pipController: PiPWindow.PiPController | undefined = undefined;
@@ -101,17 +102,20 @@ export struct PictureInPictureSurface {
       controller.on('stateChange', (state: PiPWindow.PiPState): void => {
         if (state === PiPWindow.PiPState.STARTED) {
           this.started = true;
+          this.systemWindowActive = true;
         } else if (state === PiPWindow.PiPState.ABOUT_TO_RESTORE) {
           this.restoring = true;
         } else if (state === PiPWindow.PiPState.STOPPED) {
           const notify = this.started && !this.disposed && !this.stopping;
           this.started = false;
+          this.systemWindowActive = false;
           this.clearStateTimer();
           this.release(controller);
           if (notify) {
             this.send(this.restoring ? 'restore' : 'close');
           }
         } else if (state === PiPWindow.PiPState.ERROR) {
+          this.systemWindowActive = false;
           hilog.warn(0x0000, 'ChromiumPiP', 'system picture-in-picture lifecycle error');
         }
       });
@@ -131,6 +135,7 @@ export struct PictureInPictureSurface {
         return;
       }
       this.started = true;
+      this.systemWindowActive = true;
       if (this.disposed) {
         this.stop();
       } else {
@@ -139,6 +144,7 @@ export struct PictureInPictureSurface {
       }
     } catch {
       hilog.warn(0x0000, 'ChromiumPiP', 'system picture-in-picture unavailable; using in-app window');
+      this.systemWindowActive = false;
       const controller = this.pipController;
       if (controller) {
         if (this.started) {
@@ -160,6 +166,7 @@ export struct PictureInPictureSurface {
     try {
       await controller.stopPiP();
       this.started = false;
+      this.systemWindowActive = false;
       this.release(controller);
     } catch {
       hilog.warn(0x0000, 'ChromiumPiP', 'system picture-in-picture stop failed');
@@ -194,7 +201,8 @@ export struct PictureInPictureSurface {
       .id(this.componentId)
       .width('100%')
       .height('100%')
-      .backgroundColor(Color.Black)
+      .backgroundColor(this.systemWindowActive ? Color.Transparent : Color.Black)
+      .hitTestBehavior(this.systemWindowActive ? HitTestMode.None : HitTestMode.Default)
       .onLoad((): void => { this.start(); })
   }
 }
