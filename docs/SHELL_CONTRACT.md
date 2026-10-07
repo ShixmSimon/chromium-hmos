@@ -1160,7 +1160,7 @@ HAR 的 `module.json5` 声明了 13 项权限(包括 WebAuthn 用到的 `ACCESS_
 | 一个进程只能有一个浏览器 `WebWindow` | 同一个进程里只能初始化一次 Chromium。多窗口(PWA)通过 `onAuxiliaryWindowState` 的 `pwa` 角色另开窗口。 |
 | 手机上是单进程模式 | 手机上网页和浏览器在同一个进程里(`--single-process`)。平板和 2in1 是多进程。 |
 | 远程调试端口始终打开 | 非 headless 模式下,引擎监听 `127.0.0.1:9222`。**发布正式版之前必须关闭**,目前还没有开关。 |
-| JIT 取决于启动环境 | 构建包含 JIT 编译器，启动时探测能否映射可执行内存：能则启用（平板、2in1、调试签名的手机包），不能则用解释器（手机正式包，JS 简单循环约慢 5 倍），启动配置也可以要求 jitless。本次启动状态看 `aboutInfo.jitEnabled`。解释器模式下网页没有 `WebAssembly`（DrumBrake 解释器未编入），依赖 WebAssembly 的网站不可用。 |
+| JIT 取决于启动环境 | 构建包含 JIT 编译器，启动时探测能否映射可执行内存：能则启用（平板、2in1、调试签名的手机包），不能则用解释器（手机正式包，JS 简单循环约慢 5 倍），启动配置也可以要求 jitless。本次启动状态看 `aboutInfo.jitEnabled`。解释器模式下 WebAssembly 由 DrumBrake 解释器执行，能用但比 JIT 慢。 |
 | SURFACE 模式下的旋转未验证 | 手机横竖屏、平板和折叠屏的展开折叠,还需要在真机上确认。 |
 | 投屏、PWA 菜单的实现还在 `entry/` 里 | 新外壳需要的话,先从参考实现复制,之后会移进 HAR。 |
 

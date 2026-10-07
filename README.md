@@ -13,7 +13,7 @@ endorsed by Google, Chromium, Huawei, or the OpenHarmony project.
 - Target OS: `ohos` (presented to Chromium as HarmonyOS)
 - Target CPU: `arm64`
 - Product: `plan_kirin_pc`
-- V8: JIT compilers in the build, used when the launch can map executable memory (tablets, 2in1); JITless otherwise (released phone packages), where WebAssembly is unavailable because the DrumBrake interpreter is not built
+- V8: JIT compilers in the build, used when the launch can map executable memory (tablets, 2in1); JITless otherwise (released phone packages), where WebAssembly runs on the DrumBrake interpreter
 - UI: Aura/Views on large screens; ArkUI mobile shell on phones
 - Media: AAC/H.264 build flags enabled; Widevine CDM disabled
 - Public identity: Chromium HarmonyOS Adapter (`com.caidingding233.chromium`).

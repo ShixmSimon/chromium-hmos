@@ -51,10 +51,9 @@ runs with `--jitless` and JavaScript is interpreted (about five times slower
 on a simple loop on a phone). `aboutInfo.jitEnabled` reports the current
 launch.
 
-WebAssembly needs the DrumBrake interpreter when V8 is JITless, and the
-build has it off (`v8_enable_drumbrake = false`), so a JITless launch has no
-`WebAssembly` object at all. Turning it on changes the runner's `args.gn` and
-rebuilds V8 and what depends on it.
+WebAssembly needs the DrumBrake interpreter when V8 is JITless, so the build
+carries it (`v8_enable_drumbrake = true`, with its bounds checks): a JITless
+launch still runs WebAssembly, interpreted, through `--wasm-jitless`.
 It also enables the Chromium AAC/H.264 build switches used by the validated
 test package. Those switches do not grant codec patent or distribution rights;
 distributors remain responsible for the licenses required in their markets.
