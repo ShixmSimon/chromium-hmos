@@ -1,0 +1,63 @@
+Place autofill and password suggestions in the part of the page above the keyboard.
+
+PopupBaseView measured the room below a field against
+WebContents::GetContainerBounds(), the whole window. On a phone the
+on-screen keyboard and the shell's dock cover its bottom, so suggestions
+under a field low on the page opened under the keyboard instead of
+flipping above the field. On OHOS the content area for placing the popup
+ends where the page's visible viewport does (the view's insets,
+setViewportInsets, take the keyboard off).
+
+Only the popup's measure changes. Shrinking GetContainerBounds() itself
+shrank the page too: its size is worked out from the container's.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-autofill-popup-above-keyboard.patch
+
+diff --git a/chrome/browser/ui/views/autofill/popup/popup_base_view.cc b/chrome/browser/ui/views/autofill/popup/popup_base_view.cc
+index da6070a..8878565 100644
+--- a/chrome/browser/ui/views/autofill/popup/popup_base_view.cc
++++ b/chrome/browser/ui/views/autofill/popup/popup_base_view.cc
+@@ -12,6 +12,7 @@
+ #include "base/feature_list.h"
+ #include "base/i18n/rtl.h"
+ #include "base/task/sequenced_task_runner.h"
++#include "build/build_config.h"
+ #include "chrome/browser/platform_util.h"
+ #include "chrome/browser/themes/theme_service.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+@@ -22,6 +23,7 @@
+ #include "chrome/browser/ui/views/frame/browser_view.h"
+ #include "components/autofill/core/common/autofill_features.h"
+ #include "components/strings/grit/components_strings.h"
++#include "content/public/browser/render_widget_host_view.h"
+ #include "content/public/browser/web_contents.h"
+ #include "third_party/skia/include/core/SkPath.h"
+ #include "third_party/skia/include/core/SkRRect.h"
+@@ -473,7 +475,24 @@ void PopupBaseView::UpdateClipPath() {
+ gfx::Rect PopupBaseView::GetContentAreaBounds() const {
+   content::WebContents* web_contents = GetWebContents();
+   if (web_contents) {
+-    return web_contents->GetContainerBounds();
++    gfx::Rect bounds = web_contents->GetContainerBounds();
++#if BUILDFLAG(IS_OHOS)
++    // Only room the page is visible in counts: on a phone the on-screen
++    // keyboard and the shell's dock cover the bottom of the window, and the
++    // view's visible viewport has them taken off (setViewportInsets).
++    // Measured against the whole window, suggestions under a field low on
++    // the page opened under the keyboard instead of flipping above it.
++    // Only here, for placing the popup: the container keeps the window's
++    // size, which the page's own size is worked out from.
++    if (content::RenderWidgetHostView* view =
++            web_contents->GetRenderWidgetHostView()) {
++      const gfx::Size visible = view->GetVisibleViewportSize();
++      if (!visible.IsEmpty() && visible.height() < bounds.height()) {
++        bounds.set_height(visible.height());
++      }
++    }
++#endif
++    return bounds;
+   }
+ 
+   // If the |web_contents| is null, simply return an empty rect. The most common

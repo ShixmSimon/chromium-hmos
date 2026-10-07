@@ -214,6 +214,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-media-artwork.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-quick-menu-system-paste.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-autofill-follows-keyboard.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-autofill-popup-above-keyboard.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by
