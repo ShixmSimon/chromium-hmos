@@ -71,8 +71,14 @@ bool Fill(const Provider& provider, const Node& node,
   OH_ArkUI_AccessibilityElementInfoSetParentId(info, node.parent);
   OH_ArkUI_AccessibilityElementInfoSetComponentType(info, node.role.c_str());
   OH_ArkUI_AccessibilityElementInfoSetAccessibilityText(info, node.name.c_str());
+  // What the node says, where HarmonyOS's own components keep it: a text
+  // field's value, and the label of anything else -- a link, a button, a
+  // run of text. Readers and uitest read it from here. A password field's
+  // value never leaves the engine.
+  const std::string& contents =
+      node.editable || !node.value.empty() ? node.value : node.name;
   OH_ArkUI_AccessibilityElementInfoSetContents(
-      info, node.password ? "" : node.value.c_str());
+      info, node.password ? "" : contents.c_str());
   OH_ArkUI_AccessibilityElementInfoSetAccessibilityDescription(
       info, node.description.c_str());
   std::vector<int64_t> children = node.children;
