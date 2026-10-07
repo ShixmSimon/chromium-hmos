@@ -15,7 +15,7 @@ index 756d30f..332eca2 100644
        "bundle_ndk.z",
        "ohavsession",
 diff --git a/content/browser/media/system_media_controls/system_media_controls_notifier.cc b/content/browser/media/system_media_controls/system_media_controls_notifier.cc
-index 07cec33..0393523 100644
+index 07cec33..a24c247 100644
 --- a/content/browser/media/system_media_controls/system_media_controls_notifier.cc
 +++ b/content/browser/media/system_media_controls/system_media_controls_notifier.cc
 @@ -92,6 +92,13 @@ void SystemMediaControlsNotifier::MediaSessionInfoChanged(
@@ -32,11 +32,12 @@ index 07cec33..0393523 100644
    if (session_info_ptr_) {
      is_playing = session_info_ptr_->playback_state ==
                   media_session::mojom::MediaPlaybackState::kPlaying;
-@@ -152,20 +159,33 @@ void SystemMediaControlsNotifier::MediaSessionActionsChanged(
+@@ -152,20 +159,34 @@ void SystemMediaControlsNotifier::MediaSessionActionsChanged(
  
  void SystemMediaControlsNotifier::MediaSessionChanged(
      const std::optional<base::UnguessableToken>& request_id) {
 +#if BUILDFLAG(IS_OHOS)
++  session_info_ptr_.reset();
 +  icon_update_timer_.Stop();
 +  delayed_icon_update_ = std::nullopt;
 +  system_media_controls_->ClearThumbnail();
@@ -66,7 +67,7 @@ index 07cec33..0393523 100644
  }
  
  void SystemMediaControlsNotifier::MediaSessionPositionChanged(
-@@ -288,34 +308,45 @@ void SystemMediaControlsNotifier::UpdateMetadata() {
+@@ -288,34 +309,45 @@ void SystemMediaControlsNotifier::UpdateMetadata() {
  
        // Always make sure the metadata replacement is accompanied by the
        // thumbnail replacement.
@@ -112,7 +113,7 @@ index 07cec33..0393523 100644
    // If we need to hide the media metadata we replace the playing media's image
    // with a placeholder.
    if (session_info_ptr_ && session_info_ptr_->hide_metadata) {
-@@ -343,12 +374,17 @@ void SystemMediaControlsNotifier::UpdateIcon() {
+@@ -343,12 +375,17 @@ void SystemMediaControlsNotifier::UpdateIcon() {
      }
    }
  

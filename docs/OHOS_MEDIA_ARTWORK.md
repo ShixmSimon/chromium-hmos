@@ -15,7 +15,9 @@
 
 引擎 HAR 注册 `mediaartwork` 服务。服务在注册时异步初始化应用 `cacheDir/chromium-media-artwork`，删除该目录内符合 `artwork-<十六进制编号>.png` 的历史文件。初始化在进程内只执行一次，多窗口共用结果；清理完成前不允许写入新封面。目录初始化或 URI 转换失败时返回不可用，不记录异常中的路径。
 
-内核调用 `mediaartwork.location` 获取真实缓存目录和对应文件 URI。位图缩放、PNG 编码、写入及删除都在 `base::ThreadPool` 的 sequenced task runner 上执行，最长边限制为 512px，保持宽高比，不放大小图。每次生成随机文件名，不复用系统可能缓存的旧 URI。
+内核调用 `mediaartwork.location` 获取真实缓存目录和对应文件 URI。使用 `fileUri.getUriFromPath` 转换并保留转义后的路径，移除包名 authority，生成 `file:///data/storage/...`。原因是公开的 [OHAVSession.cpp](https://github.com/openharmony/multimedia_av_session/blob/master/frameworks/native/ohavsession/src/OHAVSession.cpp) 与 [OHAVUtils.cpp](https://github.com/openharmony/multimedia_av_session/blob/master/frameworks/native/ohavsession/src/OHAVUtils.cpp) 显示 C SDK 在应用进程通过 libcurl 读取图片后设置 PixelMap；带包名的 `file://<包名>/...` 不能直接交给普通 libcurl 当本地文件。此判断基于公开实现，仍需目标 HarmonyOS 版本验证。
+
+位图缩放、PNG 编码、写入及删除都在 `base::ThreadPool` 的 sequenced task runner 上执行，最长边限制为 512px，保持宽高比，不放大小图。每次生成随机文件名，不复用系统可能缓存的旧 URI。
 
 代次号在收到新图、清除、切换媒体会话及销毁时更新。后台任务在编码和写入前后检查代次，UI 回调再次检查；不再使用的文件由持有者析构后排队删除。已发布的旧文件保留到新元数据提交成功；清除、停止和销毁路径直接释放所有本组件持有的封面文件。
 
@@ -27,7 +29,7 @@
 
 ## 尚需实测的边界
 
-- `fileUri.getUriFromPath` 负责转换格式，不代表获得跨进程访问授权。目标 HarmonyOS AVSession 是否能读出本应用缓存 URI，必须真机确认。
+- `fileUri.getUriFromPath` 负责转换格式，不代表获得跨进程访问授权。本实现依赖 C SDK 在应用进程内读取本地文件；目标 HarmonyOS AVSession 是否遵循这条路径，必须真机确认。
 - `OH_AVSession_SetAVMetadata` 返回成功只表示提交成功，不证明卡片已经显示图片；平台可能异步读取。需特别检查切换、清除后是否出现系统侧的迟到图片。
 - 不直接使用网页远程 artwork URL，不向系统发起额外的带 Cookie 下载，也不新增文件共享权限。
 - 适配层新增日志只记录通用结果，不记录图片 URI、文件路径、标题或网页地址。

@@ -22,8 +22,13 @@ async function initializeArtworkCache(context: common.UIAbilityContext): Promise
       }
     }
     const location = new ArtworkLocation();
+    const applicationUri = fileUri.getUriFromPath(directory);
+    const pathStart = applicationUri.indexOf('/', 'file://'.length);
+    if (!applicationUri.startsWith('file://') || pathStart < 0) {
+      return location;
+    }
     location.directory = directory;
-    location.uriDirectory = fileUri.getUriFromPath(directory);
+    location.uriDirectory = `file://${applicationUri.substring(pathStart)}`;
     return location;
   } catch {
     return new ArtworkLocation();
