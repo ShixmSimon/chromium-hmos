@@ -6,35 +6,28 @@ aura_shell_runtime_bridge.cc). A window's bounds leave out its own
 transform, so WebContentsViewAura::GetContainerBounds() -- which autofill and
 password suggestions add a field's position to -- reported the page a whole
 top bar higher than it was drawn, and the popup opened over the address bar.
-On OHOS the container's origin now includes that translation.
-
-Its bottom stops where the page does too: GetVisibleViewportSize() has the
-shell's dock and, while it is up, the on-screen keyboard taken off (the
-view's insets, setViewportInsets). Measured against the whole window, the
-password suggestions under a field low on the page opened under the
-keyboard instead of flipping above the field.
+On OHOS the container's origin now includes that translation; its size is
+left alone.
 
 Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
 applied. Apply with:
   git apply ohos-popup-below-browser-controls.patch
 
 diff --git a/content/browser/web_contents/web_contents_view_aura.cc b/content/browser/web_contents/web_contents_view_aura.cc
-index 8525b80..d8c82b2 100644
+index 8525b80..a55881f 100644
 --- a/content/browser/web_contents/web_contents_view_aura.cc
 +++ b/content/browser/web_contents/web_contents_view_aura.cc
-@@ -25,6 +25,11 @@
+@@ -25,6 +25,9 @@
  #include "base/task/current_thread.h"
  #include "base/task/thread_pool.h"
  #include "build/build_config.h"
 +#if BUILDFLAG(IS_OHOS)
-+#include <algorithm>
-+
 +#include "base/numerics/safe_conversions.h"
 +#endif
  #include "components/input/render_widget_host_input_event_router.h"
  #include "components/viz/common/features.h"
  #include "content/browser/browser_plugin/browser_plugin_guest.h"
-@@ -931,7 +936,33 @@ gfx::NativeWindow WebContentsViewAura::GetTopLevelNativeWindow() const {
+@@ -931,7 +934,26 @@ gfx::NativeWindow WebContentsViewAura::GetTopLevelNativeWindow() const {
  }
  
  gfx::Rect WebContentsViewAura::GetContainerBounds() const {
@@ -48,20 +41,13 @@ index 8525b80..d8c82b2 100644
 +  // a field -- opened a whole top bar too high, over the address bar.
 +  // Input is unaffected: event targeting goes through the transform.
 +  //
-+  // The bottom stops where the page does: above the shell's dock and, while
-+  // it is up, the on-screen keyboard, which the view's insets take off the
-+  // page (setViewportInsets). Without that, a popup that measured the room
-+  // below a field against the whole window opened under the keyboard where
-+  // it should have flipped above the field.
++  // Only the origin moves. The size stays the window's, for whatever sizes
++  // itself to the container.
 +  if (RenderWidgetHostView* view = web_contents_->GetRenderWidgetHostView()) {
 +    if (aura::Window* page = view->GetNativeView();
 +        page && page->parent() == GetNativeView()) {
 +      bounds.Offset(
 +          0, base::ClampRound(page->transform().To2dTranslation().y()));
-+      const gfx::Size visible = view->GetVisibleViewportSize();
-+      if (!visible.IsEmpty()) {
-+        bounds.set_height(std::min(bounds.height(), visible.height()));
-+      }
 +    }
 +  }
 +#endif
