@@ -1,0 +1,45 @@
+Move autofill and password suggestions with the field when the keyboard comes up.
+
+On a phone the focused field is scrolled into view twice: on the tap,
+before the keyboard is up, which shows the suggestions under the field
+where it was; and again after the keyboard's inset has shrunk the viewport
+and moved the field above it (RenderWidgetHostViewAura does this once the
+inset frame activates). The second time is not a click, so
+AutofillAgent::DidCompleteFocusChangeInFrame asked for nothing and the
+suggestions stayed where the field had been, mostly under the keyboard.
+On OHOS, when suggestions are showing it asks for them again, and the
+browser places them by the field's new bounds.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-autofill-follows-keyboard.patch
+
+diff --git a/components/autofill/content/renderer/autofill_agent.cc b/components/autofill/content/renderer/autofill_agent.cc
+index 373586d..86ddde8 100644
+--- a/components/autofill/content/renderer/autofill_agent.cc
++++ b/components/autofill/content/renderer/autofill_agent.cc
+@@ -2136,10 +2136,20 @@ void AutofillAgent::DidCompleteFocusChangeInFrame() {
+        base::FeatureList::IsEnabled(
+            features::kAutofillAndroidKeyboardAccessoryDynamicPositioning)) &&
+       config_.focus_requires_scroll) {
+-    HandleFocusChangeComplete(
+-        /*focused_node_was_last_clicked=*/
+-        last_left_mouse_down_or_gesture_tap_in_node_caused_focus_,
+-        /*form_cache=*/{});
++    bool focused_node_was_last_clicked =
++        last_left_mouse_down_or_gesture_tap_in_node_caused_focus_;
++#if BUILDFLAG(IS_OHOS)
++    // On a phone the field is scrolled into view twice: on the tap, before
++    // the keyboard is up -- which shows the suggestions, placed under the
++    // field where it was -- and again once the keyboard's inset has shrunk
++    // the viewport and the field has moved above it. The second time is not
++    // a click any more, so the suggestions stayed where the field had been,
++    // under the keyboard. When they are showing, ask for them again: the
++    // browser places them by the field's new bounds.
++    focused_node_was_last_clicked |= is_popup_possibly_visible_;
++#endif
++    HandleFocusChangeComplete(focused_node_was_last_clicked,
++                              /*form_cache=*/{});
+   }
+   last_left_mouse_down_or_gesture_tap_in_node_caused_focus_ = false;
+ }
