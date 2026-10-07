@@ -212,6 +212,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-log-url-host-only.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-web-accessibility.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-media-artwork.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-quick-menu-system-paste.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

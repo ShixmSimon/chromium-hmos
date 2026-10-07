@@ -1,0 +1,80 @@
+Offer paste in the touch quick menu when the text came from another app.
+
+Chromium cannot read the system pasteboard on OHOS (that needs the
+restricted READ_PASTEBOARD), so after the reader copies in another app its
+clipboard looks empty and the quick menu left out paste: it was only under
+"...". In a field that takes text the quick menu now offers paste anyway,
+and choosing it opens the full context menu, whose paste is the system's
+PasteButton (systemPasteAllowed). With text Chromium copied itself, paste
+works as before.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+and the incremental patches before it applied. Apply with:
+  git apply ohos-quick-menu-system-paste.patch
+
+diff --git a/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc b/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
+index 00e5e47..ddf4e60 100644
+--- a/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
++++ b/content/browser/renderer_host/input/touch_selection_controller_client_aura.cc
+@@ -297,6 +297,17 @@ void TouchSelectionControllerClientAura::ShowQuickMenu() {
+             }
+             bool can_paste =
+                 formats.contains(ui::ClipboardFormatType::PlainTextType());
++#if BUILDFLAG(IS_OHOS)
++            // Chromium cannot read what another app copied (that needs a
++            // restricted permission), so its clipboard looks empty and the
++            // quick menu left paste out: the reader had to find it under
++            // "...". Offer it in any field that takes text; it opens the full
++            // menu, whose paste is the system's PasteButton.
++            weak_this->ohos_paste_opens_menu_ =
++                !can_paste && weak_this->rwhva_->GetTextInputType() !=
++                                  ui::TEXT_INPUT_TYPE_NONE;
++            can_paste = can_paste || weak_this->ohos_paste_opens_menu_;
++#endif
+ 
+             if (!weak_this->ShouldShowQuickMenu(can_paste)) {
+               return;
+@@ -612,6 +623,17 @@ bool TouchSelectionControllerClientAura::IsCommandIdEnabled(
+ 
+ void TouchSelectionControllerClientAura::ExecuteCommand(int command_id,
+                                                         int event_flags) {
++#if BUILDFLAG(IS_OHOS)
++  // Before the handles are hidden below: the full menu is placed by the
++  // selection's bounds, which are empty once they are.
++  if (command_id ==
++          std::to_underlying(ui::TouchEditable::MenuCommands::kPaste) &&
++      ohos_paste_opens_menu_) {
++    ohos_paste_opens_menu_ = false;
++    RunContextMenu();
++    return;
++  }
++#endif
+   if (command_id !=
+           std::to_underlying(ui::TouchEditable::MenuCommands::kSelectAll) &&
+       command_id !=
+diff --git a/content/browser/renderer_host/input/touch_selection_controller_client_aura.h b/content/browser/renderer_host/input/touch_selection_controller_client_aura.h
+index 97447c2..04bb684 100644
+--- a/content/browser/renderer_host/input/touch_selection_controller_client_aura.h
++++ b/content/browser/renderer_host/input/touch_selection_controller_client_aura.h
+@@ -11,6 +11,7 @@
+ #include "base/memory/weak_ptr.h"
+ #include "base/observer_list.h"
+ #include "base/timer/timer.h"
++#include "build/build_config.h"
+ #include "content/common/content_export.h"
+ #include "content/public/browser/touch_selection_controller_client_manager.h"
+ #include "ui/touch_selection/touch_selection_controller.h"
+@@ -154,6 +155,13 @@ class CONTENT_EXPORT TouchSelectionControllerClientAura
+   bool scroll_in_progress_;
+   bool handle_drag_in_progress_;
+ 
++#if BUILDFLAG(IS_OHOS)
++  // The quick menu offers paste although Chromium's own clipboard has no
++  // text, because what the reader copied elsewhere can only be read through
++  // the system's PasteButton; choosing it opens the full menu, which has one.
++  bool ohos_paste_opens_menu_ = false;
++#endif
++
+   bool show_quick_menu_immediately_for_test_;
+ 
+   // An event observer that deactivates touch selection on certain input events.

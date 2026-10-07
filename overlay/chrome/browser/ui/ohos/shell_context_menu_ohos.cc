@@ -129,6 +129,15 @@ constexpr char kShareLinkAction[] = "shareLink";
 constexpr char kImageToFileAction[] = "imageToFile";
 
 bool IsOffered(RenderViewContextMenuBase& menu, int command_id) {
+  // Chromium offers to fill a saved or generated password on any password or
+  // username field, read-only and disabled ones included, which cannot take
+  // it. Only where the page lets the reader type.
+  if ((command_id ==
+           IDC_CONTENT_CONTEXT_AUTOFILL_FALLBACK_PASSWORDS_SELECT_PASSWORD ||
+       command_id == IDC_CONTENT_CONTEXT_GENERATEPASSWORD) &&
+      !menu.params().is_editable) {
+    return false;
+  }
   return menu.menu_model().GetIndexOfCommandId(command_id).has_value() &&
          menu.IsCommandIdEnabled(command_id);
 }
