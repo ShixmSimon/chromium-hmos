@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "base/functional/bind.h"
+#include "base/logging.h"
 #include "base/supports_user_data.h"
 #include "base/task/bind_post_task.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
@@ -204,6 +205,11 @@ void UpdateShellAccessibility(gfx::AcceleratedWidget widget,
   auto* manager = ui::BrowserAccessibilityManager::FromID(tree);
   auto* root = manager ? manager->GetBrowserAccessibilityRoot() : nullptr;
   if (!root) {
+    static int not_ready = 0;
+    if (++not_ready <= 3 || not_ready % 100 == 0) {
+      LOG(WARNING) << "OHOS accessibility: page tree not ready (manager="
+                   << (manager != nullptr) << ", " << not_ready << " times)";
+    }
     page_mode->MarkDirty();
     ohos_accessibility::PublishSnapshot(*component, generation, std::move(snapshot), {});
     return;

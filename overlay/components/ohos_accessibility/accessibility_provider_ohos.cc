@@ -9,6 +9,7 @@
 #include <ace/xcomponent/native_interface_xcomponent.h>
 #include <arkui/native_interface_accessibility.h>
 
+#include "base/logging.h"
 #include "base/no_destructor.h"
 
 namespace ohos_accessibility {
@@ -24,6 +25,8 @@ struct Provider {
   std::string instance;
   bool requested = false;
   int64_t focused = -1;
+  // Diagnostics: how many queries this provider has answered.
+  int queries = 0;
   Snapshot snapshot;
   ActionCallback action;
 };
@@ -158,6 +161,9 @@ int32_t FindById(const char* instance, int64_t id,
     return kFailure;
   }
   std::set<int64_t> ids = {node->id};
+  // Logged as numbers only, never names or values. The first few queries
+  // of each provider, then one in a hundred.
+  const bool log = ++provider->queries <= 5 || provider->queries % 100 == 0;
   if (mode & ARKUI_ACCESSIBILITY_NATIVE_SEARCH_MODE_PREFETCH_PREDECESSORS) {
     const Node* parent = node->parent < 0 ? nullptr : GetNode(*provider, node->parent);
     while (parent && parent->id != node->id && ids.insert(parent->id).second) {
@@ -183,6 +189,12 @@ int32_t FindById(const char* instance, int64_t id,
         return kFailure;
       }
     }
+  }
+  if (log) {
+    LOG(WARNING) << "OHOS accessibility: query #" << provider->queries
+                 << " id=" << id << " mode=" << static_cast<int>(mode)
+                 << " answered=" << ids.size()
+                 << " snapshot_nodes=" << provider->snapshot.nodes.size();
   }
   return kSuccess;
 }
@@ -362,6 +374,7 @@ bool RegisterProvider(const std::string& component_id,
   ArkUI_AccessibilityProvider* native = nullptr;
   if (OH_NativeXComponent_GetNativeAccessibilityProvider(component, &native) != 0 ||
       !native) {
+    LOG(WARNING) << "OHOS accessibility: no provider for " << component_id;
     return false;
   }
   {
@@ -388,8 +401,11 @@ bool RegisterProvider(const std::string& component_id,
     std::lock_guard lock(Mutex());
     instance = Providers().at(component_id).instance;
   }
-  if (OH_ArkUI_AccessibilityProviderRegisterCallbackWithInstance(
-          instance.c_str(), native, &callbacks) != kSuccess) {
+  const int32_t result = OH_ArkUI_AccessibilityProviderRegisterCallbackWithInstance(
+      instance.c_str(), native, &callbacks);
+  LOG(WARNING) << "OHOS accessibility: provider " << instance
+               << " registered, result=" << result;
+  if (result != kSuccess) {
     UnregisterProvider(component_id, window);
     return false;
   }
@@ -421,6 +437,11 @@ void PublishSnapshot(const std::string& component_id, uint64_t generation,
   Provider& provider = found->second;
   provider.action = std::move(action);
   if (provider.snapshot == snapshot) return;
+  if (provider.snapshot.nodes.size() != snapshot.nodes.size()) {
+    LOG(WARNING) << "OHOS accessibility: " << component_id << " snapshot "
+                 << provider.snapshot.nodes.size() << " -> "
+                 << snapshot.nodes.size() << " nodes";
+  }
   if (!snapshot.nodes.contains(provider.focused)) {
     SendEvent(provider, provider.focused,
               ARKUI_ACCESSIBILITY_NATIVE_EVENT_TYPE_ACCESSIBILITY_FOCUS_CLEARED);
