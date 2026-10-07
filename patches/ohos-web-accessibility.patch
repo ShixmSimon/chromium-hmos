@@ -1,12 +1,8 @@
 diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
 --- a/chrome/browser/BUILD.gn
 +++ b/chrome/browser/BUILD.gn
-@@ -883,6 +883,12 @@ source_set("core") {
+@@ -883,6 +883,8 @@ source_set("core") {
    if (is_ohos) {
-+    deps += [
-+      "//components/ohos_accessibility",
-+      "//ui/accessibility",
-+    ]
      sources += [
 +      "ui/ohos/shell_accessibility_ohos.cc",
 +      "ui/ohos/shell_accessibility_ohos.h",
@@ -14,3 +10,12 @@ diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
        "ui/ohos/aura_shell_runtime_bridge.h",
        "ui/ohos/screen_orientation_delegate_ohos.cc",
        "ui/ohos/screen_orientation_delegate_ohos.h",
+@@ -1440,6 +1442,8 @@ source_set("core") {
+   if (is_ohos) {
+     deps += [
++      "//components/ohos_accessibility",
++      "//ui/accessibility",
+       "//chrome/browser/headless:headless_extra_parts",
+       "//chrome/browser/security_events",
+       "//chrome/browser/sensor",
+     ]

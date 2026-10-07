@@ -16,7 +16,7 @@
 - 导出名称、角色、描述、边界、可用性、选中状态、输入焦点及子节点；支持顺序焦点查找、点击、设置文本、无障碍焦点和前后滚动。密码值不进入快照，不增加网页文本或网址日志。
 - 系统 provider 会叠加 XComponent 的宿主偏移，快照先从 Chromium 屏幕物理像素坐标减去原生 Surface 原点，避免重复偏移。
 
-新增上游构建改动位于 `patches/ohos-web-accessibility.patch`，已在 `scripts/ci-incremental-build.sh` 登记。补丁对 `chrome/browser/BUILD.gn` 只有一个修改段。新增源码通过 overlay 同步，构建只在 CI 进行。
+新增上游构建改动位于 `patches/ohos-web-accessibility.patch`，已在 `scripts/ci-incremental-build.sh` 登记。补丁对 `chrome/browser/BUILD.gn` 分别修改源码和依赖列表，两段不相邻。新增源码通过 overlay 同步，构建只在 CI 进行。
 
 ## 验收步骤
 
