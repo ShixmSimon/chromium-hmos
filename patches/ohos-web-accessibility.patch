@@ -1,7 +1,9 @@
 diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+index 8ac05cb..0ce64bd 100644
 --- a/chrome/browser/BUILD.gn
 +++ b/chrome/browser/BUILD.gn
 @@ -883,6 +883,8 @@ source_set("core") {
+ 
    if (is_ohos) {
      sources += [
 +      "ui/ohos/shell_accessibility_ohos.cc",
@@ -9,13 +11,12 @@ diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
        "ui/ohos/aura_shell_runtime_bridge.cc",
        "ui/ohos/aura_shell_runtime_bridge.h",
        "ui/ohos/screen_orientation_delegate_ohos.cc",
-       "ui/ohos/screen_orientation_delegate_ohos.h",
-@@ -1440,6 +1442,8 @@ source_set("core") {
-   if (is_ohos) {
+@@ -1433,6 +1435,8 @@ source_set("core") {
+     # chrome/browser/sync/sync_service_factory.cc), so link them in
+     # explicitly here to avoid undefined-symbol errors.
      deps += [
 +      "//components/ohos_accessibility",
 +      "//ui/accessibility",
        "//chrome/browser/headless:headless_extra_parts",
        "//chrome/browser/security_events",
        "//chrome/browser/sensor",
-     ]
