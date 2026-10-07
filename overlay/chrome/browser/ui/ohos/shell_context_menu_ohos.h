@@ -41,6 +41,8 @@ bool HandOffContextMenuToShell(content::WebContents* web_contents,
 // The shell's answers. Stale or unknown request ids are ignored.
 void RunShellContextMenuAction(int request_id, const std::string& action);
 void DismissShellContextMenu(int request_id);
+bool PrepareShellContextMenuPaste(int request_id,
+                                  content::WebContents* active_contents);
 
 }  // namespace chrome::ohos
 

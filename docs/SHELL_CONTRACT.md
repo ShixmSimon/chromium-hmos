@@ -361,7 +361,7 @@ Chromium 自己的安装确认框,用户确认后才装。
 | `moveTab` | `id`, `toIndex` | 按 id 重排标签 |
 | `activateTabById` | `id` | 按 id 切换标签 |
 | `handleBack` | `requestId` | `backHandled { requestId, handled, by? }`。系统返回手势**先发这条,不要直接发 `back`**。网页处于全屏(见 `pageFullscreenChanged`)时内核先退出全屏,`by` 为 `fullscreen`;否则内核先关浏览器自己打开的气泡或对话框(装完扩展的"已添加"气泡、权限询问等,手机上没有别的办法关掉它们),`by` 为 `browserDialog`;没有的话再问网页,页面开着 `<dialog>`、全屏、或自己注册了 CloseWatcher 时 `by` 为 `page`。`handled` 为 true 时外壳就不要再后退 |
-| `insertText` | `text` | 把文字插到当前输入位置。Chromium 读不了系统剪贴板(要 `READ_PASTEBOARD` 受限权限),外壳用系统粘贴安全控件读出来后发这条 |
+| `insertText` | `text`，菜单粘贴时必须带 `requestId` | 外壳经用户点击系统 `PasteButton` 读取纯文本后发送。带 `requestId` 时，内核校验原菜单、原文档、活动标签页及焦点框架，然后关闭菜单并按普通粘贴路径插入；过期请求忽略。不带 ID 保留原有“当前输入位置”语义，不能用于异步菜单粘贴 |
 | `groupTabs` | `ids`, `openerIds?` | 把这些标签编成一个组。`openerIds` 与 `ids` 等长、`''` 表示没有,用来在重启后把"谁打开了谁"一起交回来(内核按 session id 记 opener,重开的标签是全新的,自己推不出来);长度对不上就整个忽略。自己保存网址列表、启动后逐个 `newTab` 重开的外壳用这个把组重新建起来。少于两个不建组;已经在别的组里的会退出来加入新组 |
 | `getPageContinuation` | `requestId` | `pageContinuation { requestId, url, title, scrollX, scrollY, pageWidth, pageHeight }`。当前窗口的当前标签 |
 | `closeTabById` | `id`, `returnToOpener?` | 按 id 关闭标签。`returnToOpener: true` 时关掉后切回打开它的那个标签(它还在的话);不传时用 Chromium 自己的规则挑下一个 |
@@ -426,8 +426,20 @@ Chromium 自己的安装确认框,用户确认后才装。
 | `mediaFlags` | 视频和音频的状态：`paused`、`muted`、`loop`、`canLoop`、`controls`、`canToggleControls`、`canSave`、`hasAudio`、`inError` |
 | `selectionText` | 有选中文字时有值 |
 | `isEditable` | 是否是输入框 |
+| `systemPasteAllowed` | 可选布尔值：原编辑目标允许粘贴，不表示内核能读系统剪贴板。为 `true` 时，外壳可独立查询系统是否有纯文本，并提供真正由用户点击的 `PasteButton`；详见下文 |
 | `frameUrl`、`pageUrl`、`incognito` | 所在框架、页面，是否无痕 |
-| `supportedActions` | 这次能做的动作，已按 Chromium 的判断过滤（例如没有可粘贴的内容时没有 `paste`）。**外壳只显示列表里的项**，顺序可以自己排 |
+| `supportedActions` | Chromium 可执行的动作，已按内核判断过滤。普通 `contextMenuAction` 仍只能使用列表内的项。外部系统粘贴通过单独的 `systemPasteAllowed` 能力和 `insertText` 完成，不伪造 `paste` 动作 |
+
+系统纯文本粘贴流程：
+
+1. 当 `systemPasteAllowed === true` 且没有内核 `paste` 动作时，调用 `pasteboard.getSystemPasteboard().hasDataType(pasteboard.MIMETYPE_TEXT_PLAIN)` 查询类型；这个查询不读取正文。查询异常时可保留安全控件入口，实际读取失败应提示用户，不记录异常对象或内容。
+2. 菜单的“粘贴”本身用 `PasteButton`，或点击菜单后打开含 `PasteButton` 的对话框。不能程序代点；普通按钮没有读取授权。
+3. 仅在 `PasteButtonOnClickResult.SUCCESS` 回调中立即调用 `getData()`；确认数据仍包含纯文本，再发送 `insertText { requestId, text }`。不能缓存以前读到的文字作为失败回退。
+4. 读取成功前保留原菜单请求，不提前发送 `contextMenuDismissed`。取消安全控件对话框时发送 `contextMenuDismissed { requestId }`；关闭后的异步结果丢弃。
+
+`contextMenuActionsChanged` 同样携带 `systemPasteAllowed`。外壳不支持新字段时保持旧行为。参考外壳的手机地址栏也提供安全粘贴入口，按原选区插入，不自动导航。桌面原生 Views 菜单未在此轮接入。
+
+本轮不扩展网页 `navigator.clipboard.readText()` 或网页 Ctrl+V 的跨应用读取；它们仍受原有权限与内核剪贴板状态限制。外壳原生 `TextInput` 的快捷键行为属于系统控件，不等同于网页快捷键。富文本和图片也不在这条纯文本接口范围内。
 
 动作（`ContextMenuAction`）：
 

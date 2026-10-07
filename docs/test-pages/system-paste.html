@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>跨应用粘贴验收</title>
+<style>
+  body { max-width: 42rem; margin: 2rem auto; padding: 0 1rem; font: 18px/1.6 sans-serif; }
+  input, textarea, button { font: inherit; padding: .5rem; }
+  label { display: block; margin: 1rem 0; }
+  textarea, iframe { width: 90%; min-height: 7rem; }
+  [contenteditable] { border: 1px solid; min-height: 5rem; padding: .5rem; }
+</style>
+<h1>跨应用粘贴验收</h1>
+<p>在其他应用复制文字，然后长按下列编辑区域。使用系统粘贴按钮完成授权。</p>
+<label>单行输入 <input value="选中这段文字后粘贴"></label>
+<label>多行输入 <textarea>测试换行与 emoji</textarea></label>
+<div contenteditable="true" aria-label="可编辑内容">测试选区替换、粘贴与撤销</div>
+<label>只读输入 <input readonly value="不应提供系统粘贴"></label>
+<label>禁用输入 <input disabled value="不应提供系统粘贴"></label>
+<iframe title="子框架输入" srcdoc="<!doctype html><html lang='zh-CN'><label>子框架输入 <textarea></textarea></label></html>"></iframe>
+<p id="events" role="status">paste：0；input：0</p>
+<button id="read" type="button">检查网页 readText（不属于本轮新增能力）</button>
+<p id="read-status"></p>
+<a href="system-paste.html?next">导航到新文档，检查旧菜单失效</a>
+<script>
+  let pasteCount = 0;
+  let inputCount = 0;
+  function update() {
+    document.querySelector('#events').textContent = `paste：${pasteCount}；input：${inputCount}`;
+  }
+  document.addEventListener('paste', () => { pasteCount += 1; update(); });
+  document.addEventListener('input', () => { inputCount += 1; update(); });
+  document.querySelector('#read').addEventListener('click', async () => {
+    const result = document.querySelector('#read-status');
+    try {
+      const text = await navigator.clipboard.readText();
+      result.textContent = `接口返回 ${text.length} 个 UTF-16 代码单元；这不证明已支持外部剪贴板读取。`;
+    } catch {
+      result.textContent = '读取失败或接口不可用。';
+    }
+  });
+</script>
+</html>

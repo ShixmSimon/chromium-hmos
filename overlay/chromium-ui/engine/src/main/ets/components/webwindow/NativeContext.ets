@@ -245,6 +245,7 @@ export interface BrowserRuntimeEvent {
   mediaFlags?: ContextMenuMediaFlags;
   selectionText?: string;
   isEditable?: boolean;
+  systemPasteAllowed?: boolean;
   frameUrl?: string;
   pageUrl?: string;
   incognito?: boolean;

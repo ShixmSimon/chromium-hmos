@@ -3813,6 +3813,12 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     }
     DispatchRuntimeEvent(widget, std::move(event));
   } else if (*name == "insertText" && active) {
+    if (command.Find("requestId")) {
+      const auto request_id = command.FindInt("requestId");
+      if (!request_id || !PrepareShellContextMenuPaste(*request_id, active)) {
+        return;
+      }
+    }
     // The shell read the system pasteboard for us. Chromium cannot: reading
     // it needs READ_PASTEBOARD, a restricted permission this app does not
     // declare, so ui::Clipboard only ever serves back what the browser itself

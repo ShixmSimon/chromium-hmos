@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { AVCastPicker, AVCastPickerColorMode, AVCastPickerStyle } from '@kit.AVSessionKit';
 import { hdsEffect } from '@kit.UIDesignKit';
 import { inputMethod } from '@kit.IMEKit';
+import { showSystemPasteDialog } from './SystemPasteDialog';
 import {
   BrowserCommandPayload,
   BrowserStateSnapshot,
@@ -36,6 +37,10 @@ export struct MobileBrowserOverlay {
   private readonly holdingHandRouter: HoldingHandRouter = new HoldingHandRouter();
   private readonly currentTabCastSession: CurrentTabCastSession = new CurrentTabCastSession();
   private keyboardRecoveryTimers: number[] = [];
+  private readonly addressController: TextInputController = new TextInputController();
+  private addressSelectionStart: number = 0;
+  private addressSelectionEnd: number = 0;
+  private addressEditEpoch: number = 0;
 
   aboutToAppear(): void {
     const storedAction = String(AppStorage.get(PRIMARY_ACTION_KEY) ?? MobileEdgeAction.BACK);
@@ -109,7 +114,8 @@ export struct MobileBrowserOverlay {
   private AddressBubble() {
     Row() {
       if (this.editingAddress) {
-        TextInput({ text: this.addressDraft, placeholder: '搜索或输入网址' })
+        TextInput({ text: this.addressDraft, placeholder: '搜索或输入网址',
+          controller: this.addressController })
           .id('mobile_address_input')
           .layoutWeight(1)
           .height(52)
@@ -123,9 +129,16 @@ export struct MobileBrowserOverlay {
           .onChange((value: string) => {
             this.addressDraft = value;
           })
+          .onTextSelectionChange((start: number, end: number): void => {
+            this.addressSelectionStart = start;
+            this.addressSelectionEnd = end;
+          })
           .onSubmit(() => {
             this.submitAddress();
           })
+        Button('粘贴')
+          .fontSize(14)
+          .onClick((): void => this.pasteAddress())
         Button({ type: ButtonType.Circle }) {
           Image($r('app.media.chromium_close'))
             .width(20)
@@ -450,7 +463,10 @@ export struct MobileBrowserOverlay {
   }
 
   private beginAddressEdit(): void {
+    this.addressEditEpoch += 1;
     this.addressDraft = this.browserState.url.startsWith('chrome://') ? '' : this.browserState.url;
+    this.addressSelectionStart = 0;
+    this.addressSelectionEnd = this.addressDraft.length;
     this.editingAddress = true;
     this.clearKeyboardRecoveryTimers();
     [0, 80, 220, 450].forEach((delay: number): void => {
@@ -467,6 +483,34 @@ export struct MobileBrowserOverlay {
         }
       }, delay));
     });
+  }
+
+  private pasteAddress(): void {
+    this.clearKeyboardRecoveryTimers();
+    const epoch = this.addressEditEpoch;
+    const original = this.addressDraft;
+    const activation = this.browserState.activationEpoch;
+    const tabId = this.browserState.tabs[this.browserState.activeTabIndex]?.id;
+    const pageUrl = this.browserState.url;
+    const start = Math.max(0, Math.min(this.addressSelectionStart, original.length));
+    const end = Math.max(start, Math.min(this.addressSelectionEnd, original.length));
+    showSystemPasteDialog(this.getUIContext(), (text: string): void => {
+      if (!this.editingAddress || this.addressEditEpoch !== epoch ||
+        this.addressDraft !== original || this.browserState.activationEpoch !== activation ||
+        this.browserState.tabs[this.browserState.activeTabIndex]?.id !== tabId ||
+        this.browserState.url !== pageUrl) {
+        return;
+      }
+      this.addressDraft = original.substring(0, start) + text + original.substring(end);
+      this.addressSelectionStart = start + text.length;
+      this.addressSelectionEnd = this.addressSelectionStart;
+      this.keyboardRecoveryTimers.push(setTimeout((): void => {
+        if (this.editingAddress && this.addressEditEpoch === epoch) {
+          this.getUIContext().getFocusController().requestFocus('mobile_address_input');
+          this.addressController.caretPosition(this.addressSelectionEnd);
+        }
+      }, 0));
+    }, (): void => {});
   }
 
   private submitAddress(): void {

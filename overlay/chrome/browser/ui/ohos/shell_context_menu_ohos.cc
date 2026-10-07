@@ -18,10 +18,13 @@
 #include "components/renderer_context_menu/render_view_context_menu_base.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/context_menu_params.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/weak_document_ptr.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "third_party/blink/public/common/context_menu_data/context_menu_data.h"
+#include "third_party/blink/public/common/context_menu_data/edit_flags.h"
 #include "third_party/blink/public/mojom/context_menu/context_menu.mojom-shared.h"
 #include "ui/aura/window.h"
 #include "chrome/browser/ui/ohos/shell_context_menu_image_ohos.h"
@@ -130,6 +133,11 @@ bool IsOffered(RenderViewContextMenuBase& menu, int command_id) {
          menu.IsCommandIdEnabled(command_id);
 }
 
+bool AllowsSystemPaste(const RenderViewContextMenuBase& menu) {
+  const auto& params = menu.params();
+  return params.is_editable && (params.edit_flags & blink::kCanPaste);
+}
+
 const char* MediaTypeName(blink::mojom::ContextMenuDataMediaType type) {
   switch (type) {
     case blink::mojom::ContextMenuDataMediaType::kImage:
@@ -209,6 +217,9 @@ class ShellContextMenuSession : public content::WebContentsObserver {
         request_id_(request_id),
         image_url_(image_url),
         menu_(std::move(menu)) {
+    if (auto* frame = menu_->GetRenderFrameHost()) {
+      document_ = frame->GetWeakDocumentPtr();
+    }
     menu_->OnMenuWillShow(ModelOf(*menu_));
   }
 
@@ -227,6 +238,15 @@ class ShellContextMenuSession : public content::WebContentsObserver {
   RenderViewContextMenuBase* menu() { return menu_.get(); }
   content::WebContents* web_contents_for_action() { return web_contents(); }
   const GURL& image_url() const { return image_url_; }
+  content::RenderFrameHost* document() const {
+    return document_.AsRenderFrameHostIfValid();
+  }
+
+  void OnVisibilityChanged(content::Visibility visibility) override {
+    if (visibility != content::Visibility::VISIBLE) {
+      document_ = content::WeakDocumentPtr();
+    }
+  }
 
   // content::WebContentsObserver:
   void WebContentsDestroyed() override {
@@ -240,6 +260,7 @@ class ShellContextMenuSession : public content::WebContentsObserver {
   // the menu has been dismissed and its params are gone.
   const GURL image_url_;
   std::unique_ptr<RenderViewContextMenuBase> menu_;
+  content::WeakDocumentPtr document_;
 };
 
 std::unique_ptr<ShellContextMenuSession>& CurrentSession() {
@@ -290,6 +311,7 @@ base::DictValue BuildRequestEvent(int request_id,
   event.Set("mediaFlags", MediaFlags(params.media_flags));
   event.Set("selectionText", base::UTF16ToUTF8(params.selection_text));
   event.Set("isEditable", params.is_editable);
+  event.Set("systemPasteAllowed", AllowsSystemPaste(menu));
   event.Set("frameUrl", params.frame_url.is_valid() ? params.frame_url.spec()
                                                     : std::string());
   event.Set("pageUrl", params.page_url.is_valid() ? params.page_url.spec()
@@ -346,6 +368,7 @@ void NotifyShellContextMenuChanged(const RenderViewContextMenuBase* menu) {
   }
   base::DictValue event;
   event.Set("event", "contextMenuActionsChanged");
+  event.Set("systemPasteAllowed", AllowsSystemPaste(*session->menu()));
   event.Set("requestId", session->request_id());
   event.Set("supportedActions", std::move(supported));
   DispatchAuraShellRuntimeEvent(session->web_contents_for_action(),
@@ -375,6 +398,21 @@ bool HandOffContextMenuToShell(
     LOG(WARNING) << "OHOS shell context menu has no window to go to";
     CurrentSession().reset();
   }
+  return true;
+}
+
+bool PrepareShellContextMenuPaste(int request_id,
+                                  content::WebContents* active_contents) {
+  ShellContextMenuSession* session = CurrentSession().get();
+  if (!session || session->request_id() != request_id || !session->menu() ||
+      !active_contents || session->web_contents_for_action() != active_contents ||
+      active_contents->GetVisibility() != content::Visibility::VISIBLE ||
+      !session->document() ||
+      session->document() != active_contents->GetFocusedFrame() ||
+      !AllowsSystemPaste(*session->menu())) {
+    return false;
+  }
+  CurrentSession().reset();
   return true;
 }
 

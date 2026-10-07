@@ -1,4 +1,5 @@
 import { BrowserCommandPayload, BrowserRuntimeEvent, ContextMenuAction } from 'engine';
+import { hasSystemPlainText, showSystemPasteDialog } from './SystemPasteDialog';
 
 // The reference shell's long-press menu: a system action sheet listing what
 // the engine offered in contextMenuRequested. A shell with its own design
@@ -88,7 +89,9 @@ export function showContextMenuSheet(uiContext: UIContext, event: BrowserRuntime
   send: (command: BrowserCommandPayload) => void): void {
   const requestId = event.requestId ?? 0;
   const actions: ContextMenuAction[] = event.supportedActions ?? [];
-  if (actions.length === 0) {
+  const systemPaste = event.systemPasteAllowed === true &&
+    !actions.includes('paste') && hasSystemPlainText();
+  if (actions.length === 0 && !systemPaste) {
     send({ command: 'contextMenuDismissed', requestId: requestId });
     return;
   }
@@ -97,7 +100,7 @@ export function showContextMenuSheet(uiContext: UIContext, event: BrowserRuntime
   // entry with no label would be a blank row.
   const shown: ContextMenuAction[] = actions.filter(
     (action: ContextMenuAction): boolean => labelFor(event, action).length > 0);
-  if (shown.length === 0) {
+  if (shown.length === 0 && !systemPaste) {
     send({ command: 'contextMenuDismissed', requestId: requestId });
     return;
   }
@@ -107,6 +110,22 @@ export function showContextMenuSheet(uiContext: UIContext, event: BrowserRuntime
       send({ command: 'contextMenuAction', requestId: requestId, action: action });
     }
   }));
+  if (systemPaste) {
+    sheets.push({
+      title: '粘贴',
+      action: (): void => {
+        setTimeout((): void => {
+          showSystemPasteDialog(uiContext,
+            (text: string): void => {
+              send({ command: 'insertText', requestId: requestId, text: text });
+            },
+            (): void => {
+              send({ command: 'contextMenuDismissed', requestId: requestId });
+            });
+        }, 0);
+      }
+    });
+  }
   uiContext.showActionSheet({
     title: titleFor(event),
     message: event.linkText ?? '',
