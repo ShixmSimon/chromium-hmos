@@ -12,6 +12,7 @@
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "chrome/browser/ui/ohos/shell_downloads_ohos.h"
 #include "chrome/browser/ui/ohos/shell_password_cleanup_ohos.h"
+#include "url/gurl.h"
 
 namespace chrome::ohos {
 
@@ -191,6 +192,14 @@ std::optional<int64_t> FromShellId(const std::string* id) {
 
 int ReadRequestId(const base::DictValue& command) {
   return command.FindInt("requestId").value_or(0);
+}
+
+std::string UrlForLog(const GURL& url) {
+  if (!url.is_valid()) {
+    return "(invalid url)";
+  }
+  return url.has_host() ? url.scheme() + "://" + url.host()
+                        : url.scheme() + ":";
 }
 
 }  // namespace chrome::ohos

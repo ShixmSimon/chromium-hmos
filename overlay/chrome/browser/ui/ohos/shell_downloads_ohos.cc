@@ -139,7 +139,7 @@ class DownloadsWatcher : public content::DownloadManager::Observer,
     }
     // History items are not news; the shell lists them when it asks.
     if (item->GetDownloadCreationType() != DownloadItem::TYPE_HISTORY_IMPORT) {
-      LOG(INFO) << "OHOS download started: " << item->GetURL().spec();
+      LOG(INFO) << "OHOS download started: " << UrlForLog(item->GetURL());
       LogMilestones(*item);
       Send(*item, /*removed=*/false);
     }
@@ -242,7 +242,7 @@ class DownloadsWatcher : public content::DownloadManager::Observer,
     if (!logged.target && !item.GetTargetFilePath().empty()) {
       logged.target = true;
       LOG(INFO) << "OHOS download target: " << item.GetTargetFilePath()
-                << " for " << item.GetURL().spec();
+                << " for " << UrlForLog(item.GetURL());
     }
     if (!logged.failure &&
         item.GetState() == DownloadItem::INTERRUPTED) {

@@ -1,0 +1,39 @@
+Log only a URL's scheme and host when a commit is refused.
+
+The OHOS lines ohos-single-process.patch added to ValidateURLAndOrigin()
+printed the whole URL into hilog, query string included, which can carry
+session tokens or the fields of a form sent with GET. The scheme and host
+are enough to tell which site it was.
+
+Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
+applied. Apply with:
+  git apply ohos-log-url-host-only.patch
+
+diff --git a/content/browser/renderer_host/render_frame_host_impl.cc b/content/browser/renderer_host/render_frame_host_impl.cc
+index 36e5e6a..c2e798b 100644
+--- a/content/browser/renderer_host/render_frame_host_impl.cc
++++ b/content/browser/renderer_host/render_frame_host_impl.cc
+@@ -16249,7 +16249,10 @@ bool RenderFrameHostImpl::ValidateURLAndOrigin(
+ #if BUILDFLAG(IS_OHOS)
+       // Said in a release build too: on a phone this is what took the whole
+       // browser down, and the log had no word on which URL.
+-      LOG(ERROR) << "OHOS CANNOT_COMMIT_URL url '" << url << "' origin '"
++      // Only the URL's scheme and host: the rest can carry tokens or a
++      // form's fields, and hilog is readable outside the app.
++      LOG(ERROR) << "OHOS CANNOT_COMMIT_URL url '" << url.scheme() << "://"
++                 << url.host() << "' origin '"
+                  << origin << "' lock '" << process->GetProcessLock().ToString()
+                  << "'";
+ #endif
+@@ -16266,7 +16269,10 @@ bool RenderFrameHostImpl::ValidateURLAndOrigin(
+       return false;
+     case CanCommitStatus::CANNOT_COMMIT_ORIGIN:
+ #if BUILDFLAG(IS_OHOS)
+-      LOG(ERROR) << "OHOS CANNOT_COMMIT_ORIGIN url '" << url << "' origin '"
++      // Only the URL's scheme and host: the rest can carry tokens or a
++      // form's fields, and hilog is readable outside the app.
++      LOG(ERROR) << "OHOS CANNOT_COMMIT_ORIGIN url '" << url.scheme() << "://"
++                 << url.host() << "' origin '"
+                  << origin << "' lock '" << process->GetProcessLock().ToString()
+                  << "'";
+ #endif

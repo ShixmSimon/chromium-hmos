@@ -10,6 +10,7 @@
 #include "base/strings/stringprintf.h"
 #include "base/system/sys_info.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+#include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
 #include "components/embedder_support/user_agent_utils.h"
 #include "content/public/browser/navigation_controller.h"
@@ -93,7 +94,7 @@ class StoreUserAgentWatcher
     // a store page that arrived mobile could not be told from one this never
     // looked at.
     absl::Cleanup say = [&] {
-      LOG(WARNING) << "OHOS store UA: url=" << handle->GetURL().spec()
+      LOG(WARNING) << "OHOS store UA: url=" << UrlForLog(handle->GetURL())
                    << " is_store=" << is_store
                    << " phone=" << IsAuraShellMobilePhoneUi()
                    << " ours=" << ours
@@ -154,7 +155,7 @@ class StoreUserAgentWatcher
     const net::HttpRequestHeaders& headers = handle->GetRequestHeaders();
     content::NavigationEntry* entry =
         web_contents()->GetController().GetLastCommittedEntry();
-    LOG(WARNING) << "OHOS store UA sent: url=" << handle->GetURL().spec()
+    LOG(WARNING) << "OHOS store UA sent: url=" << UrlForLog(handle->GetURL())
                  << " committed=" << handle->HasCommitted()
                  << " entry_overriding="
                  << (entry && entry->GetIsOverridingUserAgent())

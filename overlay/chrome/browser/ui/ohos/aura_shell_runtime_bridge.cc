@@ -2212,7 +2212,7 @@ void ToggleReaderMode(content::WebContents* contents) {
   // an article that distils to nothing leaves the reader on the page they
   // were on, with no explanation unless the log gives one.
   LOG(WARNING) << "OHOS reader mode: asked to distil "
-               << contents->GetLastCommittedURL().possibly_invalid_spec();
+               << UrlForLog(contents->GetLastCommittedURL());
   DistillCurrentPageAndViewIfSuccessful(
       contents, base::BindOnce([](bool success) {
         LOG(WARNING) << "OHOS reader mode: distilled=" << success;
@@ -4482,7 +4482,8 @@ bool NavigateAuraShellBrowser(gfx::AcceleratedWidget widget,
                               const std::string& url) {
   GURL target(url);
   if (!target.is_valid()) {
-    LOG(ERROR) << "OHOS Aura shell rejected invalid URL: " << url;
+    LOG(ERROR) << "OHOS Aura shell rejected an invalid URL (" << url.size()
+               << " chars)";
     return false;
   }
 
@@ -5176,7 +5177,7 @@ void RequestAuraShellExternalUrl(content::WebContents* contents,
   }
   if (app_url.empty() && fallback_url.empty()) {
     LOG(WARNING) << "OHOS external URL with nothing to open: "
-                 << url.possibly_invalid_spec();
+                 << UrlForLog(url);
     return;
   }
   // A tab the reader is not looking at may not send them to another app, as
@@ -5185,12 +5186,14 @@ void RequestAuraShellExternalUrl(content::WebContents* contents,
   if (contents &&
       contents->GetVisibility() != content::Visibility::VISIBLE) {
     LOG(WARNING) << "OHOS external URL from a background tab ignored: "
-                 << app_url;
+                 << UrlForLog(GURL(app_url));
     return;
   }
-  LOG(WARNING) << "OHOS external URL: " << app_url
-               << (fallback_url.empty() ? "" : " fallback " + fallback_url)
-               << " from " << initiator;
+  LOG(WARNING) << "OHOS external URL: " << UrlForLog(GURL(app_url))
+               << (fallback_url.empty()
+                       ? std::string()
+                       : " fallback " + UrlForLog(GURL(fallback_url)))
+               << " from " << UrlForLog(GURL(initiator));
   base::DictValue event;
   event.Set("event", "externalUrlRequested");
   event.Set("url", app_url);

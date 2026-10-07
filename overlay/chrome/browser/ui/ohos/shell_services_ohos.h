@@ -83,6 +83,12 @@ std::optional<int64_t> FromShellId(const std::string* id);
 // The "requestId" a query carries, echoed in its answer. 0 when absent.
 int ReadRequestId(const base::DictValue& command);
 
+// A URL as a log line may show it: the scheme and host, as
+// "https://example.com" or "weixin:". Never the path, query or fragment --
+// they carry session tokens, search terms and, from a form sent with GET,
+// whatever was typed into it, and hilog is readable outside the app.
+std::string UrlForLog(const GURL& url);
+
 // Per-profile state -- an observer, a task tracker -- that must not outlive
 // its profile. Get() creates on first use; the entry is destroyed when the
 // profile is, before its keyed services go away.
