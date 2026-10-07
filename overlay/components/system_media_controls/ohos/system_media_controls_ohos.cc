@@ -20,6 +20,7 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/no_destructor.h"
 #include "base/notimplemented.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
@@ -380,7 +381,7 @@ void SystemMediaControlsOhos::EncodeThumbnail(
       reply.result_dict().FindString("uriDirectory");
   if (!reply.ok || !directory || !uri_directory || directory->empty() ||
       !base::FilePath(*directory).IsAbsolute() ||
-      !uri_directory->starts_with("file://")) {
+      !uri_directory->starts_with("file:///")) {
     ClearThumbnail();
     LOG(WARNING) << "Media artwork cache unavailable";
     return;
@@ -402,6 +403,7 @@ void SystemMediaControlsOhos::OnThumbnailReady(
     return;
   }
   artwork_ = std::move(artwork);
+  metadata_generation_ = generation;
   image_uri_ = artwork_ ? artwork_->uri : std::string();
   UpdateDisplay();
 }
@@ -423,7 +425,7 @@ void SystemMediaControlsOhos::ClearPosition() {
 
 void SystemMediaControlsOhos::ClearThumbnail() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  ++*artwork_generation_;
+  metadata_generation_ = ++*artwork_generation_;
   image_uri_.clear();
   artwork_.reset();
   published_artwork_.reset();
@@ -447,9 +449,10 @@ void SystemMediaControlsOhos::UpdateDisplay() {
       !builder) {
     return;
   }
-  // AVSession requires an asset id; a page has one media session at a time.
-  OH_AVMetadataBuilder_SetAssetId(
-      builder, media_id_.empty() ? kSessionTag : media_id_.c_str());
+  const std::string asset_id =
+      (media_id_.empty() ? std::string(kSessionTag) : media_id_) + ":" +
+      base::NumberToString(metadata_generation_);
+  OH_AVMetadataBuilder_SetAssetId(builder, asset_id.c_str());
   OH_AVMetadataBuilder_SetTitle(builder, title_.c_str());
   OH_AVMetadataBuilder_SetArtist(builder, artist_.c_str());
   OH_AVMetadataBuilder_SetAlbum(builder, album_.c_str());

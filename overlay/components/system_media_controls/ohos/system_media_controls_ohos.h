@@ -90,6 +90,7 @@ class SystemMediaControlsOhos : public SystemMediaControls {
   int64_t duration_ms_ = -1;
   std::string media_id_;
   std::string image_uri_;
+  uint64_t metadata_generation_ = 0;
   scoped_refptr<base::SequencedTaskRunner> artwork_task_runner_;
   std::shared_ptr<std::atomic<uint64_t>> artwork_generation_;
   std::shared_ptr<ArtworkFile> artwork_;
