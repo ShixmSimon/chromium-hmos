@@ -19,6 +19,7 @@
 #include "ui/accessibility/ax_mode.h"
 #include "ui/accessibility/ax_node_data.h"
 #include "ui/accessibility/ax_tree_data.h"
+#include "ui/accessibility/platform/ax_platform_node_delegate.h"
 #include "ui/accessibility/platform/browser_accessibility.h"
 #include "ui/accessibility/platform/browser_accessibility_manager.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
@@ -27,6 +28,15 @@ namespace chrome::ohos {
 namespace {
 
 constexpr char kModeKey[] = "ohos-web-accessibility";
+
+// A node's id across every accessibility tree in the browser. Asked through
+// the delegate interface, where it is public; BrowserAccessibility's own
+// override is protected.
+int64_t UniqueId(const ui::BrowserAccessibility* node) {
+  return static_cast<const ui::AXPlatformNodeDelegate*>(node)
+      ->GetUniqueId()
+      .value();
+}
 
 ohos_accessibility::Snapshot EmptySnapshot() {
   ohos_accessibility::Snapshot snapshot;
@@ -137,7 +147,7 @@ void Perform(gfx::AcceleratedWidget widget,
   if (found == targets.end()) return;
   auto* manager = ui::BrowserAccessibilityManager::FromID(found->second.tree);
   auto* node = manager ? manager->GetFromID(found->second.node) : nullptr;
-  if (!node || static_cast<int64_t>(node->GetUniqueId().value()) != id) return;
+  if (!node || UniqueId(node) != id) return;
   ui::AXActionData data;
   data.target_tree_id = found->second.tree;
   data.target_node_id = found->second.node;
@@ -200,14 +210,14 @@ void UpdateShellAccessibility(gfx::AcceleratedWidget widget,
   }
   snapshot.nodes.clear();
   snapshot.order.clear();
-  snapshot.root = root->GetUniqueId().value();
+  snapshot.root = UniqueId(root);
   std::map<int64_t, Target> targets;
   std::vector<std::pair<ui::BrowserAccessibility*, int64_t>> pending = {{root, -1}};
   while (!pending.empty()) {
     auto [accessible, parent] = pending.back();
     pending.pop_back();
     ohos_accessibility::Node node;
-    node.id = accessible->GetUniqueId().value();
+    node.id = UniqueId(accessible);
     if (snapshot.nodes.contains(node.id)) continue;
     node.parent = parent;
     node.role = ComponentRole(accessible->GetRole());
@@ -245,7 +255,7 @@ void UpdateShellAccessibility(gfx::AcceleratedWidget widget,
     const size_t count = accessible->PlatformChildCount();
     for (size_t index = 0; index < count; ++index) {
       auto* child = accessible->PlatformGetChild(index);
-      if (child) node.children.push_back(child->GetUniqueId().value());
+      if (child) node.children.push_back(UniqueId(child));
     }
     for (size_t index = count; index > 0; --index) {
       if (auto* child = accessible->PlatformGetChild(index - 1)) {

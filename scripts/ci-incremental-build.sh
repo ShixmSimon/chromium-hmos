@@ -210,7 +210,6 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-egl-bottom-left-surface.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-password-sync.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-log-url-host-only.patch"
-  retire_incremental_patch "${repo_root}/patches/ohos-web-accessibility.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-web-accessibility.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
