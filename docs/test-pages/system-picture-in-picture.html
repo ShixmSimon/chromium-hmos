@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>系统画中画验收（无声）</title>
+<style>
+body { max-width: 48rem; margin: 2rem auto; padding: 0 1rem; font: 18px system-ui; }
+button { margin: .4rem; padding: .8rem; font: inherit; }
+video { display: block; width: 100%; max-width: 640px; background: black; }
+</style>
+<h1>系统画中画验收（无声）</h1>
+<p>先与设备使用者协调。测试视频由本页生成，不含音轨，不会发声，不访问外部媒体。</p>
+<button id="prepare">生成无声视频</button>
+<button id="enter" disabled>播放并进入画中画</button>
+<button id="exit">退出画中画</button>
+<button id="remove">移除视频源</button>
+<video id="video" controls muted playsinline loop></video>
+<p id="status" role="status">尚未生成视频</p>
+<ol>
+<li>进入画中画后返回桌面或切换应用，画面中的计数应继续循环变化。</li>
+<li>系统暂停/播放按钮能控制视频；还原回到来源标签，关闭会暂停视频。</li>
+<li>重复进入/退出、快速关闭标签、移除视频源，不应残留黑窗或重新弹出旧窗口。</li>
+<li>分别验证手机单进程、平板/PC 多进程及无痕窗口；PC 的 XComponent 路线要求 HarmonyOS 6.0 或更新版本。</li>
+</ol>
+<script>
+const video = document.querySelector('#video');
+const status = document.querySelector('#status');
+const prepare = document.querySelector('#prepare');
+const enter = document.querySelector('#enter');
+let objectUrl = '';
+
+prepare.onclick = async () => {
+  prepare.disabled = true;
+  enter.disabled = true;
+  let stream;
+  let timer;
+  try {
+    status.textContent = '正在生成两秒无声视频…';
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 360;
+    const context = canvas.getContext('2d');
+    let frame = 0;
+    const draw = () => {
+      context.fillStyle = frame % 20 < 10 ? '#185abc' : '#137333';
+      context.fillRect(0, 0, 640, 360);
+      context.fillStyle = 'white';
+      context.font = '48px sans-serif';
+      context.fillText(`Silent PiP ${frame++}`, 60, 190);
+    };
+    draw();
+    stream = canvas.captureStream(20);
+    if (stream.getAudioTracks().length !== 0) throw new Error('Unexpected audio track');
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+    const chunks = [];
+    recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+    const stopped = new Promise((resolve, reject) => {
+      recorder.onstop = resolve;
+      recorder.onerror = reject;
+    });
+    recorder.start();
+    timer = setInterval(draw, 50);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    recorder.stop();
+    await stopped;
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = URL.createObjectURL(new Blob(chunks, { type: recorder.mimeType }));
+    video.src = objectUrl;
+    await new Promise((resolve, reject) => {
+      video.onloadeddata = resolve;
+      video.onerror = reject;
+    });
+    enter.disabled = false;
+    status.textContent = '视频已生成，没有音轨。点击“播放并进入画中画”。';
+  } catch {
+    status.textContent = '生成失败，请检查 VP8 录制/播放支持。';
+  } finally {
+    clearInterval(timer);
+    stream?.getTracks().forEach(track => track.stop());
+    prepare.disabled = false;
+  }
+};
+enter.onclick = async () => {
+  try {
+    await video.play();
+    await video.requestPictureInPicture();
+    status.textContent = '网页画中画已进入；请检查是否出现系统窗口并验证退后台。';
+  } catch {
+    status.textContent = '进入失败，请保持页面前台并重新点击。';
+  }
+};
+document.querySelector('#exit').onclick = async () => {
+  if (document.pictureInPictureElement) await document.exitPictureInPicture();
+};
+document.querySelector('#remove').onclick = () => {
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = '';
+  enter.disabled = true;
+};
+video.addEventListener('leavepictureinpicture', () => {
+  status.textContent = `已离开画中画，视频状态：${video.paused ? '暂停' : '播放'}`;
+});
+</script>
+</html>

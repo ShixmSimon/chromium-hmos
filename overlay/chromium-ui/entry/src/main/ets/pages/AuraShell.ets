@@ -14,7 +14,7 @@
  */
 
 import { common } from '@kit.AbilityKit';
-import { WebWindow } from 'engine';
+import { WebWindow, PictureInPictureSurface } from 'engine';
 import { MobileBrowserOverlay } from '../components/mobile/MobileBrowserOverlay';
 import { CurrentTabCastSession } from '../components/mobile/CurrentTabCastSession';
 import { showContextMenuSheet } from '../components/mobile/ContextMenuSheet';
@@ -255,25 +255,34 @@ struct AuraShell {
     }
     ForEach(this.auxiliaryWindows, (view: AuxiliaryWindowView) => {
       Stack() {
-        XComponent({
-          id: view.state.componentId,
-          type: XComponentType.SURFACE,
-          libraryname: 'web_engine'
-        })
-          .id(view.state.componentId)
-          .width('100%')
-          .height('100%')
-          // A SURFACE XComponent's own background is opaque black by default,
-          // and it shows through wherever the buffer is transparent. Popups
-          // paint their margin transparent (rounded corners, the arrow, the
-          // shadow), so without this each one sat in a black rectangle.
-          .backgroundColor(Color.Transparent)
-          // A popup anchored to the page -- the autofill list under a field
-          // -- is not activatable in Chromium either. Taking focus here moved
-          // it off the page's XComponent, which closed the keyboard the user
-          // was typing with and could leave it unable to reopen.
-          .focusable(view.state.anchored !== true)
-          .defaultFocus(view.state.widget === this.activeAuxiliaryWidget)
+        if (view.state.pictureInPicture === true) {
+          PictureInPictureSurface({
+            componentId: view.state.componentId,
+            widget: view.state.widget
+          })
+            .width('100%')
+            .height('100%')
+        } else {
+          XComponent({
+            id: view.state.componentId,
+            type: XComponentType.SURFACE,
+            libraryname: 'web_engine'
+          })
+            .id(view.state.componentId)
+            .width('100%')
+            .height('100%')
+            // A SURFACE XComponent's own background is opaque black by default,
+            // and it shows through wherever the buffer is transparent. Popups
+            // paint their margin transparent (rounded corners, the arrow, the
+            // shadow), so without this each one sat in a black rectangle.
+            .backgroundColor(Color.Transparent)
+            // A popup anchored to the page -- the autofill list under a field
+            // -- is not activatable in Chromium either. Taking focus here moved
+            // it off the page's XComponent, which closed the keyboard the user
+            // was typing with and could leave it unable to reopen.
+            .focusable(view.state.anchored !== true)
+            .defaultFocus(view.state.widget === this.activeAuxiliaryWidget)
+        }
       }
       // Read through this.auxiliaryWindows rather than `view`: the item is keyed
       // by component id so that a resize does not recreate the surface, which
@@ -507,7 +516,8 @@ struct AuraShell {
       this.handlePwaWindowState(state);
       return;
     }
-    if (!this.isFullscreenWindow()) {
+    if (!this.isFullscreenWindow() && state.pictureInPicture !== true &&
+      this.findAuxiliaryWindow(state.widget)?.state.pictureInPicture !== true) {
       return;
     }
 

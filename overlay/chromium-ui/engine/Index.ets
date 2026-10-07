@@ -90,3 +90,4 @@ export {
   WindowStateSnapshot
 } from './src/main/ets/utils/DeviceType';
 export { UIManager } from './src/main/ets/utils/UIManager';
+export { PictureInPictureSurface } from './src/main/ets/components/webwindow/PictureInPictureSurface';

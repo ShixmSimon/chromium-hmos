@@ -680,6 +680,9 @@ void NativeSurfaceDestroyed(OH_NativeXComponent* component, void* window) {
     return;
   }
   ohos_accessibility::UnregisterProvider(*component_id, window);
+  if (IsAuxiliaryComponentId(*component_id)) {
+    ReleaseBrowserEventFunction(*component_id);
+  }
   HostPtr host = IsAuxiliaryComponentId(*component_id)
                      ? TakeHost(*component_id)
                      : FindHost(*component_id);

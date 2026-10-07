@@ -197,7 +197,7 @@ export interface ContextMenuMediaFlags {
 
 export interface BrowserRuntimeEvent {
   version: number;
-  event: 'systemPrintReady' | 'systemPrintFailed' | 'shareRequested' |
+  event: 'pictureInPictureState' | 'systemPrintReady' | 'systemPrintFailed' | 'shareRequested' |
     'castRequested' | 'filePickerRequested' | 'pwaInstalled' | 'pwaMenuModel' |
     'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
     'permissionsRequested' | 'sitePermissionRequested' |
@@ -231,6 +231,8 @@ export interface BrowserRuntimeEvent {
   // gpuContextLost: whether the engine could rebuild after the GPU lost
   // its context. False means the picture will not come back on its own.
   recovered?: boolean;
+  pipWidget?: number;
+  pipPlaying?: boolean;
   // browserChromeRequested: which UI the reader asked for. The shell saves
   // the setting and calls setBrowserChrome itself; the engine only asks.
   mode?: 'shell' | 'native';
@@ -464,6 +466,8 @@ export interface DroppedFileRef {
 
 export interface BrowserCommandPayload {
   command: string;
+  pipWidget?: number;
+  pipAction?: 'play' | 'pause' | 'close' | 'restore' | 'state';
   url?: string;
   // contextMenuAction: the item chosen, one of the event's supportedActions.
   // downloadAction: what to do with the download `id`.

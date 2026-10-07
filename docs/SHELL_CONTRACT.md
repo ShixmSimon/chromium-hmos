@@ -991,18 +991,43 @@ restoreLastSession { restore: boolean }       // 命令
 
 **画中画**
 
-长按视频的菜单里有 `pictureInPicture`,用的是 Chromium 自己的画中画。它出来的是一个
-**辅助窗口**,和无痕窗口、拖出来的标签同一个形状:`windowRole: "browser"` 之外的
-auxiliary 窗口状态 + 自己的 surface,外壳照已有的那套摆放就行,不用新接口。播放/暂停、
-关闭、回到标签页这些控件由 Chromium 自己画在窗口里。
+长按视频菜单的 `pictureInPicture` 和网页 `video.requestPictureInPicture()` 先创建
+Chromium 视频画中画辅助窗口。窗口事件带 `pictureInPicture: true`、`widget` 和
+`componentId`；Document Picture-in-Picture 不在本次系统接入范围内。
 
 辅助窗口状态里带 `pictureInPicture: true`。**用它把画中画和网页自己的弹窗区分开** ——
 两者都是浮在页面上、没有自己的关闭按钮,但返回键应该关掉弹窗、放过画中画,而画中画
 应该待在角落而不是屏幕中间。旧引擎上这个字段不存在。
 
-**注意它不是鸿蒙的系统小窗**:它活在应用里,应用退到后台就没了。要"离开浏览器还continue
-播放"的系统小窗,得把视频的 viz surface 嵌进外壳用 `@ohos.PiPWindow` 建的窗口里,那是另
-一件大得多的工作(见 docs 里的讨论),现在没有做。
+外壳使用 engine 导出的 `PictureInPictureSurface({ componentId, widget })` 替代这个
+辅助窗口原来的 XComponent，并保持原来的宽高布局。组件自己创建 SURFACE XComponent，
+通过 `PiPWindow.create()` 的 `componentController` 接入系统画中画，窗口 Surface 仍由
+Chromium 渲染，不另行下载视频或截图。不要同时再给同一个 componentId 创建 XComponent。
+普通辅助窗口保持原有处理。窗口销毁时移除组件，组件停止系统画中画；系统不支持或启动失败时
+保留应用内画中画。PC 的 XComponent 系统画中画路线要求 HarmonyOS 6.0 或更高版本。
+
+系统控件通过 XComponent 的原生上下文直接发命令，不依赖主页面 @State 更新，否则主窗口
+在后台时命令可能等到前台重绘才执行。自研外壳如不使用这个组件，需实现以下协议：
+
+| 命令 | 参数 | 行为 |
+|---|---|---|
+| `pictureInPictureAction` | `pipWidget`, `pipAction: "play" / "pause"` | 操作画中画来源视频，不操作当前活动标签 |
+| `pictureInPictureAction` | `pipWidget`, `pipAction: "close"` | 退出 Chromium 画中画并暂停视频 |
+| `pictureInPictureAction` | `pipWidget`, `pipAction: "restore"` | 退出 Chromium 画中画并聚焦来源标签，不主动暂停 |
+| `pictureInPictureAction` | `pipWidget`, `pipAction: "state"` | 返回 `pictureInPictureState { pipWidget, pipPlaying }` |
+
+内核检查窗口类型及来源 WebContents，过期窗口命令不操作其他来源的视频。组件在系统窗口
+存在时每秒查询播放状态，以同步系统播放/暂停按钮；连续三次没有有效答复则停止系统小窗。
+系统 `ABOUT_TO_RESTORE` 后的停止按还原处理，其他用户关闭按暂停处理；组件释放主动停止
+不再给内核发送关闭命令。无痕使用同一 Surface 路线，不写图片或视频缓存。新增日志只记录
+固定状态，不记录网址、标题或视频内容。
+
+当前接入代码仍待 CI 编译及真机验收，不能据此宣称后台播放已验证。生命周期模拟测试：
+`node --test scripts/tests/system-picture-in-picture.test.mjs`（Node 24；执行组件逻辑、模拟
+ArkUI/系统接口，不替代 ArkTS 编译）。无声验收页为
+`docs/test-pages/system-picture-in-picture.html`，视频由 canvas 录制生成且没有音轨。
+须验证退后台持续播放、系统控制、关闭暂停、还原来源标签、快速进出和关闭来源页面、
+普通与无痕窗口，并分别覆盖手机单进程及平板/PC 多进程。真机操作前先协调设备使用。
 
 **应用接续:读取和恢复网页位置**
 

@@ -15,6 +15,8 @@
 #include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
+#include "chrome/browser/ui/views/overlay/video_overlay_window_views.h"
+#include "content/public/browser/video_picture_in_picture_window_controller.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "components/tabs/public/tab_group.h"
 
@@ -61,6 +63,7 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
+#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_manager_observer.h"
@@ -3488,6 +3491,62 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
 
   BrowserWindowInterface* browser = FindBrowserForWidget(widget);
   TabStripModel* tabs = browser ? browser->GetTabStripModel() : nullptr;
+  if (*name == "pictureInPictureAction") {
+    const double target = command.FindDouble("pipWidget").value_or(0);
+    const std::string* action = command.FindString("pipAction");
+    if (!action || !std::isfinite(target) || target <= 0 ||
+        target >= static_cast<double>(
+                      std::numeric_limits<gfx::AcceleratedWidget>::max()) ||
+        std::floor(target) != target ||
+        !IsAuraShellPictureInPictureWindow(
+             static_cast<gfx::AcceleratedWidget>(target)).value_or(false)) {
+      return;
+    }
+    auto* manager = PictureInPictureWindowManager::GetInstance();
+    content::WebContents* contents = manager->GetWebContents();
+    if (!contents || !contents->HasPictureInPictureVideo() ||
+        manager->GetChildWebContents()) {
+      return;
+    }
+    auto* host = aura::WindowTreeHost::GetForAcceleratedWidget(
+        static_cast<gfx::AcceleratedWidget>(target));
+    if (!host || !host->window()) {
+      return;
+    }
+    content::PictureInPictureWindowController* window_controller = nullptr;
+    for (views::Widget* candidate :
+         views::Widget::GetAllChildWidgets(host->window())) {
+      if (candidate->GetName() == "PictureInPictureWindow" &&
+          candidate == candidate->GetTopLevelWidget()) {
+        window_controller =
+            static_cast<VideoOverlayWindowViews*>(candidate)->GetController();
+        break;
+      }
+    }
+    if (!window_controller || window_controller->GetWebContents() != contents) {
+      return;
+    }
+    if (*action == "close" || *action == "restore") {
+      using UiBehavior = PictureInPictureWindowManager::UiBehavior;
+      manager->ExitPictureInPictureViaWindowUi(
+          *action == "close" ? UiBehavior::kCloseWindowAndPauseVideo
+                             : UiBehavior::kCloseWindowAndFocusOpener);
+    } else if (*action == "play" || *action == "pause" || *action == "state") {
+      auto* controller = content::PictureInPictureWindowController::
+          GetOrCreateVideoPictureInPictureController(contents);
+      if (*action == "play") {
+        controller->Play();
+      } else if (*action == "pause") {
+        controller->Pause();
+      }
+      base::DictValue event;
+      event.Set("event", "pictureInPictureState");
+      event.Set("pipWidget", target);
+      event.Set("pipPlaying", controller->IsPlayerActive());
+      DispatchRuntimeEvent(widget, std::move(event));
+    }
+    return;
+  }
   if (*name == "setDownloadDirectory" && !browser) {
     // Sent as the shell's page appears, often before the browser exists; the
     // directory is kept and applied once a profile is there.
@@ -4549,6 +4608,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "groupTabs",
       "insertText",
       "handleBack",
+      "pictureInPictureAction",
       "dragEvent",
       "pageDragFinished",
       "closeTab",
