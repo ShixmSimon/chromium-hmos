@@ -7,11 +7,16 @@
 
 #include <multimedia/av_session/native_avsession.h>
 
+#include <atomic>
+#include <memory>
 #include <string>
 
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "base/sequence_checker.h"
+#include "base/task/sequenced_task_runner.h"
+#include "components/ohos_system_service/system_service_ohos.h"
 #include "components/system_media_controls/system_media_controls.h"
 
 namespace system_media_controls::internal {
@@ -42,6 +47,7 @@ class SystemMediaControlsOhos : public SystemMediaControls {
   void SetIsStopEnabled(bool value) override;
   void SetIsSeekToEnabled(bool value) override;
   void SetPlaybackStatus(PlaybackStatus value) override;
+  void SetID(const std::string* value) override;
   void SetTitle(const std::u16string& value) override;
   void SetArtist(const std::u16string& value) override;
   void SetAlbum(const std::u16string& value) override;
@@ -58,6 +64,12 @@ class SystemMediaControlsOhos : public SystemMediaControls {
   void OnSeekTo(uint64_t milliseconds);
 
  private:
+  struct ArtworkFile;
+  void EncodeThumbnail(uint64_t generation,
+                       SkBitmap bitmap,
+                       ohos_system_service::Reply reply);
+  void OnThumbnailReady(uint64_t generation,
+                        std::shared_ptr<ArtworkFile> artwork);
   void SetBackgroundAudio(bool running);
   void SetCommandEnabled(AVSession_ControlCommand command, bool enabled);
 
@@ -76,6 +88,12 @@ class SystemMediaControlsOhos : public SystemMediaControls {
   std::string artist_;
   std::string album_;
   int64_t duration_ms_ = -1;
+  std::string media_id_;
+  std::string image_uri_;
+  scoped_refptr<base::SequencedTaskRunner> artwork_task_runner_;
+  std::shared_ptr<std::atomic<uint64_t>> artwork_generation_;
+  std::shared_ptr<ArtworkFile> artwork_;
+  std::shared_ptr<ArtworkFile> published_artwork_;
 
   base::ObserverList<SystemMediaControlsObserver> observers_;
 

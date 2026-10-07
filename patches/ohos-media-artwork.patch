@@ -1,0 +1,132 @@
+diff --git a/components/system_media_controls/BUILD.gn b/components/system_media_controls/BUILD.gn
+index 756d30f..332eca2 100644
+--- a/components/system_media_controls/BUILD.gn
++++ b/components/system_media_controls/BUILD.gn
+@@ -83,7 +83,10 @@ component("system_media_controls") {
+       "ohos/system_media_controls_ohos.cc",
+       "ohos/system_media_controls_ohos.h",
+     ]
+-    deps += [ "//components/ohos_system_service" ]
++    deps += [
++      "//components/ohos_system_service",
++      "//ui/gfx/codec",
++    ]
+     libs = [
+       "bundle_ndk.z",
+       "ohavsession",
+diff --git a/content/browser/media/system_media_controls/system_media_controls_notifier.cc b/content/browser/media/system_media_controls/system_media_controls_notifier.cc
+index 07cec33..0393523 100644
+--- a/content/browser/media/system_media_controls/system_media_controls_notifier.cc
++++ b/content/browser/media/system_media_controls/system_media_controls_notifier.cc
+@@ -92,6 +92,13 @@ void SystemMediaControlsNotifier::MediaSessionInfoChanged(
+   bool is_playing = false;
+ 
+   session_info_ptr_ = std::move(session_info_ptr);
++#if BUILDFLAG(IS_OHOS)
++  if (!session_info_ptr_ || session_info_ptr_->hide_metadata) {
++    icon_update_timer_.Stop();
++    delayed_icon_update_ = std::nullopt;
++    system_media_controls_->ClearThumbnail();
++  }
++#endif
+   if (session_info_ptr_) {
+     is_playing = session_info_ptr_->playback_state ==
+                  media_session::mojom::MediaPlaybackState::kPlaying;
+@@ -152,20 +159,33 @@ void SystemMediaControlsNotifier::MediaSessionActionsChanged(
+ 
+ void SystemMediaControlsNotifier::MediaSessionChanged(
+     const std::optional<base::UnguessableToken>& request_id) {
++#if BUILDFLAG(IS_OHOS)
++  icon_update_timer_.Stop();
++  delayed_icon_update_ = std::nullopt;
++  system_media_controls_->ClearThumbnail();
++#endif
+   if (!request_id.has_value()) {
+     system_media_controls_->SetID(nullptr);
+     return;
+   }
+   auto string_id = request_id->ToString();
+   system_media_controls_->SetID(&string_id);
+ }
+ 
+ void SystemMediaControlsNotifier::MediaControllerImageChanged(
+     media_session::mojom::MediaSessionImageType type,
+     const SkBitmap& bitmap) {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (session_info_ptr_ && !session_info_ptr_->hide_metadata) {
++    system_media_controls_->SetThumbnail(bitmap);
++  } else {
++    system_media_controls_->ClearThumbnail();
++  }
++#else
+   DebounceIconUpdate(bitmap);
++#endif
+ }
+ 
+ void SystemMediaControlsNotifier::MediaSessionPositionChanged(
+@@ -288,34 +308,45 @@ void SystemMediaControlsNotifier::UpdateMetadata() {
+ 
+       // Always make sure the metadata replacement is accompanied by the
+       // thumbnail replacement.
++#if BUILDFLAG(IS_OHOS)
++      system_media_controls_->ClearThumbnail();
++#else
+       system_media_controls_->SetThumbnail(
+           media_session_client->GetThumbnailPlaceholder());
++#endif
+     } else {
+       // If no title was provided, the title of the tab will be in the title
+       // property.
+       system_media_controls_->SetTitle(delayed_metadata_update_->title);
+ 
+       // If no artist was provided, then the source URL will be in the artist
+       // property.
+       system_media_controls_->SetArtist(delayed_metadata_update_->artist);
+ 
+       system_media_controls_->SetAlbum(delayed_metadata_update_->album);
+     }
+ 
+     system_media_controls_->UpdateDisplay();
+     delayed_metadata_update_ = std::nullopt;
+   }
+ 
+   if (delayed_playback_status_) {
+     system_media_controls_->SetPlaybackStatus(*delayed_playback_status_);
+     delayed_playback_status_ = std::nullopt;
+   }
+ }
+ 
+ void SystemMediaControlsNotifier::UpdateIcon() {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+   CHECK(delayed_icon_update_);
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (!session_info_ptr_ || session_info_ptr_->hide_metadata) {
++    system_media_controls_->ClearThumbnail();
++  } else {
++    system_media_controls_->SetThumbnail(*delayed_icon_update_);
++  }
++#else
+   // If we need to hide the media metadata we replace the playing media's image
+   // with a placeholder.
+   if (session_info_ptr_ && session_info_ptr_->hide_metadata) {
+@@ -343,12 +374,17 @@ void SystemMediaControlsNotifier::UpdateIcon() {
+     }
+   }
+ 
++#endif
+   delayed_icon_update_ = std::nullopt;
+ }
+ 
+ void SystemMediaControlsNotifier::ClearAllMetadata() {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+   metadata_update_timer_.Stop();
++#if BUILDFLAG(IS_OHOS)
++  icon_update_timer_.Stop();
++  delayed_icon_update_ = std::nullopt;
++#endif
+ 
+   delayed_position_update_ = std::nullopt;
+   delayed_metadata_update_ = std::nullopt;

@@ -9,9 +9,12 @@
 #include <multimedia/av_session/native_avplaybackstate.h>
 #include <multimedia/av_session/native_avsession_errors.h>
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/scoped_refptr.h"
@@ -19,11 +22,16 @@
 #include "base/notimplemented.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/task/thread_pool.h"
 #include "base/time/time.h"
+#include "base/unguessable_token.h"
 #include "base/values.h"
 #include "components/ohos_system_service/system_service_ohos.h"
 #include "components/system_media_controls/system_media_controls_observer.h"
 #include "services/media_session/public/cpp/media_position.h"
+#include "skia/ext/image_operations.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/gfx/codec/png_codec.h"
 
 namespace system_media_controls {
 
@@ -120,10 +128,82 @@ struct SystemMediaControlsOhos::Relay {
   }
 };
 
-SystemMediaControlsOhos::SystemMediaControlsOhos() = default;
+struct SystemMediaControlsOhos::ArtworkFile {
+  base::FilePath path;
+  std::string uri;
+  scoped_refptr<base::SequencedTaskRunner> task_runner;
+
+  ~ArtworkFile() {
+    if (!path.empty()) {
+      task_runner->PostTask(
+          FROM_HERE, base::BindOnce(
+                         [](base::FilePath path) {
+                           if (!base::DeleteFile(path)) {
+                             LOG(WARNING) << "Media artwork cleanup failed";
+                           }
+                         },
+                         path));
+    }
+  }
+
+  static std::shared_ptr<ArtworkFile> Encode(
+      SkBitmap bitmap,
+      base::FilePath directory,
+      std::string uri_directory,
+      scoped_refptr<base::SequencedTaskRunner> task_runner,
+      std::shared_ptr<std::atomic<uint64_t>> current_generation,
+      uint64_t generation) {
+    if (current_generation->load() != generation || bitmap.drawsNothing()) {
+      return nullptr;
+    }
+    constexpr int kMaxDimension = 512;
+    const int longest = std::max(bitmap.width(), bitmap.height());
+    if (longest > kMaxDimension) {
+      bitmap = skia::ImageOperations::Resize(
+          bitmap, skia::ImageOperations::RESIZE_GOOD,
+          std::max(1, static_cast<int>(
+                          int64_t{bitmap.width()} * kMaxDimension / longest)),
+          std::max(1, static_cast<int>(
+                          int64_t{bitmap.height()} * kMaxDimension / longest)));
+    }
+    if (bitmap.drawsNothing()) {
+      return nullptr;
+    }
+    SkBitmap pixels;
+    if (!pixels.tryAllocN32Pixels(bitmap.width(), bitmap.height()) ||
+        !bitmap.readPixels(pixels.info(), pixels.getPixels(), pixels.rowBytes(),
+                           0, 0)) {
+      return nullptr;
+    }
+    auto encoded = gfx::PNGCodec::EncodeBGRASkBitmap(pixels, false);
+    if (!encoded || current_generation->load() != generation) {
+      return nullptr;
+    }
+    const std::string filename =
+        "artwork-" + base::UnguessableToken::Create().ToString() + ".png";
+    auto artwork = std::make_shared<ArtworkFile>();
+    artwork->task_runner = std::move(task_runner);
+    artwork->path = directory.AppendASCII(filename);
+    artwork->uri = uri_directory + "/" + filename;
+    if (!base::WriteFile(artwork->path, *encoded) ||
+        current_generation->load() != generation) {
+      return nullptr;
+    }
+    return artwork;
+  }
+};
+
+SystemMediaControlsOhos::SystemMediaControlsOhos()
+    : artwork_task_runner_(base::ThreadPool::CreateSequencedTaskRunner(
+          {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
+           base::TaskShutdownBehavior::BLOCK_SHUTDOWN})),
+      artwork_generation_(std::make_shared<std::atomic<uint64_t>>(0)) {}
 
 SystemMediaControlsOhos::~SystemMediaControlsOhos() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  ++*artwork_generation_;
+  artwork_.reset();
+  published_artwork_.reset();
   if (!session_) {
     return;
   }
@@ -248,6 +328,18 @@ void SystemMediaControlsOhos::SetPlaybackStatus(PlaybackStatus value) {
   // drops every command sent to an inactive session, so the session follows
   // whether a page has an active media session instead.
   SetEnabled(value != PlaybackStatus::kStopped);
+  if (value == PlaybackStatus::kStopped) {
+    ClearThumbnail();
+  }
+}
+
+void SystemMediaControlsOhos::SetID(const std::string* value) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  const std::string id = value ? *value : std::string();
+  if (id != media_id_) {
+    media_id_ = id;
+    ClearThumbnail();
+  }
 }
 
 void SystemMediaControlsOhos::SetTitle(const std::u16string& value) {
@@ -263,8 +355,55 @@ void SystemMediaControlsOhos::SetAlbum(const std::u16string& value) {
 }
 
 void SystemMediaControlsOhos::SetThumbnail(const SkBitmap& bitmap) {
-  // AVSession's C API takes artwork only as a URI; the bitmap Chromium has
-  // here has none. Now-playing shows without artwork.
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (bitmap.drawsNothing()) {
+    ClearThumbnail();
+    return;
+  }
+  const uint64_t generation = ++*artwork_generation_;
+  ohos_system_service::Call(
+      "mediaartwork", "location", base::DictValue(),
+      base::BindOnce(&SystemMediaControlsOhos::EncodeThumbnail,
+                     weak_factory_.GetWeakPtr(), generation, bitmap));
+}
+
+void SystemMediaControlsOhos::EncodeThumbnail(
+    uint64_t generation,
+    SkBitmap bitmap,
+    ohos_system_service::Reply reply) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (generation != artwork_generation_->load()) {
+    return;
+  }
+  const std::string* directory = reply.result_dict().FindString("directory");
+  const std::string* uri_directory =
+      reply.result_dict().FindString("uriDirectory");
+  if (!reply.ok || !directory || !uri_directory || directory->empty() ||
+      !base::FilePath(*directory).IsAbsolute() ||
+      !uri_directory->starts_with("file://")) {
+    ClearThumbnail();
+    LOG(WARNING) << "Media artwork cache unavailable";
+    return;
+  }
+  artwork_task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
+      base::BindOnce(&ArtworkFile::Encode, std::move(bitmap),
+                     base::FilePath(*directory), *uri_directory,
+                     artwork_task_runner_, artwork_generation_, generation),
+      base::BindOnce(&SystemMediaControlsOhos::OnThumbnailReady,
+                     weak_factory_.GetWeakPtr(), generation));
+}
+
+void SystemMediaControlsOhos::OnThumbnailReady(
+    uint64_t generation,
+    std::shared_ptr<ArtworkFile> artwork) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (generation != artwork_generation_->load()) {
+    return;
+  }
+  artwork_ = std::move(artwork);
+  image_uri_ = artwork_ ? artwork_->uri : std::string();
+  UpdateDisplay();
 }
 
 void SystemMediaControlsOhos::SetPosition(
@@ -282,13 +421,23 @@ void SystemMediaControlsOhos::ClearPosition() {
   duration_ms_ = -1;
 }
 
-void SystemMediaControlsOhos::ClearThumbnail() {}
+void SystemMediaControlsOhos::ClearThumbnail() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  ++*artwork_generation_;
+  image_uri_.clear();
+  artwork_.reset();
+  published_artwork_.reset();
+  if (session_) {
+    UpdateDisplay();
+  }
+}
 
 void SystemMediaControlsOhos::ClearMetadata() {
   title_.clear();
   artist_.clear();
   album_.clear();
   duration_ms_ = -1;
+  ClearThumbnail();
 }
 
 void SystemMediaControlsOhos::UpdateDisplay() {
@@ -299,10 +448,17 @@ void SystemMediaControlsOhos::UpdateDisplay() {
     return;
   }
   // AVSession requires an asset id; a page has one media session at a time.
-  OH_AVMetadataBuilder_SetAssetId(builder, kSessionTag);
+  OH_AVMetadataBuilder_SetAssetId(
+      builder, media_id_.empty() ? kSessionTag : media_id_.c_str());
   OH_AVMetadataBuilder_SetTitle(builder, title_.c_str());
   OH_AVMetadataBuilder_SetArtist(builder, artist_.c_str());
   OH_AVMetadataBuilder_SetAlbum(builder, album_.c_str());
+  if (OH_AVMetadataBuilder_SetMediaImageUri(builder, image_uri_.c_str()) !=
+      AVMETADATA_SUCCESS) {
+    OH_AVMetadataBuilder_Destroy(builder);
+    LOG(WARNING) << "Media artwork metadata rejected";
+    return;
+  }
   if (duration_ms_ >= 0) {
     OH_AVMetadataBuilder_SetDuration(builder, duration_ms_);
   }
@@ -310,7 +466,11 @@ void SystemMediaControlsOhos::UpdateDisplay() {
   if (OH_AVMetadataBuilder_GenerateAVMetadata(builder, &metadata) ==
           AVMETADATA_SUCCESS &&
       metadata) {
-    OH_AVSession_SetAVMetadata(session_, metadata);
+    if (OH_AVSession_SetAVMetadata(session_, metadata) == AV_SESSION_ERR_SUCCESS) {
+      published_artwork_ = artwork_;
+    } else {
+      LOG(WARNING) << "Media artwork metadata update failed";
+    }
     OH_AVMetadata_Destroy(metadata);
   }
   OH_AVMetadataBuilder_Destroy(builder);

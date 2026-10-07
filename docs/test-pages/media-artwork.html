@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>媒体卡片封面验收（无声）</title>
+<style>
+  body { max-width: 48rem; margin: 2rem auto; padding: 0 1rem; font: 18px system-ui; }
+  button { margin: .4rem; padding: .8rem; font: inherit; }
+  img { width: 160px; height: 160px; object-fit: contain; }
+</style>
+<h1>媒体卡片封面验收（无声）</h1>
+<p>先与设备使用者协调，再点击开始。音源是本页生成的全零 PCM WAV，无自动播放，无网络音源。</p>
+<p>打开系统播控卡片，对照下方封面。分别在普通窗口、无痕窗口和单/多进程设备上测试。</p>
+<button id="start">开始无声播放</button>
+<button id="red">红色封面 A</button>
+<button id="blue">蓝色封面 B</button>
+<button id="none">无封面</button>
+<button id="race">快速 A → B → 无封面</button>
+<button id="stop">停止并清除元数据</button>
+<p id="status" role="status">尚未播放</p>
+<img id="preview" alt="当前没有封面" hidden>
+<ol>
+  <li>红色 A 和蓝色 B 能在系统卡片出现，切换后不会回到旧封面。</li>
+  <li>无封面时不能残留 A 或 B；快速切换后也不应重新出现旧图。</li>
+  <li>停止、关闭页面及切换媒体页面后，检查缓存回收。</li>
+  <li>无痕播放前后检查封面缓存目录，确认无痕图片不落盘。</li>
+</ol>
+<script>
+  const status = document.querySelector('#status');
+  const preview = document.querySelector('#preview');
+  const player = new Audio();
+  player.loop = true;
+  let audioUrl;
+  let pendingSwitch;
+
+  function silentWav() {
+    const sampleRate = 8000;
+    const dataSize = sampleRate * 2 * 10;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+    function writeTag(offset, text) {
+      for (let index = 0; index < text.length; index++) {
+        view.setUint8(offset + index, text.charCodeAt(index));
+      }
+    }
+    writeTag(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeTag(8, 'WAVE');
+    writeTag(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeTag(36, 'data');
+    view.setUint32(40, dataSize, true);
+    return new Blob([buffer], { type: 'audio/wav' });
+  }
+
+  function artwork(color, label) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 768;
+    const context = canvas.getContext('2d');
+    context.fillStyle = color;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = 'white';
+    context.font = 'bold 320px sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(label, 512, 384);
+    return canvas.toDataURL('image/png');
+  }
+
+  const covers = {
+    red: artwork('#b71c1c', 'A'),
+    blue: artwork('#0d47a1', 'B')
+  };
+
+  function setCover(name) {
+    const src = covers[name];
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: src ? `无声测试 ${name}` : '无声测试：无封面',
+      artist: '本地验收页',
+      artwork: src ? [{ src, sizes: '1024x768', type: 'image/png' }] : []
+    });
+    preview.hidden = !src;
+    if (src) {
+      preview.src = src;
+    } else {
+      preview.removeAttribute('src');
+    }
+    preview.alt = src ? `封面 ${name}` : '当前没有封面';
+    status.textContent = src ? `已设置 ${name} 封面` : '已清除封面';
+  }
+
+  async function start() {
+    try {
+      if (!audioUrl) {
+        audioUrl = URL.createObjectURL(silentWav());
+        player.src = audioUrl;
+      }
+      await player.play();
+      navigator.mediaSession.playbackState = 'playing';
+      setCover('red');
+    } catch {
+      status.textContent = '无法开始播放，请检查媒体能力或用户手势限制';
+    }
+  }
+
+  function stop() {
+    clearTimeout(pendingSwitch);
+    player.pause();
+    player.removeAttribute('src');
+    player.load();
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+      audioUrl = undefined;
+    }
+    navigator.mediaSession.metadata = null;
+    navigator.mediaSession.playbackState = 'none';
+    preview.hidden = true;
+    status.textContent = '已停止并清除元数据';
+  }
+
+  document.querySelector('#start').onclick = start;
+  for (const name of ['red', 'blue', 'none']) {
+    document.querySelector(`#${name}`).onclick = () => {
+      clearTimeout(pendingSwitch);
+      setCover(name);
+    };
+  }
+  document.querySelector('#race').onclick = () => {
+    clearTimeout(pendingSwitch);
+    setCover('red');
+    pendingSwitch = setTimeout(() => {
+      setCover('blue');
+      pendingSwitch = setTimeout(() => setCover('none'), 150);
+    }, 150);
+  };
+  document.querySelector('#stop').onclick = stop;
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.setActionHandler('play', async () => {
+      try {
+        await player.play();
+        navigator.mediaSession.playbackState = 'playing';
+      } catch {
+        status.textContent = '系统播放操作失败';
+      }
+    });
+    navigator.mediaSession.setActionHandler('pause', () => {
+      player.pause();
+      navigator.mediaSession.playbackState = 'paused';
+    });
+    navigator.mediaSession.setActionHandler('stop', stop);
+    navigator.mediaSession.setActionHandler('nexttrack', () => setCover('blue'));
+    navigator.mediaSession.setActionHandler('previoustrack', () => setCover('red'));
+  } else {
+    status.textContent = '当前内核不支持 Media Session API';
+    document.querySelectorAll('button').forEach(button => button.disabled = true);
+  }
+</script>
+</html>
