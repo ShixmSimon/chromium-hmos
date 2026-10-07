@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "base/logging.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "chrome/browser/ui/ohos/shell_downloads_ohos.h"
@@ -198,8 +199,8 @@ std::string UrlForLog(const GURL& url) {
   if (!url.is_valid()) {
     return "(invalid url)";
   }
-  return url.has_host() ? url.scheme() + "://" + url.host()
-                        : url.scheme() + ":";
+  return url.has_host() ? base::StrCat({url.scheme(), "://", url.host()})
+                        : base::StrCat({url.scheme(), ":"});
 }
 
 }  // namespace chrome::ohos
