@@ -256,7 +256,7 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
   AURA_LOG_I(
       "AuraShell Chromium runtime requested uiFamily=%{public}s "
       "startUrl=%{public}s",
-      config.ui_family.c_str(), config.start_url.c_str());
+      config.ui_family.c_str(), UrlForLog(config.start_url).c_str());
   return true;
 }
 
@@ -594,6 +594,34 @@ void OhosChromeMainRunner::RunChromeMainOnThread() {
 OhosChromeMainRunner& GetOhosChromeMainRunner() {
   static base::NoDestructor<OhosChromeMainRunner> runner;
   return *runner;
+}
+
+std::string UrlForLog(std::string_view url) {
+  const size_t colon = url.find(':');
+  if (colon == std::string_view::npos || colon == 0) {
+    return url.empty() ? std::string() : std::string("(no scheme)");
+  }
+  const std::string_view scheme = url.substr(0, colon);
+  for (const char c : scheme) {
+    const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') || c == '+' || c == '-' ||
+                    c == '.';
+    if (!ok) {
+      return "(no scheme)";
+    }
+  }
+  std::string_view rest = url.substr(colon + 1);
+  if (!rest.starts_with("//")) {
+    return std::string(scheme) + ":";
+  }
+  rest.remove_prefix(2);
+  rest = rest.substr(0, rest.find_first_of("/?#\\"));
+  // user:password@host keeps only the host.
+  const size_t at = rest.rfind('@');
+  if (at != std::string_view::npos) {
+    rest.remove_prefix(at + 1);
+  }
+  return std::string(scheme) + "://" + std::string(rest);
 }
 
 }  // namespace ohos_nweb

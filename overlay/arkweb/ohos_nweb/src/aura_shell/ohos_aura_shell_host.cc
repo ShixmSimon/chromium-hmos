@@ -65,7 +65,7 @@ void OhosAuraShellHost::Initialize(AuraStartupConfig config) {
       "AuraShell host initialized component=%{public}s "
       "uiFamily=%{public}s url=%{public}s",
       component_id_.c_str(), startup_config_.ui_family.c_str(),
-      current_url_.c_str());
+      UrlForLog(current_url_).c_str());
 }
 
 void OhosAuraShellHost::OnNativeSurfaceCreated(void* window,
@@ -204,7 +204,7 @@ void OhosAuraShellHost::Navigate(const std::string& url) {
   const bool accepted =
       GetOhosChromeMainRunner().Navigate(component_id_, current_url_);
   WVLOG_I("AuraShell navigate component=%{public}s url=%{public}s",
-          component_id_.c_str(), current_url_.c_str());
+          component_id_.c_str(), UrlForLog(current_url_).c_str());
   if (!accepted) {
     WVLOG_E("AuraShell rejected invalid navigation URL component=%{public}s",
             component_id_.c_str());

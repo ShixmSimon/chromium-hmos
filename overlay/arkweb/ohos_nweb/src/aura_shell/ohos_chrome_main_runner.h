@@ -6,6 +6,7 @@
 
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -54,6 +55,12 @@ class OhosChromeMainRunner {
 };
 
 OhosChromeMainRunner& GetOhosChromeMainRunner();
+
+// A URL as a log line may show it: "scheme://host[:port]" or "scheme:".
+// Never the user info, path, query or fragment -- a link another app opened
+// Lumie with can carry a session token there, and hilog is readable outside
+// the app. Chromium's own log lines use chrome::ohos::UrlForLog().
+std::string UrlForLog(std::string_view url);
 
 }  // namespace ohos_nweb
 
