@@ -3652,6 +3652,14 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
       state.viewport_bottom_inset[widget] = bottom;
     }
     ApplyViewportInsets(active, bottom);
+    // Diagnostic, once per keyboard show or hide: whether the inset reached
+    // the page's view, and what the page was left to lay out in.
+    content::RenderWidgetHostView* inset_view =
+        active ? active->GetRenderWidgetHostView() : nullptr;
+    LOG(WARNING) << "OHOS viewport inset: bottom=" << bottom
+                 << " view=" << inset_view << " visible="
+                 << (inset_view ? inset_view->GetVisibleViewportSize().ToString()
+                                : std::string("-"));
     return;
   }
   if (*name == "recoverInput") {
