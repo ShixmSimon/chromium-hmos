@@ -30,6 +30,9 @@ class WebContents;
 
 namespace chrome::ohos {
 
+content::WebContents* GetAuraShellAccessibilityContents(
+    gfx::AcceleratedWidget widget);
+
 struct AuraShellWindowMetadata {
   bool is_pwa = false;
   // A second browser window -- an incognito one, today. The shell hosts it the

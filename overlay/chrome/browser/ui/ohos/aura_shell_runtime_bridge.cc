@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+#include "chrome/browser/ui/ohos/shell_accessibility_ohos.h"
 #include "chrome/browser/ui/ohos/device_authenticator_ohos.h"
 #include "chrome/browser/ui/ohos/screen_orientation_delegate_ohos.h"
 #include "chrome/browser/ui/ohos/shell_permission_prompt_ohos.h"
@@ -2867,6 +2868,8 @@ void PollBrowserStateOnUiThread(uint64_t generation) {
           if (widget != gfx::kNullAcceleratedWidget) {
             const auto inset = bottom_insets.find(widget);
             TabStripModel* tabs = browser->GetTabStripModel();
+            UpdateShellAccessibility(widget,
+                                     tabs ? tabs->GetActiveWebContents() : nullptr);
             if (inset != bottom_insets.end() && tabs) {
               ApplyViewportInsets(tabs->GetActiveWebContents(), inset->second);
             }
@@ -4030,6 +4033,13 @@ void ReloadThemeFontsOnUiThread(std::string font_id) {
 }
 
 }  // namespace
+
+content::WebContents* GetAuraShellAccessibilityContents(
+    gfx::AcceleratedWidget widget) {
+  BrowserWindowInterface* browser = FindBrowserForWidget(widget);
+  TabStripModel* tabs = browser ? browser->GetTabStripModel() : nullptr;
+  return tabs ? tabs->GetActiveWebContents() : nullptr;
+}
 
 // The top bar and, on a phone, the dock, as one set of top controls.
 //

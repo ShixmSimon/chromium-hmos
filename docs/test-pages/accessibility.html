@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网页无障碍验收</title>
+<style>
+  body { max-width: 42rem; margin: 2rem auto; padding: 0 1rem; font: 18px/1.6 sans-serif; }
+  button, input, textarea { font: inherit; padding: .5rem; }
+  label { display: block; margin: 1rem 0; }
+  iframe { width: 100%; height: 12rem; }
+  .scroll { height: 10rem; overflow: auto; border: 2px solid; padding: 1rem; }
+  .spacer { height: 20rem; }
+  :focus-visible { outline: 3px solid #075bcc; }
+</style>
+<main>
+  <h1>网页无障碍验收</h1>
+  <p>请开启系统读屏，用触摸探索、左右滑动和双击操作本页。</p>
+  <a href="#bottom">跳到页面底部</a>
+  <label>姓名 <input id="name" autocomplete="off"></label>
+  <label>备注 <textarea aria-label="备注"></textarea></label>
+  <label>测试密码 <input type="password" autocomplete="new-password"></label>
+  <label><input type="checkbox"> 同意测试</label>
+  <fieldset>
+    <legend>测试选项</legend>
+    <label><input type="radio" name="choice" checked> 第一项</label>
+    <label><input type="radio" name="choice"> 第二项</label>
+  </fieldset>
+  <button id="count" type="button">计数：0</button>
+  <button disabled type="button">不可用按钮</button>
+  <p id="status" role="status">尚未操作</p>
+  <button id="add" type="button">添加动态按钮</button>
+  <button id="remove" type="button">移除动态按钮</button>
+  <div id="dynamic"></div>
+  <p hidden>这段隐藏文本不应被读到。</p>
+  <p aria-hidden="true">这段 aria-hidden 文本不应被读到。</p>
+  <h2>滚动区域</h2>
+  <div class="scroll" tabindex="0" aria-label="内部滚动区域">
+    <p>区域顶部</p><div class="spacer"></div>
+    <button type="button">区域底部按钮</button>
+  </div>
+  <h2>子框架</h2>
+  <iframe title="子框架测试" srcdoc="<!doctype html><html lang='zh-CN'><label>框架输入框 <input></label><button onclick='this.textContent=&quot;框架按钮已点击&quot;'>框架按钮</button></html>"></iframe>
+  <p>跨站框架需另行使用两个不同站点搭建，以验证独立渲染进程，不能用本页 srcdoc 代替。</p>
+  <div class="spacer"></div>
+  <h2 id="bottom" tabindex="-1">页面底部</h2>
+  <a href="accessibility.html?second">导航到另一份测试页面</a>
+</main>
+<script>
+  let count = 0;
+  const status = document.querySelector('#status');
+  document.querySelector('#count').addEventListener('click', event => {
+    count += 1;
+    event.currentTarget.textContent = `计数：${count}`;
+    status.textContent = `已点击 ${count} 次`;
+  });
+  document.querySelector('#add').addEventListener('click', () => {
+    if (document.querySelector('#dynamic button')) return;
+    const button = document.createElement('button');
+    button.textContent = '动态按钮';
+    button.addEventListener('click', () => { status.textContent = '动态按钮已点击'; });
+    document.querySelector('#dynamic').append(button);
+  });
+  document.querySelector('#remove').addEventListener('click', () => {
+    document.querySelector('#dynamic').replaceChildren();
+  });
+</script>
+</html>

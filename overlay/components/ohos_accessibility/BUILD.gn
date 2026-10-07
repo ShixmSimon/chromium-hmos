@@ -1,0 +1,15 @@
+import("//build/config/ohos/config.gni")
+
+source_set("ohos_accessibility") {
+  sources = [
+    "accessibility_provider_ohos.cc",
+    "accessibility_provider_ohos.h",
+  ]
+  deps = [
+    "//base",
+    "//ui/gfx/geometry",
+  ]
+  libs = [
+    "${ohos_sysroot}usr/lib/aarch64-linux-ohos/libace_ndk.z.so",
+  ]
+}

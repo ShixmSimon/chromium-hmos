@@ -61,6 +61,7 @@ source_set("aura_shell_api") {
   deps = [
     ":aura_shell_core",
     "//base",
+    "//components/ohos_accessibility",
     "//components/ohos_system_service",
     "//device/bluetooth",
     "//ui/ozone/platform/ohos:native_window_registry",

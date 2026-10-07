@@ -21,6 +21,7 @@
 #include "base/values.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "components/ohos_system_service/system_service_ohos.h"
+#include "components/ohos_accessibility/accessibility_provider_ohos.h"
 #include "device/bluetooth/ohos/bluetooth_bridge_ohos.h"
 #include "ohos_nweb/src/aura_shell/ohos_aura_shell_host.h"
 #include "ohos_nweb/src/aura_shell/ohos_chrome_main_runner.h"
@@ -653,6 +654,7 @@ void NativeSurfaceCreated(OH_NativeXComponent* component, void* window) {
   EnsureHost(*component_id)
       ->OnNativeSurfaceCreated(window, x, y, static_cast<double>(width),
                                static_cast<double>(height));
+  ohos_accessibility::RegisterProvider(*component_id, component, window);
 }
 
 void NativeSurfaceChanged(OH_NativeXComponent* component, void* window) {
@@ -669,6 +671,7 @@ void NativeSurfaceChanged(OH_NativeXComponent* component, void* window) {
   EnsureHost(*component_id)
       ->OnNativeSurfaceChanged(window, x, y, static_cast<double>(width),
                                static_cast<double>(height));
+  ohos_accessibility::RegisterProvider(*component_id, component, window);
 }
 
 void NativeSurfaceDestroyed(OH_NativeXComponent* component, void* window) {
@@ -676,6 +679,7 @@ void NativeSurfaceDestroyed(OH_NativeXComponent* component, void* window) {
   if (!component_id) {
     return;
   }
+  ohos_accessibility::UnregisterProvider(*component_id, window);
   HostPtr host = IsAuxiliaryComponentId(*component_id)
                      ? TakeHost(*component_id)
                      : FindHost(*component_id);
