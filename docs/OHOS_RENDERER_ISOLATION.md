@@ -199,8 +199,15 @@ SSH 不可达，因此通过只读 CI 快照任务取得 runner 实际源码。�
 
 - `365333c0` 的 [Adapter CI](https://github.com/miramira8295/chromium-hmos/actions/runs/37727000448)
   已通过；[原生构建](https://github.com/miramira8295/chromium-hmos/actions/runs/37727000473)
-  318 步、255 秒，HAR 为 136430608 字节，ELF build-id 为
+  首次原生编译 318 步、255 秒；重试发布的 HAR 为 136430641 字节，ELF build-id 为
   `80abfb6d9c703f91fce5fa33ff6381162bcebb28`。
   最终复测包使用 [build-365333c0](https://github.com/miramira8295/chromium-hmos/releases/tag/build-365333c0)，
   包含 memfd `0600` 权限修正；不要使用此前的中间构建进行隔离验收。
   本轮没有执行新增单元测试或设备测试，未生成签名 HAP。
+
+  发布任务的两次尝试均通过 Build，但 Upload artifacts 失败。第二次已上传
+  `engine.har`，符号包与 `SHA256SUMS` 尚未上传；不能把整个 workflow 记为通过。
+  GitHub 资产元数据给出的 HAR SHA256：
+  `420f8562c54e47fec4662c9bb01cbc6d42ebdbc405b77589abed8c1c9030524c`。
+  失败 job 日志接口返回 BlobNotFound，attempt 日志包为空，暂未取得上传失败的
+  具体 stderr。以上不影响 HAR 的下载，但该版本的符号附件仍待补齐。
