@@ -99,9 +99,10 @@ FD 复制、环境、路径、FD 列表、GPU 启动参数和资源 FD 失败。
 
 runner 当前 `platform_shared_memory_region_posix.cc` 已有 memfd 实现，但仅对
 Linux/ChromeOS 启用。新增 `ohos-memfd-shared-memory.patch` 为 OHOS 启用该实现：
-按需分配、封印大小，并通过 `/proc/self/fd` 取得真正的只读 FD，保留 Chromium 的
+按需分配、设置 `0600` 所有者权限、封印大小，并通过 `/proc/self/fd` 取得真正的只读 FD，保留 Chromium 的
 Writable/ReadOnly/Unsafe 句柄契约。memfd 无需应用 cache 目录，但只读 FD 重开仍
-需要访问 `/proc/self/fd`，必须在目标 SELinux 域复测。隔离 renderer 在 memfd 失败
+需要访问 `/proc/self/fd`，必须在目标 SELinux 域复测。`0600` 防止其他 UID 将
+收到的只读 memfd 重新打开成可写；不能沿用内核默认的所有用户可读写权限。隔离 renderer 在 memfd 失败
 时明确报错，不回退到应用私有临时目录；普通进程保留旧文件后端的兼容回退。
 
 每个进程首次成功会记录 `OHOS shared memory memfd active`。失败分别记录

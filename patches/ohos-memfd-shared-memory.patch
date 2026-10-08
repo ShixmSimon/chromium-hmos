@@ -1,8 +1,16 @@
 diff --git a/base/memory/platform_shared_memory_region_posix.cc b/base/memory/platform_shared_memory_region_posix.cc
-index c408700..6d3e834 100644
+index c408700..baac7c8 100644
 --- a/base/memory/platform_shared_memory_region_posix.cc
 +++ b/base/memory/platform_shared_memory_region_posix.cc
-@@ -24,6 +24,11 @@
+@@ -6,6 +6,7 @@
+ 
+ #include <fcntl.h>
+ #include <sys/mman.h>
++#include <sys/stat.h>
+ #include <sys/syscall.h>
+ #include <unistd.h>
+ 
+@@ -24,6 +25,11 @@
  #include "base/types/expected.h"
  #include "build/build_config.h"
  
@@ -14,7 +22,7 @@ index c408700..6d3e834 100644
  namespace base::subtle {
  
  namespace {
-@@ -63,7 +68,7 @@ std::optional<FDAccessModeError> CheckFDAccessMode(int fd, int expected_mode) {
+@@ -63,7 +69,7 @@ std::optional<FDAccessModeError> CheckFDAccessMode(int fd, int expected_mode) {
    return std::nullopt;
  }
  
@@ -23,7 +31,7 @@ index c408700..6d3e834 100644
  
  // Added in Linux 6.3; not in all sysroot headers yet.
  #ifndef MFD_NOEXEC_SEAL
-@@ -106,12 +111,20 @@ ScopedFDPair CreateAnonymousRegion(PlatformSharedMemoryRegion::Mode mode,
+@@ -106,12 +112,30 @@ ScopedFDPair CreateAnonymousRegion(PlatformSharedMemoryRegion::Mode mode,
          syscall(__NR_memfd_create, kName, MFD_CLOEXEC | MFD_ALLOW_SEALING)));
    }
    if (!fd.is_valid()) {
@@ -35,6 +43,16 @@ index c408700..6d3e834 100644
      return {};
    }
  
++#if BUILDFLAG(IS_OHOS)
++  // memfd's default mode is world-readable/writable. Unlike Linux's seccomp
++  // sandbox, an OHOS isolated child may access /proc/self/fd. Keep ownership
++  // private so another UID cannot reopen a received readonly fd as writable.
++  if (fchmod(fd.get(), S_IRUSR | S_IWUSR) != 0) {
++    PLOG(ERROR) << "OHOS shared memory owner permissions failed";
++    return {};
++  }
++#endif
++
    if (HANDLE_EINTR(ftruncate(fd.get(), checked_cast<off_t>(size))) != 0) {
 +#if BUILDFLAG(IS_OHOS)
 +    PLOG(ERROR) << "OHOS shared memory ftruncate failed";
@@ -44,7 +62,7 @@ index c408700..6d3e834 100644
      return {};
    }
  
-@@ -122,7 +135,11 @@ ScopedFDPair CreateAnonymousRegion(PlatformSharedMemoryRegion::Mode mode,
+@@ -122,7 +146,11 @@ ScopedFDPair CreateAnonymousRegion(PlatformSharedMemoryRegion::Mode mode,
    // adding write seals later, which would make future mappings fail.
    if (fcntl(fd.get(), F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_SEAL) !=
        0) {
@@ -56,7 +74,7 @@ index c408700..6d3e834 100644
      return {};
    }
  
-@@ -138,7 +155,11 @@ ScopedFDPair CreateAnonymousRegion(PlatformSharedMemoryRegion::Mode mode,
+@@ -138,7 +166,11 @@ ScopedFDPair CreateAnonymousRegion(PlatformSharedMemoryRegion::Mode mode,
          StrCat({"/proc/self/fd/", NumberToString(fd.get())});
      readonly_fd.reset(HANDLE_EINTR(open(path.c_str(), O_RDONLY | O_CLOEXEC)));
      if (!readonly_fd.is_valid()) {
@@ -68,7 +86,7 @@ index c408700..6d3e834 100644
        return {};
      }
    }
-@@ -146,7 +167,7 @@ ScopedFDPair CreateAnonymousRegion(PlatformSharedMemoryRegion::Mode mode,
+@@ -146,7 +178,7 @@ ScopedFDPair CreateAnonymousRegion(PlatformSharedMemoryRegion::Mode mode,
    return ScopedFDPair(std::move(fd), std::move(readonly_fd));
  }
  
@@ -77,7 +95,7 @@ index c408700..6d3e834 100644
  
  }  // namespace
  
-@@ -290,6 +311,26 @@ PlatformSharedMemoryRegion PlatformSharedMemoryRegion::Create(Mode mode,
+@@ -290,6 +322,26 @@ PlatformSharedMemoryRegion PlatformSharedMemoryRegion::Create(Mode mode,
    }
  #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
  
@@ -105,14 +123,16 @@ index c408700..6d3e834 100644
    // the temporary files we create will just go into the buffer cache
    // and be deleted before they ever make it out to disk.
 diff --git a/base/memory/platform_shared_memory_region_unittest.cc b/base/memory/platform_shared_memory_region_unittest.cc
-index d22751a..69000a8 100644
+index d22751a..ab666c8 100644
 --- a/base/memory/platform_shared_memory_region_unittest.cc
 +++ b/base/memory/platform_shared_memory_region_unittest.cc
-@@ -17,6 +17,12 @@
+@@ -17,6 +17,14 @@
  #include "build/build_config.h"
  #include "testing/gtest/include/gtest/gtest.h"
  
 +#if BUILDFLAG(IS_OHOS)
++#include <sys/stat.h>
++
 +#include "base/process/launch_ohos.h"
 +#include "base/test/scoped_command_line.h"
 +#include "base/scoped_environment_variable_override.h"
@@ -121,7 +141,7 @@ index d22751a..69000a8 100644
  #if BUILDFLAG(IS_APPLE)
  #include <mach/vm_map.h>
  #include <sys/mman.h>
-@@ -397,7 +403,7 @@ TEST_F(PlatformSharedMemoryRegionTest, ConvertToUnsafeInvalidatesSecondHandle) {
+@@ -397,7 +405,7 @@ TEST_F(PlatformSharedMemoryRegionTest, ConvertToUnsafeInvalidatesSecondHandle) {
  }
  #endif
  
@@ -130,7 +150,7 @@ index d22751a..69000a8 100644
  namespace {
  
  // Returns true if |fd| refers to a memfd. Regions are backed by memfd unless
-@@ -415,6 +421,25 @@ bool IsMemfd(int fd) {
+@@ -415,6 +423,28 @@ bool IsMemfd(int fd) {
  
  }  // namespace
  
@@ -147,6 +167,9 @@ index d22751a..69000a8 100644
 +    auto region = create(kRegionSize);
 +    ASSERT_TRUE(region.IsValid());
 +    EXPECT_TRUE(IsMemfd(region.GetPlatformHandle().fd));
++    struct stat info = {};
++    ASSERT_EQ(0, fstat(region.GetPlatformHandle().fd, &info));
++    EXPECT_EQ(0600, info.st_mode & 0777);
 +    auto mapping = MapForTesting(&region);
 +    ASSERT_TRUE(mapping.IsValid());
 +  }
@@ -156,7 +179,7 @@ index d22751a..69000a8 100644
  // Tests that memfd-backed regions have their size sealed, so that no holder of
  // a descriptor can shrink or grow them, and that the set of seals is final.
  TEST_F(PlatformSharedMemoryRegionTest, MemfdRegionsAreSizeSealed) {
-@@ -479,7 +504,7 @@ TEST_F(PlatformSharedMemoryRegionTest, MemfdReadOnlyDescriptor) {
+@@ -479,7 +509,7 @@ TEST_F(PlatformSharedMemoryRegionTest, MemfdReadOnlyDescriptor) {
    ASSERT_TRUE(ro_mapping.IsValid());
    EXPECT_EQ(0x5a, ro_mapping.GetMemoryAsSpan<const uint8_t>()[kRegionSize - 1]);
  }
