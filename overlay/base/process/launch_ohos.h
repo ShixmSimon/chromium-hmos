@@ -11,13 +11,45 @@
 #include <utility>
 #include <vector>
 
+#include "AbilityKit/native_child_process.h"
 #include "base/base_export.h"
 #include "base/environment.h"
 #include "base/files/file_path.h"
 #include "base/process/launch.h"
 #include "base/process/process.h"
 
+struct Ability_ChildProcessConfigs;
+
 namespace base::internal {
+
+// Bring-up only: require an OHOS isolated sandbox and a separate UID for
+// renderers. This does not enable Chromium's Linux/seccomp sandbox. There is
+// deliberately no fallback to a shared sandbox when this is requested.
+inline constexpr char kOhosIsolateRenderers[] = "ohos-isolate-renderers";
+
+// Runtime-resolved NDK entry points. Keeping the launch transaction separate
+// lets tests exercise unavailable APIs and failures without starting a child.
+struct BASE_EXPORT OhosIsolatedChildApi {
+  using Create = Ability_ChildProcessConfigs* (*)();
+  using Destroy = Ability_NativeChildProcess_ErrCode (*)(
+      Ability_ChildProcessConfigs*);
+  using SetMode = Ability_NativeChildProcess_ErrCode (*)(
+      Ability_ChildProcessConfigs*, NativeChildProcess_IsolationMode);
+  using SetUid = Ability_NativeChildProcess_ErrCode (*)(
+      Ability_ChildProcessConfigs*, bool);
+  using Start = Ability_NativeChildProcess_ErrCode (*)(
+      const char*, NativeChildProcess_Args, Ability_ChildProcessConfigs*,
+      int32_t*);
+
+  Create create = nullptr;
+  Destroy destroy = nullptr;
+  SetMode set_mode = nullptr;
+  SetUid set_uid = nullptr;
+  Start start = nullptr;
+};
+
+BASE_EXPORT Ability_NativeChildProcess_ErrCode StartOhosIsolatedRenderer(
+    const OhosIsolatedChildApi& api, NativeChildProcess_Args args, int32_t* pid);
 
 struct BASE_EXPORT OhosNativeChildParams {
   std::vector<std::string> argv;

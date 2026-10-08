@@ -15,6 +15,7 @@
 
 #include "AbilityKit/native_child_process.h"
 #include "base/base_paths.h"
+#include "base/command_line.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/location.h"
@@ -35,13 +36,30 @@ constexpr char kNativeChildEntry[] =
 
 OhosGpuChildLauncher g_gpu_child_launcher = nullptr;
 
-bool IsGpuProcessCommandLine(const std::vector<std::string>& argv) {
-  for (const std::string& argument : argv) {
-    if (argument == "--type=gpu-process") {
-      return true;
+// These APIs appeared in API 20, with UID isolation added in API 21. Resolve
+// the entire set before creating anything: older devices must reject the
+// experiment, not silently run a renderer with the application's authority.
+const OhosIsolatedChildApi& GetIsolatedChildApi() {
+  static const OhosIsolatedChildApi api = [] {
+    OhosIsolatedChildApi result;
+    // Retained for the lifetime of the function pointers.
+    void* library = dlopen("libchild_process.so", RTLD_NOW | RTLD_LOCAL);
+    if (!library) {
+      return result;
     }
-  }
-  return false;
+    result.create = reinterpret_cast<OhosIsolatedChildApi::Create>(
+        dlsym(library, "OH_Ability_CreateChildProcessConfigs"));
+    result.destroy = reinterpret_cast<OhosIsolatedChildApi::Destroy>(
+        dlsym(library, "OH_Ability_DestroyChildProcessConfigs"));
+    result.set_mode = reinterpret_cast<OhosIsolatedChildApi::SetMode>(
+        dlsym(library, "OH_Ability_ChildProcessConfigs_SetIsolationMode"));
+    result.set_uid = reinterpret_cast<OhosIsolatedChildApi::SetUid>(
+        dlsym(library, "OH_Ability_ChildProcessConfigs_SetIsolationUid"));
+    result.start = reinterpret_cast<OhosIsolatedChildApi::Start>(
+        dlsym(library, "OH_Ability_StartNativeChildProcessWithConfigs"));
+    return result;
+  }();
+  return api;
 }
 
 struct NativeChildExitRegistry {
@@ -126,6 +144,32 @@ bool EncodeOhosNativeChildParams(const std::vector<std::string>& argv,
 
 }  // namespace
 
+Ability_NativeChildProcess_ErrCode StartOhosIsolatedRenderer(
+    const OhosIsolatedChildApi& api, NativeChildProcess_Args args, int32_t* pid) {
+  if (!pid) {
+    return NCP_ERR_INVALID_PARAM;
+  }
+  *pid = -1;
+  if (!api.create || !api.destroy || !api.set_mode || !api.set_uid ||
+      !api.start) {
+    LOG(ERROR) << "OHOS isolated renderer APIs unavailable; launch refused";
+    return NCP_ERR_NOT_SUPPORTED;
+  }
+  Ability_ChildProcessConfigs* configs = api.create();
+  if (!configs) {
+    return NCP_ERR_INTERNAL;
+  }
+  auto result = api.set_mode(configs, NCP_ISOLATION_MODE_ISOLATED);
+  if (result == NCP_NO_ERROR) {
+    result = api.set_uid(configs, true);
+  }
+  if (result == NCP_NO_ERROR) {
+    result = api.start(kNativeChildEntry, args, configs, pid);
+  }
+  api.destroy(configs);
+  return result;
+}
+
 Process LaunchProcessOhos(const std::vector<std::string>& argv,
                           const LaunchOptions& options) {
   if (argv.empty()) {
@@ -133,7 +177,10 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
     return Process();
   }
   if (options.pre_exec_delegate) {
-    LOG(WARNING) << "OHOS native child process ignores pre_exec_delegate";
+    // A delegate may establish a security boundary. Running the child without
+    // it would silently remove that boundary; the appspawn API cannot run it.
+    LOG(ERROR) << "OHOS native child cannot run pre_exec_delegate; launch refused";
+    return Process();
   }
 
   EnsureNativeChildExitCallbackRegistered();
@@ -144,7 +191,8 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
     return Process();
   }
 
-  if (IsGpuProcessCommandLine(argv)) {
+  const std::string process_type = CommandLine(argv).GetSwitchValueASCII("type");
+  if (process_type == "gpu-process") {
     if (!g_gpu_child_launcher) {
       LOG(ERROR) << "OHOS GPU process requested with no launcher for it";
       return Process();
@@ -153,6 +201,13 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
                                              options.fds_to_remap.end());
     const ProcessId gpu_pid = g_gpu_child_launcher(encoded_params, gpu_fds);
     return gpu_pid == kNullProcessId ? Process() : Process(gpu_pid);
+  }
+
+  // The NDK accepts at most 16 descriptors. Reject before constructing the
+  // list rather than relying on partial or platform-dependent processing.
+  if (options.fds_to_remap.size() > 16) {
+    LOG(ERROR) << "OHOS native child descriptor limit exceeded";
+    return Process();
   }
 
   std::vector<std::string> fd_names;
@@ -179,12 +234,22 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
       .reserved = 0,
   };
   int32_t pid = -1;
+  const bool isolate_renderer =
+      CommandLine::ForCurrentProcess()->HasSwitch(kOhosIsolateRenderers) &&
+      process_type == "renderer";
   const Ability_NativeChildProcess_ErrCode result =
-      OH_Ability_StartNativeChildProcess(kNativeChildEntry, child_args,
-                                         child_options, &pid);
+      isolate_renderer
+          ? StartOhosIsolatedRenderer(GetIsolatedChildApi(), child_args, &pid)
+          : OH_Ability_StartNativeChildProcess(kNativeChildEntry, child_args,
+                                              child_options, &pid);
   if (result != NCP_NO_ERROR || pid <= 0) {
     LOG(ERROR) << "OHOS native child process failed result=" << result;
     return Process();
+  }
+  if (isolate_renderer) {
+    // This records the requested launch policy, not a verified security test.
+    LOG(WARNING) << "OHOS renderer started with isolated sandbox and UID requested"
+                 << " pid=" << pid;
   }
 
   if (options.wait) {

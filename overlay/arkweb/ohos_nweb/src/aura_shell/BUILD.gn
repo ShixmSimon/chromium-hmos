@@ -117,7 +117,10 @@ executable("libnweb_render") {
 test("aura_shell_smoke_tests") {
   configs += [ ":aura_shell_config" ]
 
-  sources = [ "ohos_aura_shell_unittest.cc" ]
+  sources = [
+    "ohos_aura_shell_unittest.cc",
+    "ohos_renderer_isolation_unittest.cc",
+  ]
 
   deps = [
     ":aura_shell_core",

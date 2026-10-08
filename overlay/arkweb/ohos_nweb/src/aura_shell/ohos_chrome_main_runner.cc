@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "base/base_paths.h"
+#include "base/command_line.h"
 #include "base/files/file_path.h"
 #include "base/files/memory_mapped_file.h"
 #include "base/functional/callback.h"
@@ -20,6 +21,7 @@
 #include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/path_service.h"
+#include "base/process/launch_ohos.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
@@ -246,6 +248,13 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
   // was the driver's. See ohos-angle.patch.
   setenv("OHOS_ANGLE_WRAPPER_EXPORTS", "1", /*overwrite=*/0);
   arguments_ = BuildArgumentsLocked(config);
+  const base::CommandLine startup_command_line(arguments_);
+  if (startup_command_line.HasSwitch(base::internal::kOhosIsolateRenderers) &&
+      startup_command_line.HasSwitch("single-process")) {
+    AURA_LOG_E("AuraShell isolated renderers require native child processes; "
+               "startup refused");
+    return false;
+  }
   started_ = true;
   if (!config.headless) {
     mcp_server_.Start();

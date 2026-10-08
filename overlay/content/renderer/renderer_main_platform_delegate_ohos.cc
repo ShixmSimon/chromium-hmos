@@ -16,7 +16,10 @@ void RendererMainPlatformDelegate::PlatformInitialize() {}
 void RendererMainPlatformDelegate::PlatformUninitialize() {}
 
 bool RendererMainPlatformDelegate::EnableSandbox() {
-  // HarmonyOS native child processes inherit the application sandbox.
+  // This hook installs no Chromium sandbox. The appspawn launch policy is
+  // chosen in base/process/launch_ohos.cc; its normal mode shares the app's
+  // sandbox and UID. Returning true here is NOT evidence of renderer
+  // isolation. The experimental isolated launch must be verified separately.
   return true;
 }
 
