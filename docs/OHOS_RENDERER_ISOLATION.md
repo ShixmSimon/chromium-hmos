@@ -2,10 +2,10 @@
 
 ## 状态
 
-2026-10-08：`dfbba12` 已通过原生编译和 HAR 构建。外壳在 Pad 模拟器
-HarmonyOS 7.0.0.107 / API 26 上确认 renderer 获得独立 UID 与
-`isolated_render` SELinux 标签，但在进入 ChromeMain 前退出，所有页面白屏。
-`5d016bcc` 补齐资源 FD 启动契约与启动失败诊断，已通过原生编译和 HAR 构建，等待外壳复测。
+2026-10-08：外壳在 Pad 模拟器 HarmonyOS 7.0.0.107 / API 26 上复测
+`5d016bcc`：原生密码页成功导入 3 条 CSV；隔离 renderer 已通过资源启动，加载
+WebUI 模板与系统字体，保持独立 UID，但创建共享内存时仍访问应用 el2 cache，
+因目录不存在而 SIGTRAP。当前继续修复共享内存后端与退出状态观测。
 **P0 未解决，默认仍关闭试验开关。**
 
 当前代码中有三种不同的边界，不能混为一谈：
@@ -95,6 +95,31 @@ ICU、V8 和 ResourceBundle 直接消费这些 FD。隔离 renderer 不初始化
 FD 复制、环境、路径、FD 列表、GPU 启动参数和资源 FD 失败。
 日志不再输出完整 argv，也不输出 CSV、密码或页面 URL。
 
+### 共享内存与退出状态
+
+runner 当前 `platform_shared_memory_region_posix.cc` 已有 memfd 实现，但仅对
+Linux/ChromeOS 启用。新增 `ohos-memfd-shared-memory.patch` 为 OHOS 启用该实现：
+按需分配、封印大小，并通过 `/proc/self/fd` 取得真正的只读 FD，保留 Chromium 的
+Writable/ReadOnly/Unsafe 句柄契约。memfd 无需应用 cache 目录，但只读 FD 重开仍
+需要访问 `/proc/self/fd`，必须在目标 SELinux 域复测。隔离 renderer 在 memfd 失败
+时明确报错，不回退到应用私有临时目录；普通进程保留旧文件后端的兼容回退。
+
+每个进程首次成功会记录 `OHOS shared memory memfd active`。失败分别记录
+`memfd_create failed`、`ftruncate failed`、`size sealing failed` 或
+`readonly reopen failed`，含 errno。扩展已有 memfd 大小封印/只读映射测试至
+OHOS，并增加不存在 TMPDIR 的隔离 renderer 测试；默认构建不执行这些单元测试。
+
+SDK 将退出回调错误 `16000050` 定义为内部错误。OpenHarmony 公开
+[`AppNativeSpawnManager::RegisterNativeChildExitNotify`](https://github.com/openharmony/ability_ability_runtime/blob/master/services/appmgr/src/app_native_spawn_manager.cpp)
+在同一 PID 已有订阅时输出本次相同的 `register native child exit:<pid> fail`。
+这是一条匹配的实现线索，不足以确定该 HarmonyOS 镜像里是谁先注册。
+
+启动器仅缓存注册成功，失败会在成功创建进程后以及后续启动时重试，不解注册外壳
+或其他运行时的订阅。同时为子进程打开 pidfd，配合原有 IPC 断连检测查询实际退出
+状态；退出后关闭 pidfd，并在后续启动时清理遗漏的已退出句柄。若内核不支持
+pidfd，仍使用原有 PID 探测。只有系统回调才能提供真实 signal；pidfd 确认退出但
+没有 signal 时记录异常/未知退出（exit_code=-1），不再伪报正常退出。
+
 ### 宿主能力与 IPC
 
 逐项核对字体、Mojo、共享内存、图形缓冲区、媒体和 WebRTC 的访问路径。
@@ -140,15 +165,14 @@ SSH 不可达，因此通过只读 CI 快照任务取得 runner 实际源码。�
 已校验快照 SHA256，并用 CI 的 `apply_incremental_patch` 函数验证首次应用、
 重复应用及结果文件一致性。没有进行本地 Chromium 构建或设备操作。
 
-原生密码页的 CSV 解析器已注册在 utility 主线程，network/storage 正常并不能证明
-该主线程通路正常。本轮补充 `OHOS CSV` 阶段日志，并在解析断连或 30 秒无响应时
-返回 `UNKNOWN_ERROR`、重置导入状态，允许重试；格式错误仍返回 `BAD_FORMAT`。
-新增断连重试、超时只回调一次、成功取消超时的单元测试，默认 CI 不执行这些测试。
-超时处理解决无限等待，尚不能证明原来的 CSV 服务卡住原因已修复。
+原生密码页的 CSV 解析器已注册在 utility 主线程。`5d016bcc` 的外壳复测确认
+`utility main entered` 到 `main receiver arrived registered=1` 正常，3 条记录
+成功导入并在列表可见；普通 UID 的原生导入通路已通过本次设备验证。不能从这次
+结果单独确定上一版阻塞的具体原因；30 秒超时/断连恢复的新增单元测试尚未执行。
 
-复测时分别收集 `OHOS child bootstrap`、`OHOS child startup`、`OHOS CSV` 与
-`AuraShell native child`。开隔离验证 HTTPS 与内置页；关隔离在原生密码设置页用
-同一份 3 条记录 CSV 导入，记录成功、错误或 30 秒超时及最后一条阶段日志。
+下一轮重点复测隔离模式的 HTTPS、内置页和 renderer 退出/恢复，日志过滤
+`OHOS shared memory`、`OHOS native child tracking`、`OHOS native child pidfd`，
+并保留 `OHOS child bootstrap` / `OHOS child startup`。
 
 验证记录：
 
@@ -166,3 +190,7 @@ SSH 不可达，因此通过只读 CI 快照任务取得 runner 实际源码。�
 - 本机独立子进程将 `RLIMIT_NOFILE` 降为 64 后，FD 最小值 1000 的复制返回
   `EINVAL`，改为 3 可正确复制同一个文件。此检查说明旧实现依赖高 FD 限额，
   不代表已测得 Pad 隔离子进程的实际限额；新版启动日志会记录该值。
+
+- 本轮上游改动基于 [runner 快照 37725288139](https://github.com/miramira8295/chromium-hmos/actions/runs/37725288139)，
+  基线 revision 仍为 `743f26418a267dd97c3c1c71d786038ae68cfc8f`。快照文件哈希和
+  补丁首次/重复应用校验已通过，设备验证继续由外壳进行。

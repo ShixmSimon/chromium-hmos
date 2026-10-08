@@ -86,6 +86,10 @@ BASE_EXPORT Process LaunchProcessOhos(const std::vector<std::string>& argv,
 BASE_EXPORT std::optional<int> GetOhosNativeChildExitSignal(
     ProcessHandle handle);
 
+// Independent of the platform's process-wide exit callback. nullopt means no
+// pidfd is available; true reports exit without inventing a signal or code.
+BASE_EXPORT std::optional<bool> HasOhosNativeChildExited(ProcessHandle handle);
+
 BASE_EXPORT bool DecodeOhosNativeChildParams(std::string_view encoded,
                                              OhosNativeChildParams* params);
 

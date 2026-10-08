@@ -7,8 +7,11 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include <cstdint>
 #include <iterator>
@@ -31,6 +34,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/synchronization/lock.h"
 #include "base/threading/scoped_blocking_call.h"
+#include "base/time/time.h"
 #include "base/values.h"
 
 namespace base::internal {
@@ -67,10 +71,41 @@ const OhosIsolatedChildApi& GetIsolatedChildApi() {
   return api;
 }
 
+struct NativeChildExitInfo {
+  std::optional<int> signal;
+  TimeTicks signal_time;
+  ScopedFD pidfd;
+  bool exited = false;
+};
+
 struct NativeChildExitRegistry {
   Lock lock;
-  std::map<ProcessHandle, int> exit_signals GUARDED_BY(lock);
+  std::map<ProcessHandle, NativeChildExitInfo> children GUARDED_BY(lock);
 };
+
+std::optional<bool> PollNativeChildExit(NativeChildExitInfo& child,
+                                        ProcessHandle handle) {
+  if (child.exited) {
+    return true;
+  }
+  if (!child.pidfd.is_valid()) {
+    return std::nullopt;
+  }
+  struct pollfd descriptor = {
+      .fd = child.pidfd.get(), .events = POLLIN, .revents = 0};
+  const int result = HANDLE_EINTR(poll(&descriptor, 1, 0));
+  if (result < 0 || (descriptor.revents & (POLLERR | POLLNVAL))) {
+    LOG(ERROR) << "OHOS native child pidfd poll failed pid=" << handle;
+    child.pidfd.reset();
+    return std::nullopt;
+  }
+  if (descriptor.revents & (POLLIN | POLLHUP)) {
+    child.exited = true;
+    child.pidfd.reset();
+    LOG(WARNING) << "OHOS native child pidfd observed exit pid=" << handle;
+  }
+  return child.exited;
+}
 
 NativeChildExitRegistry& GetNativeChildExitRegistry() {
   static NoDestructor<NativeChildExitRegistry> registry;
@@ -81,41 +116,86 @@ void OnNativeChildProcessExit(int32_t pid, int32_t signal) {
   NativeChildExitRegistry& registry = GetNativeChildExitRegistry();
   {
     AutoLock lock(registry.lock);
-    registry.exit_signals[pid] = signal;
+    auto& child = registry.children[pid];
+    child.signal = signal;
+    child.signal_time = TimeTicks::Now();
+    child.exited = true;
+    child.pidfd.reset();
   }
   LOG(WARNING) << "OHOS native child exit pid=" << pid << " signal=" << signal;
 }
 
 bool EnsureNativeChildExitCallbackRegistered() {
-  static const bool registered = [] {
-    using NativeChildExitCallback = void (*)(int32_t, int32_t);
-    using RegisterExitCallback =
-        Ability_NativeChildProcess_ErrCode (*)(NativeChildExitCallback);
-    void* child_process_library =
-        dlopen("libchild_process.so", RTLD_NOW | RTLD_LOCAL);
-    if (!child_process_library) {
-      LOG(ERROR) << "Failed to load OHOS native child process library: "
-                 << dlerror();
-      return false;
-    }
-    auto* register_callback = reinterpret_cast<RegisterExitCallback>(
-        dlsym(child_process_library,
-              "OH_Ability_RegisterNativeChildProcessExitCallback"));
-    if (!register_callback) {
-      LOG(ERROR) << "OHOS native child exit callback API is unavailable";
-      return false;
-    }
-    const Ability_NativeChildProcess_ErrCode result =
-        register_callback(&OnNativeChildProcessExit);
-    if (result != NCP_NO_ERROR) {
-      LOG(ERROR) << "Failed to register OHOS native child exit callback: "
-                 << result;
-      return false;
-    }
-    LOG(WARNING) << "Registered OHOS native child exit callback";
-    return true;
+  using NativeChildExitCallback = void (*)(int32_t, int32_t);
+  using RegisterExitCallback =
+      Ability_NativeChildProcess_ErrCode (*)(NativeChildExitCallback);
+  static const RegisterExitCallback register_callback = [] {
+    void* library = dlopen("libchild_process.so", RTLD_NOW | RTLD_LOCAL);
+    return library ? reinterpret_cast<RegisterExitCallback>(dlsym(
+                         library,
+                         "OH_Ability_RegisterNativeChildProcessExitCallback"))
+                   : nullptr;
   }();
-  return registered;
+  // Separate from the registry lock: the platform can deliver an exit while
+  // registration is in flight. Only cache success, not a transient failure.
+  static NoDestructor<Lock> registration_lock;
+  static bool registered = false;
+  AutoLock lock(*registration_lock);
+  if (registered) {
+    return true;
+  }
+  if (!register_callback) {
+    return false;
+  }
+  const auto result = register_callback(&OnNativeChildProcessExit);
+  if (result != NCP_NO_ERROR) {
+    LOG(WARNING) << "OHOS native child exit callback unavailable result="
+                 << result << "; retaining IPC/pidfd exit detection";
+    return false;
+  }
+  registered = true;
+  LOG(WARNING) << "Registered OHOS native child exit callback";
+  return true;
+}
+
+void TrackNativeChild(ProcessHandle pid, TimeTicks launch_started) {
+  // appspawn owns the child, so waitpid/waitid cannot reap it. A pidfd can
+  // nevertheless be polled by this process, including across isolated UIDs.
+  // Keep it until exit is observed, then close it; no thread per renderer.
+  ScopedFD pidfd;
+#if defined(__NR_pidfd_open)
+  pidfd.reset(static_cast<int>(syscall(__NR_pidfd_open, pid, 0)));
+#else
+  errno = ENOSYS;
+#endif
+  const bool already_exited = !pidfd.is_valid() && errno == ESRCH;
+  if (!pidfd.is_valid() && !already_exited) {
+    PLOG(WARNING) << "OHOS native child pidfd unavailable pid=" << pid;
+  }
+  const bool has_pidfd = pidfd.is_valid();
+  NativeChildExitRegistry& registry = GetNativeChildExitRegistry();
+  {
+    AutoLock lock(registry.lock);
+    // Release descriptors for children whose IPC teardown never asked for
+    // termination status. Keep exit metadata for later status queries.
+    for (auto& [tracked_pid, tracked_child] : registry.children) {
+      if (tracked_pid != pid && tracked_child.pidfd.is_valid()) {
+        PollNativeChildExit(tracked_child, tracked_pid);
+      }
+    }
+    auto& child = registry.children[pid];
+    // Discard an old generation if the OS reused a PID, while preserving a
+    // fast exit notification delivered before the start API returned.
+    if (child.signal_time < launch_started) {
+      child = NativeChildExitInfo();
+    }
+    if (!child.exited) {
+      child.pidfd = std::move(pidfd);
+      child.exited = already_exited;
+    }
+  }
+  LOG(WARNING) << "OHOS native child tracking pid=" << pid
+               << " pidfd=" << has_pidfd;
 }
 
 bool EncodeOhosNativeChildParams(const std::vector<std::string>& argv,
@@ -191,7 +271,8 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
     return Process();
   }
 
-  EnsureNativeChildExitCallbackRegistered();
+  const bool exit_callback_registered =
+      EnsureNativeChildExitCallbackRegistered();
 
   CommandLine child_command_line(argv);
   const std::string process_type =
@@ -217,7 +298,11 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
     }
     std::vector<std::pair<int, int>> gpu_fds(options.fds_to_remap.begin(),
                                              options.fds_to_remap.end());
+    const TimeTicks launch_started = TimeTicks::Now();
     const ProcessId gpu_pid = g_gpu_child_launcher(encoded_params, gpu_fds);
+    if (gpu_pid != kNullProcessId) {
+      TrackNativeChild(gpu_pid, launch_started);
+    }
     return gpu_pid == kNullProcessId ? Process() : Process(gpu_pid);
   }
 
@@ -289,6 +374,7 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
       .reserved = 0,
   };
   int32_t pid = -1;
+  const TimeTicks launch_started = TimeTicks::Now();
   const Ability_NativeChildProcess_ErrCode result =
       isolate_renderer
           ? StartOhosIsolatedRenderer(GetIsolatedChildApi(), child_args, &pid)
@@ -297,6 +383,12 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
   if (result != NCP_NO_ERROR || pid <= 0) {
     LOG(ERROR) << "OHOS native child process failed result=" << result;
     return Process();
+  }
+  TrackNativeChild(pid, launch_started);
+  if (!exit_callback_registered) {
+    // Retry after the platform has completed process creation. Do not
+    // unregister another runtime's process-wide observer to take its place.
+    EnsureNativeChildExitCallbackRegistered();
   }
   if (isolate_renderer) {
     // This records the requested launch policy, not a verified security test.
@@ -326,11 +418,18 @@ void SetOhosGpuChildLauncher(OhosGpuChildLauncher launcher) {
 std::optional<int> GetOhosNativeChildExitSignal(ProcessHandle handle) {
   NativeChildExitRegistry& registry = GetNativeChildExitRegistry();
   AutoLock lock(registry.lock);
-  auto found = registry.exit_signals.find(handle);
-  if (found == registry.exit_signals.end()) {
+  auto found = registry.children.find(handle);
+  return found == registry.children.end() ? std::nullopt : found->second.signal;
+}
+
+std::optional<bool> HasOhosNativeChildExited(ProcessHandle handle) {
+  NativeChildExitRegistry& registry = GetNativeChildExitRegistry();
+  AutoLock lock(registry.lock);
+  auto found = registry.children.find(handle);
+  if (found == registry.children.end()) {
     return std::nullopt;
   }
-  return found->second;
+  return PollNativeChildExit(found->second, handle);
 }
 
 bool DecodeOhosNativeChildParams(std::string_view encoded,

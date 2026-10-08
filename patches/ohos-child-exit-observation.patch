@@ -1,0 +1,53 @@
+diff --git a/base/process/kill_posix.cc b/base/process/kill_posix.cc
+index 9070311..15fe74f 100644
+--- a/base/process/kill_posix.cc
++++ b/base/process/kill_posix.cc
+@@ -64,6 +64,13 @@ TerminationStatus GetTerminationStatusImpl(ProcessHandle handle,
+           internal::GetOhosNativeChildExitSignal(handle)) {
+     return GetOhosTerminationStatusFromSignal(*signal, exit_code);
+   }
++  if (auto exited = internal::HasOhosNativeChildExited(handle)) {
++    // pidfd tells us liveness, not the exit signal of an appspawn-owned child.
++    // Do not label a missing platform exit notification as a clean exit.
++    *exit_code = *exited ? -1 : 0;
++    return *exited ? TERMINATION_STATUS_ABNORMAL_TERMINATION
++                   : TERMINATION_STATUS_STILL_RUNNING;
++  }
+   const int probe_result = kill(handle, 0);
+   const int probe_errno = errno;
+   if (probe_result == 0 || probe_errno == EPERM) {
+@@ -73,8 +80,8 @@ TerminationStatus GetTerminationStatusImpl(ProcessHandle handle,
+   if (probe_errno != ESRCH) {
+     DPLOG(ERROR) << "Unable to query process " << handle;
+   }
+-  *exit_code = 0;
+-  return TERMINATION_STATUS_NORMAL_TERMINATION;
++  *exit_code = -1;
++  return TERMINATION_STATUS_ABNORMAL_TERMINATION;
+ #else
+   int status = 0;
+   const pid_t result =
+@@ -140,6 +147,11 @@ TerminationStatus GetKnownDeadTerminationStatus(ProcessHandle handle,
+     return GetOhosTerminationStatusFromSignal(*signal, exit_code);
+   }
+ 
++  if (internal::HasOhosNativeChildExited(handle).value_or(false)) {
++    *exit_code = -1;
++    return TERMINATION_STATUS_ABNORMAL_TERMINATION;
++  }
++
+   const bool process_was_alive = kill(handle, 0) == 0 || errno == EPERM;
+   LOG(WARNING) << "OHOS known-dead cleanup pid=" << handle
+                << " alive_before_kill=" << process_was_alive;
+@@ -151,9 +163,9 @@ TerminationStatus GetKnownDeadTerminationStatus(ProcessHandle handle,
+   }
+ 
+ #if BUILDFLAG(IS_OHOS)
+-  *exit_code = 0;
++  *exit_code = result ? SIGKILL : -1;
+   return result ? TERMINATION_STATUS_PROCESS_WAS_KILLED
+-                : TERMINATION_STATUS_NORMAL_TERMINATION;
++                : TERMINATION_STATUS_ABNORMAL_TERMINATION;
+ #else
+   return GetTerminationStatusImpl(handle, true /* can_block */, exit_code);
+ #endif
