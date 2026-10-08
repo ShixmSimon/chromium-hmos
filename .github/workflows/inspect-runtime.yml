@@ -1,0 +1,79 @@
+name: Inspect runtime sources
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Read the same tree between builds, never while overlay/patch sync is active.
+concurrency:
+  group: chromium-build-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: [self-hosted, harmonyos-chromium]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read startup and utility sources
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import tarfile
+
+          root = Path(os.environ.get('CHROMIUM_SRC', '/root/chromium-154/src'))
+          paths = '''
+          base/path_service.cc
+          base/path_service.h
+          base/posix/global_descriptors.h
+          base/i18n/icu_util.cc
+          base/message_loop/message_pump_default.cc
+          base/synchronization/waitable_event_posix.cc
+          chrome/app/chrome_main_delegate.cc
+          chrome/common/chrome_descriptors.h
+          chrome/utility/services.cc
+          chrome/utility/chrome_content_utility_client.cc
+          content/app/content_main.cc
+          content/app/content_main_runner_impl.cc
+          content/browser/child_process_launcher_helper_posix.cc
+          content/child/child_thread_impl.cc
+          content/common/child_process_host_impl.cc
+          content/utility/utility_main.cc
+          content/utility/utility_thread_impl.cc
+          content/public/common/content_descriptors.h
+          content/public/common/content_descriptor_keys.h
+          components/password_manager/services/csv_password/csv_password_parser_impl.cc
+          components/password_manager/core/browser/import/password_importer.cc
+          components/password_manager/core/browser/import/csv_password_sequence.cc
+          ui/base/resource/resource_bundle.cc
+          ui/base/resource/resource_bundle.h
+          ui/base/resource/resource_bundle_posix.cc
+          '''.split()
+          manifest = {'revision': subprocess.check_output(
+              ['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip(),
+              'files': {}, 'missing': []}
+          output = Path(os.environ['RUNNER_TEMP']) / 'runtime-source-snapshot'
+          output.mkdir(exist_ok=True)
+          with tarfile.open(output / 'sources.tar.gz', 'w:gz', dereference=True) as archive:
+              for name in paths:
+                  source = root / name
+                  if not source.is_file():
+                      manifest['missing'].append(name)
+                      continue
+                  manifest['files'][name] = hashlib.sha256(source.read_bytes()).hexdigest()
+                  archive.add(source, arcname=name)
+          (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          print(f"Captured {len(manifest['files'])} source files; missing: {manifest['missing']}")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-source-snapshot
+          path: ${{ runner.temp }}/runtime-source-snapshot/
+          retention-days: 7
