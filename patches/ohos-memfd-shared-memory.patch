@@ -105,7 +105,7 @@ index c408700..6d3e834 100644
    // the temporary files we create will just go into the buffer cache
    // and be deleted before they ever make it out to disk.
 diff --git a/base/memory/platform_shared_memory_region_unittest.cc b/base/memory/platform_shared_memory_region_unittest.cc
-index d22751a..e5d1f6a 100644
+index d22751a..69000a8 100644
 --- a/base/memory/platform_shared_memory_region_unittest.cc
 +++ b/base/memory/platform_shared_memory_region_unittest.cc
 @@ -17,6 +17,12 @@
@@ -115,7 +115,7 @@ index d22751a..e5d1f6a 100644
 +#if BUILDFLAG(IS_OHOS)
 +#include "base/process/launch_ohos.h"
 +#include "base/test/scoped_command_line.h"
-+#include "base/test/scoped_environment_variable_override.h"
++#include "base/scoped_environment_variable_override.h"
 +#endif
 +
  #if BUILDFLAG(IS_APPLE)
@@ -140,7 +140,7 @@ index d22751a..e5d1f6a 100644
 +  command_line.GetProcessCommandLine()->AppendSwitchASCII("type", "renderer");
 +  command_line.GetProcessCommandLine()->AppendSwitch(
 +      base::internal::kOhosIsolatedRenderer);
-+  base::test::ScopedEnvironmentVariableOverride temp_directory(
++  base::ScopedEnvironmentVariableOverride temp_directory(
 +      "TMPDIR", "/nonexistent-ohos-shmem-test/cache");
 +  for (auto create : {&PlatformSharedMemoryRegion::CreateWritable,
 +                      &PlatformSharedMemoryRegion::CreateUnsafe}) {
