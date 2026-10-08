@@ -2,8 +2,8 @@
 
 ## 状态
 
-2026-10-08：完成静态调查并加入显式启用的隔离启动试验路径，尚未经过
-Chromium CI 编译和真机验证。**P0 未解决，默认启动行为仍不提供 Chromium
+2026-10-08：显式启用的隔离启动试验路径已通过 `dfbba12` 的 Chromium 原生编译
+及 engine HAR 构建；隔离单元测试尚未执行，真机尚未验证。**P0 未解决，默认启动行为仍不提供 Chromium
 渲染器沙箱。试验开关不应放进发布配置。**
 
 当前代码中有三种不同的边界，不能混为一谈：
@@ -127,3 +127,11 @@ utility/GPU 的权限需求各不相同，要按服务类型设计。仓库 ArkW
 因此尚未取得 runner 当前上游源码，也未操作真机。SSH 不通不妨碍构建：推送到
 `hmos-154-adapter` 后会自动触发 Incremental build，以该提交的 CI 结果为准。
 当前改动全部位于 overlay 和文档，不需要先修改 runner 上的源码或上游补丁。
+
+验证记录：
+
+- `dfbba12` 的 [Adapter CI](https://github.com/miramira8295/chromium-hmos/actions/runs/37719331729)
+  已通过公开文件、脚本和固定 Chromium 基线补丁检查。
+- 同一提交的 [Incremental build](https://github.com/miramira8295/chromium-hmos/actions/runs/37719331766)
+  Build 步骤通过：原生构建 36 步、136 秒，生成 136432724 字节的 `engine.har`。
+  本次没有生成签名 HAP，也没有执行隔离单元测试或真机测试。
