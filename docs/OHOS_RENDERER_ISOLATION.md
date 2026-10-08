@@ -5,7 +5,7 @@
 2026-10-08：`dfbba12` 已通过原生编译和 HAR 构建。外壳在 Pad 模拟器
 HarmonyOS 7.0.0.107 / API 26 上确认 renderer 获得独立 UID 与
 `isolated_render` SELinux 标签，但在进入 ChromeMain 前退出，所有页面白屏。
-本轮补齐资源 FD 启动契约与启动失败诊断，等待新构建和外壳复测。
+`5d016bcc` 补齐资源 FD 启动契约与启动失败诊断，已通过原生编译和 HAR 构建，等待外壳复测。
 **P0 未解决，默认仍关闭试验开关。**
 
 当前代码中有三种不同的边界，不能混为一谈：
@@ -157,3 +157,12 @@ SSH 不可达，因此通过只读 CI 快照任务取得 runner 实际源码。�
 - 同一提交的 [Incremental build](https://github.com/miramira8295/chromium-hmos/actions/runs/37719331766)
   Build 步骤通过：原生构建 36 步、136 秒，生成 136432724 字节的 `engine.har`。
   本次没有生成签名 HAP，也没有执行隔离单元测试或真机测试。
+
+- `5d016bcc` 的 [Adapter CI](https://github.com/miramira8295/chromium-hmos/actions/runs/37723646963)
+  通过；[Incremental build](https://github.com/miramira8295/chromium-hmos/actions/runs/37723646958)
+  原生构建 48 步、113 秒，生成 136429502 字节的 `engine.har`。
+  [复测版本 build-5d016bcc](https://github.com/miramira8295/chromium-hmos/releases/tag/build-5d016bcc)
+  不含签名 HAP。新增单元测试没有执行，也尚未验证隔离网页显示或 CSV 成功导入。
+- 本机独立子进程将 `RLIMIT_NOFILE` 降为 64 后，FD 最小值 1000 的复制返回
+  `EINVAL`，改为 3 可正确复制同一个文件。此检查说明旧实现依赖高 FD 限额，
+  不代表已测得 Pad 隔离子进程的实际限额；新版启动日志会记录该值。
