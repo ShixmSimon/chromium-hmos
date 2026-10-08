@@ -5,7 +5,8 @@
 2026-10-08：外壳在 Pad 模拟器 HarmonyOS 7.0.0.107 / API 26 上复测
 `5d016bcc`：原生密码页成功导入 3 条 CSV；隔离 renderer 已通过资源启动，加载
 WebUI 模板与系统字体，保持独立 UID，但创建共享内存时仍访问应用 el2 cache，
-因目录不存在而 SIGTRAP。当前继续修复共享内存后端与退出状态观测。
+因目录不存在而 SIGTRAP。`365333c0` 修复共享内存后端与退出状态观测，
+已通过原生编译、HAR 打包，等待外壳复测。
 **P0 未解决，默认仍关闭试验开关。**
 
 当前代码中有三种不同的边界，不能混为一谈：
@@ -195,3 +196,11 @@ SSH 不可达，因此通过只读 CI 快照任务取得 runner 实际源码。�
 - 本轮上游改动基于 [runner 快照 37725288139](https://github.com/miramira8295/chromium-hmos/actions/runs/37725288139)，
   基线 revision 仍为 `743f26418a267dd97c3c1c71d786038ae68cfc8f`。快照文件哈希和
   补丁首次/重复应用校验已通过，设备验证继续由外壳进行。
+
+- `365333c0` 的 [Adapter CI](https://github.com/miramira8295/chromium-hmos/actions/runs/37727000448)
+  已通过；[原生构建](https://github.com/miramira8295/chromium-hmos/actions/runs/37727000473)
+  318 步、255 秒，HAR 为 136430608 字节，ELF build-id 为
+  `80abfb6d9c703f91fce5fa33ff6381162bcebb28`。
+  最终复测包使用 [build-365333c0](https://github.com/miramira8295/chromium-hmos/releases/tag/build-365333c0)，
+  包含 memfd `0600` 权限修正；不要使用此前的中间构建进行隔离验收。
+  本轮没有执行新增单元测试或设备测试，未生成签名 HAP。
