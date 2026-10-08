@@ -33,6 +33,12 @@ jobs:
 
           root = Path(os.environ.get('CHROMIUM_SRC', '/root/chromium-154/src'))
           paths = '''
+          base/file_descriptor_store.h
+          base/file_descriptor_store.cc
+          components/password_manager/core/browser/import/password_importer.h
+          components/password_manager/core/browser/import/password_importer_unittest.cc
+          components/password_manager/core/browser/import/import_results.h
+          content/public/common/content_descriptor_keys.cc
           base/path_service.cc
           base/path_service.h
           base/posix/global_descriptors.h
