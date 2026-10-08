@@ -2,9 +2,11 @@
 
 ## 状态
 
-2026-10-08：显式启用的隔离启动试验路径已通过 `dfbba12` 的 Chromium 原生编译
-及 engine HAR 构建；隔离单元测试尚未执行，真机尚未验证。**P0 未解决，默认启动行为仍不提供 Chromium
-渲染器沙箱。试验开关不应放进发布配置。**
+2026-10-08：`dfbba12` 已通过原生编译和 HAR 构建。外壳在 Pad 模拟器
+HarmonyOS 7.0.0.107 / API 26 上确认 renderer 获得独立 UID 与
+`isolated_render` SELinux 标签，但在进入 ChromeMain 前退出，所有页面白屏。
+本轮补齐资源 FD 启动契约与启动失败诊断，等待新构建和外壳复测。
+**P0 未解决，默认仍关闭试验开关。**
 
 当前代码中有三种不同的边界，不能混为一谈：
 
@@ -74,15 +76,24 @@ API 缺失、配置分配失败、隔离模式失败、独立 UID 失败、启�
 ### 运行资源传递
 
 `WebWindow.prepareRuntimeAssets()` 将 pak、ICU 和 V8 snapshot 解压到
-`${filesDir}/chromium-runtime`。父进程只把 `resourcesDirectory` 路径序列化给
-子进程，子进程通过 `PathService::Override(DIR_ASSETS, ...)` 再按路径读取。
-这个启动契约依赖共享文件系统；独立沙箱/UID 下不能假定同样可用，试验可能在
-资源初始化阶段失败。
+`${filesDir}/chromium-runtime`。原实现把目录路径传给子进程，再通过
+`PathService::Override` 创建/解析目录，依赖共享数据沙箱。独立 UID 下不能依赖该路径。
 
-下一步需要核对 runner 实际 Chromium 源码中的资源、ICU、V8 snapshot 和 locale
-加载路径，优先复用 Chromium 的只读 FD 传递机制。只传所需文件的只读 FD，不传
-Profile 文件、整个应用目录的 FD，也不通过放宽目录权限恢复共享沙箱。需核算 16 FD
-预算，以及 HAP rawfile 的 offset/length。
+本轮只给隔离 renderer 传入 6 个只读、非空普通文件的 FD：`icudtl.dat`、
+`locales/<lang>.pak`、`chrome_100_percent.pak`、`chrome_200_percent.pak`、
+`resources.pak` 和 `snapshot_blob.bin`。它们与 Chromium 原有 IPC/共享内存 FD
+共同计入 NDK 的 16 FD 上限；不足则拒绝启动，不降级。locale 只允许字母、数字、
+下划线和连字符，最终文件以 `O_RDONLY | O_NOFOLLOW` 打开。
+
+子进程校验资源名称、数量、权限及文件类型，复制到 `FileDescriptorStore`；
+ICU、V8 和 ResourceBundle 直接消费这些 FD。隔离 renderer 不初始化应用 Profile
+目录或 Profile 下的日志，也不再创建/解析主应用的资源路径。未启用开关的进程保留
+按路径加载资源的行为。此实现对应当前打包的默认 V8 snapshot，不支持 context snapshot。
+
+启动 FD 不再强制从 1000 起复制，避免依赖 `RLIMIT_NOFILE > 1000`。
+失败日志使用实际启用的 Chromium hilog 转发；退出码 70–76 分别标识参数解码、
+FD 复制、环境、路径、FD 列表、GPU 启动参数和资源 FD 失败。
+日志不再输出完整 argv，也不输出 CSV、密码或页面 URL。
 
 ### 宿主能力与 IPC
 
@@ -123,10 +134,21 @@ utility/GPU 的权限需求各不相同，要按服务类型设计。仓库 ArkW
 
 ## 当前验证限制
 
-本次访问交接文档所列 `root@192.168.8.110` 返回 `Network is unreachable`，
-因此尚未取得 runner 当前上游源码，也未操作真机。SSH 不通不妨碍构建：推送到
-`hmos-154-adapter` 后会自动触发 Incremental build，以该提交的 CI 结果为准。
-当前改动全部位于 overlay 和文档，不需要先修改 runner 上的源码或上游补丁。
+SSH 不可达，因此通过只读 CI 快照任务取得 runner 实际源码。上游补丁由
+[快照 37722941448](https://github.com/miramira8295/chromium-hmos/actions/runs/37722941448)
+生成，基线 Chromium revision 为 `743f26418a267dd97c3c1c71d786038ae68cfc8f`。
+已校验快照 SHA256，并用 CI 的 `apply_incremental_patch` 函数验证首次应用、
+重复应用及结果文件一致性。没有进行本地 Chromium 构建或设备操作。
+
+原生密码页的 CSV 解析器已注册在 utility 主线程，network/storage 正常并不能证明
+该主线程通路正常。本轮补充 `OHOS CSV` 阶段日志，并在解析断连或 30 秒无响应时
+返回 `UNKNOWN_ERROR`、重置导入状态，允许重试；格式错误仍返回 `BAD_FORMAT`。
+新增断连重试、超时只回调一次、成功取消超时的单元测试，默认 CI 不执行这些测试。
+超时处理解决无限等待，尚不能证明原来的 CSV 服务卡住原因已修复。
+
+复测时分别收集 `OHOS child bootstrap`、`OHOS child startup`、`OHOS CSV` 与
+`AuraShell native child`。开隔离验证 HTTPS 与内置页；关隔离在原生密码设置页用
+同一份 3 条记录 CSV 导入，记录成功、错误或 30 秒超时及最后一条阶段日志。
 
 验证记录：
 

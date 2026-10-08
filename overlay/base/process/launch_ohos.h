@@ -26,20 +26,36 @@ namespace base::internal {
 // renderers. This does not enable Chromium's Linux/seccomp sandbox. There is
 // deliberately no fallback to a shared sandbox when this is requested.
 inline constexpr char kOhosIsolateRenderers[] = "ohos-isolate-renderers";
+// Child-only marker, set by the launcher after selecting the isolated mode.
+inline constexpr char kOhosIsolatedRenderer[] = "ohos-isolated-renderer";
+inline constexpr char kOhosIcuData[] = "ohos_icu";
+inline constexpr char kOhosLocalePak[] = "ohos_locale";
+inline constexpr char kOhosChrome100Pak[] = "ohos_pak100";
+inline constexpr char kOhosChrome200Pak[] = "ohos_pak200";
+inline constexpr char kOhosResourcesPak[] = "ohos_resources";
+inline constexpr char kOhosV8Snapshot[] = "ohos_v8";
+inline constexpr const char* kOhosRendererResourceNames[] = {
+    kOhosIcuData,      kOhosLocalePak,    kOhosChrome100Pak,
+    kOhosChrome200Pak, kOhosResourcesPak, kOhosV8Snapshot};
+BASE_EXPORT bool IsOhosIsolatedRenderer();
 
 // Runtime-resolved NDK entry points. Keeping the launch transaction separate
 // lets tests exercise unavailable APIs and failures without starting a child.
 struct BASE_EXPORT OhosIsolatedChildApi {
   using Create = Ability_ChildProcessConfigs* (*)();
-  using Destroy = Ability_NativeChildProcess_ErrCode (*)(
-      Ability_ChildProcessConfigs*);
-  using SetMode = Ability_NativeChildProcess_ErrCode (*)(
-      Ability_ChildProcessConfigs*, NativeChildProcess_IsolationMode);
-  using SetUid = Ability_NativeChildProcess_ErrCode (*)(
-      Ability_ChildProcessConfigs*, bool);
-  using Start = Ability_NativeChildProcess_ErrCode (*)(
-      const char*, NativeChildProcess_Args, Ability_ChildProcessConfigs*,
-      int32_t*);
+  using Destroy =
+      Ability_NativeChildProcess_ErrCode (*)(Ability_ChildProcessConfigs*);
+  using SetMode =
+      Ability_NativeChildProcess_ErrCode (*)(Ability_ChildProcessConfigs*,
+                                             NativeChildProcess_IsolationMode);
+  using SetUid =
+      Ability_NativeChildProcess_ErrCode (*)(Ability_ChildProcessConfigs*,
+                                             bool);
+  using Start =
+      Ability_NativeChildProcess_ErrCode (*)(const char*,
+                                             NativeChildProcess_Args,
+                                             Ability_ChildProcessConfigs*,
+                                             int32_t*);
 
   Create create = nullptr;
   Destroy destroy = nullptr;
@@ -48,8 +64,10 @@ struct BASE_EXPORT OhosIsolatedChildApi {
   Start start = nullptr;
 };
 
-BASE_EXPORT Ability_NativeChildProcess_ErrCode StartOhosIsolatedRenderer(
-    const OhosIsolatedChildApi& api, NativeChildProcess_Args args, int32_t* pid);
+BASE_EXPORT Ability_NativeChildProcess_ErrCode
+StartOhosIsolatedRenderer(const OhosIsolatedChildApi& api,
+                          NativeChildProcess_Args args,
+                          int32_t* pid);
 
 struct BASE_EXPORT OhosNativeChildParams {
   std::vector<std::string> argv;

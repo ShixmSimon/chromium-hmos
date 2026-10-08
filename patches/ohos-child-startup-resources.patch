@@ -1,0 +1,149 @@
+diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
+index baed23a..f6b7264 100644
+--- a/chrome/app/chrome_main_delegate.cc
++++ b/chrome/app/chrome_main_delegate.cc
+@@ -38,6 +38,11 @@
+ #include "base/time/time.h"
+ #include "base/timer/timer.h"
+ #include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "base/file_descriptor_store.h"
++#include "base/process/launch_ohos.h"
++#endif
+ #include "chrome/common/buildflags.h"
+ #include "chrome/common/channel_info.h"
+ #include "chrome/common/chrome_constants.h"
+@@ -680,6 +685,13 @@ void InitLogging(const std::string& process_type) {
+   }
+   const base::CommandLine& command_line =
+       *base::CommandLine::ForCurrentProcess();
++#if BUILDFLAG(IS_OHOS)
++  if (base::internal::IsOhosIsolatedRenderer()) {
++    // The native entry has already installed hilog forwarding. Do not open
++    // a log under the browser profile from an isolated UID.
++    return;
++  }
++#endif
+   logging::InitChromeLogging(command_line, file_state);
+ 
+ #if BUILDFLAG(IS_CHROMEOS)
+@@ -1572,14 +1584,40 @@ void ChromeMainDelegate::PreSandboxStartup() {
+     base::i18n::SetICUDefaultLocale(locale);
+     const std::string loaded_locale = locale;
+ #else
+-    const std::string loaded_locale =
+-        ui::ResourceBundle::InitSharedInstanceWithLocale(
+-            locale, nullptr, ui::ResourceBundle::LOAD_COMMON_RESOURCES);
+-
+-    base::FilePath resources_pack_path;
+-    base::PathService::Get(chrome::FILE_RESOURCES_PACK, &resources_pack_path);
+-    ui::ResourceBundle::GetSharedInstance().AddDataPackFromPath(
+-        resources_pack_path, ui::kScaleFactorNone);
++    std::string loaded_locale;
++#if BUILDFLAG(IS_OHOS)
++    if (base::internal::IsOhosIsolatedRenderer()) {
++      auto& store = base::FileDescriptorStore::GetInstance();
++      base::MemoryMappedFile::Region region;
++      auto locale_fd = store.TakeFD(base::internal::kOhosLocalePak, &region);
++      ui::ResourceBundle::InitSharedInstanceWithPakFileRegion(
++          base::File(std::move(locale_fd)), region);
++      const struct {
++        const char* name;
++        ui::ResourceScaleFactor scale;
++      } packs[] = {
++          {base::internal::kOhosChrome100Pak, ui::k100Percent},
++          {base::internal::kOhosChrome200Pak, ui::k200Percent},
++          {base::internal::kOhosResourcesPak, ui::kScaleFactorNone},
++      };
++      for (const auto& pack : packs) {
++        auto fd = store.TakeFD(pack.name, &region);
++        ui::ResourceBundle::GetSharedInstance().AddDataPackFromFileRegion(
++            base::File(std::move(fd)), region, pack.scale);
++      }
++      base::i18n::SetICUDefaultLocale(locale);
++      loaded_locale = locale;
++      LOG(WARNING) << "OHOS child startup resource bundle ready";
++    } else
++#endif
++    {
++      loaded_locale = ui::ResourceBundle::InitSharedInstanceWithLocale(
++          locale, nullptr, ui::ResourceBundle::LOAD_COMMON_RESOURCES);
++      base::FilePath resources_pack_path;
++      base::PathService::Get(chrome::FILE_RESOURCES_PACK, &resources_pack_path);
++      ui::ResourceBundle::GetSharedInstance().AddDataPackFromPath(
++          resources_pack_path, ui::kScaleFactorNone);
++    }
+ #endif  // BUILDFLAG(IS_ANDROID)
+     CHECK(!loaded_locale.empty()) << "Locale could not be found for " << locale;
+   }
+diff --git a/content/app/content_main_runner_impl.cc b/content/app/content_main_runner_impl.cc
+index 96145a1..99a840b 100644
+--- a/content/app/content_main_runner_impl.cc
++++ b/content/app/content_main_runner_impl.cc
+@@ -59,6 +59,10 @@
+ #include "base/trace_event/trace_event.h"
+ #include "build/branding_buildflags.h"
+ #include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "base/process/launch_ohos.h"
++#endif
+ #include "components/discardable_memory/service/discardable_shared_memory_manager.h"
+ #include "components/download/public/common/download_task_runner.h"
+ #include "components/power_monitor/make_power_monitor_device_source.h"
+@@ -276,6 +280,19 @@ std::string GetSnapshotDataDescriptor(const base::CommandLine& command_line) {
+ 
+ void LoadV8SnapshotFile(const base::CommandLine& command_line) {
+   const gin::V8SnapshotFileType snapshot_type = GetSnapshotType(command_line);
++#if BUILDFLAG(IS_OHOS)
++  if (base::internal::IsOhosIsolatedRenderer()) {
++    // The packaged OHOS runtime ships the default snapshot_blob.bin.
++    CHECK(snapshot_type == gin::V8SnapshotFileType::kDefault);
++    base::MemoryMappedFile::Region region;
++    auto fd = base::FileDescriptorStore::GetInstance().TakeFD(
++        base::internal::kOhosV8Snapshot, &region);
++    gin::V8Initializer::LoadV8SnapshotFromFile(base::File(std::move(fd)),
++                                               &region, snapshot_type);
++    LOG(WARNING) << "OHOS child startup V8 snapshot ready";
++    return;
++  }
++#endif
+ #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
+   base::FileDescriptorStore& file_descriptor_store =
+       base::FileDescriptorStore::GetInstance();
+@@ -1025,6 +1042,20 @@ int ContentMainRunnerImpl::Initialize(ContentMainParams params) {
+       return TerminateForFatalInitializationError();
+     }
+   }
++#elif BUILDFLAG(IS_OHOS) && (ICU_UTIL_DATA_IMPL == ICU_UTIL_DATA_FILE)
++  LOG(WARNING) << "OHOS child startup before ICU";
++  if (base::internal::IsOhosIsolatedRenderer()) {
++    base::MemoryMappedFile::Region region;
++    auto fd = base::FileDescriptorStore::GetInstance().TakeFD(
++        base::internal::kOhosIcuData, &region);
++    // InitializeICUWithFileDescriptor transfers ownership to its mapping.
++    if (!base::i18n::InitializeICUWithFileDescriptor(fd.release(), region)) {
++      return TerminateForFatalInitializationError();
++    }
++  } else if (!base::i18n::InitializeICU()) {
++    return TerminateForFatalInitializationError();
++  }
++  LOG(WARNING) << "OHOS child startup ICU ready";
+ #else
+   if (!base::i18n::InitializeICU())
+     return TerminateForFatalInitializationError();
+@@ -1062,7 +1093,13 @@ int ContentMainRunnerImpl::Initialize(ContentMainParams params) {
+   base::debug::VerifyDebugger();
+ #endif  // !defined(OFFICIAL_BUILD) || BUILDFLAG(CHROME_FOR_TESTING)
+ 
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS child startup before PreSandboxStartup";
++#endif
+   delegate_->PreSandboxStartup();
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS child startup PreSandboxStartup ready";
++#endif
+ 
+ #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+   // Set environment variables for fontconfig fontations indexing and before

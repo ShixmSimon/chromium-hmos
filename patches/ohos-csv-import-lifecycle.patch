@@ -1,0 +1,364 @@
+diff --git a/components/password_manager/core/browser/import/password_importer.cc b/components/password_manager/core/browser/import/password_importer.cc
+index b3faebd..6432459 100644
+--- a/components/password_manager/core/browser/import/password_importer.cc
++++ b/components/password_manager/core/browser/import/password_importer.cc
+@@ -12,6 +12,7 @@
+ #include "base/files/file_util.h"
+ #include "base/functional/bind.h"
+ #include "base/location.h"
++#include "base/logging.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/strings/string_util.h"
+ #include "base/task/thread_pool.h"
+@@ -440,11 +441,27 @@ void PasswordImporter::ParseCSVPasswordsInSandbox(
+     base::expected<std::string, ImportResults::Status> result) {
+   // Currently, CSV is the only supported format.
+   if (result.has_value()) {
++#if BUILDFLAG(IS_OHOS)
++    CHECK(!pending_parse_callback_);
++    pending_parse_callback_ = std::move(results_callback);
++    GetParser();
++    parser_.set_disconnect_handler(
++        base::BindOnce(&PasswordImporter::OnCSVParserFailed,
++                       weak_ptr_factory_.GetWeakPtr(), false));
++    parser_timeout_.Start(FROM_HERE, base::Seconds(30),
++                          base::BindOnce(&PasswordImporter::OnCSVParserFailed,
++                                         weak_ptr_factory_.GetWeakPtr(), true));
++    LOG(WARNING) << "OHOS CSV import parse requested";
++    parser_->ParseCSV(std::move(result.value()),
++                      base::BindOnce(&PasswordImporter::OnCSVParserReply,
++                                     weak_ptr_factory_.GetWeakPtr(), to_store));
++#else
+     GetParser()->ParseCSV(
+         std::move(result.value()),
+         base::BindOnce(&PasswordImporter::OnCSVPasswordsParsed,
+                        weak_ptr_factory_.GetWeakPtr(), to_store,
+                        std::move(results_callback)));
++#endif
+   } else {
+     ImportResults results;
+     results.status = result.error();
+@@ -454,6 +471,31 @@ void PasswordImporter::ParseCSVPasswordsInSandbox(
+   }
+ }
+ 
++#if BUILDFLAG(IS_OHOS)
++void PasswordImporter::OnCSVParserFailed(bool timed_out) {
++  parser_timeout_.Stop();
++  parser_.reset();
++  if (!pending_parse_callback_) {
++    return;
++  }
++  LOG(ERROR) << "OHOS CSV import parser failed timeout=" << timed_out;
++  state_ = kNotStarted;
++  ImportResults results;
++  results.status = ImportResults::Status::UNKNOWN_ERROR;
++  results.file_name = file_path_.BaseName().AsUTF8Unsafe();
++  std::move(pending_parse_callback_).Run(results);
++}
++
++void PasswordImporter::OnCSVParserReply(PasswordForm::Store to_store,
++                                        mojom::CSVPasswordSequencePtr seq) {
++  parser_timeout_.Stop();
++  parser_.reset_on_disconnect();
++  LOG(WARNING) << "OHOS CSV import parse replied valid=" << !!seq;
++  OnCSVPasswordsParsed(to_store, std::move(pending_parse_callback_),
++                       std::move(seq));
++}
++#endif
++
+ void PasswordImporter::Import(std::string csv_data,
+                               PasswordForm::Store to_store,
+                               ImportResultsCallback results_callback) {
+diff --git a/components/password_manager/core/browser/import/password_importer.h b/components/password_manager/core/browser/import/password_importer.h
+index 66c5bf7..da4ba20 100644
+--- a/components/password_manager/core/browser/import/password_importer.h
++++ b/components/password_manager/core/browser/import/password_importer.h
+@@ -12,6 +12,10 @@
+ #include "base/functional/callback_helpers.h"
+ #include "base/memory/raw_ref.h"
+ #include "base/types/expected.h"
++#include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "base/timer/timer.h"
++#endif
+ #include "components/password_manager/core/browser/import/import_results.h"
+ #include "components/password_manager/core/browser/password_form.h"
+ #include "components/password_manager/core/browser/password_store/stored_credential.h"
+@@ -188,6 +192,14 @@ class PasswordImporter {
+   const mojo::Remote<mojom::CSVPasswordParser>& GetParser();
+ 
+   mojo::Remote<mojom::CSVPasswordParser> parser_;
++#if BUILDFLAG(IS_OHOS)
++  void OnCSVParserFailed(bool timed_out);
++  void OnCSVParserReply(PasswordForm::Store to_store,
++                        mojom::CSVPasswordSequencePtr seq);
++  // Keep completion outside Mojo so a lost reply cannot strand the UI.
++  ImportResultsCallback pending_parse_callback_;
++  base::OneShotTimer parser_timeout_;
++#endif
+ 
+   PasswordImporter::State state_ = kNotStarted;
+ 
+diff --git a/components/password_manager/core/browser/import/password_importer_unittest.cc b/components/password_manager/core/browser/import/password_importer_unittest.cc
+index c1dbdd8..b97bcb7 100644
+--- a/components/password_manager/core/browser/import/password_importer_unittest.cc
++++ b/components/password_manager/core/browser/import/password_importer_unittest.cc
+@@ -52,7 +52,12 @@ const char kTestFileName[] = "test_only.csv";
+ 
+ class PasswordImporterTest : public testing::Test {
+  public:
+-  PasswordImporterTest() : receiver_{&service_}, importer_(presenter_) {
++  explicit PasswordImporterTest(
++      base::test::TaskEnvironment::TimeSource time_source =
++          base::test::TaskEnvironment::TimeSource::SYSTEM_TIME)
++      : task_environment_(time_source),
++        receiver_{&service_},
++        importer_(presenter_) {
+     CHECK(temp_directory_.CreateUniqueTempDir());
+     mojo::PendingRemote<mojom::CSVPasswordParser> pending_remote{
+         receiver_.BindNewPipeAndPassRemote()};
+@@ -76,6 +81,16 @@ class PasswordImporterTest : public testing::Test {
+   }
+ 
+  protected:
++#if BUILDFLAG(IS_OHOS)
++  PasswordImporter& importer() { return importer_; }
++  base::test::TaskEnvironment& task_environment() { return task_environment_; }
++  void PauseParser() { receiver_.Pause(); }
++  void DisconnectParser() { receiver_.reset(); }
++  void ReconnectParser() {
++    receiver_.reset();
++    importer_.SetServiceForTesting(receiver_.BindNewPipeAndPassRemote());
++  }
++#endif
+   ImportResults StartImportAndWaitForCompletion(
+       const base::FilePath& input_file,
+       PasswordForm::Store to_store = PasswordForm::Store::kProfileStore) {
+@@ -1227,3 +1242,69 @@ TEST_F(PasswordImporterTest, VectorImportWithDuplicate) {
+ }
+ 
+ }  // namespace password_manager
++
++#if BUILDFLAG(IS_OHOS)
++namespace password_manager {
++
++class OhosPasswordImporterFailureTest : public PasswordImporterTest {
++ public:
++  OhosPasswordImporterFailureTest()
++      : PasswordImporterTest(
++            base::test::TaskEnvironment::TimeSource::MOCK_TIME) {}
++};
++
++TEST_F(OhosPasswordImporterFailureTest,
++       ParserDisconnectCompletesAndAllowsRetry) {
++  PauseParser();
++  TestFuture<const ImportResults&> future;
++  importer().Import("url,username,password\nhttps://example.com,a,b\n",
++                    PasswordForm::Store::kProfileStore, future.GetCallback());
++  task_environment().RunUntilIdle();
++  EXPECT_FALSE(future.IsReady());
++  DisconnectParser();
++  task_environment().RunUntilIdle();
++  ASSERT_TRUE(future.IsReady());
++  EXPECT_EQ(future.Get().status, ImportResults::UNKNOWN_ERROR);
++  AssertNotStartedState();
++  EXPECT_THAT(stored_passwords(), IsEmpty());
++
++  ReconnectParser();
++  EXPECT_EQ(StartImportAndWaitForCompletion(
++                "url,username,password\nhttps://example.com,a,b\n")
++                .status,
++            ImportResults::SUCCESS);
++}
++
++TEST_F(OhosPasswordImporterFailureTest, ParserTimeoutCompletesExactlyOnce) {
++  PauseParser();
++  int completions = 0;
++  importer().Import(
++      "url,username,password\nhttps://example.com,a,b\n",
++      PasswordForm::Store::kProfileStore,
++      base::BindLambdaForTesting([&](const ImportResults& result) {
++        ++completions;
++        EXPECT_EQ(result.status, ImportResults::UNKNOWN_ERROR);
++      }));
++  task_environment().RunUntilIdle();
++  EXPECT_EQ(completions, 0);
++  task_environment().FastForwardBy(base::Seconds(31));
++  EXPECT_EQ(completions, 1);
++  AssertNotStartedState();
++  EXPECT_THAT(stored_passwords(), IsEmpty());
++  DisconnectParser();
++  task_environment().FastForwardBy(base::Seconds(60));
++  EXPECT_EQ(completions, 1);
++}
++
++TEST_F(OhosPasswordImporterFailureTest, SuccessCancelsParserTimeout) {
++  EXPECT_EQ(StartImportAndWaitForCompletion(
++                "url,username,password\nhttps://example.com,a,b\n")
++                .status,
++            ImportResults::SUCCESS);
++  task_environment().FastForwardBy(base::Seconds(60));
++  AssertFinishedState();
++  EXPECT_THAT(stored_passwords(), SizeIs(1));
++}
++
++}  // namespace password_manager
++#endif
+diff --git a/components/password_manager/services/csv_password/csv_password_parser_impl.cc b/components/password_manager/services/csv_password/csv_password_parser_impl.cc
+index 05d4619..cb52bf4 100644
+--- a/components/password_manager/services/csv_password/csv_password_parser_impl.cc
++++ b/components/password_manager/services/csv_password/csv_password_parser_impl.cc
+@@ -10,16 +10,26 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "base/logging.h"
++#include "build/build_config.h"
++
+ namespace password_manager {
+ 
+ CSVPasswordParserImpl::CSVPasswordParserImpl(
+     mojo::PendingReceiver<mojom::CSVPasswordParser> receiver)
+-    : receiver_(this, std::move(receiver)) {}
++    : receiver_(this, std::move(receiver)) {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS CSV service receiver bound";
++#endif
++}
+ 
+ CSVPasswordParserImpl::~CSVPasswordParserImpl() = default;
+ 
+ void CSVPasswordParserImpl::ParseCSV(const std::string& raw_csv,
+                                      ParseCSVCallback callback) {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS CSV service parse entered";
++#endif
+   mojom::CSVPasswordSequencePtr result = nullptr;
+   CSVPasswordSequence seq(raw_csv);
+   if (seq.result() == CSVPassword::Status::kOK) {
+@@ -27,6 +37,9 @@ void CSVPasswordParserImpl::ParseCSV(const std::string& raw_csv,
+     for (const auto& pwd : seq)
+       result->csv_passwords.push_back(pwd);
+   }
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS CSV service parse replying valid=" << !!result;
++#endif
+   std::move(callback).Run(std::move(result));
+ }
+ 
+diff --git a/content/utility/utility_main.cc b/content/utility/utility_main.cc
+index 3eb18f8..0f8a12f 100644
+--- a/content/utility/utility_main.cc
++++ b/content/utility/utility_main.cc
+@@ -232,6 +232,13 @@ void SetUtilityThreadName(const std::string& utility_sub_type) {
+ 
+ // Mainline routine for running as the utility process.
+ int UtilityMain(MainFunctionParams parameters) {
++#if BUILDFLAG(IS_OHOS)
++  const bool trace_csv =
++      parameters.command_line->GetSwitchValueASCII(switches::kUtilitySubType) ==
++      "password_manager.mojom.CSVPasswordParser";
++  if (trace_csv)
++    LOG(WARNING) << "OHOS CSV utility main entered";
++#endif
+   if (parameters.command_line->HasSwitch(
+           switches::kUtilityImmediateCrashForTesting)) {
+     base::ImmediateCrash();
+@@ -270,6 +277,10 @@ int UtilityMain(MainFunctionParams parameters) {
+       message_pump_type, /*is_main_thread=*/true);
+   const std::string utility_sub_type =
+       parameters.command_line->GetSwitchValueASCII(switches::kUtilitySubType);
++#if BUILDFLAG(IS_OHOS)
++  if (trace_csv)
++    LOG(WARNING) << "OHOS CSV utility task executor ready";
++#endif
+   SetUtilityThreadName(utility_sub_type);
+ 
+   // Some utility services (e.g. data_decoder, print_compositor,
+@@ -494,13 +505,25 @@ int UtilityMain(MainFunctionParams parameters) {
+           webrtc::features::kWebRTCBoostMediaIOThreads)) {
+     io_thread_type = base::ThreadType::kPresentation;
+   }
++#if BUILDFLAG(IS_OHOS)
++  if (trace_csv)
++    LOG(WARNING) << "OHOS CSV utility before ChildProcess";
++#endif
+   ChildProcess utility_process(io_thread_type);
+   GetContentClient()->utility()->PostIOThreadCreated(
+       utility_process.io_task_runner());
++#if BUILDFLAG(IS_OHOS)
++  if (trace_csv)
++    LOG(WARNING) << "OHOS CSV utility IO thread ready";
++#endif
+   base::RunLoop run_loop;
+   utility_process.set_main_thread(
+       new UtilityThreadImpl(run_loop.QuitClosure()));
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (trace_csv)
++    LOG(WARNING) << "OHOS CSV utility main thread ready";
++#endif
+   // Both utility process and service utility process would come
+   // here, but the later is launched without connection to service manager, so
+   // there has no base::PowerMonitor be created(See ChildThreadImpl::Init()).
+@@ -521,6 +544,10 @@ int UtilityMain(MainFunctionParams parameters) {
+   base::allocator::PartitionAllocSupport::Get()->ReconfigureAfterTaskRunnerInit(
+       switches::kUtilityProcess);
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (trace_csv)
++    LOG(WARNING) << "OHOS CSV utility run loop entered";
++#endif
+   run_loop.Run();
+ 
+   if (utility_sub_type == on_device_model::mojom::OnDeviceModelService::Name_) {
+diff --git a/content/utility/utility_thread_impl.cc b/content/utility/utility_thread_impl.cc
+index c7525db..08543fb 100644
+--- a/content/utility/utility_thread_impl.cc
++++ b/content/utility/utility_thread_impl.cc
+@@ -14,6 +14,7 @@
+ #include "base/debug/crash_logging.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback_helpers.h"
++#include "base/logging.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "base/memory/weak_ptr.h"
+ #include "base/no_destructor.h"
+@@ -57,6 +58,12 @@ class ServiceBinderImpl {
+                                             base::debug::CrashKeySize::Size32);
+     const std::string& service_name = receiver->interface_name().value();
+     base::debug::SetCrashKeyString(service_name_crash_key, service_name);
++#if BUILDFLAG(IS_OHOS)
++    const bool trace_csv =
++        service_name == "password_manager.mojom.CSVPasswordParser";
++    if (trace_csv)
++      LOG(WARNING) << "OHOS CSV utility IO receiver arrived";
++#endif
+ 
+     // Traces should also indicate the service name.
+     if (base::CurrentProcess::GetInstance().IsProcessNameEmpty()) {
+@@ -84,6 +91,10 @@ class ServiceBinderImpl {
+       return;
+     }
+ 
++#if BUILDFLAG(IS_OHOS)
++    if (trace_csv)
++      LOG(WARNING) << "OHOS CSV utility posting to main thread";
++#endif
+     termination_callback =
+         base::BindOnce(base::IgnoreResult(&base::SequencedTaskRunner::PostTask),
+                        base::SingleThreadTaskRunner::GetCurrentDefault(),
+@@ -217,6 +228,12 @@ void UtilityThreadImpl::HandleServiceRequest(
+     RegisterMainThreadServices(*main_thread_services_);
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (receiver.interface_name() == "password_manager.mojom.CSVPasswordParser") {
++    LOG(WARNING) << "OHOS CSV utility main receiver arrived registered="
++                 << main_thread_services_->CanRunService(receiver);
++  }
++#endif
+   if (main_thread_services_->CanRunService(receiver)) {
+     main_thread_services_->RunService(std::move(receiver),
+                                       std::move(termination_callback));

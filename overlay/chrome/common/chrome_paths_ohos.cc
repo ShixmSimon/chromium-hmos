@@ -6,6 +6,7 @@
 #include "base/command_line.h"
 #include "base/files/file_path.h"
 #include "base/path_service.h"
+#include "base/process/launch_ohos.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_paths_internal.h"
 #include "chrome/common/chrome_switches.h"
@@ -74,7 +75,7 @@ bool GetUserVideosDirectory(base::FilePath* result) {
 }
 
 bool ProcessNeedsProfileDir(const std::string& process_type) {
-  return true;
+  return !base::internal::IsOhosIsolatedRenderer();
 }
 
 }  // namespace chrome

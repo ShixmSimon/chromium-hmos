@@ -5,9 +5,13 @@
 #include "base/process/launch_ohos.h"
 
 #include <dlfcn.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 #include <cstdint>
+#include <iterator>
 #include <map>
 #include <string>
 #include <utility>
@@ -16,6 +20,7 @@
 #include "AbilityKit/native_child_process.h"
 #include "base/base_paths.h"
 #include "base/command_line.h"
+#include "base/files/scoped_file.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/location.h"
@@ -145,7 +150,9 @@ bool EncodeOhosNativeChildParams(const std::vector<std::string>& argv,
 }  // namespace
 
 Ability_NativeChildProcess_ErrCode StartOhosIsolatedRenderer(
-    const OhosIsolatedChildApi& api, NativeChildProcess_Args args, int32_t* pid) {
+    const OhosIsolatedChildApi& api,
+    NativeChildProcess_Args args,
+    int32_t* pid) {
   if (!pid) {
     return NCP_ERR_INVALID_PARAM;
   }
@@ -179,19 +186,30 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
   if (options.pre_exec_delegate) {
     // A delegate may establish a security boundary. Running the child without
     // it would silently remove that boundary; the appspawn API cannot run it.
-    LOG(ERROR) << "OHOS native child cannot run pre_exec_delegate; launch refused";
+    LOG(ERROR)
+        << "OHOS native child cannot run pre_exec_delegate; launch refused";
     return Process();
   }
 
   EnsureNativeChildExitCallbackRegistered();
 
+  CommandLine child_command_line(argv);
+  const std::string process_type =
+      child_command_line.GetSwitchValueASCII("type");
+  const bool isolate_renderer =
+      CommandLine::ForCurrentProcess()->HasSwitch(kOhosIsolateRenderers) &&
+      process_type == "renderer";
+  child_command_line.RemoveSwitch(kOhosIsolatedRenderer);
+  if (isolate_renderer) {
+    child_command_line.AppendSwitch(kOhosIsolatedRenderer);
+  }
   std::string encoded_params;
-  if (!EncodeOhosNativeChildParams(argv, options, &encoded_params)) {
+  if (!EncodeOhosNativeChildParams(child_command_line.argv(), options,
+                                   &encoded_params)) {
     LOG(ERROR) << "Failed to serialize OHOS native child process arguments";
     return Process();
   }
 
-  const std::string process_type = CommandLine(argv).GetSwitchValueASCII("type");
   if (process_type == "gpu-process") {
     if (!g_gpu_child_launcher) {
       LOG(ERROR) << "OHOS GPU process requested with no launcher for it";
@@ -205,22 +223,59 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
 
   // The NDK accepts at most 16 descriptors. Reject before constructing the
   // list rather than relying on partial or platform-dependent processing.
-  if (options.fds_to_remap.size() > 16) {
+  const size_t resource_count =
+      isolate_renderer ? std::size(kOhosRendererResourceNames) : 0;
+  if (options.fds_to_remap.size() + resource_count > 16) {
     LOG(ERROR) << "OHOS native child descriptor limit exceeded";
     return Process();
   }
 
   std::vector<std::string> fd_names;
-  fd_names.reserve(options.fds_to_remap.size());
+  std::vector<int> fd_values;
+  std::vector<ScopedFD> resource_fds;
   for (const auto& [source_fd, destination_fd] : options.fds_to_remap) {
-    (void)source_fd;
     fd_names.push_back(NumberToString(destination_fd));
+    fd_values.push_back(source_fd);
+  }
+  if (isolate_renderer) {
+    // Pass only these immutable files. Never grant directory access to the
+    // application's private files or relax their permissions for the child.
+    FilePath assets;
+    const std::string locale = child_command_line.GetSwitchValueASCII("lang");
+    if (locale.empty() ||
+        locale.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRS"
+                                 "TUVWXYZ0123456789-_") != std::string::npos ||
+        !PathService::Get(DIR_ASSETS, &assets)) {
+      LOG(ERROR) << "OHOS isolated renderer invalid resource configuration";
+      return Process();
+    }
+    const FilePath paths[] = {
+        assets.AppendASCII("icudtl.dat"),
+        assets.AppendASCII("locales").AppendASCII(locale + ".pak"),
+        assets.AppendASCII("chrome_100_percent.pak"),
+        assets.AppendASCII("chrome_200_percent.pak"),
+        assets.AppendASCII("resources.pak"),
+        assets.AppendASCII("snapshot_blob.bin")};
+    for (size_t i = 0; i < std::size(paths); ++i) {
+      ScopedFD fd(HANDLE_EINTR(
+          open(paths[i].value().c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW)));
+      struct stat info = {};
+      if (!fd.is_valid() || fstat(fd.get(), &info) != 0 ||
+          !S_ISREG(info.st_mode) || info.st_size <= 0) {
+        LOG(ERROR) << "OHOS isolated renderer resource open failed index=" << i
+                   << " errno=" << errno;
+        return Process();
+      }
+      fd_names.emplace_back(kOhosRendererResourceNames[i]);
+      fd_values.push_back(fd.get());
+      resource_fds.push_back(std::move(fd));
+    }
   }
 
-  std::vector<NativeChildProcess_Fd> fd_nodes(options.fds_to_remap.size());
-  for (size_t index = 0; index < options.fds_to_remap.size(); ++index) {
+  std::vector<NativeChildProcess_Fd> fd_nodes(fd_values.size());
+  for (size_t index = 0; index < fd_nodes.size(); ++index) {
     fd_nodes[index].fdName = fd_names[index].data();
-    fd_nodes[index].fd = options.fds_to_remap[index].first;
+    fd_nodes[index].fd = fd_values[index];
     fd_nodes[index].next =
         index + 1 < fd_nodes.size() ? &fd_nodes[index + 1] : nullptr;
   }
@@ -234,22 +289,20 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
       .reserved = 0,
   };
   int32_t pid = -1;
-  const bool isolate_renderer =
-      CommandLine::ForCurrentProcess()->HasSwitch(kOhosIsolateRenderers) &&
-      process_type == "renderer";
   const Ability_NativeChildProcess_ErrCode result =
       isolate_renderer
           ? StartOhosIsolatedRenderer(GetIsolatedChildApi(), child_args, &pid)
           : OH_Ability_StartNativeChildProcess(kNativeChildEntry, child_args,
-                                              child_options, &pid);
+                                               child_options, &pid);
   if (result != NCP_NO_ERROR || pid <= 0) {
     LOG(ERROR) << "OHOS native child process failed result=" << result;
     return Process();
   }
   if (isolate_renderer) {
     // This records the requested launch policy, not a verified security test.
-    LOG(WARNING) << "OHOS renderer started with isolated sandbox and UID requested"
-                 << " pid=" << pid;
+    LOG(WARNING)
+        << "OHOS renderer started with isolated sandbox and UID requested"
+        << " pid=" << pid << " fds=" << fd_nodes.size();
   }
 
   if (options.wait) {
@@ -258,6 +311,12 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
     DPCHECK(waited_pid == pid);
   }
   return Process(pid);
+}
+
+bool IsOhosIsolatedRenderer() {
+  const CommandLine* command_line = CommandLine::ForCurrentProcess();
+  return command_line->HasSwitch(kOhosIsolatedRenderer) &&
+         command_line->GetSwitchValueASCII("type") == "renderer";
 }
 
 void SetOhosGpuChildLauncher(OhosGpuChildLauncher launcher) {
