@@ -8,6 +8,7 @@
 #include "base/logging.h"
 #include "base/time/time.h"
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
+#include "chrome/browser/ohos/url_protection/url_protection.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/ohos/huks_key_provider_ohos.h"
 #include "components/password_manager/core/browser/password_store/password_store_interface.h"
@@ -30,6 +31,7 @@ constexpr char kSweptPref[] = "ohos.passwords_saved_without_protection_cleared";
 }  // namespace
 
 void RegisterPasswordCleanupPrefs(PrefRegistrySimple* registry) {
+  url_protection::RegisterPrefs(registry);
   registry->RegisterBooleanPref(kSweptPref, false);
   // No longer read: filling always asks (ohos-password-fill-always-auth.patch).
   // Still registered so profiles that stored a value keep loading cleanly.

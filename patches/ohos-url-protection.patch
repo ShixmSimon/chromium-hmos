@@ -1,0 +1,54 @@
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+index 0ce64bd9..e5cd1cbd 100644
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -891,6 +891,12 @@ source_set("core") {
+       "ui/ohos/screen_orientation_delegate_ohos.h",
+       "ui/ohos/shell_context_menu_ohos.cc",
+       "ui/ohos/shell_context_menu_ohos.h",
++      "ohos/url_protection/url_protection.cc",
++      "ohos/url_protection/url_protection.h",
++      "ohos/url_protection/local_rules.cc",
++      "ohos/url_protection/local_rules.h",
++      "ohos/url_protection/navigation_throttle.cc",
++      "ohos/url_protection/navigation_throttle.h",
+       "ui/ohos/shell_bookmarks_ohos.cc",
+       "ui/ohos/shell_browsing_data_counts_ohos.cc",
+       "ui/ohos/shell_browsing_data_ohos.cc",
+@@ -1711,6 +1717,11 @@ source_set("core") {
+   }
+ 
+   if (is_ohos) {
++    deps += [
++      "//components/ohos_system_service",
++      "//components/security_interstitials/content:security_interstitial_page",
++      "//crypto",
++    ]
+     sources += [
+       "icon_loader_ohos.cc",
+       "memory_details_linux.cc",
+diff --git a/chrome/browser/chrome_content_browser_client_navigation_throttles.cc b/chrome/browser/chrome_content_browser_client_navigation_throttles.cc
+index 76ed0833..d25261c0 100644
+--- a/chrome/browser/chrome_content_browser_client_navigation_throttles.cc
++++ b/chrome/browser/chrome_content_browser_client_navigation_throttles.cc
+@@ -7,6 +7,9 @@
+ #include "base/command_line.h"
+ #include "base/feature_list.h"
+ #include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ohos/url_protection/navigation_throttle.h"
++#endif
+ #include "build/buildflag.h"
+ #include "chrome/browser/actor/actor_navigation_throttle.h"
+ #include "chrome/browser/autocomplete/aim_eligibility_refresh_navigation_throttle.h"
+@@ -307,6 +310,10 @@ void CreateAndAddChromeThrottlesForNavigation(
+ #endif  // BUILDFLAG(IS_ANDROID)
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  chrome::ohos::url_protection::NavigationThrottle::MaybeCreateAndAdd(registry);
++#endif
++
+   DSEPrewarmNavigationThrottle::MaybeCreateAndAdd(registry);
+   if (!features::IsDsePreload2Enabled()) {
+     SearchPrefetchNavigationThrottle::MaybeCreateAndAdd(registry);

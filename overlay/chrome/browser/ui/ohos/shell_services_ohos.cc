@@ -11,6 +11,7 @@
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+#include "chrome/browser/ohos/url_protection/url_protection.h"
 #include "chrome/browser/ui/ohos/shell_downloads_ohos.h"
 #include "chrome/browser/ui/ohos/shell_password_cleanup_ohos.h"
 #include "url/gurl.h"
@@ -31,6 +32,8 @@ struct ShellServiceCommand {
 };
 
 constexpr ShellServiceCommand kShellServiceCommands[] = {
+    {"getUrlProtectionState", &url_protection::HandleCommand},
+    {"setUrlProtectionConfig", &url_protection::HandleCommand},
     // Bookmarks.
     {"getBookmarks", &HandleBookmarksCommand},
     {"searchBookmarks", &HandleBookmarksCommand},

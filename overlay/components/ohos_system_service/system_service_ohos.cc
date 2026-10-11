@@ -81,7 +81,7 @@ class Bridge {
     return !dispatcher_.is_null();
   }
 
-  void Call(std::string_view service,
+  int Call(std::string_view service,
             std::string_view method,
             base::DictValue args,
             ReplyCallback reply) {
@@ -102,7 +102,7 @@ class Bridge {
                        base::BindOnce(&RunReply, std::move(reply),
                                       MakeError("HarmonyOS system services "
                                                 "are unavailable here")));
-      return;
+      return 0;
     }
 
     base::DictValue request;
@@ -113,9 +113,15 @@ class Bridge {
     std::string json;
     if (!base::JSONWriter::Write(request, &json)) {
       Complete(id, MakeError("Could not encode the request"));
-      return;
+      return 0;
     }
     dispatcher.Run(json);
+    return id;
+  }
+
+  void Cancel(int id) {
+    if (id > 0)
+      Complete(id, MakeError("HarmonyOS service call cancelled or timed out"));
   }
 
   void DeliverMessage(const std::string& json) {
@@ -263,6 +269,23 @@ void Call(std::string_view service,
 
 void DeliverMessage(const std::string& json) {
   GetBridge().DeliverMessage(json);
+}
+
+int CallWithTimeout(std::string_view service,
+                    std::string_view method,
+                    base::DictValue args,
+                    base::TimeDelta timeout,
+                    ReplyCallback reply) {
+  int id = GetBridge().Call(service, method, std::move(args), std::move(reply));
+  if (id > 0) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+        FROM_HERE, base::BindOnce(&CancelCall, id), timeout);
+  }
+  return id;
+}
+
+void CancelCall(int id) {
+  GetBridge().Cancel(id);
 }
 
 std::unique_ptr<EventSubscription> SubscribeToEvents(std::string_view service,

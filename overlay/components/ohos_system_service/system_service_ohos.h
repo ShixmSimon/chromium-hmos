@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include "base/functional/callback.h"
+#include "base/time/time.h"
 #include "base/values.h"
 
 // A request/response channel from Chromium to HarmonyOS services that exist
@@ -65,6 +66,15 @@ void Call(std::string_view service,
           std::string_view method,
           base::DictValue args,
           ReplyCallback reply);
+
+// A bounded call for navigation checks. Timeout/cancellation removes the
+// pending reply; a late ArkTS answer is ignored. 0 means no dispatcher.
+int CallWithTimeout(std::string_view service,
+                    std::string_view method,
+                    base::DictValue args,
+                    base::TimeDelta timeout,
+                    ReplyCallback reply);
+void CancelCall(int id);
 
 // Receives one message from ArkTS. Thread-safe.
 void DeliverMessage(const std::string& json);

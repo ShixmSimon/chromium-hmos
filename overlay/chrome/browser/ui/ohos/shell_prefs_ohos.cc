@@ -39,6 +39,7 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/preloading/preloading_prefs.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ohos/url_protection/url_protection.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "chrome/browser/ui/ohos/shell_settings_ohos_internal.h"
 #include "chrome/browser/ui/zoom/chrome_zoom_level_prefs.h"
@@ -138,31 +139,18 @@ bool IsRegistered(const PrefService& pref_service, const char* pref_name) {
 }
 
 std::optional<base::Value> ReadSafeBrowsing(Profile* profile) {
-  if (!IsRegistered(*profile->GetPrefs(), prefs::kSafeBrowsingEnabled) ||
-      !IsRegistered(*profile->GetPrefs(), prefs::kSafeBrowsingEnhanced)) {
-    return std::nullopt;
-  }
-  const safe_browsing::SafeBrowsingState state =
-      safe_browsing::GetSafeBrowsingState(*profile->GetPrefs());
-  for (const SafeBrowsingName& entry : kSafeBrowsingNames) {
-    if (entry.state == state) {
-      return base::Value(entry.name);
-    }
-  }
-  return std::nullopt;
+  return base::Value(url_protection::Service::Get(profile)->enabled() ?
+                     "standard" : "off");
 }
 
 bool WriteSafeBrowsing(Profile* profile, const base::Value& value) {
   const std::string* name = value.GetIfString();
-  PrefService* pref_service = profile->GetPrefs();
-  if (!name || !IsRegistered(*pref_service, prefs::kSafeBrowsingEnabled) ||
-      !IsRegistered(*pref_service, prefs::kSafeBrowsingEnhanced) ||
-      safe_browsing::IsSafeBrowsingPolicyManaged(*pref_service)) {
+  if (!name) {
     return false;
   }
   for (const SafeBrowsingName& entry : kSafeBrowsingNames) {
     if (entry.name == *name) {
-      safe_browsing::SetSafeBrowsingState(pref_service, entry.state);
+      url_protection::Service::Get(profile)->SetLegacyEnabled(*name != "off");
       return true;
     }
   }
