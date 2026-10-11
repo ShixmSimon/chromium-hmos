@@ -59,6 +59,13 @@ def cases():
 
 
 class UpdateTests(unittest.TestCase):
+    def test_committed_native_vectors(self):
+        root = Path(__file__).parent / 'fixtures/phishing-updates'
+        self.assertEqual((root / 'rules.json').read_bytes(), RAW)
+        self.assertEqual((root / 'config.json').read_bytes(), updates.encode(CONFIG))
+        for name, manifest, _, _ in cases():
+            self.assertEqual((root / f'{name}.json').read_bytes(), manifest, name)
+
     def test_valid_signed_snapshot(self):
         self.assertEqual(updates.verify(MANIFEST, RAW, CONFIG, 5, NOW)['sequence'], 10)
 
