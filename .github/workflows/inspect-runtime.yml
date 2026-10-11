@@ -41,6 +41,15 @@ jobs:
           content/public/browser/web_contents.h
           crypto/hash.h
           crypto/sha2.h
+          crypto/signature_verifier.h
+          services/network/public/cpp/simple_url_loader.h
+          services/network/public/cpp/resource_request.h
+          chrome/browser/profiles/profile.h
+          content/public/browser/storage_partition.h
+          base/files/important_file_writer.h
+          base/base64.h
+          third_party/boringssl/src/include/openssl/curve25519.h
+          components/update_client/network_impl.cc
           components/security_interstitials/core/browser/resources/interstitial_large.js
           out/ohos_arm64/gen/media/media_buildflags.h
           media/media_options.gni
