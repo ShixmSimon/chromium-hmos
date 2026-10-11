@@ -70,6 +70,10 @@ export {
   registerShellSystemService
 } from './src/main/ets/utils/SystemServices';
 export {
+  UrlCheckCoordinator, UrlCheckOptions, UrlThreatExecutor,
+  UrlThreatAuthorization, UrlThreatSdkEntry, UrlThreatSdkResponse
+} from './src/main/ets/utils/UrlCheckService';
+export {
   SystemServiceEmitter,
   SystemServiceHandler,
   SystemServiceHandlerFactory

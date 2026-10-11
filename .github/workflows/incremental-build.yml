@@ -18,6 +18,10 @@ on:
         description: 'Also build and upload the HAP'
         type: boolean
         default: true
+      publish_artifacts:
+        description: 'Publish packaged artifacts as a prerelease'
+        type: boolean
+        default: true
 
 # One build at a time, for real. A Chromium link peaks well past what this
 # machine has spare -- a second concurrent job does not queue politely, it
@@ -109,7 +113,8 @@ jobs:
       # download before anyone noticed.
       - name: Upload artifacts
         if: >-
-          success() && (hashFiles('build-status/hap-path.txt') != ''
+          success() && (github.event_name != 'workflow_dispatch' || inputs.publish_artifacts)
+          && (hashFiles('build-status/hap-path.txt') != ''
           || hashFiles('build-status/har-path.txt') != '')
         env:
           GH_TOKEN: ${{ github.token }}

@@ -23,6 +23,13 @@ jobs:
         run: python3 scripts/check-memfd-seals.py
       - name: Check test-page media byte ranges
         run: python3 scripts/tests/test-serve-test-pages.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check URL protection policy and SDK boundary
+        run: node --test scripts/tests/url-check-service.test.mjs
+      - name: Check phishing snapshot packaging
+        run: python3 scripts/tests/test-phishing-rules.py
       - name: Apply adapter to pinned Chromium
         env:
           REQUIRE_COMPATIBLE: '1'

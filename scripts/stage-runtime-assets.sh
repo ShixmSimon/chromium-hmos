@@ -92,6 +92,15 @@ for optional in v8_context_snapshot.bin; do
   [[ -f "${out_dir}/${optional}" ]] && cp -a "${out_dir}/${optional}" "$raw_dir/"
 done
 
+# Optional reviewed snapshot, covered by the final application's signing and
+# runtime.version. An absent asset is reported as missing, never as protection.
+# Online rule updates require a separately signed updater and are not enabled.
+if [[ -n "${PHISHING_RULES_FILE:-}" ]]; then
+  python3 "$(dirname "${BASH_SOURCE[0]}")/build-phishing-rules.py" \
+    --validate "$PHISHING_RULES_FILE" || die 'invalid phishing rules snapshot'
+  cp -- "$PHISHING_RULES_FILE" "${raw_dir}/ohos_phishing_rules.json"
+fi
+
 # Written last, and after the hash is computed, so it never covers itself.
 runtime_version=$(
   cd "$raw_dir"
