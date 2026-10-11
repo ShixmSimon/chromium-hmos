@@ -11,12 +11,16 @@
 #include "base/supports_user_data.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/ohos/shell_services_ohos.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/security_interstitials/content/security_interstitial_controller_client.h"
 #include "components/security_interstitials/content/security_interstitial_page.h"
 #include "components/security_interstitials/content/security_interstitial_tab_helper.h"
 #include "components/security_interstitials/content/settings_page_helper.h"
 #include "components/security_interstitials/core/metrics_helper.h"
+#include "components/sessions/content/session_tab_helper.h"
 #include "content/public/browser/back_forward_cache.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_handle.h"
@@ -24,6 +28,7 @@
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "net/base/net_errors.h"
+#include "url/origin.h"
 
 namespace chrome::ohos::url_protection {
 namespace {
@@ -35,12 +40,130 @@ class TabProtection : public content::WebContentsObserver,
                       public content::WebContentsUserData<TabProtection> {
  public:
   ~TabProtection() override = default;
+  void Begin(content::NavigationHandle* handle) {
+    if (!handle->IsInPrimaryMainFrame() ||
+        current_.navigation_id == ToShellId(handle->GetNavigationId()))
+      return;
+    current_ = {};
+    current_.navigation_id = ToShellId(handle->GetNavigationId());
+    current_.url = handle->GetURL();
+    ResetVerdict(current_);
+    Notify();
+  }
+  void DidStartNavigation(content::NavigationHandle* handle) override {
+    Begin(handle);
+  }
+  void DidRedirectNavigation(content::NavigationHandle* handle) override {
+    if (IsCurrent(handle)) {
+      current_.url = handle->GetURL();
+      ResetVerdict(current_);
+      Notify();
+    }
+  }
   void DidFinishNavigation(content::NavigationHandle* handle) override {
-    if (handle->HasCommitted() && handle->IsInPrimaryMainFrame())
+    if (!IsCurrent(handle))
+      return;
+    if (handle->HasCommitted()) {
+      // A blocked redirect can have a different URL than the final response.
+      // Keep the actual blocked target for the native risk-page panel.
+      if (current_.verdict != "phishing" && current_.verdict != "malware")
+        current_.url = handle->GetURL();
+      committed_ = current_;
       ProtectCurrentDocument();
+    } else {
+      current_ = committed_;
+    }
+    Notify();
+  }
+  void Report(content::NavigationHandle* handle,
+              const Result& result,
+              bool checking) {
+    if (!IsCurrent(handle))
+      return;
+    if (result.dangerous())
+      current_.url = result.url;
+    if (!service_ || !service_->enabled() ||
+        !service_->IsSiteEnabled(current_.url) ||
+        result.reason == "one_navigation_bypass") {
+      current_.verdict = "skipped";
+      current_.checked_at = 0;
+    } else if (checking && !result.dangerous()) {
+      current_.verdict = "checking";
+      current_.checked_at = 0;
+    } else {
+      switch (result.verdict) {
+        case Verdict::kNoMatch:
+          current_.verdict = "no_match";
+          break;
+        case Verdict::kPhishing:
+          current_.verdict = "phishing";
+          break;
+        case Verdict::kMalware:
+          current_.verdict = "malware";
+          break;
+        case Verdict::kOther:
+          current_.verdict = "other";
+          break;
+        case Verdict::kUnknown:
+          current_.verdict = "unknown";
+          break;
+      }
+      current_.checked_at = base::Time::Now().InMillisecondsFSinceUnixEpoch();
+    }
+    Notify();
+  }
+  base::DictValue State() const {
+    auto state = service_ ? service_->State() : base::DictValue();
+    state.Set("tabId", TabId());
+    state.Set("navigationId", current_.navigation_id);
+    state.Set("origin", current_.url.SchemeIsHTTPOrHTTPS()
+                            ? url::Origin::Create(current_.url).Serialize()
+                            : "");
+    state.Set("revision", service_ ? service_->revision() : 0);
+    state.Set("siteEnabled", service_ && service_->IsSiteEnabled(current_.url));
+    state.Set("canOverride", service_ && service_->CanSetSiteEnabled() &&
+                                 !current_.navigation_id.empty() &&
+                                 IsPublicHttpUrl(current_.url));
+    state.Set("verdict", current_.verdict);
+    state.Set("checkedAt", current_.checked_at);
+    return state;
+  }
+  const GURL& url() const { return current_.url; }
+  std::string TabId() const {
+    const auto id = sessions::SessionTabHelper::IdForTab(web_contents());
+    return id.is_valid() ? base::NumberToString(id.id()) : std::string();
   }
 
  private:
+  struct Snapshot {
+    std::string navigation_id;
+    GURL url;
+    std::string verdict = "unchecked";
+    double checked_at = 0;
+  };
+  bool IsCurrent(content::NavigationHandle* handle) const {
+    return handle->IsInPrimaryMainFrame() &&
+           current_.navigation_id == ToShellId(handle->GetNavigationId());
+  }
+  void ResetVerdict(Snapshot& snapshot) {
+    snapshot.verdict =
+        service_ && service_->enabled() && service_->IsSiteEnabled(snapshot.url)
+            ? "unchecked"
+            : "skipped";
+    snapshot.checked_at = 0;
+  }
+  void Notify() {
+    if (!service_)
+      return;
+    // Invalidation only: no browsing URL or origin is broadcast to windows.
+    auto event = service_->State();
+    event.Set("event", "siteProtectionStateChanged");
+    event.Set("tabId", TabId());
+    event.Set("navigationId", current_.navigation_id);
+    BroadcastToShell(
+        Profile::FromBrowserContext(web_contents()->GetBrowserContext()),
+        std::move(event));
+  }
   friend class content::WebContentsUserData<TabProtection>;
   explicit TabProtection(content::WebContents* contents)
       : WebContentsObserver(contents),
@@ -50,6 +173,9 @@ class TabProtection : public content::WebContentsObserver,
                      ->GetWeakPtr()) {
     subscription_ = service_->Observe(
         base::BindRepeating(&TabProtection::OnPolicy, base::Unretained(this)));
+    current_.url = contents->GetLastCommittedURL();
+    ResetVerdict(current_);
+    committed_ = current_;
     ProtectCurrentDocument();
   }
   void ProtectCurrentDocument() {
@@ -65,6 +191,9 @@ class TabProtection : public content::WebContentsObserver,
   }
   void OnPolicy() {
     web_contents()->RemoveUserData(kBypassKey);
+    ResetVerdict(current_);
+    ResetVerdict(committed_);
+    Notify();
     if (service_ && service_->enabled()) {
       web_contents()->GetController().GetBackForwardCache().Flush();
       web_contents()->CancelAllPrerendering();
@@ -73,6 +202,8 @@ class TabProtection : public content::WebContentsObserver,
   }
   base::WeakPtr<Service> service_;
   base::CallbackListSubscription subscription_;
+  Snapshot current_;
+  Snapshot committed_;
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };
 WEB_CONTENTS_USER_DATA_KEY_IMPL(TabProtection);
@@ -232,11 +363,14 @@ const char* NavigationThrottle::GetNameForLogging() {
 }
 
 NavigationThrottle::ThrottleCheckResult NavigationThrottle::WillStartRequest() {
+  TabProtection::FromWebContents(navigation_handle()->GetWebContents())
+      ->Begin(navigation_handle());
   if (service_ && service_->enabled() &&
       navigation_handle()->IsInPrerenderedMainFrame())
     return CANCEL_AND_IGNORE;
   deadline_ = base::TimeTicks::Now() + base::Milliseconds(1500);
   CheckCurrentUrl();
+  ReportState();
   return risk_.dangerous() ? Block() : ThrottleCheckResult(PROCEED);
 }
 NavigationThrottle::ThrottleCheckResult
@@ -244,6 +378,7 @@ NavigationThrottle::WillRedirectRequest() {
   if (risk_.dangerous())
     return Block();
   CheckCurrentUrl();
+  ReportState();
   return risk_.dangerous() ? Block() : ThrottleCheckResult(PROCEED);
 }
 NavigationThrottle::ThrottleCheckResult
@@ -259,11 +394,14 @@ NavigationThrottle::WillProcessResponse() {
 void NavigationThrottle::CheckCurrentUrl() {
   const GURL url = navigation_handle()->GetURL();
   urls_.push_back(url);
+  latest_result_ = {Verdict::kUnknown, {}, "not_checked", url};
   if (!service_ || !service_->enabled())
     return;
   if (TakeBypass(navigation_handle()->GetWebContents(), url,
-                 service_->revision()))
+                 service_->revision())) {
+    latest_result_.reason = "one_navigation_bypass";
     return;
+  }
   Result known = service_->KnownRisk(url);
   if (known.dangerous()) {
     risk_ = std::move(known);
@@ -279,8 +417,11 @@ void NavigationThrottle::OnResult(int revision, Result result) {
   if (!service_ || revision != service_->revision())
     return;
   --pending_;
+  if (!urls_.empty() && result.url == urls_.back())
+    latest_result_ = result;
   if (result.dangerous() && !risk_.dangerous())
     risk_ = std::move(result);
+  ReportState();
   if (deferred_ && (risk_.dangerous() || pending_ == 0)) {
     deferred_ = false;
     if (risk_.dangerous()) {
@@ -295,6 +436,7 @@ void NavigationThrottle::OnPolicyChanged() {
   weak_factory_.InvalidateWeakPtrs();
   pending_ = 0;
   risk_ = {};
+  latest_result_ = {};
   navigation_handle()->GetWebContents()->RemoveUserData(kBypassKey);
   // A changed policy invalidates every old result. Recheck all observed hops
   // under the remaining navigation budget, including the current URL.
@@ -313,7 +455,13 @@ void NavigationThrottle::OnPolicyChanged() {
     Resume();
   }
 }
+void NavigationThrottle::ReportState() {
+  TabProtection::FromWebContents(navigation_handle()->GetWebContents())
+      ->Report(navigation_handle(), risk_.dangerous() ? risk_ : latest_result_,
+               pending_ > 0);
+}
 NavigationThrottle::ThrottleCheckResult NavigationThrottle::Block() {
+  ReportState();
   auto page = std::make_unique<BlockingPage>(
       navigation_handle()->GetWebContents(), risk_,
       !navigation_handle()->IsPost(), service_);
@@ -321,5 +469,56 @@ NavigationThrottle::ThrottleCheckResult NavigationThrottle::Block() {
   security_interstitials::SecurityInterstitialTabHelper::AssociateBlockingPage(
       navigation_handle(), std::move(page));
   return {CANCEL, net::ERR_BLOCKED_BY_CLIENT, std::move(html)};
+}
+bool HandleSiteCommand(const ShellCommandContext& context,
+                       std::string_view name,
+                       const base::DictValue& command) {
+  if (name != "getSiteProtectionState" && name != "setSiteProtectionEnabled")
+    return false;
+  auto* contents =
+      context.browser
+          ? context.browser->GetTabStripModel()->GetActiveWebContents()
+          : nullptr;
+  auto event = Service::Get(context.profile)->State();
+  std::string reason;
+  TabProtection* tab = nullptr;
+  if (!contents || contents->GetBrowserContext() != context.profile) {
+    reason = "invalid_tab";
+  } else {
+    TabProtection::CreateForWebContents(contents);
+    tab = TabProtection::FromWebContents(contents);
+    event = tab->State();
+    const auto* tab_id = command.FindString("tabId");
+    if (!tab_id || tab->TabId().empty() || *tab_id != tab->TabId())
+      reason = "invalid_tab";
+  }
+  if (reason.empty() && name == "setSiteProtectionEnabled") {
+    auto matches = [&](const char* key) {
+      const auto* supplied = command.FindString(key);
+      const auto* actual = event.FindString(key);
+      return supplied && actual && !actual->empty() && *supplied == *actual;
+    };
+    auto* service = Service::Get(context.profile);
+    if (!matches("contextId"))
+      reason = "invalid_context";
+    else if (!matches("navigationId") || !matches("origin"))
+      reason = "stale_navigation";
+    else if (command.FindInt("expectedRevision") != service->revision())
+      reason = "stale_policy";
+    else if (!command.FindBool("siteEnabled"))
+      reason = "invalid_request";
+    else
+      reason =
+          service->SetSiteEnabled(tab->url(), *command.FindBool("siteEnabled"));
+    event = tab->State();
+  }
+  event.Set("event", name == "getSiteProtectionState"
+                         ? "siteProtectionState"
+                         : "siteProtectionConfigResult");
+  event.Set("requestId", ReadRequestId(command));
+  event.Set("ok", reason.empty());
+  event.Set("reason", reason);
+  ReplyToShell(context, std::move(event));
+  return true;
 }
 }  // namespace chrome::ohos::url_protection

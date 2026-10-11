@@ -582,6 +582,8 @@ export interface AboutInfoEvent extends ShellServiceEvent {
   requestId: number;
   chromiumVersion: string;
   engineCommit: string;
+  urlProtectionApiVersion?: number;
+  siteProtectionApiVersion?: number;
   userAgent: string;
   // Which bookmark commands this engine understands: 1 is the original set,
   // 2 adds insertion positions, bookmarkOpResult, childCount, rootType, the
@@ -604,6 +606,44 @@ export interface AboutInfoEvent extends ShellServiceEvent {
 export interface FaviconsEvent extends ShellServiceEvent {
   requestId: number;
   items: FaviconImage[];
+}
+
+export interface UrlProtectionStateEvent extends ShellServiceEvent {
+  protocolVersion: number;
+  contextId: string;
+  policyRevision: number;
+  enabled: boolean;
+  provider: 'local' | 'huawei' | 'both';
+  cloudConsent: boolean;
+  huaweiStatus: string;
+  huaweiReason: string;
+  localStatus: string;
+  rulesVersion: string;
+  rulesUpdatedAt: number;
+  rulesExpiresAt: number;
+  rulesUpdateSupported: boolean;
+  requestId?: number;
+  ok?: boolean;
+  reason?: string;
+}
+
+export interface SiteProtectionStateEvent extends UrlProtectionStateEvent {
+  // Present on successful reads/writes. Failed reads may have no active tab.
+  tabId?: string;
+  navigationId?: string;
+  origin?: string;
+  revision?: number;
+  siteEnabled?: boolean;
+  canOverride?: boolean;
+  verdict?: 'unchecked' | 'checking' | 'no_match' | 'phishing' | 'malware' |
+    'other' | 'unknown' | 'skipped';
+  checkedAt?: number;
+}
+
+// An invalidation event, not a result snapshot: re-read the active tab.
+export interface SiteProtectionChangedEvent extends UrlProtectionStateEvent {
+  tabId: string;
+  navigationId: string;
 }
 
 // Reads a runtime event as the interface its `event` name says it is.

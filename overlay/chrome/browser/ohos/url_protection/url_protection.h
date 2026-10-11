@@ -55,6 +55,9 @@ class Service {
   bool uses_local() const;
   bool uses_huawei() const;
   int revision() const;
+  bool IsSiteEnabled(const GURL& url) const;
+  bool CanSetSiteEnabled() const;
+  std::string SetSiteEnabled(const GURL& url, bool enabled);
   base::DictValue State() const;
   std::string Configure(const base::DictValue& command);
   void SetLegacyEnabled(bool enabled);

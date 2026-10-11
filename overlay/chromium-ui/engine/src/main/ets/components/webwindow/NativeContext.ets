@@ -231,6 +231,8 @@ export interface BrowserRuntimeEvent {
     'downloadUpdated' | 'downloadList' |
     'clearBrowsingDataDone' | 'browsingDataCounts' | 'searchEngines' |
     'prefs' | 'prefsChanged' | 'siteSettings' | 'aboutInfo' | 'favicons' |
+    'urlProtectionState' | 'urlProtectionConfigResult' | 'urlProtectionStateChanged' |
+    'siteProtectionState' | 'siteProtectionConfigResult' | 'siteProtectionStateChanged' |
     'savedPasswords' | 'passwordRevealed' | 'passwordCommandResult' |
     'passwordsExported' | 'passwordsImported' | 'savedPasswordsChanged';
   // gpuContextLost: whether the engine could rebuild after the GPU lost
@@ -471,6 +473,14 @@ export interface DroppedFileRef {
 
 export interface BrowserCommandPayload {
   command: string;
+  // URL/site protection: native-issued identity and atomic policy revision.
+  contextId?: string;
+  tabId?: string;
+  navigationId?: string;
+  expectedRevision?: number;
+  provider?: 'local' | 'huawei' | 'both';
+  cloudConsent?: boolean;
+  siteEnabled?: boolean;
   pipWidget?: number;
   pipAction?: 'play' | 'pause' | 'close' | 'restore' | 'state';
   url?: string;

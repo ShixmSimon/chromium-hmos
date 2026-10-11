@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 #include <utility>
 #include "base/base_paths.h"
 #include "base/functional/bind.h"
@@ -23,6 +24,7 @@
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
 #include "net/base/ip_address.h"
+#include "url/origin.h"
 
 namespace chrome::ohos::url_protection {
 namespace {
@@ -94,6 +96,19 @@ class Service::Impl {
     const auto* provider = config.FindString("provider");
     if (provider && ValidProvider(*provider))
       provider_ = *provider;
+    // OTR never inherits ordinary-profile exceptions and never persists them.
+    if (!profile_->IsOffTheRecord()) {
+      if (const auto* exceptions = config.FindList("siteExceptions")) {
+        for (const auto& item : *exceptions) {
+          if (!item.is_string() || site_exceptions_.size() >= 1000)
+            continue;
+          GURL url(item.GetString());
+          if (IsPublicHttpUrl(url) &&
+              url::Origin::Create(url).Serialize() == item.GetString())
+            site_exceptions_.insert(item.GetString());
+        }
+      }
+    }
     // Cloud authorization is deliberately session-only, including OTR.
     // The shell reasserts its verified consent after reading this context.
     if (UsesLocal())
@@ -120,6 +135,48 @@ class Service::Impl {
   };
 
   bool UsesLocal() const { return enabled_ && provider_ != "huawei"; }
+  bool IsSiteEnabled(const GURL& url) const {
+    return !site_exceptions_.contains(url::Origin::Create(url).Serialize());
+  }
+  bool CanSetSiteEnabled() const {
+    return enabled_ &&
+           (profile_->IsOffTheRecord() ||
+            profile_->GetPrefs()->IsUserModifiablePreference(kConfigPref));
+  }
+  void Persist() {
+    if (profile_->IsOffTheRecord())
+      return;
+    base::ListValue exceptions;
+    for (const auto& origin : site_exceptions_)
+      exceptions.Append(origin);
+    profile_->GetPrefs()->SetDict(
+        kConfigPref, base::DictValue()
+                         .Set("enabled", enabled_)
+                         .Set("provider", provider_)
+                         .Set("siteExceptions", std::move(exceptions)));
+  }
+  std::string SetSiteEnabled(const GURL& url, bool enabled) {
+    if (!IsPublicHttpUrl(url))
+      return "invalid_origin";
+    if (!CanSetSiteEnabled())
+      return "disabled_or_managed";
+    const std::string origin = url::Origin::Create(url).Serialize();
+    if (!enabled && !site_exceptions_.contains(origin) &&
+        site_exceptions_.size() >= 1000)
+      return "exception_limit";
+    CancelAll("stale_policy");
+    ++revision_;
+    if (enabled)
+      site_exceptions_.erase(origin);
+    else
+      site_exceptions_.insert(origin);
+    cache_.clear();
+    Persist();
+    SendControl("configure", State());
+    changed_.Notify();
+    Broadcast();
+    return {};
+  }
   bool UsesCloud() const {
     return enabled_ && provider_ != "local" && consent_;
   }
@@ -200,12 +257,7 @@ class Service::Impl {
     cache_.clear();
     cloud_status_ = "unverified";
     cloud_reason_.clear();
-    if (!profile_->IsOffTheRecord()) {
-      profile_->GetPrefs()->SetDict(kConfigPref,
-                                    base::DictValue()
-                                        .Set("enabled", enabled_)
-                                        .Set("provider", provider_));
-    }
+    Persist();
     if (UsesLocal())
       EnsureRules();
     SendControl("configure", State());
@@ -255,6 +307,8 @@ class Service::Impl {
     }
   }
   Result KnownRisk(const GURL& url) const {
+    if (!IsSiteEnabled(url))
+      return Unknown(url, "site_disabled");
     if (UsesLocal() && rules_.Matches(url, base::Time::Now()))
       return {Verdict::kPhishing, "local", "matched", url};
     if (UsesCloud()) {
@@ -272,6 +326,15 @@ class Service::Impl {
   std::string Check(const GURL& url,
                     base::TimeDelta timeout,
                     Callback callback) {
+    if (!IsSiteEnabled(url)) {
+      PostResult(std::move(callback), Unknown(url, "site_disabled"));
+      return {};
+    }
+    Result known = KnownRisk(url);
+    if (known.dangerous()) {
+      PostResult(std::move(callback), std::move(known));
+      return {};
+    }
     if (!enabled_ || !IsPublicHttpUrl(url) || timeout <= base::TimeDelta() ||
         pending_.size() >= 128) {
       PostResult(std::move(callback), Unknown(url, "not_checked"));
@@ -431,6 +494,7 @@ class Service::Impl {
   bool enabled_ = false;
   bool consent_ = false;
   std::string provider_ = "local";
+  std::set<std::string> site_exceptions_;
   std::string context_id_ = base::UnguessableToken::Create().ToString();
   int revision_ = 1;
   std::string cloud_status_ = "unverified";
@@ -462,6 +526,15 @@ bool Service::uses_huawei() const {
 }
 int Service::revision() const {
   return impl_->revision_;
+}
+bool Service::IsSiteEnabled(const GURL& url) const {
+  return impl_->IsSiteEnabled(url);
+}
+bool Service::CanSetSiteEnabled() const {
+  return impl_->CanSetSiteEnabled();
+}
+std::string Service::SetSiteEnabled(const GURL& url, bool enabled) {
+  return impl_->SetSiteEnabled(url, enabled);
 }
 base::DictValue Service::State() const {
   return impl_->State();

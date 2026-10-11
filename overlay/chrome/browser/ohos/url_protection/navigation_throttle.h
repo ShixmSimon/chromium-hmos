@@ -11,6 +11,9 @@
 #include "content/public/browser/navigation_throttle.h"
 
 namespace chrome::ohos::url_protection {
+bool HandleSiteCommand(const ShellCommandContext& context,
+                       std::string_view name,
+                       const base::DictValue& command);
 class NavigationThrottle : public content::NavigationThrottle {
  public:
   static void MaybeCreateAndAdd(content::NavigationThrottleRegistry& registry);
@@ -25,6 +28,7 @@ class NavigationThrottle : public content::NavigationThrottle {
   void CheckCurrentUrl();
   void OnResult(int revision, Result result);
   void OnPolicyChanged();
+  void ReportState();
   ThrottleCheckResult Block();
   base::WeakPtr<Service> service_;
   base::CallbackListSubscription subscription_;
@@ -32,6 +36,7 @@ class NavigationThrottle : public content::NavigationThrottle {
   std::vector<GURL> urls_;
   std::vector<std::string> requests_;
   Result risk_;
+  Result latest_result_;
   int pending_ = 0;
   bool deferred_ = false;
   base::WeakPtrFactory<NavigationThrottle> weak_factory_{this};

@@ -796,6 +796,27 @@ check 返回 `{protocolVersion:1, requestId, contextId, policyRevision, verdict,
 
 详见 [外壳计划书](OHOS_SAFE_BROWSING_SHELL_PLAN.md)。本轮不包含广告过滤；广告开关/白名单不能改变防钓鱼来源配置。
 
+**地址栏站点防护（`siteProtectionApiVersion` 1，开发中）**
+
+与全局 `urlProtectionApiVersion` 分开探测。HAR 已导出 `SiteProtectionStateEvent`、`SiteProtectionChangedEvent` 和全局 `UrlProtectionStateEvent`，命令参数已并入 `BrowserCommandPayload`，回包继续通过 `WebWindow.onRuntimeEvent` / `shellEvent<T>()` 读取。
+
+| 命令 | 参数 | 回包 |
+| --- | --- | --- |
+| `getSiteProtectionState` | `requestId, tabId` | `siteProtectionState` |
+| `setSiteProtectionEnabled` | `requestId, contextId, tabId, navigationId, origin, expectedRevision, siteEnabled` | `siteProtectionConfigResult` |
+
+两类回包带 `ok, reason, requestId` 和实际全局防护状态；有当前标签时还带 `tabId, navigationId, origin, revision, siteEnabled, canOverride, verdict, checkedAt`。tabId 为现有标签 ID 字符串；navigationId 为原生导航 ID 字符串，不能转为 JS number，同址刷新和同文档导航也会改变。revision 与 policyRevision 相同。origin 是 Chromium 序列化的 origin，省略默认端口，不含路径、query 或片段。
+
+verdict 为 `unchecked|checking|no_match|phishing|malware|other|unknown|skipped`，checkedAt 为 UTC Unix 毫秒，无结果时 0。仅查询内存状态，不触发 SDK。风险页返回实际被阻止目标的 origin；中间重定向有风险时可能与最终导航地址不同。未被当前观察器记录的历史文档没有 navigationId，canOverride=false，下一次导航后建立身份。
+
+仅处理发送命令窗口的当前活动标签。写入必须使用读取时的完整原生身份、origin 和 revision；切换标签、同址刷新或策略变化都会使旧写入失败。原因码为 `invalid_tab|invalid_context|stale_navigation|stale_policy|invalid_request|invalid_origin|disabled_or_managed|exception_limit`。失败时返回实际快照（没有活动标签则没有站点字段），外壳必须先判断 ok，不能把旧 UI 状态当成功回包。
+
+siteEnabled=false 按 scheme/host/effective port 精确跳过该站点的两个防钓鱼来源，不包含子域名，不改变 HTTPS/证书检查。普通 Profile 最多保存 1000 个站点例外；无痕不继承普通例外，只在自己的会话内保留。全局关闭或受管理时不能改变站点例外。重新开启删除例外；两种写入均取消旧等待、清除缓存及一次继续例外、增加策略版本并重判待决导航，不刷新已经提交的页面。已提交页面的旧判定重置为 unchecked/skipped，不能立即显示已重新检测。
+
+`siteProtectionStateChanged` 只广播全局状态及 `tabId, navigationId`，不带 origin 或检测 URL。外壳仅在匹配当前原生窗口/Profile/标签时重新读取；全局 `urlProtectionStateChanged`（包括规则状态）也使面板失效。回包处理器按 requestId 关联，还须核对 contextId、tabId、navigationId 和 revision，迟到结果不能仅凭同 origin 复用。
+
+外壳适配器在窗口的 runtime event router 接收上述事件，在导航/切换标签/同址刷新时撤销旧面板操作，窗口销毁时清理回包等待和订阅。读写使用有界等待；超时写入可能已经生效，需重新读状态。此处提供内核协议与 HAR 类型，Lumi 自己的 `SiteProtectionBackend` 注入由外壳工程完成，内核不会修改其 UI 或事件路由。
+
 **密码**
 
 密码管理器是开的。存起来的密码用 HUKS 里的密钥加密，那把密钥出不了安全世界，所以 `Login Data` 文件被单独拷走也读不出来。
