@@ -26,10 +26,11 @@ std::string Read(const base::FilePath& root, std::string_view name) {
 int main(int argc, char** argv) {
   base::AtExitManager exit_manager;
   base::CommandLine::Init(argc, argv);
-  if (argc != 2)
+  const auto arguments = base::CommandLine::ForCurrentProcess()->GetArgs();
+  if (arguments.size() != 1)
     return 2;
   using namespace chrome::ohos::url_protection;
-  const auto directory = base::FilePath::FromUTF8Unsafe(argv[1]);
+  const auto directory = base::FilePath(arguments.front());
   const auto config = ParseUpdateConfig(Read(directory, "config.json"));
   const auto payload = Read(directory, "rules.json");
   auto matrix = base::JSONReader::ReadDict(Read(directory, "cases.json"),
