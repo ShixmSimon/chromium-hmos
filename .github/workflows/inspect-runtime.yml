@@ -34,6 +34,14 @@ jobs:
           root = Path(os.environ.get('CHROMIUM_SRC', '/root/chromium-154/src'))
           paths = '''
           out/ohos_arm64/args.gn
+          chrome/browser/BUILD.gn
+          chrome/browser/chrome_content_browser_client_navigation_throttles.cc
+          content/public/browser/navigation_throttle.h
+          content/public/browser/back_forward_cache.h
+          content/public/browser/web_contents.h
+          crypto/hash.h
+          crypto/sha2.h
+          components/security_interstitials/core/browser/resources/interstitial_large.js
           out/ohos_arm64/gen/media/media_buildflags.h
           media/media_options.gni
           media/base/supported_types.cc
