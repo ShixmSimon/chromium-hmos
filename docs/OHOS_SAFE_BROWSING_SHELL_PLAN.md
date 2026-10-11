@@ -1,6 +1,6 @@
 # 防钓鱼功能：外壳开发计划书
 
-日期：2026-10-11。状态：内核/HAR 第一阶段已在 feat/url-protection 实现；用户确认外壳已按计划开发，本轮只负责内核。只读核对 Lumi 的站点面板和 backend 需求后补齐了内核接口，未修改外壳文件。下方原计划保留为目标，已实现内容及差异见本节；当前协议以 SHELL_CONTRACT.md 为准。
+日期：2026-10-11。状态：内核/HAR 一期已进入主干并通过 CI；二期已实现可配置的签名规则更新。用户确认外壳已按计划开发，本轮只负责内核。只读核对 Lumi 的站点面板和 backend 需求后补齐了内核接口，未修改外壳文件。下方原计划保留为目标，已实现内容及差异见本节；当前协议以 SHELL_CONTRACT.md 为准。
 
 ## 当前可接入能力
 
@@ -10,7 +10,7 @@ HAR 已导出 UrlCheckCoordinator 及 executor/authorization/options 类型，�
 
 外壳先读取 urlProtectionApiVersion 和状态，准备自己的同意记录，再注册全应用共用的 coordinator，为其注入 safetyDetect.checkUrlThreat executor 和实际同意校验。originPathVerified 在官方验证完成前保持 false。默认关闭、来源 local；当前云同意只存内存，外壳重启后重新确认，无痕单独授权。
 
-当前规则仅支持包内快照，rulesUpdateSupported=false，不支持原计划 updateUrlProtectionRules。外壳通过内核状态展示 missing/ready/expired 等，不自行实现规则缓存。S0 官方资格/配额/裁剪兼容与无害测试、S3 设置 UI 与同意管理、S5 真机验收仍需外壳完成；S2 可直接复用 coordinator，详见 [实际接口](SHELL_CONTRACT.md)。
+urlProtectionApiVersion=2 新增 updateUrlProtectionRules 及更新状态，支持包内快照、签名下载、失败退避和原子缓存。尚无正式分发配置，rulesUpdateSupported 默认 false；外壳展示 missing/ready/expired 等实际状态，不自行实现规则缓存。设置按用户要求提供“华为 / 本地 / 同时 / 关闭”，使用原子 setUrlProtectionConfig，选择云来源仍需真实授权。S0 官方资格/配额/裁剪兼容与无害测试、S3 设置 UI 与同意管理、S5 真机验收由外壳完成；S2 可直接复用 coordinator，详见 [实际接口](SHELL_CONTRACT.md) 和 [二期交接](OHOS_PHISHING_RULE_UPDATES.md)。
 
 面向外壳 ArkTS 开发者及内核联调人员。总体设计见 [防钓鱼方案](OHOS_SAFE_BROWSING.md)，当前接口以 [SHELL_CONTRACT.md](SHELL_CONTRACT.md) 为准。外壳先检查能力版本；没有该字段的旧内核不支持新命令。
 
@@ -219,15 +219,15 @@ SDK 没有已确认的物理取消能力。外壳取消后忽略迟到结果，�
 
 ## 6. 外壳 → 内核控制接口
 
-第一阶段已实现版本化控制接口，准确字段见 SHELL_CONTRACT；在线规则更新仍属后续计划。
+已实现版本化控制接口，准确字段见 SHELL_CONTRACT；二期更新仅在应用包带有效可信配置且已启用本地来源时可用。
 
 | 命令 / 事件 | 用途与必要信息 |
 | --- | --- |
-| `getAboutInfo.urlProtectionApiVersion` | 当前返回 1；缺失视为旧内核，不能展示功能已启用 |
+| `getAboutInfo.urlProtectionApiVersion` | 当前返回 2；缺失视为旧内核，不能展示功能已启用 |
 | `getUrlProtectionState` → `urlProtectionState` | requestId、contextId、policyRevision、enabled、provider、授权状态、华为状态、本地规则状态/版本/更新时间及原因码 |
 | `setUrlProtectionConfig` → `urlProtectionConfigResult` | 原子提交 requestId、contextId、expectedRevision、enabled、provider、授权状态；返回 ok/reason 和完整实际快照，版本冲突后重新读取 |
 | `urlProtectionStateChanged` | 多窗口及服务/规则状态变化通知；只能携带状态，不能广播正在检测的 URL |
-| `updateUrlProtectionRules`（尚未实现） | 当前 rulesUpdateSupported=false，不展示更新入口；后续仅允许已启用本地来源触发更新 |
+| `updateUrlProtectionRules` → `urlProtectionRulesUpdateResult`（v2） | requestId/contextId/expectedRevision；仅允许调用方已启用 local/both 且 rulesUpdateSupported=true 时触发，ok 表示任务接受/合并，完成状态由事件回传 |
 
 contextId 由受信任 native/HAR 为窗口绑定，外壳不能任意冒用其他窗口或 Profile。上下文与策略镜像必须在第一条 check 前就绪；策略变化先停止外壳不再允许的调用，再提交内核，直到成功回包与镜像同步才允许新云请求。异步迟到回包按 revision 丢弃。
 
