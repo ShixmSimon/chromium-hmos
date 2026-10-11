@@ -84,6 +84,24 @@ jobs:
             echo '</details>' >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Locate verification HAR
+        id: verification-har
+        if: success() && github.event_name == 'workflow_dispatch' && !inputs.publish_artifacts
+        run: |
+          if [ -s build-status/har-path.txt ]; then
+            echo "path=$(cat build-status/har-path.txt)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload verification HAR
+        if: success() && steps.verification-har.outputs.path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-har-${{ github.sha }}
+          path: ${{ steps.verification-har.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
       # Text results go back through the repository: the other machine cannot
       # compile, so compiler diagnostics are the whole point of this job.
       # Results go to a branch of their own. Committing them onto the working

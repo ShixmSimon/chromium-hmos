@@ -10,10 +10,11 @@
 - 主框架/每跳重定向挂接，已知风险请求前阻止，其余查询与网络并行、提交前汇总；累计预算 1500 ms。原生风险页、当前标签准确 URL 一次继续，POST 不自动重发。
 - 开启保护时取消预渲染，对受观察标签清理 BFCache 并禁止当前文档进入 BFCache，实际激活/设备行为仍需回归。
 - 有界系统服务调用及导航取消，HAR 导出 SDK 独立的 UrlCheckCoordinator；外壳仍需注入真实 SDK executor、同意检查并注册。
+- 地址栏站点面板配套：siteProtectionApiVersion=1，提供当前原生导航身份/结果读取和站点例外写入。按 origin 精确匹配，普通 Profile 持久化、无痕会话隔离；写入验证活动标签/导航/策略版本，取消旧检查，已提交页面不自动刷新。完整接口见 SHELL_CONTRACT.md。
 - 包内快照生成/校验/打包/解包已实现；当前没有内置真实 feed，缺失报告 missing，不宣称已有离线保护。自动在线更新尚未实现，rulesUpdateSupported=false。规则限 16 MiB/20 万条、最长有效期 7 天，工作线程解析为精确哈希索引。
 - 默认关闭、来源 local；旧 standard/enhanced 不自动启用，也不授予云同意。普通 Profile 启用/来源持久化，无痕变更及云授权为会话状态。
-- 本轮未修改独立 Lumi 外壳仓库，未调用真实华为查询、未开通官方服务、未操作真机。真实 feed 验收、签名在线分发、外壳 UI 和广告过滤仍待后续。
-- SDK 协调器 14 项、快照工具 5 项测试通过；补丁首次/重复/升级及全新基线检查通过。[CI d926575a](https://github.com/miramira8295/chromium-hmos/actions/runs/38143171254) 已通过 C++ 构建及 HAR 打包，后续收尾提交需再次验证。这些不代替导航和官方真机验收。
+- 用户明确本轮只负责内核。只读核对了 Lumi 已有站点面板和 SiteProtectionBackend 需求，没有修改外壳；生产适配器接入由外壳完成。未调用真实华为查询、未开通官方服务、未操作真机。真实 feed 验收、签名在线分发和广告过滤仍待后续。
+- SDK 协调器 14 项、快照工具 5 项测试通过；补丁首次/重复/升级及全新基线检查通过。[CI e35caa3c](https://github.com/miramira8295/chromium-hmos/actions/runs/38144667754) 已通过包含站点接口的 C++ 构建及 HAR 打包，[Adapter CI](https://github.com/miramira8295/chromium-hmos/actions/runs/38144667176) 通过。19 项测试覆盖协调器与打包工具，不覆盖原生导航/站点例外运行时；这些仍须真机验收。
 
 ## 推荐方案
 

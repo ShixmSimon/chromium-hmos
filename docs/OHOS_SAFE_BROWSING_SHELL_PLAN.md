@@ -1,10 +1,12 @@
 # 防钓鱼功能：外壳开发计划书
 
-日期：2026-10-11。状态：外壳任务计划；内核/HAR 第一阶段已在 feat/url-protection 实现，独立 Lumi 外壳尚未接入。下方原计划保留为目标，已实现内容及差异见本节；当前协议以 SHELL_CONTRACT.md 为准。
+日期：2026-10-11。状态：内核/HAR 第一阶段已在 feat/url-protection 实现；用户确认外壳已按计划开发，本轮只负责内核。只读核对 Lumi 的站点面板和 backend 需求后补齐了内核接口，未修改外壳文件。下方原计划保留为目标，已实现内容及差异见本节；当前协议以 SHELL_CONTRACT.md 为准。
 
 ## 当前可接入能力
 
 HAR 已导出 UrlCheckCoordinator 及 executor/authorization/options 类型，处理 configure/check/cancel/closeContext/capabilities。内核提供 getUrlProtectionState、原子 setUrlProtectionConfig、urlProtectionStateChanged，contextId 按 Profile 隔离并由内核分配；不依赖新增窗口销毁钩子，导航单独取消，Profile 销毁发送 closeContext。
+
+站点面板新增独立 siteProtectionApiVersion=1：getSiteProtectionState、setSiteProtectionEnabled、siteProtectionStateChanged。内核维护当前导航结果及原生身份，持久/无痕站点例外，拒绝旧页面或旧版本写入；不自动刷新页面。HAR 提供命令字段和事件类型，外壳将自己的 SiteProtectionBackend 对接此协议，并在窗口生命周期内管理回包和失效事件。详情及验收边界见 SHELL_CONTRACT.md 的“地址栏站点防护”。
 
 外壳先读取 urlProtectionApiVersion 和状态，准备自己的同意记录，再注册全应用共用的 coordinator，为其注入 safetyDetect.checkUrlThreat executor 和实际同意校验。originPathVerified 在官方验证完成前保持 false。默认关闭、来源 local；当前云同意只存内存，外壳重启后重新确认，无痕单独授权。
 
