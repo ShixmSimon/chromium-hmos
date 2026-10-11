@@ -30,6 +30,10 @@ jobs:
         run: node --test scripts/tests/url-check-service.test.mjs
       - name: Check phishing snapshot packaging
         run: python3 scripts/tests/test-phishing-rules.py
+      - name: Check signed phishing update artifacts
+        run: |
+          python3 -m pip install 'cryptography>=45,<47'
+          python3 scripts/tests/test-phishing-updates.py
       - name: Apply adapter to pinned Chromium
         env:
           REQUIRE_COMPATIBLE: '1'

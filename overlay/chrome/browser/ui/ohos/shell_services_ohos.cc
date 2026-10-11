@@ -35,6 +35,7 @@ struct ShellServiceCommand {
 constexpr ShellServiceCommand kShellServiceCommands[] = {
     {"getUrlProtectionState", &url_protection::HandleCommand},
     {"setUrlProtectionConfig", &url_protection::HandleCommand},
+    {"updateUrlProtectionRules", &url_protection::HandleCommand},
     {"getSiteProtectionState", &url_protection::HandleSiteCommand},
     {"setSiteProtectionEnabled", &url_protection::HandleSiteCommand},
     // Bookmarks.

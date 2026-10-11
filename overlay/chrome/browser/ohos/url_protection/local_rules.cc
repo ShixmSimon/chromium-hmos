@@ -7,14 +7,57 @@
 #include <cmath>
 #include "base/files/file_util.h"
 #include "base/json/json_reader.h"
+#include "base/strings/string_util.h"
 #include "chrome/browser/ohos/url_protection/url_protection.h"
 #include "crypto/hash.h"
+#include "net/base/ip_address.h"
 
 namespace chrome::ohos::url_protection {
 namespace {
 constexpr size_t kMaxBytes = 16 * 1024 * 1024;
 constexpr size_t kMaxRules = 200000;
 }  // namespace
+bool IsPublicHttpUrl(const GURL& url) {
+  if (!url.is_valid() || !url.SchemeIsHTTPOrHTTPS() || url.has_username() ||
+      url.has_password() || url.spec().size() > 4096)
+    return false;
+  std::string host = url.HostNoBrackets();
+  while (host.ends_with('.'))
+    host.pop_back();
+  net::IPAddress address;
+  if (address.AssignFromIPLiteral(host)) {
+    if (address.IsIPv4MappedIPv6())
+      address = net::ConvertIPv4MappedIPv6ToIPv4(address);
+    return address.IsPubliclyRoutable();
+  }
+  return host.find('.') != std::string::npos && host != "localhost" &&
+         !host.ends_with(".localhost") && !host.ends_with(".local") &&
+         !host.ends_with(".internal") && !host.ends_with(".home.arpa");
+}
+
+GURL CloudCheckUrl(const GURL& url) {
+  if (!IsPublicHttpUrl(url))
+    return {};
+  // Conservative v1: paths with encoded or token-like segments stay local.
+  // No promise to recognize every sensitive path or split-DNS hostname.
+  const std::string path = base::ToLowerASCII(url.path());
+  if (path.find('%') != std::string::npos ||
+      path.find('@') != std::string::npos ||
+      path.find("token") != std::string::npos ||
+      path.find("oauth") != std::string::npos || path.size() > 256)
+    return {};
+  size_t segment = 0;
+  for (char c : path) {
+    segment = c == '/' ? 0 : segment + 1;
+    if (segment > 48)
+      return {};
+  }
+  GURL::Replacements replacements;
+  replacements.ClearQuery();
+  replacements.ClearRef();
+  return url.ReplaceComponents(replacements);
+}
+
 bool LocalRules::IsUsable(base::Time now) const {
   return status == "ready" && now >= generated && now < expires;
 }

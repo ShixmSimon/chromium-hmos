@@ -232,6 +232,7 @@ export interface BrowserRuntimeEvent {
     'clearBrowsingDataDone' | 'browsingDataCounts' | 'searchEngines' |
     'prefs' | 'prefsChanged' | 'siteSettings' | 'aboutInfo' | 'favicons' |
     'urlProtectionState' | 'urlProtectionConfigResult' | 'urlProtectionStateChanged' |
+    'urlProtectionRulesUpdateResult' |
     'siteProtectionState' | 'siteProtectionConfigResult' | 'siteProtectionStateChanged' |
     'savedPasswords' | 'passwordRevealed' | 'passwordCommandResult' |
     'passwordsExported' | 'passwordsImported' | 'savedPasswordsChanged';

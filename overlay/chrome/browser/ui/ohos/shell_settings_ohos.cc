@@ -90,7 +90,7 @@ void GetAboutInfo(const ShellCommandContext& context,
   // and closeTabById, and the openedInGroup event; 3 adds reading and
   // restoring where the reader is in a page, for app continuation.
   event.Set("browsingApiVersion", 3);
-  event.Set("urlProtectionApiVersion", 1);
+  event.Set("urlProtectionApiVersion", 2);
   event.Set("siteProtectionApiVersion", 1);
   // What the password sync commands understand. 1 is passwordSyncAuthorize,
   // getPasswordsForSync, applyPasswords and the passwordsChanged event. The

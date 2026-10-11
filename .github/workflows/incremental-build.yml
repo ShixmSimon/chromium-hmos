@@ -68,6 +68,9 @@ jobs:
           SKIP_PACKAGE: ${{ (github.event_name == 'workflow_dispatch' && !inputs.package) && '1' || '' }}
         run: bash scripts/ci-incremental-build.sh
 
+      - name: Check native phishing rule validation
+        run: bash scripts/test-url-protection-native.sh
+
       - name: Report
         if: always()
         run: |

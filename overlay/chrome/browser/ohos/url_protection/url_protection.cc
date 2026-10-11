@@ -18,6 +18,7 @@
 #include "base/task/thread_pool.h"
 #include "base/unguessable_token.h"
 #include "chrome/browser/ohos/url_protection/local_rules.h"
+#include "chrome/browser/ohos/url_protection/rule_updater.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "components/ohos_system_service/system_service_ohos.h"
@@ -42,50 +43,10 @@ void PostResult(Service::Callback callback, Result result) {
 }
 }  // namespace
 
-bool IsPublicHttpUrl(const GURL& url) {
-  if (!url.is_valid() || !url.SchemeIsHTTPOrHTTPS() || url.has_username() ||
-      url.has_password() || url.spec().size() > 4096)
-    return false;
-  std::string host = url.HostNoBrackets();
-  while (host.ends_with('.'))
-    host.pop_back();
-  net::IPAddress address;
-  if (address.AssignFromIPLiteral(host)) {
-    if (address.IsIPv4MappedIPv6())
-      address = net::ConvertIPv4MappedIPv6ToIPv4(address);
-    return address.IsPubliclyRoutable();
-  }
-  return host.find('.') != std::string::npos && host != "localhost" &&
-         !host.ends_with(".localhost") && !host.ends_with(".local") &&
-         !host.ends_with(".internal") && !host.ends_with(".home.arpa");
-}
-
-GURL CloudCheckUrl(const GURL& url) {
-  if (!IsPublicHttpUrl(url))
-    return {};
-  // Conservative v1: paths with encoded or token-like segments stay local.
-  // No promise to recognize every sensitive path or split-DNS hostname.
-  const std::string path = base::ToLowerASCII(url.path());
-  if (path.find('%') != std::string::npos ||
-      path.find('@') != std::string::npos ||
-      path.find("token") != std::string::npos ||
-      path.find("oauth") != std::string::npos || path.size() > 256)
-    return {};
-  size_t segment = 0;
-  for (char c : path) {
-    segment = c == '/' ? 0 : segment + 1;
-    if (segment > 48)
-      return {};
-  }
-  GURL::Replacements replacements;
-  replacements.ClearQuery();
-  replacements.ClearRef();
-  return url.ReplaceComponents(replacements);
-}
-
 void RegisterPrefs(PrefRegistrySimple* registry) {
   // Empty means not opted in. Legacy standard/enhanced is not cloud consent.
   registry->RegisterDictionaryPref(kConfigPref);
+  RuleUpdater::RegisterPrefs(registry);
 }
 
 class Service::Impl {
@@ -109,12 +70,20 @@ class Service::Impl {
         }
       }
     }
+    updater_ = RuleUpdater::Get(profile)->GetWeakPtr();
+    rules_ = updater_->rules();
+    loading_ = rules_->status == "loading";
+    rules_subscription_ = updater_->Observe(
+        base::BindRepeating(&Impl::OnRules, base::Unretained(this)));
     // Cloud authorization is deliberately session-only, including OTR.
     // The shell reasserts its verified consent after reading this context.
     if (UsesLocal())
       EnsureRules();
   }
   ~Impl() {
+    rules_subscription_ = {};
+    if (updater_ && rules_acquired_)
+      updater_->Release();
     CancelAll("context_closed");
     SendControl("closeContext", {});
   }
@@ -196,21 +165,24 @@ class Service::Impl {
     state.Set("huaweiStatus", !enabled_ || provider_ == "local" ? "disabled"
                               : !consent_ ? "consent_required"
                                           : cloud_status_);
-    state.Set("localStatus",
-              !UsesLocal() ? "disabled"
-              : rules_.status == "ready" && !rules_.IsUsable(base::Time::Now())
-                  ? "expired"
-                  : rules_.status);
-    state.Set("rulesVersion", rules_.version);
+    state.Set("localStatus", !UsesLocal() ? "disabled"
+                             : rules_->status == "ready" &&
+                                     !rules_->IsUsable(base::Time::Now())
+                                 ? "expired"
+                                 : rules_->status);
+    state.Set("rulesVersion", rules_->version);
     state.Set("rulesUpdatedAt",
-              rules_.generated.is_null()
+              rules_->generated.is_null()
                   ? -1.0
-                  : rules_.generated.InMillisecondsFSinceUnixEpoch());
+                  : rules_->generated.InMillisecondsFSinceUnixEpoch());
     state.Set("rulesExpiresAt",
-              rules_.expires.is_null()
+              rules_->expires.is_null()
                   ? -1.0
-                  : rules_.expires.InMillisecondsFSinceUnixEpoch());
-    state.Set("rulesUpdateSupported", false);
+                  : rules_->expires.InMillisecondsFSinceUnixEpoch());
+    if (updater_)
+      state.Merge(updater_->State());
+    else
+      state.Set("rulesUpdateSupported", false);
     return state;
   }
   void Broadcast() {
@@ -260,34 +232,29 @@ class Service::Impl {
     Persist();
     if (UsesLocal())
       EnsureRules();
+    else if (updater_ && rules_acquired_) {
+      rules_acquired_ = false;
+      updater_->Release();
+    }
     SendControl("configure", State());
     changed_.Notify();
     Broadcast();
     return {};
   }
   void EnsureRules() {
-    if (rules_load_attempted_)
+    if (!updater_ || rules_acquired_)
       return;
-    rules_load_attempted_ = true;
-    loading_ = true;
-    rules_.status = "loading";
-    base::FilePath assets;
-    if (!base::PathService::Get(base::DIR_ASSETS, &assets)) {
-      OnRules({});
-      return;
-    }
-    base::ThreadPool::PostTaskAndReplyWithResult(
-        FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
-        base::BindOnce(&LoadLocalRules,
-                       assets.AppendASCII("ohos_phishing_rules.json")),
-        base::BindOnce(&Impl::OnRules, weak_factory_.GetWeakPtr()));
+    rules_acquired_ = true;
+    updater_->Acquire();
   }
-  void OnRules(LocalRules rules) {
-    loading_ = false;
-    rules_ = std::move(rules);
+  void OnRules() {
+    if (!updater_)
+      return;
+    rules_ = updater_->rules();
+    loading_ = rules_->status == "loading";
     std::vector<std::string> ids;
     for (auto& [id, call] : pending_) {
-      if (call.waiting_local) {
+      if (UsesLocal() && !loading_) {
         call.waiting_local = false;
         CheckLocal(call);
         ids.push_back(id);
@@ -300,16 +267,17 @@ class Service::Impl {
   void CheckLocal(Pending& call) {
     if (!UsesLocal())
       return;
-    if (rules_.Matches(call.url, base::Time::Now())) {
+    if (rules_->Matches(call.url, base::Time::Now())) {
       call.result = {Verdict::kPhishing, "local", "matched", call.url};
-    } else if (!call.result.dangerous() && rules_.IsUsable(base::Time::Now())) {
+    } else if (!call.result.dangerous() &&
+               rules_->IsUsable(base::Time::Now())) {
       call.result = {Verdict::kNoMatch, "local", "no_match", call.url};
     }
   }
   Result KnownRisk(const GURL& url) const {
     if (!IsSiteEnabled(url))
       return Unknown(url, "site_disabled");
-    if (UsesLocal() && rules_.Matches(url, base::Time::Now()))
+    if (UsesLocal() && rules_->Matches(url, base::Time::Now()))
       return {Verdict::kPhishing, "local", "matched", url};
     if (UsesCloud()) {
       auto found = cache_.find(CloudCheckUrl(url).spec());
@@ -499,9 +467,11 @@ class Service::Impl {
   int revision_ = 1;
   std::string cloud_status_ = "unverified";
   std::string cloud_reason_;
-  LocalRules rules_;
+  std::shared_ptr<const LocalRules> rules_;
+  base::WeakPtr<RuleUpdater> updater_;
+  base::CallbackListSubscription rules_subscription_;
   bool loading_ = false;
-  bool rules_load_attempted_ = false;
+  bool rules_acquired_ = false;
   std::map<std::string, Pending> pending_;
   std::map<std::string, Cached> cache_;
   base::RepeatingClosureList changed_;
@@ -541,6 +511,16 @@ base::DictValue Service::State() const {
 }
 std::string Service::Configure(const base::DictValue& command) {
   return impl_->Configure(command);
+}
+std::string Service::UpdateRules(const base::DictValue& command) {
+  const auto* context = command.FindString("contextId");
+  if (!context || *context != impl_->context_id_)
+    return "invalid_context";
+  if (command.FindInt("expectedRevision") != impl_->revision_)
+    return "stale_policy";
+  if (!impl_->UsesLocal())
+    return "disabled";
+  return impl_->updater_ ? impl_->updater_->RequestUpdate() : "unavailable";
 }
 void Service::SetLegacyEnabled(bool enabled) {
   auto config = State();
@@ -583,6 +563,12 @@ bool HandleCommand(const ShellCommandContext& context,
     event.Set("reason", reason);
   } else if (name == "getUrlProtectionState") {
     event.Set("event", "urlProtectionState");
+  } else if (name == "updateUrlProtectionRules") {
+    auto reason = service->UpdateRules(command);
+    event = service->State();
+    event.Set("event", "urlProtectionRulesUpdateResult");
+    event.Set("ok", reason.empty() || reason == "already_updating");
+    event.Set("reason", reason);
   } else {
     return false;
   }

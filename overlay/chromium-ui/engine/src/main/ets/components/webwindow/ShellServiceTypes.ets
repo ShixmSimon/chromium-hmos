@@ -622,6 +622,14 @@ export interface UrlProtectionStateEvent extends ShellServiceEvent {
   rulesUpdatedAt: number;
   rulesExpiresAt: number;
   rulesUpdateSupported: boolean;
+  // urlProtectionApiVersion >= 2; public rules only, never browsing history.
+  rulesUpdateStatus?: string;
+  rulesUpdateReason?: string;
+  rulesLastCheck?: number;
+  rulesLastSuccess?: number;
+  rulesNextCheck?: number;
+  rulesSequence?: number;
+  rulesSource?: string;
   requestId?: number;
   ok?: boolean;
   reason?: string;

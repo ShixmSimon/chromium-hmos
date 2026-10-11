@@ -227,6 +227,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-camera-lifecycle.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-camera-timeline.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-url-protection-updates.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

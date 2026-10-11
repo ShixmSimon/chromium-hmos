@@ -94,11 +94,17 @@ done
 
 # Optional reviewed snapshot, covered by the final application's signing and
 # runtime.version. An absent asset is reported as missing, never as protection.
-# Online rule updates require a separately signed updater and are not enabled.
+# Online updates require product-supplied endpoint and trusted public keys.
 if [[ -n "${PHISHING_RULES_FILE:-}" ]]; then
   python3 "$(dirname "${BASH_SOURCE[0]}")/build-phishing-rules.py" \
     --validate "$PHISHING_RULES_FILE" || die 'invalid phishing rules snapshot'
   cp -- "$PHISHING_RULES_FILE" "${raw_dir}/ohos_phishing_rules.json"
+fi
+
+if [[ -n "${PHISHING_UPDATE_CONFIG_FILE:-}" ]]; then
+  python3 "$(dirname "${BASH_SOURCE[0]}")/phishing-update-tools.py" \
+    --validate-config "$PHISHING_UPDATE_CONFIG_FILE" || die 'invalid phishing update configuration'
+  cp -- "$PHISHING_UPDATE_CONFIG_FILE" "${raw_dir}/ohos_phishing_updates.json"
 fi
 
 # Written last, and after the hash is computed, so it never covers itself.

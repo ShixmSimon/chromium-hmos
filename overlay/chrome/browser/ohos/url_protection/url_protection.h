@@ -60,6 +60,7 @@ class Service {
   std::string SetSiteEnabled(const GURL& url, bool enabled);
   base::DictValue State() const;
   std::string Configure(const base::DictValue& command);
+  std::string UpdateRules(const base::DictValue& command);
   void SetLegacyEnabled(bool enabled);
   base::CallbackListSubscription Observe(base::RepeatingClosure callback);
   Result KnownRisk(const GURL& url) const;
