@@ -137,6 +137,13 @@ std::optional<LocalRules> VerifyRulePayload(std::string_view payload,
     return std::nullopt;
   return rules;
 }
+bool AcceptRuleSequence(const RuleManifest& manifest,
+                        int installed_sequence,
+                        std::string_view installed_digest) {
+  return manifest.sequence > installed_sequence ||
+         (manifest.sequence == installed_sequence &&
+          !installed_digest.empty() && manifest.sha256 == installed_digest);
+}
 std::string EncodeRuleCache(std::string_view manifest,
                             std::string_view payload) {
   return base::NumberToString(manifest.size()) + "\n" + std::string(manifest) +

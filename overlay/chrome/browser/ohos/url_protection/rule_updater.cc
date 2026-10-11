@@ -28,16 +28,19 @@
 
 namespace chrome::ohos::url_protection {
 namespace {
-constexpr char kSequencePref[] = "ohos.url_protection.rules_sequence";
+constexpr char kWatermarkPref[] = "ohos.url_protection.rules_high_water";
 struct InitialState {
   UpdateConfig config;
   LocalRules rules;
   int sequence = 0;
+  std::string digest;
   std::string source = "package";
 };
 InitialState Initialize(base::FilePath assets,
                         base::FilePath cache,
-                        int minimum) {
+                        int minimum,
+                        std::string digest,
+                        bool load_rules) {
   InitialState state;
   std::string config_json;
   const auto config_path = assets.AppendASCII("ohos_phishing_updates.json");
@@ -46,6 +49,8 @@ InitialState Initialize(base::FilePath assets,
                                          kMaxManifestBytes))
     config_json = "invalid";
   state.config = ParseUpdateConfig(config_json);
+  if (!load_rules)
+    return state;
   state.rules = LoadLocalRules(assets.AppendASCII("ohos_phishing_rules.json"));
   std::string raw, manifest_json, payload;
   if (state.config.valid() &&
@@ -54,10 +59,11 @@ InitialState Initialize(base::FilePath assets,
       DecodeRuleCache(raw, manifest_json, payload)) {
     auto manifest = VerifyRuleManifest(manifest_json, state.config, minimum,
                                        base::Time::Now());
-    if (manifest) {
+    if (manifest && AcceptRuleSequence(*manifest, minimum, digest)) {
       auto rules = VerifyRulePayload(payload, *manifest, base::Time::Now());
       if (rules) {
         state.sequence = manifest->sequence;
+        state.digest = manifest->sha256;
         if (!state.rules.IsUsable(base::Time::Now()) ||
             rules->generated >= state.rules.generated) {
           state.rules = std::move(*rules);
@@ -117,33 +123,71 @@ class RuleUpdater::Impl {
                    .AppendASCII("rules.cache")),
         worker_(base::ThreadPool::CreateSequencedTaskRunner(
             {base::MayBlock(), base::TaskPriority::USER_VISIBLE})),
-        sequence_(std::max(0, profile->GetPrefs()->GetInteger(kSequencePref))),
-        rules_(std::make_shared<LocalRules>(LocalRules{.status = "loading"})) {
-    base::FilePath assets;
-    if (!base::PathService::Get(base::DIR_ASSETS, &assets)) {
+        sequence_(std::max(0,
+                           profile->GetPrefs()
+                               ->GetDict(kWatermarkPref)
+                               .FindInt("sequence")
+                               .value_or(0))),
+        rules_(std::make_shared<LocalRules>()) {
+    if (const auto* digest =
+            profile->GetPrefs()->GetDict(kWatermarkPref).FindString("sha256"))
+      digest_ = *digest;
+    if (!base::PathService::Get(base::DIR_ASSETS, &assets_)) {
       ready_ = true;
+      rules_loaded_ = true;
       rules_ = std::make_shared<LocalRules>();
       reason_ = "assets_unavailable";
       return;
     }
-    worker_->PostTaskAndReplyWithResult(
-        FROM_HERE, base::BindOnce(&Initialize, assets, cache_, sequence_),
-        base::BindOnce(&Impl::OnInitialized, weak_factory_.GetWeakPtr()));
+    InitializeState(false);
   }
-  void OnInitialized(InitialState initial) {
+  void InitializeState(bool load_rules) {
+    initializing_rules_ = load_rules;
+    worker_->PostTaskAndReplyWithResult(
+        FROM_HERE,
+        base::BindOnce(&Initialize, assets_, cache_, sequence_, digest_,
+                       load_rules),
+        base::BindOnce(&Impl::OnInitialized, weak_factory_.GetWeakPtr(),
+                       load_rules));
+  }
+  void OnInitialized(bool loaded_rules, InitialState initial) {
     ready_ = true;
     config_ = std::move(initial.config);
-    rules_ = std::make_shared<LocalRules>(std::move(initial.rules));
-    source_ = std::move(initial.source);
-    sequence_ = std::max(sequence_, initial.sequence);
-    profile_->GetPrefs()->SetInteger(kSequencePref, sequence_);
+    if (loaded_rules) {
+      rules_loaded_ = true;
+      initializing_rules_ = false;
+      rules_ = std::make_shared<LocalRules>(std::move(initial.rules));
+      source_ =
+          rules_->status == "missing" ? "none" : std::move(initial.source);
+      if (initial.sequence >= sequence_ && !initial.digest.empty()) {
+        sequence_ = initial.sequence;
+        digest_ = std::move(initial.digest);
+        PersistWatermark();
+      }
+    }
     changed_.Notify();
+    if (clients_ && !rules_loaded_ && !initializing_rules_) {
+      InitializeState(true);
+      return;
+    }
     Schedule(base::Seconds(base::RandIntInclusive(10, 30)));
   }
   void Acquire() {
     ++clients_;
+    if (!rules_loaded_ && !initializing_rules_) {
+      rules_ = std::make_shared<LocalRules>(LocalRules{.status = "loading"});
+      changed_.Notify();
+      if (ready_)
+        InitializeState(true);
+    }
     if (clients_ == 1)
-      Schedule(base::Seconds(base::RandIntInclusive(10, 30)));
+      Schedule(std::max(base::Seconds(base::RandIntInclusive(10, 30)),
+                        automatic_due_ - base::TimeTicks::Now()));
+  }
+  void PersistWatermark() {
+    profile_->GetPrefs()->SetDict(
+        kWatermarkPref,
+        base::DictValue().Set("sequence", sequence_).Set("sha256", digest_));
   }
   void Release() {
     if (clients_ <= 0 || --clients_ != 0)
@@ -160,18 +204,19 @@ class RuleUpdater::Impl {
     changed_.Notify();
   }
   void Schedule(base::TimeDelta delay) {
-    if (!ready_ || !config_.valid() || !clients_ || updating_)
+    if (!ready_ || !rules_loaded_ || !config_.valid() || !clients_ || updating_)
       return;
     delay = std::max(delay, not_before_ - base::TimeTicks::Now());
     delay = std::max(delay, base::Seconds(1));
     next_check_ = base::Time::Now() + delay;
+    automatic_due_ = base::TimeTicks::Now() + delay;
     timer_.Start(
         FROM_HERE, delay,
         base::BindOnce(&Impl::ScheduledUpdate, weak_factory_.GetWeakPtr()));
   }
   void ScheduledUpdate() { RequestUpdate(); }
   std::string RequestUpdate() {
-    if (!ready_)
+    if (!ready_ || !rules_loaded_)
       return "initializing";
     if (!clients_)
       return "disabled";
@@ -225,15 +270,14 @@ class RuleUpdater::Impl {
       Fail("stale_source");
       return;
     }
+    if (!AcceptRuleSequence(*manifest, sequence_, digest_)) {
+      Fail("rollback");
+      return;
+    }
     if (manifest->sequence == sequence_ && source_ == "download" &&
         manifest->version == rules_->version &&
         rules_->IsUsable(base::Time::Now())) {
       Finish();
-      return;
-    }
-    // Once a sequence is installed, another payload cannot reuse its sequence.
-    if (manifest->sequence <= sequence_) {
-      Fail("rollback");
       return;
     }
     manifest_json_ = std::move(*body);
@@ -265,7 +309,8 @@ class RuleUpdater::Impl {
       return;
     }
     sequence_ = sequence;
-    profile_->GetPrefs()->SetInteger(kSequencePref, sequence_);
+    digest_ = manifest_.sha256;
+    PersistWatermark();
     rules_ = std::make_shared<LocalRules>(std::move(*installed.rules));
     source_ = "download";
     Finish();
@@ -316,11 +361,15 @@ class RuleUpdater::Impl {
   }
   raw_ptr<Profile> profile_;
   base::FilePath cache_;
+  base::FilePath assets_;
   scoped_refptr<base::SequencedTaskRunner> worker_;
   int sequence_ = 0;
+  std::string digest_;
   int clients_ = 0;
   int failures_ = 0;
   bool ready_ = false;
+  bool rules_loaded_ = false;
+  bool initializing_rules_ = false;
   bool updating_ = false;
   UpdateConfig config_;
   RuleManifest manifest_;
@@ -330,6 +379,7 @@ class RuleUpdater::Impl {
   std::string reason_;
   base::Time last_check_, last_success_, next_check_;
   base::TimeTicks not_before_;
+  base::TimeTicks automatic_due_;
   base::OneShotTimer timer_;
   base::RepeatingClosureList changed_;
   std::unique_ptr<network::SimpleURLLoader> loader_;
@@ -341,7 +391,7 @@ RuleUpdater* RuleUpdater::Get(Profile* profile) {
   return stores->Get(profile->GetOriginalProfile());
 }
 void RuleUpdater::RegisterPrefs(PrefRegistrySimple* registry) {
-  registry->RegisterIntegerPref(kSequencePref, 0);
+  registry->RegisterDictionaryPref(kWatermarkPref);
 }
 RuleUpdater::RuleUpdater(Profile* profile)
     : impl_(std::make_unique<Impl>(profile)) {}

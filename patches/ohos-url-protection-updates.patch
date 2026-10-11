@@ -1,5 +1,5 @@
 diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
-index e5cd1cbd..9388be2e 100644
+index e5cd1cbd..393d621e 100644
 --- a/chrome/browser/BUILD.gn
 +++ b/chrome/browser/BUILD.gn
 @@ -897,6 +897,10 @@ source_set("core") {
@@ -13,16 +13,18 @@ index e5cd1cbd..9388be2e 100644
        "ui/ohos/shell_bookmarks_ohos.cc",
        "ui/ohos/shell_browsing_data_counts_ohos.cc",
        "ui/ohos/shell_browsing_data_ohos.cc",
-@@ -1720,6 +1724,8 @@ source_set("core") {
-     deps += [
-       "//components/ohos_system_service",
+@@ -1722,6 +1726,10 @@ source_set("core") {
        "//components/security_interstitials/content:security_interstitial_page",
-+      "//third_party/boringssl",
-+      "//services/network/public/cpp",
        "//crypto",
      ]
++    deps += [
++      "//third_party/boringssl",
++      "//services/network/public/cpp",
++    ]
      sources += [
-@@ -4381,3 +4387,11 @@ if (is_android) {
+       "icon_loader_ohos.cc",
+       "memory_details_linux.cc",
+@@ -4381,3 +4389,11 @@ if (is_android) {
      sources = [ "android/feedback/screenshot_mode.h" ]
    }
  }

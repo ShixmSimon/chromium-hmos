@@ -226,6 +226,12 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-camera-frame-layout.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-camera-lifecycle.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-camera-timeline.patch"
+  # An early updater revision inserted deps inside the base protection hunk.
+  # Back that dependent patch out before checking/upgrading its prerequisite.
+  if ! git -C "$src" apply -C0 --reverse --check \
+      "${repo_root}/patches/ohos-url-protection.patch" 2>/dev/null; then
+    retire_incremental_patch "${repo_root}/patches/ohos-url-protection-updates.patch"
+  fi
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection-updates.patch"
 

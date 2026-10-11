@@ -50,6 +50,17 @@ int main(int argc, char** argv) {
     Expect(accepted == *row.FindBool("payload"), name + ": payload");
   }
   const auto valid = Read(directory, "valid.json");
+  const auto accepted_manifest = VerifyRuleManifest(valid, config, 5, now);
+  if (!accepted_manifest)
+    return 2;
+  Expect(AcceptRuleSequence(*accepted_manifest, 10, accepted_manifest->sha256),
+         "restore same authenticated payload after cache loss");
+  Expect(!AcceptRuleSequence(*accepted_manifest, 10, std::string(64, 'b')),
+         "same sequence cannot change payload");
+  Expect(!AcceptRuleSequence(*accepted_manifest, 10, ""),
+         "equal sequence needs known digest");
+  Expect(!AcceptRuleSequence(*accepted_manifest, 11, accepted_manifest->sha256),
+         "older sequence cannot restore");
   Expect(!VerifyRuleManifest(valid, config, 11, now),
          "persisted rollback floor");
   Expect(!VerifyRuleManifest(valid, config, 5, now + base::Days(8)),

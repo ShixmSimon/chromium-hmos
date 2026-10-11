@@ -37,6 +37,10 @@ std::optional<RuleManifest> VerifyRuleManifest(std::string_view json,
 std::optional<LocalRules> VerifyRulePayload(std::string_view payload,
                                             const RuleManifest& manifest,
                                             base::Time now);
+// Equality restores only the previously authenticated bytes after cache loss.
+bool AcceptRuleSequence(const RuleManifest& manifest,
+                        int installed_sequence,
+                        std::string_view installed_digest);
 // Cache contains the original signature and exact payload bytes, and is
 // reverified on every launch. It is public threat data, not browsing history.
 std::string EncodeRuleCache(std::string_view manifest,
