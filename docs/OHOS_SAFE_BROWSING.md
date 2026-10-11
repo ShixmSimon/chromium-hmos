@@ -14,7 +14,7 @@
 - 包内快照生成/校验/打包/解包及 Ed25519 签名在线更新已实现；当前没有内置真实 feed，缺失报告 missing，不宣称已有离线保护。未配置生产端点/公钥时在线更新关闭，rulesUpdateSupported=false。规则限 16 MiB/20 万条、最长有效期 7 天，工作线程解析为精确哈希索引；有效旧库在更新失败时保留，缓存启动重验签，序列与摘要防回滚。
 - 默认关闭、来源 local；旧 standard/enhanced 不自动启用，也不授予云同意。普通 Profile 启用/来源持久化，无痕变更及云授权为会话状态。
 - 用户明确本轮只负责内核。只读核对了 Lumi 已有站点面板和 SiteProtectionBackend 需求，没有修改外壳；生产适配器接入由外壳完成。未调用真实华为查询、未开通官方服务、未操作真机。真实 feed 验收与分发部署仍需生产配置，广告过滤属于后续独立阶段。
-- SDK 协调器 14 项、快照工具 5 项测试通过；补丁首次/重复/升级及全新基线检查通过。[CI e35caa3c](https://github.com/miramira8295/chromium-hmos/actions/runs/38144667754) 已通过包含站点接口的 C++ 构建及 HAR 打包，[Adapter CI](https://github.com/miramira8295/chromium-hmos/actions/runs/38144667176) 通过。19 项测试覆盖协调器与打包工具，不覆盖原生导航/站点例外运行时；这些仍须真机验收。
+- SDK 协调器 14 项、快照工具 5 项、签名工具 8 项测试通过；补丁首次/重复/升级及全新基线检查通过。[二期原生/HAR CI](https://github.com/miramira8295/chromium-hmos/actions/runs/38149304314) 已通过 C++ 构建、HAR 打包及生产 C++ 规则验签测试，[Adapter CI](https://github.com/miramira8295/chromium-hmos/actions/runs/38149384352) 通过。这些测试覆盖协调器、构建工具与原生规则格式，不覆盖原生导航/站点例外运行时；这些仍须真机验收。
 
 ## 推荐方案
 

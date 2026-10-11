@@ -86,4 +86,6 @@ python3 scripts/phishing-update-tools.py \
 
 CI 的本机签名工具测试与 Linux host 原生测试使用仅测试钥匙和 example.com 规则，覆盖合法包、错签、未知钥匙、回滚、未来/过期、越界、跨 origin、摘要/计数/长度篡改、精确匹配及缓存格式。生产钥匙和测试夹具不会加入 HAR 运行时资源。
 
+验证记录（2026-10-11）：[原生/HAR CI 38149304314](https://github.com/miramira8295/chromium-hmos/actions/runs/38149304314) 全部通过，原生验证器输出 `Native rule validation: 0 failures`，并提供联调 HAR artifact。[Adapter CI 38149384352](https://github.com/miramira8295/chromium-hmos/actions/runs/38149384352) 通过，包括协调器 14 项、快照工具 5 项、签名工具 8 项及固定上游补丁兼容性检查。隔离副本另验证了旧补丁升级、首次/重复应用；没有手工修改 runner 源码。
+
 真实华为命中、手机/大屏导航、重定向、POST、BFCache/预渲染、站点例外和多窗口/无痕的设备联调仍须使用外壳与设备完成。本仓库不操作设备；构建通过不能替代这些运行验收。
