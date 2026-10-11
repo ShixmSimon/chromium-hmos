@@ -38,7 +38,7 @@ void PostResult(Service::Callback callback, Result result) {
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(std::move(callback), std::move(result)));
 }
-}
+}  // namespace
 
 bool IsPublicHttpUrl(const GURL& url) {
   if (!url.is_valid() || !url.SchemeIsHTTPOrHTTPS() || url.has_username() ||
@@ -64,7 +64,8 @@ GURL CloudCheckUrl(const GURL& url) {
   // Conservative v1: paths with encoded or token-like segments stay local.
   // No promise to recognize every sensitive path or split-DNS hostname.
   const std::string path = base::ToLowerASCII(url.path());
-  if (path.find('%') != std::string::npos || path.find('@') != std::string::npos ||
+  if (path.find('%') != std::string::npos ||
+      path.find('@') != std::string::npos ||
       path.find("token") != std::string::npos ||
       path.find("oauth") != std::string::npos || path.size() > 256)
     return {};
@@ -119,10 +120,14 @@ class Service::Impl {
   };
 
   bool UsesLocal() const { return enabled_ && provider_ != "huawei"; }
-  bool UsesCloud() const { return enabled_ && provider_ != "local" && consent_; }
+  bool UsesCloud() const {
+    return enabled_ && provider_ != "local" && consent_;
+  }
   base::DictValue Identity() const {
-    return base::DictValue().Set("protocolVersion", 1)
-        .Set("contextId", context_id_).Set("policyRevision", revision_);
+    return base::DictValue()
+        .Set("protocolVersion", 1)
+        .Set("contextId", context_id_)
+        .Set("policyRevision", revision_);
   }
   base::DictValue State() const {
     auto state = Identity();
@@ -131,16 +136,23 @@ class Service::Impl {
     state.Set("cloudConsent", consent_);
     state.Set("huaweiReason", cloud_reason_);
     state.Set("incognito", profile_->IsOffTheRecord());
-    state.Set("huaweiStatus", !enabled_ || provider_ == "local" ? "disabled" :
-        !consent_ ? "consent_required" : cloud_status_);
-    state.Set("localStatus", !UsesLocal() ? "disabled" :
-        rules_.status == "ready" && !rules_.IsUsable(base::Time::Now()) ?
-        "expired" : rules_.status);
+    state.Set("huaweiStatus", !enabled_ || provider_ == "local" ? "disabled"
+                              : !consent_ ? "consent_required"
+                                          : cloud_status_);
+    state.Set("localStatus",
+              !UsesLocal() ? "disabled"
+              : rules_.status == "ready" && !rules_.IsUsable(base::Time::Now())
+                  ? "expired"
+                  : rules_.status);
     state.Set("rulesVersion", rules_.version);
-    state.Set("rulesUpdatedAt", rules_.generated.is_null() ? -1.0 :
-        rules_.generated.InMillisecondsFSinceUnixEpoch());
-    state.Set("rulesExpiresAt", rules_.expires.is_null() ? -1.0 :
-        rules_.expires.InMillisecondsFSinceUnixEpoch());
+    state.Set("rulesUpdatedAt",
+              rules_.generated.is_null()
+                  ? -1.0
+                  : rules_.generated.InMillisecondsFSinceUnixEpoch());
+    state.Set("rulesExpiresAt",
+              rules_.expires.is_null()
+                  ? -1.0
+                  : rules_.expires.InMillisecondsFSinceUnixEpoch());
     state.Set("rulesUpdateSupported", false);
     return state;
   }
@@ -151,8 +163,9 @@ class Service::Impl {
   }
   void SendControl(std::string_view method, base::DictValue args) {
     args.Merge(Identity());
-    ohos_system_service::CallWithTimeout("urlcheck", method, std::move(args),
-        kBudget, base::BindOnce([](ohos_system_service::Reply) {}));
+    ohos_system_service::CallWithTimeout(
+        "urlcheck", method, std::move(args), kBudget,
+        base::BindOnce([](ohos_system_service::Reply) {}));
   }
   void CancelAll(std::string reason) {
     auto pending = std::move(pending_);
@@ -188,8 +201,10 @@ class Service::Impl {
     cloud_status_ = "unverified";
     cloud_reason_.clear();
     if (!profile_->IsOffTheRecord()) {
-      profile_->GetPrefs()->SetDict(kConfigPref, base::DictValue()
-          .Set("enabled", enabled_).Set("provider", provider_));
+      profile_->GetPrefs()->SetDict(kConfigPref,
+                                    base::DictValue()
+                                        .Set("enabled", enabled_)
+                                        .Set("provider", provider_));
     }
     if (UsesLocal())
       EnsureRules();
@@ -199,8 +214,9 @@ class Service::Impl {
     return {};
   }
   void EnsureRules() {
-    if (loading_ || rules_.status != "missing")
+    if (rules_load_attempted_)
       return;
+    rules_load_attempted_ = true;
     loading_ = true;
     rules_.status = "loading";
     base::FilePath assets;
@@ -211,7 +227,7 @@ class Service::Impl {
     base::ThreadPool::PostTaskAndReplyWithResult(
         FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
         base::BindOnce(&LoadLocalRules,
-            assets.AppendASCII("ohos_phishing_rules.json")),
+                       assets.AppendASCII("ohos_phishing_rules.json")),
         base::BindOnce(&Impl::OnRules, weak_factory_.GetWeakPtr()));
   }
   void OnRules(LocalRules rules) {
@@ -243,7 +259,8 @@ class Service::Impl {
       return {Verdict::kPhishing, "local", "matched", url};
     if (UsesCloud()) {
       auto found = cache_.find(CloudCheckUrl(url).spec());
-      if (found != cache_.end() && found->second.expires > base::TimeTicks::Now() &&
+      if (found != cache_.end() &&
+          found->second.expires > base::TimeTicks::Now() &&
           found->second.result.dangerous()) {
         Result result = found->second.result;
         result.url = url;
@@ -252,7 +269,9 @@ class Service::Impl {
     }
     return Unknown(url, "not_checked");
   }
-  std::string Check(const GURL& url, base::TimeDelta timeout, Callback callback) {
+  std::string Check(const GURL& url,
+                    base::TimeDelta timeout,
+                    Callback callback) {
     if (!enabled_ || !IsPublicHttpUrl(url) || timeout <= base::TimeDelta() ||
         pending_.size() >= 128) {
       PostResult(std::move(callback), Unknown(url, "not_checked"));
@@ -273,7 +292,8 @@ class Service::Impl {
         CheckLocal(call);
     }
     call.checked_url = CloudCheckUrl(url);
-    if (!call.result.dangerous() && UsesCloud() && call.checked_url.is_valid()) {
+    if (!call.result.dangerous() && UsesCloud() &&
+        call.checked_url.is_valid()) {
       auto cached = cache_.find(call.checked_url.spec());
       if (cached != cache_.end() && cached->second.expires > now) {
         call.result = cached->second.result;
@@ -292,10 +312,12 @@ class Service::Impl {
       args.Set("timeoutMs", static_cast<int>(timeout.InMilliseconds()));
       inserted.bridge_id = ohos_system_service::CallWithTimeout(
           "urlcheck", "check", std::move(args), timeout,
-          base::BindOnce(&Impl::OnCloud, weak_factory_.GetWeakPtr(), id, revision_));
+          base::BindOnce(&Impl::OnCloud, weak_factory_.GetWeakPtr(), id,
+                         revision_));
     }
     base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
-        FROM_HERE, base::BindOnce(&Impl::Timeout, weak_factory_.GetWeakPtr(), id),
+        FROM_HERE,
+        base::BindOnce(&Impl::Timeout, weak_factory_.GetWeakPtr(), id),
         timeout);
     MaybeComplete(id);
     return id;
@@ -314,30 +336,48 @@ class Service::Impl {
       const auto* field = data.FindString(key);
       return field && *field == value;
     };
-    const bool valid_identity = reply.ok && data.FindInt("protocolVersion") == 1 &&
+    const bool valid_identity =
+        reply.ok && data.FindInt("protocolVersion") == 1 &&
         data.FindInt("policyRevision") == revision &&
         matches("requestId", id) && matches("contextId", context_id_);
     cloud_reason_ = "unavailable";
     if (valid_identity) {
       const auto* reason = data.FindString("reason");
-      constexpr std::string_view kReasons[] = {
-          "consent_required", "disabled", "stale_policy", "unsupported",
-          "permission_denied", "invalid_request", "network_unavailable",
-          "cloud_unavailable", "concurrency_limited", "rate_limited", "timeout",
-          "cloud_quota_exceeded", "internal_error", "cancelled", "context_closed",
-          "unsupported_protocol", "unsupported_query_mode", "invalid_response"};
+      constexpr std::string_view kReasons[] = {"consent_required",
+                                               "disabled",
+                                               "stale_policy",
+                                               "unsupported",
+                                               "permission_denied",
+                                               "invalid_request",
+                                               "network_unavailable",
+                                               "cloud_unavailable",
+                                               "concurrency_limited",
+                                               "rate_limited",
+                                               "timeout",
+                                               "cloud_quota_exceeded",
+                                               "internal_error",
+                                               "cancelled",
+                                               "context_closed",
+                                               "unsupported_protocol",
+                                               "unsupported_query_mode",
+                                               "invalid_response"};
       if (reason && std::ranges::find(kReasons, *reason) != std::end(kReasons))
         cloud_reason_ = *reason;
     }
     if (valid_identity && matches("checkedUrl", call.checked_url.spec())) {
       const auto* verdict = data.FindString("verdict");
-      if (verdict && *verdict == "phishing") cloud.verdict = Verdict::kPhishing;
-      else if (verdict && *verdict == "malware") cloud.verdict = Verdict::kMalware;
-      else if (verdict && *verdict == "no_match") cloud.verdict = Verdict::kNoMatch;
-      else if (verdict && *verdict == "other") cloud.verdict = Verdict::kOther;
+      if (verdict && *verdict == "phishing")
+        cloud.verdict = Verdict::kPhishing;
+      else if (verdict && *verdict == "malware")
+        cloud.verdict = Verdict::kMalware;
+      else if (verdict && *verdict == "no_match")
+        cloud.verdict = Verdict::kNoMatch;
+      else if (verdict && *verdict == "other")
+        cloud.verdict = Verdict::kOther;
       if (cloud.verdict != Verdict::kUnknown)
-        cloud.reason = cloud.dangerous() ? "matched" :
-            cloud.verdict == Verdict::kOther ? "other_category" : "no_match";
+        cloud.reason = cloud.dangerous()                  ? "matched"
+                       : cloud.verdict == Verdict::kOther ? "other_category"
+                                                          : "no_match";
     }
     if (cloud.verdict != Verdict::kUnknown) {
       cloud_status_ = "available";
@@ -345,7 +385,8 @@ class Service::Impl {
       if (cache_.size() >= 256)
         cache_.erase(cache_.begin());
       cache_[call.checked_url.spec()] = {
-          cloud, base::TimeTicks::Now() + base::Minutes(cloud.dangerous() ? 30 : 5)};
+          cloud,
+          base::TimeTicks::Now() + base::Minutes(cloud.dangerous() ? 30 : 5)};
       if (!call.result.dangerous() &&
           (cloud.dangerous() || call.result.verdict == Verdict::kUnknown))
         call.result = cloud;
@@ -396,6 +437,7 @@ class Service::Impl {
   std::string cloud_reason_;
   LocalRules rules_;
   bool loading_ = false;
+  bool rules_load_attempted_ = false;
   std::map<std::string, Pending> pending_;
   std::map<std::string, Cached> cache_;
   base::RepeatingClosureList changed_;
@@ -409,11 +451,21 @@ Service* Service::Get(Profile* profile) {
 }
 Service::Service(Profile* profile) : impl_(std::make_unique<Impl>(profile)) {}
 Service::~Service() = default;
-bool Service::enabled() const { return impl_->enabled_; }
-bool Service::uses_local() const { return impl_->UsesLocal(); }
-bool Service::uses_huawei() const { return impl_->UsesCloud(); }
-int Service::revision() const { return impl_->revision_; }
-base::DictValue Service::State() const { return impl_->State(); }
+bool Service::enabled() const {
+  return impl_->enabled_;
+}
+bool Service::uses_local() const {
+  return impl_->UsesLocal();
+}
+bool Service::uses_huawei() const {
+  return impl_->UsesCloud();
+}
+int Service::revision() const {
+  return impl_->revision_;
+}
+base::DictValue Service::State() const {
+  return impl_->State();
+}
 std::string Service::Configure(const base::DictValue& command) {
   return impl_->Configure(command);
 }
@@ -424,15 +476,24 @@ void Service::SetLegacyEnabled(bool enabled) {
   config.Set("cloudConsent", false);
   Configure(config);
 }
-base::CallbackListSubscription Service::Observe(base::RepeatingClosure callback) {
+base::CallbackListSubscription Service::Observe(
+    base::RepeatingClosure callback) {
   return impl_->changed_.Add(std::move(callback));
 }
-Result Service::KnownRisk(const GURL& url) const { return impl_->KnownRisk(url); }
-std::string Service::Check(const GURL& url, base::TimeDelta timeout, Callback callback) {
+Result Service::KnownRisk(const GURL& url) const {
+  return impl_->KnownRisk(url);
+}
+std::string Service::Check(const GURL& url,
+                           base::TimeDelta timeout,
+                           Callback callback) {
   return impl_->Check(url, timeout, std::move(callback));
 }
-void Service::Cancel(const std::string& request_id) { impl_->Cancel(request_id); }
-base::WeakPtr<Service> Service::GetWeakPtr() { return weak_factory_.GetWeakPtr(); }
+void Service::Cancel(const std::string& request_id) {
+  impl_->Cancel(request_id);
+}
+base::WeakPtr<Service> Service::GetWeakPtr() {
+  return weak_factory_.GetWeakPtr();
+}
 
 bool HandleCommand(const ShellCommandContext& context,
                    std::string_view name,

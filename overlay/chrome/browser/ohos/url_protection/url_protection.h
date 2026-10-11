@@ -61,7 +61,9 @@ class Service {
   base::CallbackListSubscription Observe(base::RepeatingClosure callback);
   Result KnownRisk(const GURL& url) const;
   // Always completes asynchronously, bounded by timeout. No URL is logged.
-  std::string Check(const GURL& url, base::TimeDelta timeout, Callback callback);
+  std::string Check(const GURL& url,
+                    base::TimeDelta timeout,
+                    Callback callback);
   void Cancel(const std::string& request_id);
   base::WeakPtr<Service> GetWeakPtr();
 

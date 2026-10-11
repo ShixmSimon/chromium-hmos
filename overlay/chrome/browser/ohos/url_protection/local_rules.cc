@@ -14,7 +14,7 @@ namespace chrome::ohos::url_protection {
 namespace {
 constexpr size_t kMaxBytes = 16 * 1024 * 1024;
 constexpr size_t kMaxRules = 200000;
-}
+}  // namespace
 bool LocalRules::IsUsable(base::Time now) const {
   return status == "ready" && now >= generated && now < expires;
 }

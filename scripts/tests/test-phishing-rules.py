@@ -29,6 +29,7 @@ class SnapshotTests(unittest.TestCase):
                 rules.build(b'https://example.com/login', COMMIT, timestamp, NOW)
 
     def test_private_and_credential_urls_excluded(self):
+        self.assertTrue(rules.public_url('https://abc.def/login'))
         for url in ['http://localhost/', 'http://127.0.0.1/', 'http://10.1.2.3/',
                     'http://[::ffff:127.0.0.1]/', 'http://host.local/',
                     'http://user:pass@example.com/', 'http://0x7f000001/',

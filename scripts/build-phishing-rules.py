@@ -39,7 +39,7 @@ def public_url(value):
             return address.is_global
         except ValueError:
             # Avoid alternate numeric IP spellings that GURL canonicalizes.
-            if re.fullmatch(r'[0-9xa-f.]+', host) and not re.search('[g-z]', host):
+            if re.fullmatch(r'(?:[0-9]+|0x[0-9a-f]+)', host.rsplit('.', 1)[-1]):
                 return False
             return '.' in host and not host.endswith(('.localhost', '.local', '.internal', '.home.arpa'))
     except (ValueError, UnicodeError):
