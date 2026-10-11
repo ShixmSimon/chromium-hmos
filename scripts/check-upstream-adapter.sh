@@ -17,7 +17,8 @@ trap cleanup EXIT
 git init -q "${checkout}"
 git -C "${checkout}" remote add origin https://github.com/chromium/chromium.git
 git -C "${checkout}" sparse-checkout init --no-cone
-grep '^diff --git ' "${project_root}/patches/chromium-154-harmonyos.patch" |
+grep '^diff --git ' "${project_root}/patches/chromium-154-harmonyos.patch" \
+  "${project_root}/patches/ohos-url-protection.patch" -h |
   awk '{sub(/^b\//, "/", $4); print $4}' |
   LC_ALL=C sort -u >"${checkout}/.git/info/sparse-checkout"
 git -C "${checkout}" fetch -q --depth=1 --filter=blob:none origin "${revision}"
@@ -33,6 +34,10 @@ fi
 if [[ "${compatible}" == true ]]; then
   git -C "${checkout}" apply --binary \
     "${project_root}/patches/chromium-154-harmonyos.patch"
+  if ! git -C "${checkout}" apply \
+      "${project_root}/patches/ohos-url-protection.patch" 2>"${failure_log}"; then
+    compatible=false
+  fi
   rsync -a "${project_root}/overlay/" "${checkout}/"
   if [[ ! -f "${checkout}/chromium-ui/entry/src/main/ets/pages/AuraShell.ets" ||
         ! -f "${checkout}/ohos_nweb/src/aura_shell/ohos_chrome_main_runner.cc" ||

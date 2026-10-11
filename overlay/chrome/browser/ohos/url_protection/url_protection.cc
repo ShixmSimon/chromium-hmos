@@ -129,6 +129,7 @@ class Service::Impl {
     state.Set("enabled", enabled_);
     state.Set("provider", provider_);
     state.Set("cloudConsent", consent_);
+    state.Set("huaweiReason", cloud_reason_);
     state.Set("incognito", profile_->IsOffTheRecord());
     state.Set("huaweiStatus", !enabled_ || provider_ == "local" ? "disabled" :
         !consent_ ? "consent_required" : cloud_status_);
@@ -185,6 +186,7 @@ class Service::Impl {
     consent_ = enabled_ && provider_ != "local" && *consent;
     cache_.clear();
     cloud_status_ = "unverified";
+    cloud_reason_.clear();
     if (!profile_->IsOffTheRecord()) {
       profile_->GetPrefs()->SetDict(kConfigPref, base::DictValue()
           .Set("enabled", enabled_).Set("provider", provider_));
@@ -312,20 +314,34 @@ class Service::Impl {
       const auto* field = data.FindString(key);
       return field && *field == value;
     };
-    if (reply.ok && data.FindInt("protocolVersion") == 1 &&
+    const bool valid_identity = reply.ok && data.FindInt("protocolVersion") == 1 &&
         data.FindInt("policyRevision") == revision &&
-        matches("requestId", id) && matches("contextId", context_id_) &&
-        matches("checkedUrl", call.checked_url.spec())) {
+        matches("requestId", id) && matches("contextId", context_id_);
+    cloud_reason_ = "unavailable";
+    if (valid_identity) {
+      const auto* reason = data.FindString("reason");
+      constexpr std::string_view kReasons[] = {
+          "consent_required", "disabled", "stale_policy", "unsupported",
+          "permission_denied", "invalid_request", "network_unavailable",
+          "cloud_unavailable", "concurrency_limited", "rate_limited", "timeout",
+          "cloud_quota_exceeded", "internal_error", "cancelled", "context_closed",
+          "unsupported_protocol", "unsupported_query_mode", "invalid_response"};
+      if (reason && std::ranges::find(kReasons, *reason) != std::end(kReasons))
+        cloud_reason_ = *reason;
+    }
+    if (valid_identity && matches("checkedUrl", call.checked_url.spec())) {
       const auto* verdict = data.FindString("verdict");
       if (verdict && *verdict == "phishing") cloud.verdict = Verdict::kPhishing;
       else if (verdict && *verdict == "malware") cloud.verdict = Verdict::kMalware;
       else if (verdict && *verdict == "no_match") cloud.verdict = Verdict::kNoMatch;
       else if (verdict && *verdict == "other") cloud.verdict = Verdict::kOther;
       if (cloud.verdict != Verdict::kUnknown)
-        cloud.reason = cloud.dangerous() ? "matched" : "no_match";
+        cloud.reason = cloud.dangerous() ? "matched" :
+            cloud.verdict == Verdict::kOther ? "other_category" : "no_match";
     }
     if (cloud.verdict != Verdict::kUnknown) {
       cloud_status_ = "available";
+      cloud_reason_.clear();
       if (cache_.size() >= 256)
         cache_.erase(cache_.begin());
       cache_[call.checked_url.spec()] = {
@@ -377,6 +393,7 @@ class Service::Impl {
   std::string context_id_ = base::UnguessableToken::Create().ToString();
   int revision_ = 1;
   std::string cloud_status_ = "unverified";
+  std::string cloud_reason_;
   LocalRules rules_;
   bool loading_ = false;
   std::map<std::string, Pending> pending_;

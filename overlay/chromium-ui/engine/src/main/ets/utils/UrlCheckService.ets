@@ -48,6 +48,19 @@ interface ActiveCheck {
 interface SdkError {
   code?: number;
 }
+interface CapabilitiesResult {
+  protocolVersion: number;
+  supported: boolean;
+  configuration: string;
+  queryModes: string[];
+  reason: string;
+}
+interface ControlResult {
+  accepted?: boolean;
+  cancelled?: boolean;
+  closed?: boolean;
+  reason?: string;
+}
 
 function fieldString(args: Record<string, Object>, key: string): string {
   const value = args[key];
@@ -79,10 +92,15 @@ export class UrlCheckCoordinator {
   private coolingUntil: number = 0;
   private disposed: boolean = false;
   private readonly concurrencyLimit: number;
+  private readonly executor: UrlThreatExecutor;
+  private readonly authorization: UrlThreatAuthorization;
+  private readonly options: UrlCheckOptions;
 
-  constructor(private readonly executor: UrlThreatExecutor,
-    private readonly authorization: UrlThreatAuthorization,
-    private readonly options: UrlCheckOptions) {
+  constructor(executor: UrlThreatExecutor,
+    authorization: UrlThreatAuthorization, options: UrlCheckOptions) {
+    this.executor = executor;
+    this.authorization = authorization;
+    this.options = options;
     this.concurrencyLimit = Number.isSafeInteger(options.maxConcurrent) ?
       Math.max(1, Math.min(10, options.maxConcurrent)) : 1;
   }
@@ -92,7 +110,7 @@ export class UrlCheckCoordinator {
       return { protocolVersion: 1, supported: this.options.supported,
         configuration: this.options.originPathVerified ? 'ready' : 'unverified',
         queryModes: this.options.originPathVerified ? ['origin_path'] : [],
-        reason: this.options.originPathVerified ? '' : 'not_verified' };
+        reason: this.options.originPathVerified ? '' : 'not_verified' } as CapabilitiesResult;
     }
     if (method === 'check') {
       return this.check(args);
@@ -101,7 +119,7 @@ export class UrlCheckCoordinator {
     const revision = fieldNumber(args, 'policyRevision');
     if (fieldNumber(args, 'protocolVersion') !== 1 || !contextId ||
       contextId.length > 128 || !Number.isSafeInteger(revision) || revision < 1 || this.disposed) {
-      return { accepted: false, reason: 'invalid_request' };
+      return { accepted: false, reason: 'invalid_request' } as ControlResult;
     }
     if (method === 'configure') {
       const old = this.policies.get(contextId);
@@ -110,30 +128,30 @@ export class UrlCheckCoordinator {
         (provider !== 'local' && provider !== 'huawei' && provider !== 'both') ||
         typeof args['enabled'] !== 'boolean' || typeof args['cloudConsent'] !== 'boolean' ||
         typeof args['incognito'] !== 'boolean' || (!old && this.policies.size >= 128)) {
-        return { accepted: false, reason: 'invalid_policy' };
+        return { accepted: false, reason: 'invalid_policy' } as ControlResult;
       }
       this.cancelContext(contextId, 'stale_policy');
       const policy: Policy = { revision: revision, enabled: args['enabled'] as boolean,
         provider: provider, consent: args['cloudConsent'] as boolean,
         incognito: args['incognito'] as boolean };
       this.policies.set(contextId, policy);
-      return { accepted: true };
+      return { accepted: true } as ControlResult;
     }
     if (method === 'cancel') {
       const requestId = fieldString(args, 'requestId');
       const check = this.active.get(requestId);
       if (check && check.contextId === contextId) {
         check.finish('unknown', 'cancelled', 0);
-        return { cancelled: true };
+        return { cancelled: true } as ControlResult;
       }
-      return { cancelled: false };
+      return { cancelled: false } as ControlResult;
     }
     if (method === 'closeContext') {
       this.cancelContext(contextId, 'context_closed');
       this.policies.delete(contextId);
-      return { closed: true };
+      return { closed: true } as ControlResult;
     }
-    return { accepted: false, reason: 'unsupported_method' };
+    return { accepted: false, reason: 'unsupported_method' } as ControlResult;
   }
 
   private cancelContext(contextId: string, reason: string): void {

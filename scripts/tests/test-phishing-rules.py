@@ -1,7 +1,10 @@
 import importlib.util
 import json
+import sys
 from pathlib import Path
 import unittest
+
+sys.dont_write_bytecode = True
 
 spec = importlib.util.spec_from_file_location('rules', Path(__file__).parents[1] / 'build-phishing-rules.py')
 rules = importlib.util.module_from_spec(spec)
