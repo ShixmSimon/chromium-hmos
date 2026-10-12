@@ -553,6 +553,12 @@ class RuleSources::Impl {
               entry.rules ? static_cast<int>(entry.rules->hashes.size()) : 0);
       row.Set("inputCount",
               entry.rules ? static_cast<int>(entry.rules->input_count) : 0);
+      row.Set("rejectedCount",
+              entry.rules ? static_cast<int>(entry.rules->rejected_broad_count)
+                          : 0);
+      row.Set("warning", entry.rules && entry.rules->rejected_broad_count
+                             ? "broad_rules_rejected"
+                             : "");
       row.Set("indexBytes",
               entry.rules
                   ? static_cast<int>(entry.rules->hashes.capacity() * 32)
@@ -566,8 +572,9 @@ class RuleSources::Impl {
               entry.rules ? ToShellTime(entry.rules->fetched + base::Days(7))
                           : -1.0);
       row.Set("lastCheck", ToShellTime(entry.last_check));
-      row.Set("nextUpdate",
-              clients_ && entry.config.enabled ? ToShellTime(entry.due) : -1.0);
+      row.Set("nextUpdate", clients_ && entry.config.enabled && active_ != id
+                                ? ToShellTime(entry.due)
+                                : -1.0);
       sources.Append(std::move(row));
     }
     for (const auto& item : kRecommendations) {

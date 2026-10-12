@@ -670,6 +670,8 @@ export interface ProtectionRuleSource {
   available?: boolean;
   ruleCount?: number;
   inputCount?: number;
+  rejectedCount?: number;
+  warning?: string;
   indexBytes?: number;
   sourceUpdatedAt?: number;
   fetchedAt?: number;

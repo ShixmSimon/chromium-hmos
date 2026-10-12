@@ -22,6 +22,7 @@ struct SubscriptionRules {
   std::string rule_type;
   std::string digest;
   size_t input_count = 0;
+  size_t rejected_broad_count = 0;
   base::Time fetched;
   std::vector<std::array<uint8_t, 32>> hashes;
   bool usable(base::Time now) const;

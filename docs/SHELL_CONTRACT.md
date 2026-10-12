@@ -806,7 +806,7 @@ check 返回 `{protocolVersion:1, requestId, contextId, policyRevision, verdict,
 
 在既有华为/本地/同时/关闭之下管理本地来源。新增 `getProtectionRuleSources`、`addProtectionRuleSource`、`updateProtectionRuleSource`、`removeProtectionRuleSource`、`refreshProtectionRuleSource`；回包 `protectionRuleSources` / `protectionRuleSourceResult`，失效通知 `protectionRuleSourcesChanged`。写入校验 contextId 和 **sourcesRevision**（作为 expectedRevision），不是全局 policyRevision；无痕只读。HAR 导出来源条目、回包和失效事件类型。
 
-推荐目录含 HaGeZi TIF Mini / PhishDestroy，默认不安装、不启用。自定义仅支持 HTTPS 文本 domains（host_exact/host_suffix）或 urls（url_exact），不支持 Adblock/hosts/正则。推荐与自定义均标注 user_https、signed=false，不能冒用产品签名信任；原签名更新命令继续独立工作。单源上限 16 MiB/50 万输入条目，最多 8 源，订阅总索引最多 100 万哈希；超限或任何非法条目拒绝整次更新并保留有效旧库。
+推荐目录含 HaGeZi TIF Mini / PhishDestroy，默认不安装、不启用。自定义仅支持 HTTPS 文本 domains（host_exact/host_suffix）或 urls（url_exact），不支持 Adblock/hosts/正则。推荐与自定义均标注 user_https、signed=false，不能冒用产品签名信任；原签名更新命令继续独立工作。单源上限 16 MiB/50 万输入条目，最多 8 源，订阅总索引最多 100 万哈希；超限或格式错误拒绝整次更新并保留有效旧库。公共/私有注册后缀条目被拒收并以 rejectedCount/warning 显式报告，外壳不能把其数量算进有效条数。
 
 至少一个启用订阅或产品签名库有效时 localStatus=ready，其余错误在每源状态显示；原 rulesVersion/时间仍只描述产品签名库。综合威胁订阅命中为 other，但会由内核拦截；华为 OTHERS 既有处理不变。站点详情增加 matchedSourceIds、ruleType；未知上游验证时间为 -1，fetchedAt 不代表上游重新验证。准确字段、错误码、生命周期和外壳接入要求见 [规则来源契约](OHOS_PROTECTION_RULE_SOURCES.md)。
 

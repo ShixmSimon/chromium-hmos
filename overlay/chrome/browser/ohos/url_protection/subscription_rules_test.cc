@@ -17,7 +17,8 @@ int RunSubscriptionTests(const base::FilePath& benchmarks) {
       std::cerr << "FAIL subscription: " << name << '\n';
     }
   };
-  const auto now = base::Time::Now();
+  const auto now = base::Time::FromMillisecondsSinceUnixEpoch(
+      base::Time::Now().InMillisecondsSinceUnixEpoch());
   const auto suffix = ParseSubscriptionRules(
       "# comment\r\nEvil.Example.COM.\n\nevil.example.com\n", "domains",
       "host_suffix", now);
@@ -55,6 +56,14 @@ int RunSubscriptionTests(const base::FilePath& benchmarks) {
   expect(tenant.Matches(GURL("https://tenant.github.io"), now) &&
              !tenant.Matches(GURL("https://other.github.io"), now),
          "private registry boundary");
+  const auto filtered =
+      ParseSubscriptionRules("evil.example.com\ngithub.io\ntenant.github.io\n",
+                             "domains", "host_suffix", now);
+  expect(filtered.usable(now) && filtered.input_count == 3 &&
+             filtered.hashes.size() == 2 &&
+             filtered.rejected_broad_count == 1 &&
+             !filtered.Matches(GURL("https://other.github.io"), now),
+         "broad entries rejected and counted without widening tenants");
   const auto urls = ParseSubscriptionRules(
       "https://example.com:8443/login?q=1#x\n", "urls", "url_exact", now);
   expect(urls.Matches(GURL("https://example.com:8443/login?q=1#x"), now),
@@ -168,6 +177,7 @@ int RunSubscriptionTests(const base::FilePath& benchmarks) {
     getrusage(RUSAGE_SELF, &usage);
     std::cout << "Subscription benchmark " << file
               << ": input=" << rules.input_count
+              << " rejected_broad=" << rules.rejected_broad_count
               << " unique=" << rules.hashes.size()
               << " raw_bytes=" << raw.size()
               << " index_bytes=" << rules.hashes.capacity() * 32

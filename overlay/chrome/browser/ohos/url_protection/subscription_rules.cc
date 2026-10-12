@@ -15,7 +15,8 @@
 
 namespace chrome::ohos::url_protection {
 namespace {
-std::string CanonicalDomain(std::string_view text) {
+std::string CanonicalDomain(std::string_view text, bool& broad) {
+  broad = false;
   if (text.empty() || text.size() > 1024 ||
       text.find_first_of("/:@?#%*[]\\ \t\r\n") != std::string_view::npos)
     return {};
@@ -45,6 +46,7 @@ std::string CanonicalDomain(std::string_view text) {
   using namespace net::registry_controlled_domains;
   const auto registry = GetCanonicalHostRegistry(
       host, INCLUDE_UNKNOWN_REGISTRIES, INCLUDE_PRIVATE_REGISTRIES);
+  broad = registry && registry->empty();
   return registry && !registry->empty() ? host : std::string();
 }
 }  // namespace
@@ -119,13 +121,18 @@ SubscriptionRules ParseSubscriptionRules(std::string_view text,
       return rules;
     }
     std::string canonical;
+    bool broad = false;
     if (format == "domains") {
-      canonical = CanonicalDomain(line);
+      canonical = CanonicalDomain(line, broad);
     } else if (line.find_first_of(" \t\r") == std::string_view::npos &&
                (line.starts_with("https://") || line.starts_with("http://"))) {
       const GURL url(line);
       if (IsPublicHttpUrl(url))
         canonical = url.spec();
+    }
+    if (broad) {
+      ++rules.rejected_broad_count;
+      continue;
     }
     if (canonical.empty()) {
       rules.error = "invalid_rule";

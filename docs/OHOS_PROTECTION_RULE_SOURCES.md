@@ -44,6 +44,7 @@
 
 - status：loading / disabled / updating / ready / expired / error / missing；available 单独表示当前启用且仍有有效索引。更新失败但有效旧库仍在时，status 可保持 ready，同时 error 给出失败原因。
 - ruleCount：安装后去重的有效记录数；inputCount：安装版本的原始非注释记录数；indexBytes：实际索引向量容量字节数。失败不展示部分导入数量为成功。
+- rejectedCount：被拒收的公共/私有注册后缀条目数；非零时 warning=broad_rules_rejected。外壳须显示“已拒收 N 条过宽规则”，不能声称所有输入条目都已导入。固定 PhishDestroy 数据包含公共托管后缀 kasserver.com，不能按 suffix 封禁其全部租户；其他合法条目仍可使用。
 - sourceUpdatedAt：首版对文本源不推断可信上游验证时间，返回 -1。列表头时间或仓库提交也不能代表逐条重新验证。
 - fetchedAt：当前缓存成功获取时间；expiresAt=fetchedAt+7 天。未知为 -1。这里是用户订阅的缓存最长寿命，不是上游新鲜度背书；用户信任订阅服务器提供当前数据。
 - lastCheck、nextUpdate：上次尝试及下一次自动更新计划，UTC Unix 毫秒，未知或未调度 -1。次数/退避状态属于当前进程，重启从有效缓存的抓取时间恢复计划。
@@ -55,7 +56,7 @@
 
 ## 匹配、网络与容量
 
-UTF-8 文本（允许 BOM），一行一条，忽略空行与以 `#` 开头的整行注释。其余条目必须完全符合声明格式，遇到混合 URL/域名、hosts、Adblock/uBlock、通配符、正则等语法时整包失败。不会自动扩展为另一种格式，也不会静默截断。
+UTF-8 文本（允许 BOM），一行一条，忽略空行与以 `#` 开头的整行注释。其余条目必须完全符合声明格式，遇到混合 URL/域名、hosts、Adblock/uBlock、通配符、正则等语法时整包失败。合法域名中属于公共/私有注册后缀的过宽条目不入索引，并通过 rejectedCount/warning 明确报告；没有任何可用条目仍然失败。不会自动扩展为另一种格式，也不会静默截断。
 
 - urls / url_exact：经 GURL 规范化，保留 scheme、有效端口、path、query、fragment 精确语义。
 - domains / host_exact：仅当前域名。
