@@ -233,6 +233,7 @@ export interface BrowserRuntimeEvent {
     'prefs' | 'prefsChanged' | 'siteSettings' | 'aboutInfo' | 'favicons' |
     'urlProtectionState' | 'urlProtectionConfigResult' | 'urlProtectionStateChanged' |
     'urlProtectionRulesUpdateResult' |
+    'protectionRuleSources' | 'protectionRuleSourceResult' | 'protectionRuleSourcesChanged' |
     'siteProtectionState' | 'siteProtectionConfigResult' | 'siteProtectionStateChanged' |
     'savedPasswords' | 'passwordRevealed' | 'passwordCommandResult' |
     'passwordsExported' | 'passwordsImported' | 'savedPasswordsChanged';
@@ -482,6 +483,11 @@ export interface BrowserCommandPayload {
   provider?: 'local' | 'huawei' | 'both';
   cloudConsent?: boolean;
   siteEnabled?: boolean;
+  sourceId?: string;
+  name?: string;
+  recommendationId?: string;
+  format?: 'domains' | 'urls';
+  ruleType?: 'host_exact' | 'host_suffix' | 'url_exact';
   pipWidget?: number;
   pipAction?: 'play' | 'pause' | 'close' | 'restore' | 'state';
   url?: string;

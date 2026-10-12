@@ -234,6 +234,7 @@ else
   fi
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection-updates.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-rule-sources.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

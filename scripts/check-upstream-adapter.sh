@@ -19,7 +19,8 @@ git -C "${checkout}" remote add origin https://github.com/chromium/chromium.git
 git -C "${checkout}" sparse-checkout init --no-cone
 grep '^diff --git ' "${project_root}/patches/chromium-154-harmonyos.patch" \
   "${project_root}/patches/ohos-url-protection.patch" \
-  "${project_root}/patches/ohos-url-protection-updates.patch" -h |
+  "${project_root}/patches/ohos-url-protection-updates.patch" \
+  "${project_root}/patches/ohos-rule-sources.patch" -h |
   awk '{sub(/^b\//, "/", $4); print $4}' |
   LC_ALL=C sort -u >"${checkout}/.git/info/sparse-checkout"
 git -C "${checkout}" fetch -q --depth=1 --filter=blob:none origin "${revision}"
@@ -41,6 +42,10 @@ if [[ "${compatible}" == true ]]; then
   fi
   if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
       "${project_root}/patches/ohos-url-protection-updates.patch" 2>"${failure_log}"; then
+    compatible=false
+  fi
+  if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
+      "${project_root}/patches/ohos-rule-sources.patch" 2>"${failure_log}"; then
     compatible=false
   fi
   rsync -a "${project_root}/overlay/" "${checkout}/"

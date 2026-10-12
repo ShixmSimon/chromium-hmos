@@ -7,6 +7,7 @@
 #include "base/command_line.h"
 #include "base/files/file_util.h"
 #include "base/json/json_reader.h"
+#include "base/i18n/icu_util.h"
 #include "chrome/browser/ohos/url_protection/rule_update_format.h"
 
 namespace {
@@ -23,14 +24,16 @@ std::string Read(const base::FilePath& root, std::string_view name) {
   return value;
 }
 }  // namespace
+int RunSubscriptionTests(const base::FilePath& benchmarks);
 int main(int argc, char** argv) {
   base::AtExitManager exit_manager;
   base::CommandLine::Init(argc, argv);
   const auto arguments = base::CommandLine::ForCurrentProcess()->GetArgs();
-  if (arguments.size() != 1)
+  if (arguments.size() != 2 || !base::i18n::InitializeICU())
     return 2;
   using namespace chrome::ohos::url_protection;
   const auto directory = base::FilePath(arguments.front());
+  failures += RunSubscriptionTests(base::FilePath(arguments.back()));
   const auto config = ParseUpdateConfig(Read(directory, "config.json"));
   const auto payload = Read(directory, "rules.json");
   auto matrix = base::JSONReader::ReadDict(Read(directory, "cases.json"),

@@ -584,6 +584,7 @@ export interface AboutInfoEvent extends ShellServiceEvent {
   engineCommit: string;
   urlProtectionApiVersion?: number;
   siteProtectionApiVersion?: number;
+  ruleSourcesApiVersion?: number;
   userAgent: string;
   // Which bookmark commands this engine understands: 1 is the original set,
   // 2 adds insertion positions, bookmarkOpResult, childCount, rootType, the
@@ -646,6 +647,58 @@ export interface SiteProtectionStateEvent extends UrlProtectionStateEvent {
   verdict?: 'unchecked' | 'checking' | 'no_match' | 'phishing' | 'malware' |
     'other' | 'unknown' | 'skipped';
   checkedAt?: number;
+  matchedSourceIds?: string[];
+  ruleType?: string;
+}
+
+export interface ProtectionRuleSource {
+  sourceId: string;
+  name: string;
+  url: string;
+  format: 'domains' | 'urls';
+  ruleType: 'host_exact' | 'host_suffix' | 'url_exact';
+  enabled: boolean;
+  kind: 'recommended' | 'custom';
+  trust: 'user_https';
+  signed: boolean;
+  recommendationId: string;
+  license: string;
+  attribution: string;
+  licenseUrl: string;
+  revision?: number;
+  status?: string;
+  available?: boolean;
+  ruleCount?: number;
+  inputCount?: number;
+  indexBytes?: number;
+  sourceUpdatedAt?: number;
+  fetchedAt?: number;
+  expiresAt?: number;
+  lastCheck?: number;
+  nextUpdate?: number;
+  error?: string;
+}
+
+export interface ProtectionRuleSourcesEvent extends ShellServiceEvent {
+  requestId: number;
+  contextId: string;
+  sourcesRevision: number;
+  ready: boolean;
+  readOnly: boolean;
+  localSourcesAvailable: boolean;
+  sources: ProtectionRuleSource[];
+  recommendations: ProtectionRuleSource[];
+  maxSources: number;
+  maxRecordsPerSource: number;
+  maxTotalRecords: number;
+  ok: boolean;
+  reason: string;
+}
+
+export interface ProtectionRuleSourcesChangedEvent extends ShellServiceEvent {
+  contextId: string;
+  policyRevision: number;
+  sourcesRevision: number;
 }
 
 // An invalidation event, not a result snapshot: re-read the active tab.

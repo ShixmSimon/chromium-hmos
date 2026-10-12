@@ -19,6 +19,7 @@
 #include "base/unguessable_token.h"
 #include "chrome/browser/ohos/url_protection/local_rules.h"
 #include "chrome/browser/ohos/url_protection/rule_updater.h"
+#include "chrome/browser/ohos/url_protection/rule_sources.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "components/ohos_system_service/system_service_ohos.h"
@@ -47,6 +48,7 @@ void RegisterPrefs(PrefRegistrySimple* registry) {
   // Empty means not opted in. Legacy standard/enhanced is not cloud consent.
   registry->RegisterDictionaryPref(kConfigPref);
   RuleUpdater::RegisterPrefs(registry);
+  RuleSources::RegisterPrefs(registry);
 }
 
 class Service::Impl {
@@ -75,6 +77,9 @@ class Service::Impl {
     loading_ = rules_->status == "loading";
     rules_subscription_ = updater_->Observe(
         base::BindRepeating(&Impl::OnRules, base::Unretained(this)));
+    sources_ = RuleSources::Get(profile)->GetWeakPtr();
+    sources_subscription_ = sources_->Observe(
+        base::BindRepeating(&Impl::OnSources, base::Unretained(this)));
     // Cloud authorization is deliberately session-only, including OTR.
     // The shell reasserts its verified consent after reading this context.
     if (UsesLocal())
@@ -82,8 +87,11 @@ class Service::Impl {
   }
   ~Impl() {
     rules_subscription_ = {};
+    sources_subscription_ = {};
     if (updater_ && rules_acquired_)
       updater_->Release();
+    if (sources_ && rules_acquired_)
+      sources_->Release();
     CancelAll("context_closed");
     SendControl("closeContext", {});
   }
@@ -166,6 +174,8 @@ class Service::Impl {
                               : !consent_ ? "consent_required"
                                           : cloud_status_);
     state.Set("localStatus", !UsesLocal() ? "disabled"
+                             : sources_ && sources_->usable() ? "ready"
+                             : sources_ && !sources_->ready() ? "loading"
                              : rules_->status == "ready" &&
                                      !rules_->IsUsable(base::Time::Now())
                                  ? "expired"
@@ -235,6 +245,8 @@ class Service::Impl {
     else if (updater_ && rules_acquired_) {
       rules_acquired_ = false;
       updater_->Release();
+      if (sources_)
+        sources_->Release();
     }
     SendControl("configure", State());
     changed_.Notify();
@@ -246,6 +258,23 @@ class Service::Impl {
       return;
     rules_acquired_ = true;
     updater_->Acquire();
+    if (sources_)
+      sources_->Acquire();
+  }
+  void OnSources(bool policy_changed) {
+    if (policy_changed && UsesLocal()) {
+      CancelAll("stale_policy");
+      cache_.clear();
+      ++revision_;
+      SendControl("configure", State());
+      changed_.Notify();
+    }
+    auto event = Identity();
+    event.Set("event", "protectionRuleSourcesChanged");
+    if (sources_)
+      event.Set("sourcesRevision", sources_->State().FindInt("sourcesRevision").value_or(0));
+    BroadcastToShell(profile_, std::move(event));
+    Broadcast();
   }
   void OnRules() {
     if (!updater_)
@@ -255,7 +284,7 @@ class Service::Impl {
     std::vector<std::string> ids;
     for (auto& [id, call] : pending_) {
       if (UsesLocal() && !loading_) {
-        call.waiting_local = false;
+        call.waiting_local = sources_ && !sources_->ready();
         CheckLocal(call);
         ids.push_back(id);
       }
@@ -267,16 +296,24 @@ class Service::Impl {
   void CheckLocal(Pending& call) {
     if (!UsesLocal())
       return;
-    if (rules_->Matches(call.url, base::Time::Now())) {
+    auto subscription = sources_ ? sources_->Match(call.url) : Result();
+    if (subscription.dangerous()) {
+      call.result = std::move(subscription);
+    } else if (rules_->Matches(call.url, base::Time::Now())) {
       call.result = {Verdict::kPhishing, "local", "matched", call.url};
     } else if (!call.result.dangerous() &&
-               rules_->IsUsable(base::Time::Now())) {
+               (rules_->IsUsable(base::Time::Now()) || (sources_ && sources_->usable()))) {
       call.result = {Verdict::kNoMatch, "local", "no_match", call.url};
     }
   }
   Result KnownRisk(const GURL& url) const {
     if (!IsSiteEnabled(url))
       return Unknown(url, "site_disabled");
+    if (UsesLocal() && sources_) {
+      auto result = sources_->Match(url);
+      if (result.dangerous())
+        return result;
+    }
     if (UsesLocal() && rules_->Matches(url, base::Time::Now()))
       return {Verdict::kPhishing, "local", "matched", url};
     if (UsesCloud()) {
@@ -318,9 +355,8 @@ class Service::Impl {
     call.deadline = now + timeout;
     if (UsesLocal()) {
       EnsureRules();
-      call.waiting_local = loading_;
-      if (!loading_)
-        CheckLocal(call);
+      call.waiting_local = loading_ || (sources_ && !sources_->ready());
+      CheckLocal(call);
     }
     call.checked_url = CloudCheckUrl(url);
     if (!call.result.dangerous() && UsesCloud() &&
@@ -470,6 +506,8 @@ class Service::Impl {
   std::shared_ptr<const LocalRules> rules_;
   base::WeakPtr<RuleUpdater> updater_;
   base::CallbackListSubscription rules_subscription_;
+  base::WeakPtr<RuleSources> sources_;
+  base::CallbackListSubscription sources_subscription_;
   bool loading_ = false;
   bool rules_acquired_ = false;
   std::map<std::string, Pending> pending_;

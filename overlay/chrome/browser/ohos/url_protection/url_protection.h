@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "base/callback_list.h"
 #include "base/functional/callback.h"
@@ -29,8 +30,11 @@ struct Result {
   std::string source;
   std::string reason;
   GURL url;
+  std::vector<std::string> matched_source_ids;
+  std::string rule_type;
   bool dangerous() const {
-    return verdict == Verdict::kPhishing || verdict == Verdict::kMalware;
+    return verdict == Verdict::kPhishing || verdict == Verdict::kMalware ||
+           (verdict == Verdict::kOther && !matched_source_ids.empty());
   }
 };
 

@@ -92,6 +92,7 @@ void GetAboutInfo(const ShellCommandContext& context,
   event.Set("browsingApiVersion", 3);
   event.Set("urlProtectionApiVersion", 2);
   event.Set("siteProtectionApiVersion", 1);
+  event.Set("ruleSourcesApiVersion", 1);
   // What the password sync commands understand. 1 is passwordSyncAuthorize,
   // getPasswordsForSync, applyPasswords and the passwordsChanged event. The
   // shell offers password sync only from 1.

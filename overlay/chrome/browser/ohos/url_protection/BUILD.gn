@@ -5,9 +5,12 @@ executable("format_tests") {
     "local_rules.cc",
     "rule_update_format.cc",
     "rule_update_format_test_main.cc",
+    "subscription_rules.cc",
+    "subscription_rules_test.cc",
   ]
   deps = [
     "//base",
+    "//base:i18n",
     "//crypto",
     "//net",
     "//third_party/boringssl",

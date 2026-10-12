@@ -66,7 +66,8 @@ class TabProtection : public content::WebContentsObserver,
     if (handle->HasCommitted()) {
       // A blocked redirect can have a different URL than the final response.
       // Keep the actual blocked target for the native risk-page panel.
-      if (current_.verdict != "phishing" && current_.verdict != "malware")
+      if (current_.verdict != "phishing" && current_.verdict != "malware" &&
+          current_.matched_source_ids.empty())
         current_.url = handle->GetURL();
       committed_ = current_;
       ProtectCurrentDocument();
@@ -82,6 +83,8 @@ class TabProtection : public content::WebContentsObserver,
       return;
     if (result.dangerous())
       current_.url = result.url;
+    current_.matched_source_ids = result.matched_source_ids;
+    current_.rule_type = result.rule_type;
     if (!service_ || !service_->enabled() ||
         !service_->IsSiteEnabled(current_.url) ||
         result.reason == "one_navigation_bypass") {
@@ -126,6 +129,11 @@ class TabProtection : public content::WebContentsObserver,
                                  IsPublicHttpUrl(current_.url));
     state.Set("verdict", current_.verdict);
     state.Set("checkedAt", current_.checked_at);
+    base::ListValue sources;
+    for (const auto& id : current_.matched_source_ids)
+      sources.Append(id);
+    state.Set("matchedSourceIds", std::move(sources));
+    state.Set("ruleType", current_.rule_type);
     return state;
   }
   const GURL& url() const { return current_.url; }
@@ -140,6 +148,8 @@ class TabProtection : public content::WebContentsObserver,
     GURL url;
     std::string verdict = "unchecked";
     double checked_at = 0;
+    std::vector<std::string> matched_source_ids;
+    std::string rule_type;
   };
   bool IsCurrent(content::NavigationHandle* handle) const {
     return handle->IsInPrimaryMainFrame() &&
@@ -151,6 +161,8 @@ class TabProtection : public content::WebContentsObserver,
             ? "unchecked"
             : "skipped";
     snapshot.checked_at = 0;
+    snapshot.matched_source_ids.clear();
+    snapshot.rule_type.clear();
   }
   void Notify() {
     if (!service_)
@@ -300,7 +312,9 @@ class BlockingPage : public security_interstitials::SecurityInterstitialPage {
     data.Set("type", "SAFEBROWSING");
     data.Set("tabTitle", "网站安全警告");
     data.Set("heading",
-             malware ? "此网站可能传播恶意软件" : "此网站可能是钓鱼网站");
+             malware ? "此网站可能传播恶意软件" :
+             risk_.verdict == Verdict::kPhishing ? "此网站可能是钓鱼网站" :
+             "此网站存在安全风险");
     data.Set("primaryParagraph", "检测到 <strong>" +
                                      base::EscapeForHTML(risk_.url.host()) +
                                      "</strong> 存在风险，建议返回安全页面。");
@@ -310,7 +324,9 @@ class BlockingPage : public security_interstitials::SecurityInterstitialPage {
     data.Set("explanationParagraph",
              risk_.source == "huawei"
                  ? "检测来源：华为安全检测。"
-                 : "检测来源：Phishing.Database 本地规则。");
+                 : risk_.matched_source_ids.empty()
+                       ? "检测来源：Phishing.Database 本地规则。"
+                       : "检测来源：已启用的本地威胁规则订阅，风险类型未分类。");
     data.Set("finalParagraph",
              can_proceed_
                  ? "如果了解风险，可以<a href=\"#\" "
@@ -324,7 +340,7 @@ class BlockingPage : public security_interstitials::SecurityInterstitialPage {
     data.Set("enhancedProtectionMessage", "");
     data.Set("displaycheckbox", false);
     data.Set("displayEnhancedProtectionMessage", false);
-    data.Set("phishing", !malware);
+    data.Set("phishing", risk_.verdict == Verdict::kPhishing);
   }
 
  private:

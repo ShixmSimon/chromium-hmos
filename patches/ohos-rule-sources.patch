@@ -1,0 +1,17 @@
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+index 393d621e..c1866089 100644
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -1730,6 +1730,12 @@ source_set("core") {
+       "//third_party/boringssl",
+       "//services/network/public/cpp",
+     ]
++    sources += [
++      "ohos/url_protection/subscription_rules.cc",
++      "ohos/url_protection/subscription_rules.h",
++      "ohos/url_protection/rule_sources.cc",
++      "ohos/url_protection/rule_sources.h",
++    ]
+     sources += [
+       "icon_loader_ohos.cc",
+       "memory_details_linux.cc",

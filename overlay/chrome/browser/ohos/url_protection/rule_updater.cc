@@ -25,6 +25,7 @@
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/mojom/url_loader_factory.mojom.h"
 
 namespace chrome::ohos::url_protection {
 namespace {
@@ -251,6 +252,9 @@ class RuleUpdater::Impl {
     request->load_flags = net::LOAD_DISABLE_CACHE | net::LOAD_BYPASS_CACHE;
     auto loader =
         network::SimpleURLLoader::Create(std::move(request), kTraffic);
+    loader->SetURLLoaderFactoryOptions(
+        network::mojom::kURLLoadOptionBlockLocalRequest |
+        network::mojom::kURLLoadOptionBlockAllCookies);
     loader->SetTimeoutDuration(base::Seconds(30));
     return loader;
   }
