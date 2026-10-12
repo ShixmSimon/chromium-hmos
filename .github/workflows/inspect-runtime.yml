@@ -34,6 +34,20 @@ jobs:
           root = Path(os.environ.get('CHROMIUM_SRC', '/root/chromium-154/src'))
           paths = '''
           out/ohos_arm64/args.gn
+          third_party/angle/src/libANGLE/renderer/vulkan/TextureVk.cpp
+          third_party/angle/src/libANGLE/renderer/vulkan/TextureVk.h
+          third_party/angle/src/libANGLE/renderer/vulkan/RendererVk.cpp
+          third_party/angle/src/libANGLE/renderer/vulkan/RendererVk.h
+          third_party/angle/src/libANGLE/renderer/vulkan/vk_caps_utils.cpp
+          third_party/angle/src/libANGLE/renderer/vulkan/vk_format_utils.cpp
+          third_party/angle/src/libANGLE/renderer/vulkan/vk_format_utils.h
+          third_party/angle/src/libANGLE/renderer/vulkan/vk_helpers.cpp
+          third_party/angle/src/libANGLE/renderer/vulkan/DisplayVk.cpp
+          third_party/angle/src/libANGLE/renderer/vulkan/DisplayVkOhos.cpp
+          third_party/angle/include/platform/FeaturesVk_autogen.h
+          third_party/angle/src/libANGLE/renderer/vulkan/vk_features.json
+          third_party/skia/src/gpu/ganesh/gl/GrGLCaps.cpp
+          gpu/command_buffer/service/feature_info.cc
           chrome/browser/BUILD.gn
           chrome/browser/chrome_content_browser_client_navigation_throttles.cc
           content/public/browser/navigation_throttle.h
@@ -146,6 +160,9 @@ jobs:
           manifest = {'revision': subprocess.check_output(
               ['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip(),
               'files': {}, 'missing': []}
+          manifest['angle_revision'] = subprocess.check_output(
+              ['git', '-C', str(root / 'third_party/angle'), 'rev-parse', 'HEAD'],
+              text=True).strip()
           output = Path(os.environ['RUNNER_TEMP']) / 'runtime-source-snapshot'
           output.mkdir(exist_ok=True)
           with tarfile.open(output / 'sources.tar.gz', 'w:gz', dereference=True) as archive:
