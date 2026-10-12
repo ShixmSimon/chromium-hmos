@@ -36,16 +36,17 @@ jobs:
           out/ohos_arm64/args.gn
           third_party/angle/src/libANGLE/renderer/vulkan/TextureVk.cpp
           third_party/angle/src/libANGLE/renderer/vulkan/TextureVk.h
-          third_party/angle/src/libANGLE/renderer/vulkan/RendererVk.cpp
-          third_party/angle/src/libANGLE/renderer/vulkan/RendererVk.h
+          third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.cpp
+          third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.h
           third_party/angle/src/libANGLE/renderer/vulkan/vk_caps_utils.cpp
           third_party/angle/src/libANGLE/renderer/vulkan/vk_format_utils.cpp
           third_party/angle/src/libANGLE/renderer/vulkan/vk_format_utils.h
           third_party/angle/src/libANGLE/renderer/vulkan/vk_helpers.cpp
           third_party/angle/src/libANGLE/renderer/vulkan/DisplayVk.cpp
-          third_party/angle/src/libANGLE/renderer/vulkan/DisplayVkOhos.cpp
+          third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp
+          third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.cpp
           third_party/angle/include/platform/FeaturesVk_autogen.h
-          third_party/angle/src/libANGLE/renderer/vulkan/vk_features.json
+          third_party/angle/include/platform/vk_features.json
           third_party/skia/src/gpu/ganesh/gl/GrGLCaps.cpp
           gpu/command_buffer/service/feature_info.cc
           chrome/browser/BUILD.gn
