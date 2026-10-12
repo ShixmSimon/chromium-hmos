@@ -25,6 +25,7 @@ std::string Read(const base::FilePath& root, std::string_view name) {
 }
 }  // namespace
 int RunSubscriptionTests(const base::FilePath& benchmarks);
+int RunSiteVerdictTests();
 int main(int argc, char** argv) {
   base::AtExitManager exit_manager;
   base::CommandLine::Init(argc, argv);
@@ -34,6 +35,7 @@ int main(int argc, char** argv) {
   using namespace chrome::ohos::url_protection;
   const auto directory = base::FilePath(arguments.front());
   failures += RunSubscriptionTests(base::FilePath(arguments.back()));
+  failures += RunSiteVerdictTests();
   const auto config = ParseUpdateConfig(Read(directory, "config.json"));
   const auto payload = Read(directory, "rules.json");
   auto matrix = base::JSONReader::ReadDict(Read(directory, "cases.json"),

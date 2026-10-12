@@ -825,7 +825,9 @@ verdict 为 `unchecked|checking|no_match|phishing|malware|other|unknown|skipped`
 
 仅处理发送命令窗口的当前活动标签。写入必须使用读取时的完整原生身份、origin 和 revision；切换标签、同址刷新或策略变化都会使旧写入失败。原因码为 `invalid_tab|invalid_context|stale_navigation|stale_policy|invalid_request|invalid_origin|disabled_or_managed|exception_limit`。失败时返回实际快照（没有活动标签则没有站点字段），外壳必须先判断 ok，不能把旧 UI 状态当成功回包。
 
-siteEnabled=false 按 scheme/host/effective port 精确跳过该站点的两个防钓鱼来源，不包含子域名，不改变 HTTPS/证书检查。普通 Profile 最多保存 1000 个站点例外；无痕不继承普通例外，只在自己的会话内保留。全局关闭或受管理时不能改变站点例外。重新开启删除例外；两种写入均取消旧等待、清除缓存及一次继续例外、增加策略版本并重判待决导航，不刷新已经提交的页面。已提交页面的旧判定重置为 unchecked/skipped，不能立即显示已重新检测。
+siteEnabled=false 按 scheme/host/effective port 精确跳过该站点的两个防钓鱼来源，不包含子域名，不改变 HTTPS/证书检查。普通 Profile 最多保存 1000 个站点例外；无痕不继承普通例外，只在自己的会话内保留。全局关闭或受管理时不能改变站点例外。重新开启删除例外；两种写入均取消旧等待、清除缓存及一次继续例外、增加策略版本并重判待决导航。授权、来源切换和本站重新开启后，符合检测条件的已提交 HTTP(S) 页面自动补查，无需刷新网页；期间显示 checking，完成后更新 verdict/checkedAt。关闭时为 skipped。错误页、原生警告页和不可检测地址不自动补查，不能将它们的 unchecked 当作安全。
+
+同文档导航仅在提交后更新身份。完整 URL（含 query/fragment）和策略版本均未变化时保留已完成判定及原 checkedAt；URL 变化则重新检测，不能仅按 origin 复用。旧文档的 History API 不会覆盖待决网络导航的身份，网络导航取消后恢复旧文档并按需补查。补查沿用 1500ms 有界预算与现有授权/隐私规则，旧页面或旧策略的迟到结果会被丢弃。命中危险结果时转到原生警告页，不重新发送网页请求或自动重放 POST；这类提交后警告不提供“仍要访问”。详情及验收见 [站点结果生命周期](OHOS_SITE_VERDICT_LIFECYCLE.md)。
 
 `siteProtectionStateChanged` 只广播全局状态及 `tabId, navigationId`，不带 origin 或检测 URL。外壳仅在匹配当前原生窗口/Profile/标签时重新读取；全局 `urlProtectionStateChanged`（包括规则状态）也使面板失效。回包处理器按 requestId 关联，还须核对 contextId、tabId、navigationId 和 revision，迟到结果不能仅凭同 origin 复用。
 

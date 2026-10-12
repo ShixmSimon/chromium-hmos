@@ -6,10 +6,12 @@
 #include <memory>
 #include <utility>
 #include "base/functional/bind.h"
+#include "base/logging.h"
 #include "base/strings/escape.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/supports_user_data.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/ohos/url_protection/site_verdict_state.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
@@ -33,148 +35,166 @@
 namespace chrome::ohos::url_protection {
 namespace {
 constexpr char kBypassKey[] = "ohos.url_protection.one_navigation";
+void ShowCommittedRisk(content::WebContents* contents,
+                       const Result& risk,
+                       base::WeakPtr<Service> service);
 // Keep activation paths from bypassing the network-navigation throttle. This
 // observer exists even while protection is off, so enabling it also evicts
 // old BFCache entries and cancels already prepared prerenders in each tab.
 class TabProtection : public content::WebContentsObserver,
                       public content::WebContentsUserData<TabProtection> {
  public:
-  ~TabProtection() override = default;
+  ~TabProtection() override { CancelCommittedCheck(); }
   void Begin(content::NavigationHandle* handle) {
-    if (!handle->IsInPrimaryMainFrame() ||
-        current_.navigation_id == ToShellId(handle->GetNavigationId()))
+    if (!handle->IsInPrimaryMainFrame() || handle->IsSameDocument())
       return;
-    current_ = {};
-    current_.navigation_id = ToShellId(handle->GetNavigationId());
-    current_.url = handle->GetURL();
-    ResetVerdict(current_);
-    Notify();
+    if (!state_.Begin(ToShellId(handle->GetNavigationId()), handle->GetURL(),
+                      Revision(), IsEnabled(handle->GetURL())))
+      return;
+    CancelCommittedCheck();
+    Notify("navigation_start");
   }
   void DidStartNavigation(content::NavigationHandle* handle) override {
     Begin(handle);
   }
   void DidRedirectNavigation(content::NavigationHandle* handle) override {
     if (IsCurrent(handle)) {
-      current_.url = handle->GetURL();
-      ResetVerdict(current_);
-      Notify();
+      state_.Redirect(handle->GetURL(), Revision(),
+                      IsEnabled(handle->GetURL()));
+      Notify("redirect");
     }
   }
   void DidFinishNavigation(content::NavigationHandle* handle) override {
+    if (!handle->IsInPrimaryMainFrame())
+      return;
+    if (handle->IsSameDocument()) {
+      // Same-document navigations do not run the network throttle. Wait until
+      // commit; an aborted History API/hash navigation must not discard
+      // results.
+      if (!handle->HasCommitted())
+        return;
+      CancelCommittedCheck();
+      state_.SameDocumentCommit(ToShellId(handle->GetNavigationId()),
+                                handle->GetURL(), Revision(),
+                                IsEnabled(handle->GetURL()));
+      Notify("same_document_commit");
+      CheckCommittedDocument();
+      return;
+    }
     if (!IsCurrent(handle))
       return;
+    state_.Finish(handle->HasCommitted(), handle->GetURL());
     if (handle->HasCommitted()) {
-      // A blocked redirect can have a different URL than the final response.
-      // Keep the actual blocked target for the native risk-page panel.
-      if (current_.verdict != "phishing" && current_.verdict != "malware" &&
-          current_.matched_source_ids.empty())
-        current_.url = handle->GetURL();
-      committed_ = current_;
+      committed_error_page_ = handle->IsErrorPage();
       ProtectCurrentDocument();
-    } else {
-      current_ = committed_;
     }
-    Notify();
+    Notify(handle->HasCommitted() ? "navigation_commit" : "navigation_abort");
+    CheckCommittedDocument();
   }
   void Report(content::NavigationHandle* handle,
               const Result& result,
               bool checking) {
     if (!IsCurrent(handle))
       return;
-    if (result.dangerous())
-      current_.url = result.url;
-    current_.matched_source_ids = result.matched_source_ids;
-    current_.rule_type = result.rule_type;
-    if (!service_ || !service_->enabled() ||
-        !service_->IsSiteEnabled(current_.url) ||
-        result.reason == "one_navigation_bypass") {
-      current_.verdict = "skipped";
-      current_.checked_at = 0;
-    } else if (checking && !result.dangerous()) {
-      current_.verdict = "checking";
-      current_.checked_at = 0;
-    } else {
-      switch (result.verdict) {
-        case Verdict::kNoMatch:
-          current_.verdict = "no_match";
-          break;
-        case Verdict::kPhishing:
-          current_.verdict = "phishing";
-          break;
-        case Verdict::kMalware:
-          current_.verdict = "malware";
-          break;
-        case Verdict::kOther:
-          current_.verdict = "other";
-          break;
-        case Verdict::kUnknown:
-          current_.verdict = "unknown";
-          break;
-      }
-      current_.checked_at = base::Time::Now().InMillisecondsFSinceUnixEpoch();
-    }
-    Notify();
+    state_.Report(
+        result, checking,
+        IsEnabled(result.dangerous() ? result.url : state_.current().url),
+        base::Time::Now().InMillisecondsFSinceUnixEpoch());
+    Notify("navigation_result");
   }
   base::DictValue State() const {
     auto state = service_ ? service_->State() : base::DictValue();
     state.Set("tabId", TabId());
-    state.Set("navigationId", current_.navigation_id);
-    state.Set("origin", current_.url.SchemeIsHTTPOrHTTPS()
-                            ? url::Origin::Create(current_.url).Serialize()
-                            : "");
+    state.Set("navigationId", state_.current().navigation_id);
+    state.Set("origin",
+              state_.current().url.SchemeIsHTTPOrHTTPS()
+                  ? url::Origin::Create(state_.current().url).Serialize()
+                  : "");
     state.Set("revision", service_ ? service_->revision() : 0);
-    state.Set("siteEnabled", service_ && service_->IsSiteEnabled(current_.url));
+    state.Set("siteEnabled",
+              service_ && service_->IsSiteEnabled(state_.current().url));
     state.Set("canOverride", service_ && service_->CanSetSiteEnabled() &&
-                                 !current_.navigation_id.empty() &&
-                                 IsPublicHttpUrl(current_.url));
-    state.Set("verdict", current_.verdict);
-    state.Set("checkedAt", current_.checked_at);
+                                 !state_.current().navigation_id.empty() &&
+                                 IsPublicHttpUrl(state_.current().url));
+    state.Set("verdict", state_.current().verdict);
+    state.Set("checkedAt", state_.current().checked_at);
     base::ListValue sources;
-    for (const auto& id : current_.matched_source_ids)
+    for (const auto& id : state_.current().matched_source_ids)
       sources.Append(id);
     state.Set("matchedSourceIds", std::move(sources));
-    state.Set("ruleType", current_.rule_type);
+    state.Set("ruleType", state_.current().rule_type);
     return state;
   }
-  const GURL& url() const { return current_.url; }
+  const GURL& url() const { return state_.current().url; }
   std::string TabId() const {
     const auto id = sessions::SessionTabHelper::IdForTab(web_contents());
     return id.is_valid() ? base::NumberToString(id.id()) : std::string();
   }
 
  private:
-  struct Snapshot {
-    std::string navigation_id;
-    GURL url;
-    std::string verdict = "unchecked";
-    double checked_at = 0;
-    std::vector<std::string> matched_source_ids;
-    std::string rule_type;
-  };
   bool IsCurrent(content::NavigationHandle* handle) const {
     return handle->IsInPrimaryMainFrame() &&
-           current_.navigation_id == ToShellId(handle->GetNavigationId());
+           state_.IsCurrent(ToShellId(handle->GetNavigationId()));
   }
-  void ResetVerdict(Snapshot& snapshot) {
-    snapshot.verdict =
-        service_ && service_->enabled() && service_->IsSiteEnabled(snapshot.url)
-            ? "unchecked"
-            : "skipped";
-    snapshot.checked_at = 0;
-    snapshot.matched_source_ids.clear();
-    snapshot.rule_type.clear();
+  int Revision() const { return service_ ? service_->revision() : 0; }
+  bool IsEnabled(const GURL& url) const {
+    return service_ && service_->enabled() && service_->IsSiteEnabled(url);
   }
-  void Notify() {
+  void Notify(const char* reason) {
     if (!service_)
       return;
-    // Invalidation only: no browsing URL or origin is broadcast to windows.
+    // Verbose opt-in diagnostics: identity/state only, never URL/origin.
+    VLOG(1) << "OHOS site verdict reason=" << reason
+            << " navigation=" << state_.current().navigation_id
+            << " policy=" << state_.current().revision
+            << " verdict=" << state_.current().verdict
+            << " checkedAt=" << state_.current().checked_at
+            << " pendingNavigation=" << state_.pending_navigation();
     auto event = service_->State();
     event.Set("event", "siteProtectionStateChanged");
     event.Set("tabId", TabId());
-    event.Set("navigationId", current_.navigation_id);
+    event.Set("navigationId", state_.current().navigation_id);
     BroadcastToShell(
         Profile::FromBrowserContext(web_contents()->GetBrowserContext()),
         std::move(event));
+  }
+  void CancelCommittedCheck() {
+    weak_factory_.InvalidateWeakPtrs();
+    if (service_ && !committed_request_.empty())
+      service_->Cancel(committed_request_);
+    committed_request_.clear();
+  }
+  void CheckCommittedDocument() {
+    const GURL& url = state_.current().url;
+    if (!state_.NeedsCommittedCheck() || !committed_request_.empty() ||
+        !IsEnabled(url) || !IsPublicHttpUrl(url) || committed_error_page_ ||
+        url != web_contents()->GetLastCommittedURL())
+      return;
+    auto* interstitial =
+        security_interstitials::SecurityInterstitialTabHelper::FromWebContents(
+            web_contents());
+    if (interstitial && interstitial->HasPendingOrActiveInterstitial())
+      return;
+    const uint64_t generation = state_.StartCommittedCheck();
+    Notify("committed_check_start");
+    committed_request_ = service_->Check(
+        url, base::Milliseconds(1500),
+        base::BindOnce(&TabProtection::OnCommittedResult,
+                       weak_factory_.GetWeakPtr(), generation, Revision()));
+  }
+  void OnCommittedResult(uint64_t generation, int revision, Result result) {
+    if (!service_ || revision != Revision() ||
+        result.url != web_contents()->GetLastCommittedURL() ||
+        !state_.CompleteCommittedCheck(
+            generation, revision, result,
+            base::Time::Now().InMillisecondsFSinceUnixEpoch()))
+      return;
+    committed_request_.clear();
+    Notify("committed_check_result");
+    if (result.dangerous()) {
+      web_contents()->RemoveUserData(kBypassKey);
+      ShowCommittedRisk(web_contents(), result, service_);
+    }
   }
   friend class content::WebContentsUserData<TabProtection>;
   explicit TabProtection(content::WebContents* contents)
@@ -185,9 +205,8 @@ class TabProtection : public content::WebContentsObserver,
                      ->GetWeakPtr()) {
     subscription_ = service_->Observe(
         base::BindRepeating(&TabProtection::OnPolicy, base::Unretained(this)));
-    current_.url = contents->GetLastCommittedURL();
-    ResetVerdict(current_);
-    committed_ = current_;
+    state_.Initialize(contents->GetLastCommittedURL(), Revision(),
+                      IsEnabled(contents->GetLastCommittedURL()));
     ProtectCurrentDocument();
   }
   void ProtectCurrentDocument() {
@@ -203,19 +222,23 @@ class TabProtection : public content::WebContentsObserver,
   }
   void OnPolicy() {
     web_contents()->RemoveUserData(kBypassKey);
-    ResetVerdict(current_);
-    ResetVerdict(committed_);
-    Notify();
+    CancelCommittedCheck();
+    state_.PolicyChanged(Revision(), IsEnabled(state_.current().url),
+                         IsEnabled(state_.committed().url));
+    Notify("policy_change");
     if (service_ && service_->enabled()) {
       web_contents()->GetController().GetBackForwardCache().Flush();
       web_contents()->CancelAllPrerendering();
       ProtectCurrentDocument();
     }
+    CheckCommittedDocument();
   }
   base::WeakPtr<Service> service_;
   base::CallbackListSubscription subscription_;
-  Snapshot current_;
-  Snapshot committed_;
+  SiteVerdictState state_;
+  std::string committed_request_;
+  bool committed_error_page_ = false;
+  base::WeakPtrFactory<TabProtection> weak_factory_{this};
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };
 WEB_CONTENTS_USER_DATA_KEY_IMPL(TabProtection);
@@ -284,7 +307,8 @@ class BlockingPage : public security_interstitials::SecurityInterstitialPage {
   BlockingPage(content::WebContents* contents,
                const Result& risk,
                bool can_proceed,
-               base::WeakPtr<Service> service)
+               base::WeakPtr<Service> service,
+               bool post_commit = false)
       : SecurityInterstitialPage(
             contents,
             risk.url,
@@ -294,7 +318,8 @@ class BlockingPage : public security_interstitials::SecurityInterstitialPage {
                                          service,
                                          service ? service->revision() : 0)),
         risk_(risk),
-        can_proceed_(can_proceed) {}
+        can_proceed_(can_proceed),
+        post_commit_(post_commit) {}
   void OnInterstitialClosing() override {}
   void CommandReceived(const std::string& command) override {
     int value = -1;
@@ -311,10 +336,10 @@ class BlockingPage : public security_interstitials::SecurityInterstitialPage {
     const bool malware = risk_.verdict == Verdict::kMalware;
     data.Set("type", "SAFEBROWSING");
     data.Set("tabTitle", "网站安全警告");
-    data.Set("heading",
-             malware ? "此网站可能传播恶意软件" :
-             risk_.verdict == Verdict::kPhishing ? "此网站可能是钓鱼网站" :
-             "此网站存在安全风险");
+    data.Set("heading", malware ? "此网站可能传播恶意软件"
+                        : risk_.verdict == Verdict::kPhishing
+                            ? "此网站可能是钓鱼网站"
+                            : "此网站存在安全风险");
     data.Set("primaryParagraph", "检测到 <strong>" +
                                      base::EscapeForHTML(risk_.url.host()) +
                                      "</strong> 存在风险，建议返回安全页面。");
@@ -322,16 +347,16 @@ class BlockingPage : public security_interstitials::SecurityInterstitialPage {
     data.Set("openDetails", "详细信息");
     data.Set("closeDetails", "隐藏详细信息");
     data.Set("explanationParagraph",
-             risk_.source == "huawei"
-                 ? "检测来源：华为安全检测。"
-                 : risk_.matched_source_ids.empty()
-                       ? "检测来源：Phishing.Database 本地规则。"
-                       : "检测来源：已启用的本地威胁规则订阅，风险类型未分类。");
+             risk_.source == "huawei" ? "检测来源：华为安全检测。"
+             : risk_.matched_source_ids.empty()
+                 ? "检测来源：Phishing.Database 本地规则。"
+                 : "检测来源：已启用的本地威胁规则订阅，风险类型未分类。");
     data.Set("finalParagraph",
              can_proceed_
                  ? "如果了解风险，可以<a href=\"#\" "
                    "id=\"proceed-link\">仍要访问</a>。本次允许仅适用于此网址。"
-                 : "此请求包含提交数据，无法从警告页自动重新提交。");
+             : post_commit_ ? "当前页面加载后检测到风险，请返回安全页面。"
+                            : "此请求包含提交数据，无法从警告页自动重新提交。");
     data.Set("overridable", can_proceed_);
     data.Set("hide_primary_button", false);
     data.Set("disableKeyboardOverride", true);
@@ -346,7 +371,26 @@ class BlockingPage : public security_interstitials::SecurityInterstitialPage {
  private:
   Result risk_;
   bool can_proceed_;
+  bool post_commit_;
 };
+
+void ShowCommittedRisk(content::WebContents* contents,
+                       const Result& risk,
+                       base::WeakPtr<Service> service) {
+  // Use Chromium's post-commit interstitial navigation, without a network
+  // request or automatic replay of a previously submitted POST.
+  auto page =
+      std::make_unique<BlockingPage>(contents, risk, false, service, true);
+  auto handle = contents->GetController().LoadPostCommitErrorPage(
+      contents->GetPrimaryMainFrame(), risk.url, page->GetHTMLContents());
+  if (!handle)
+    return;
+  security_interstitials::SecurityInterstitialTabHelper::AssociateBlockingPage(
+      handle.get(), std::move(page));
+  auto* tab = TabProtection::FromWebContents(contents);
+  tab->Begin(handle.get());
+  tab->Report(handle.get(), risk, false);
+}
 }  // namespace
 
 void NavigationThrottle::MaybeCreateAndAdd(
@@ -466,6 +510,7 @@ void NavigationThrottle::OnPolicyChanged() {
                          weak_factory_.GetWeakPtr(), service_->revision())));
     }
   }
+  ReportState();
   if (deferred_ && !pending_) {
     deferred_ = false;
     Resume();

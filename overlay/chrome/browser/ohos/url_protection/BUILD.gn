@@ -5,6 +5,7 @@ executable("format_tests") {
     "local_rules.cc",
     "rule_update_format.cc",
     "rule_update_format_test_main.cc",
+    "site_verdict_state_test.cc",
     "subscription_rules.cc",
     "subscription_rules_test.cc",
   ]
