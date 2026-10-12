@@ -1181,6 +1181,11 @@ XComponent({
 动时读一次,改了要重启应用。`chrome://flags` 里的对应开关会被这个启动参数盖掉,
 不起作用。
 
+OHOS ANGLE Vulkan 默认关闭 MSRTSS（直接渲染到单采样纹理）优化，按设备能力使用
+已有多采样兼容路径。用于规避 Pad 上 TextureVk 格式能力查询失败后持续花屏的问题；
+该实验后端仍需设备回归。外壳无需新增配置，诊断和验收见
+[ANGLE Vulkan 多重采样兼容说明](OHOS_ANGLE_VULKAN_MSRT.md)。
+
 ### 独立 GPU 进程(测试中)
 
 启动配置里的 `gpuProcess?: 'in-process' | 'separate'` 决定 GPU 放在哪。不填或

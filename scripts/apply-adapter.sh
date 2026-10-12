@@ -46,6 +46,8 @@ while read -r deps_path deps_patch; do
   git -C "${chromium_src}/${deps_path}" apply --binary \
     "${deps_patch_root}/${deps_patch}"
 done <"${deps_patch_root}/series"
+git -C "${chromium_src}/third_party/angle" apply \
+  "${project_root}/patches/ohos-angle-vulkan-msrt.patch"
 rsync -a "${project_root}/overlay/" "${chromium_src}/"
 
 deps_root="$(dirname "${chromium_src}")/deps_code/webview"

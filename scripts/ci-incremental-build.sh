@@ -48,6 +48,8 @@ say() { printf '== %s\n' "$*"; }
 
 apply_incremental_patch() {
   local patch="$1"
+  # DEPS checkouts (such as ANGLE) have their own repository root.
+  local patch_root="${2:-$src}"
   local name="${patch##*/}"
   local rel="${patch#"${repo_root}/"}"
   # Already applied, checked with full context before trying to apply it.
@@ -57,12 +59,12 @@ apply_incremental_patch() {
   # applied ohos-password-manager-narrow.patch once more on every build, one
   # more copy of its CSS each time, and rebuilt the password manager's
   # resources for nothing.
-  if git -C "$src" apply --reverse --check "$patch" 2>/dev/null; then
+  if git -C "$patch_root" apply --reverse --check "$patch" 2>/dev/null; then
     say "incremental patch ${name} already applied"
     return
   fi
-  if git -C "$src" apply --check "$patch" 2>/dev/null; then
-    git -C "$src" apply "$patch" || die "failed to apply ${name}"
+  if git -C "$patch_root" apply --check "$patch" 2>/dev/null; then
+    git -C "$patch_root" apply "$patch" || die "failed to apply ${name}"
     say "applied incremental patch ${name}"
     return
   fi
@@ -93,7 +95,7 @@ apply_incremental_patch() {
   # dropped a `deps +=` line, and the stale line kept breaking gn). That fails
   # loudly and at once. Deleting another patch's lines does not.
   local rev best_rev="" best_lines=-1 lines
-  if git -C "$src" apply -C0 --reverse --check "$patch" 2>/dev/null; then
+  if git -C "$patch_root" apply -C0 --reverse --check "$patch" 2>/dev/null; then
     say "incremental patch ${name} already applied"
     return
   fi
@@ -102,7 +104,7 @@ apply_incremental_patch() {
       continue
     fi
     if git -C "$repo_root" show "${rev}:${rel}" 2>/dev/null |
-        git -C "$src" apply -C0 --reverse --check - 2>/dev/null; then
+        git -C "$patch_root" apply -C0 --reverse --check - 2>/dev/null; then
       lines=$(git -C "$repo_root" show "${rev}:${rel}" | grep -c '^+[^+]' || true)
       if (( lines > best_lines )); then
         best_rev=$rev
@@ -112,14 +114,14 @@ apply_incremental_patch() {
   done
   if [[ -n "$best_rev" ]]; then
     git -C "$repo_root" show "${best_rev}:${rel}" |
-      git -C "$src" apply -C0 --reverse ||
+      git -C "$patch_root" apply -C0 --reverse ||
       die "failed to back out ${name} at ${best_rev}"
     say "backed out incremental patch ${name} at ${best_rev:0:8}"
-    git -C "$src" apply "$patch" || die "failed to apply ${name}"
+    git -C "$patch_root" apply "$patch" || die "failed to apply ${name}"
     say "applied incremental patch ${name}"
     return
   fi
-  git -C "$src" apply --check --verbose "$patch" || true
+  git -C "$patch_root" apply --check --verbose "$patch" || true
   die "incremental patch ${name} neither applies nor is already present"
 }
 
@@ -235,6 +237,8 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection-updates.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-rule-sources.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-msrt.patch" \
+    "${src}/third_party/angle"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

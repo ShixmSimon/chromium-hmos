@@ -19,6 +19,8 @@ jobs:
         run: scripts/verify-public-tree.sh
       - name: Check scripts
         run: bash -n scripts/*.sh
+      - name: Check incremental patches in Chromium and DEPS checkouts
+        run: python3 scripts/tests/test-incremental-patches.py
       - name: Check memfd write-seal contract
         run: python3 scripts/check-memfd-seals.py
       - name: Check test-page media byte ranges

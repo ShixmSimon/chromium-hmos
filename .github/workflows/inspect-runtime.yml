@@ -45,7 +45,7 @@ jobs:
           third_party/angle/src/libANGLE/renderer/vulkan/DisplayVk.cpp
           third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp
           third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.cpp
-          third_party/angle/include/platform/FeaturesVk_autogen.h
+          third_party/angle/include/platform/Feature.h
           third_party/angle/include/platform/vk_features.json
           third_party/skia/src/gpu/ganesh/gl/GrGLCaps.cpp
           gpu/command_buffer/service/feature_info.cc

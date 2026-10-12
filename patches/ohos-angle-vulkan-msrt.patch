@@ -1,0 +1,89 @@
+diff --git a/src/libANGLE/renderer/vulkan/vk_helpers.cpp b/src/libANGLE/renderer/vulkan/vk_helpers.cpp
+index b5142fa1..4d726781 100644
+--- a/src/libANGLE/renderer/vulkan/vk_helpers.cpp
++++ b/src/libANGLE/renderer/vulkan/vk_helpers.cpp
+@@ -9,6 +9,7 @@
+ #include "libANGLE/renderer/vulkan/vk_helpers.h"
+ 
+ #include <array>
++#include <atomic>
+ 
+ #include "common/unsafe_buffers.h"
+ 
+@@ -6191,8 +6192,31 @@ bool ImageHelper::FormatSupportsUsage(const Renderer *renderer,
+     if (formatSupportCheck == FormatSupportCheck::RequireMultisampling)
+     {
+         // Some drivers return success but sampleCounts == 1 which means no MSRTT
+-        return result == VK_SUCCESS &&
+-               imageFormatProperties2.imageFormatProperties.sampleCounts > 1;
++        const bool supported = result == VK_SUCCESS &&
++                               imageFormatProperties2.imageFormatProperties.sampleCounts > 1;
++#if defined(ANGLE_PLATFORM_OHOS)
++        if (!supported &&
++            (createFlags & VK_IMAGE_CREATE_MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_BIT_EXT) != 0)
++        {
++            // Startup probes and texture recreation share this query. Bound diagnostics
++            // across threads; a failed frame must not flood hilog with format details.
++            static std::atomic<unsigned int> remainingLogs{8};
++            unsigned int remaining = remainingLogs.load(std::memory_order_relaxed);
++            while (remaining != 0 &&
++                   !remainingLogs.compare_exchange_weak(remaining, remaining - 1,
++                                                        std::memory_order_relaxed))
++            {}
++            if (remaining != 0)
++            {
++                WARN() << "OHOS ANGLE Vulkan MSRT query rejected: format=" << format
++                       << " type=" << imageType << " tiling=" << tilingMode
++                       << " usage=" << usageFlags << " flags=" << createFlags
++                       << " result=" << result << " sampleCounts="
++                       << imageFormatProperties2.imageFormatProperties.sampleCounts;
++            }
++        }
++#endif
++        return supported;
+     }
+     return result == VK_SUCCESS;
+ }
+diff --git a/src/libANGLE/renderer/vulkan/vk_renderer.cpp b/src/libANGLE/renderer/vulkan/vk_renderer.cpp
+index d1315e6c..057f7eb0 100644
+--- a/src/libANGLE/renderer/vulkan/vk_renderer.cpp
++++ b/src/libANGLE/renderer/vulkan/vk_renderer.cpp
+@@ -5899,6 +5899,17 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+             !(isQualcommProprietary && driverVersion < angle::VersionTriple(512, 822, 0)) &&
+             !isLavapipe);
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++    // The RGBA8 startup probe does not cover all format/usage/view combinations.
++    // On OHOS a later TextureVk::initImage query can reject an MSRTT attachment,
++    // failing page rasterization repeatedly (GEM-W00, 2026-10-13). Until those
++    // combinations are validated on device, use the existing MSRTT emulation
++    // eligibility checks below, or let clients use ordinary multisample FBOs.
++    // Set this before all dependent features and device extension enablement.
++    // Explicit ANGLE feature overrides remain available for diagnosis.
++    ANGLE_FEATURE_CONDITION(&mFeatures, supportsMultisampledRenderToSingleSampled, false);
++#endif
++
+     // Preferring the MSRTSS flag is for texture initialization. If the MSRTSS is not used at first,
+     // it will be used (if available) when recreating the image if it is bound to an MSRTT
+     // framebuffer.
+@@ -6108,6 +6119,20 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+                                 (mFeatures.supportsDepthStencilResolve.enabled &&
+                                  mFeatures.allowMultisampledRenderToTextureEmulation.enabled));
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++    // Once per renderer initialization, including the effective override state.
++    WARN() << "OHOS ANGLE Vulkan MSRT: device=" << mPhysicalDeviceProperties.deviceName
++           << " vendor=" << mPhysicalDeviceProperties.vendorID
++           << " deviceId=" << mPhysicalDeviceProperties.deviceID
++           << " driverVersion=" << mPhysicalDeviceProperties.driverVersion
++           << " apiVersion=" << mPhysicalDeviceProperties.apiVersion
++           << " nativeMSRTSS=" << mFeatures.supportsMultisampledRenderToSingleSampled.enabled
++           << " emulateMSRTT="
++           << (mFeatures.enableMultisampledRenderToTexture.enabled &&
++               !mFeatures.supportsMultisampledRenderToSingleSampled.enabled)
++           << " exposeMSRTT=" << mFeatures.enableMultisampledRenderToTexture.enabled;
++#endif
++
+     // Currently we enable cube map arrays based on the imageCubeArray Vk feature.
+     // TODO: Check device caps for full cube map array support. http://anglebug.com/42263705
+     ANGLE_FEATURE_CONDITION(&mFeatures, supportsImageCubeArray,
