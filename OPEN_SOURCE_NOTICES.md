@@ -26,3 +26,13 @@ GN arguments, and build notes are published so recipients can inspect, modify,
 rebuild, and relink the applicable components. No term in this repository is
 intended to prohibit reverse engineering for debugging such modifications.
 
+## Optional user-selected threat lists
+
+The rule-source catalog references HaGeZi DNS Blocklists (GPL-3.0) and
+PhishDestroy Destroylist (MIT, Copyright (c) 2019 PhishDestroy). Their complete
+lists are not bundled in the source publication or the engine HAR. Users may
+explicitly download the unmodified lists from the publishers; the source API
+exposes attribution and upstream license links. CI benchmark downloads retain
+the license beside each pinned data file and do not become runtime assets.
+See `docs/OHOS_PROTECTION_RULE_SOURCES.md` for URLs and redistribution notes.
+

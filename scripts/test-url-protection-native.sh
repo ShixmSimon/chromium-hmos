@@ -14,7 +14,9 @@ test_binary="${rule_out}/clang_x64/ohos_url_protection_format_tests"
 if [[ ! -x "$test_binary" ]]; then
   test_binary="${rule_out}/ohos_url_protection_format_tests"
 fi
-cp "$rule_out/icudtl.dat" "$(dirname "$test_binary")/icudtl.dat"
+if [[ ! "$rule_out/icudtl.dat" -ef "$(dirname "$test_binary")/icudtl.dat" ]]; then
+  cp "$rule_out/icudtl.dat" "$(dirname "$test_binary")/icudtl.dat"
+fi
 benchmark_dir="${RUNNER_TEMP:-/tmp}/rule-source-benchmarks"
 python3 "${rule_repo}/scripts/tests/fetch-rule-source-benchmarks.py" "$benchmark_dir"
 "$test_binary" "${rule_repo}/scripts/tests/fixtures/phishing-updates" "$benchmark_dir"

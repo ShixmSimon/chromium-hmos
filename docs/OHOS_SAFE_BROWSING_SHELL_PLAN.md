@@ -4,6 +4,8 @@
 
 ## 当前可接入能力
 
+2026-10-12 新增独立 `ruleSourcesApiVersion=1`：推荐源目录、用户 HTTPS 订阅、域名精确/后缀匹配、每源启停/更新/删除与状态。来源管理不改变四种模式；外壳按 [规则来源契约](OHOS_PROTECTION_RULE_SOURCES.md) 对接，注意 expectedRevision 使用 sourcesRevision，无痕只读。
+
 HAR 已导出 UrlCheckCoordinator 及 executor/authorization/options 类型，处理 configure/check/cancel/closeContext/capabilities。内核提供 getUrlProtectionState、原子 setUrlProtectionConfig、urlProtectionStateChanged，contextId 按 Profile 隔离并由内核分配；不依赖新增窗口销毁钩子，导航单独取消，Profile 销毁发送 closeContext。
 
 站点面板新增独立 siteProtectionApiVersion=1：getSiteProtectionState、setSiteProtectionEnabled、siteProtectionStateChanged。内核维护当前导航结果及原生身份，持久/无痕站点例外，拒绝旧页面或旧版本写入；不自动刷新页面。HAR 提供命令字段和事件类型，外壳将自己的 SiteProtectionBackend 对接此协议，并在窗口生命周期内管理回包和失效事件。详情及验收边界见 SHELL_CONTRACT.md 的“地址栏站点防护”。
