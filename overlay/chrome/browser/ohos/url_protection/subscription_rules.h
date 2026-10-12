@@ -34,5 +34,16 @@ SubscriptionRules ParseSubscriptionRules(std::string_view text,
                                          std::string_view format,
                                          std::string_view rule_type,
                                          base::Time fetched);
+// Cache binds raw bytes to the exact subscription configuration. These are
+// integrity checks for a user-trusted feed, not an official digital signature.
+std::string EncodeSubscriptionCache(const GURL& endpoint,
+                                    std::string_view format,
+                                    const SubscriptionRules& rules,
+                                    std::string_view raw);
+SubscriptionRules DecodeSubscriptionCache(std::string_view cache,
+                                          const GURL& endpoint,
+                                          std::string_view format,
+                                          std::string_view rule_type,
+                                          base::Time now);
 }  // namespace chrome::ohos::url_protection
 #endif

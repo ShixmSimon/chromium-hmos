@@ -76,12 +76,12 @@ struct Config {
                      .Set("enabled", enabled)
                      .Set("recommendationId", recommendation);
     const auto* item = FindRecommendation(recommendation);
-    value.Set("kind", item ? "recommended" : "custom")
-        .Set("trust", "user_https")
-        .Set("signed", false)
-        .Set("license", item ? item->license : "unknown")
-        .Set("attribution", item ? item->attribution : "")
-        .Set("licenseUrl", item ? item->license_url : "");
+    value.Set("kind", item ? "recommended" : "custom");
+    value.Set("trust", "user_https");
+    value.Set("signed", false);
+    value.Set("license", item ? item->license : "unknown");
+    value.Set("attribution", item ? item->attribution : "");
+    value.Set("licenseUrl", item ? item->license_url : "");
     return value;
   }
 };
@@ -122,30 +122,22 @@ std::map<std::string, Index> Restore(base::FilePath directory,
   std::map<std::string, Index> restored;
   size_t total = 0;
   for (const auto& config : configs) {
-    std::string cache, header, raw;
-    if (!base::ReadFileToStringWithMaxSize(
-            CachePath(directory, config), &cache,
-            kSubscriptionMaxBytes + kMaxManifestBytes + 16) ||
-        !DecodeRuleCache(cache, header, raw))
+    std::string cache;
+    const auto path = CachePath(directory, config);
+    if (!base::PathExists(path))
       continue;
-    auto meta = base::JSONReader::ReadDict(header, base::JSON_PARSE_RFC);
-    if (!meta || meta->FindInt("format") != 1 ||
-        String(*meta, "url") != config.url ||
-        String(*meta, "inputFormat") != config.format ||
-        String(*meta, "ruleType") != config.rule_type ||
-        !meta->FindDouble("fetchedAt"))
-      continue;
-    const auto fetched = base::Time::FromMillisecondsSinceUnixEpoch(
-        *meta->FindDouble("fetchedAt"));
-    const auto now = base::Time::Now();
-    if (fetched > now || fetched + base::Days(7) <= now)
-      continue;
-    auto rules =
-        ParseSubscriptionRules(raw, config.format, config.rule_type, fetched);
-    if (!rules.usable(now) || rules.digest != String(*meta, "sha256") ||
-        total + rules.hashes.size() > kSubscriptionTotalRecords)
-      continue;
-    total += rules.hashes.size();
+    SubscriptionRules rules;
+    rules.error = "cache_invalid";
+    if (base::ReadFileToStringWithMaxSize(
+            path, &cache, kSubscriptionMaxBytes + kMaxManifestBytes + 16)) {
+      rules = DecodeSubscriptionCache(cache, GURL(config.url), config.format,
+                                      config.rule_type, base::Time::Now());
+    }
+    if (total + rules.hashes.capacity() > kSubscriptionTotalRecords) {
+      rules = {};
+      rules.error = "total_record_limit";
+    }
+    total += rules.hashes.capacity();
     restored.emplace(config.id,
                      std::make_shared<SubscriptionRules>(std::move(rules)));
   }
@@ -173,18 +165,10 @@ ParsedDownload ParseDownload(base::FilePath path, Config config) {
   return result;
 }
 bool Install(base::FilePath path, Config config, Index rules, std::string raw) {
-  const auto meta =
-      base::DictValue()
-          .Set("format", 1)
-          .Set("url", config.url)
-          .Set("inputFormat", config.format)
-          .Set("ruleType", config.rule_type)
-          .Set("sha256", rules->digest)
-          .Set("fetchedAt", rules->fetched.InMillisecondsFSinceUnixEpoch());
-  auto header = base::WriteJson(meta);
-  return header && base::CreateDirectory(path.DirName()) &&
-         base::ImportantFileWriter::WriteFileAtomically(
-             path, EncodeRuleCache(*header, raw));
+  auto cache =
+      EncodeSubscriptionCache(GURL(config.url), config.format, *rules, raw);
+  return !cache.empty() && base::CreateDirectory(path.DirName()) &&
+         base::ImportantFileWriter::WriteFileAtomically(path, cache);
 }
 constexpr net::NetworkTrafficAnnotationTag kTraffic =
     net::DefineNetworkTrafficAnnotation("ohos_user_protection_subscription", R"(
@@ -239,6 +223,10 @@ class RuleSources::Impl {
   void OnRestored(std::map<std::string, Index> restored) {
     for (auto& [id, rules] : restored) {
       auto& entry = entries_.at(id);
+      if (!rules->error.empty()) {
+        entry.error = rules->error;
+        continue;
+      }
       entry.rules = std::move(rules);
       entry.due = std::max(base::Time::Now() + base::Seconds(15),
                            entry.rules->fetched + base::Hours(8));
@@ -342,8 +330,15 @@ class RuleSources::Impl {
   }
   void OnDownloaded(std::string id, int generation, base::FilePath path) {
     auto* entry = Current(id, generation);
-    if (!entry)
+    if (!entry) {
+      if (!path.empty())
+        worker_->PostTask(FROM_HERE, base::BindOnce(
+                                         [](base::FilePath temporary) {
+                                           base::DeleteFile(temporary);
+                                         },
+                                         std::move(path)));
       return;
+    }
     loader_.reset();
     if (path.empty()) {
       Fail(id, "download_failed");
@@ -363,10 +358,10 @@ class RuleSources::Impl {
       Fail(id, std::move(parsed.error));
       return;
     }
-    size_t total = parsed.rules->hashes.size();
+    size_t total = parsed.rules->hashes.capacity();
     for (const auto& [other_id, other] : entries_)
       if (other_id != id && other.rules)
-        total += other.rules->hashes.size();
+        total += other.rules->hashes.capacity();
     if (total > kSubscriptionTotalRecords) {
       Fail(id, "total_record_limit");
       return;

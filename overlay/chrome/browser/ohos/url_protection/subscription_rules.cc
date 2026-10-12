@@ -3,8 +3,12 @@
 #include "chrome/browser/ohos/url_protection/subscription_rules.h"
 
 #include <algorithm>
+#include <cmath>
+#include "base/json/json_reader.h"
+#include "base/json/json_writer.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
+#include "chrome/browser/ohos/url_protection/rule_update_format.h"
 #include "chrome/browser/ohos/url_protection/url_protection.h"
 #include "crypto/hash.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
@@ -18,7 +22,7 @@ std::string CanonicalDomain(std::string_view text) {
   const GURL url("https://" + std::string(text) + "/");
   if (!IsPublicHttpUrl(url) || url.HostIsIPAddress())
     return {};
-  std::string host = url.host();
+  std::string host(url.host());
   if (host.ends_with('.'))
     host.pop_back();
   if (host.empty() || host.size() > 253 || host.starts_with('.') ||
@@ -65,7 +69,7 @@ bool SubscriptionRules::Matches(const GURL& url, base::Time now) const {
   };
   if (rule_type == "url_exact")
     return contains(url.spec());
-  std::string host = url.host();
+  std::string host(url.host());
   if (host.ends_with('.'))
     host.pop_back();
   std::string_view candidate(host);
@@ -139,6 +143,53 @@ SubscriptionRules ParseSubscriptionRules(std::string_view text,
   rules.hashes.erase(duplicates.begin(), duplicates.end());
   rules.hashes.shrink_to_fit();
   rules.error = rules.hashes.empty() ? "empty_rules" : "";
+  return rules;
+}
+std::string EncodeSubscriptionCache(const GURL& endpoint,
+                                    std::string_view format,
+                                    const SubscriptionRules& rules,
+                                    std::string_view raw) {
+  auto header = base::WriteJson(
+      base::DictValue()
+          .Set("format", 1)
+          .Set("url", endpoint.spec())
+          .Set("inputFormat", std::string(format))
+          .Set("ruleType", rules.rule_type)
+          .Set("sha256", rules.digest)
+          .Set("fetchedAt", rules.fetched.InMillisecondsFSinceUnixEpoch()));
+  return header ? EncodeRuleCache(*header, raw) : std::string();
+}
+SubscriptionRules DecodeSubscriptionCache(std::string_view cache,
+                                          const GURL& endpoint,
+                                          std::string_view format,
+                                          std::string_view rule_type,
+                                          base::Time now) {
+  SubscriptionRules invalid;
+  invalid.error = "cache_invalid";
+  std::string header, raw;
+  if (!DecodeRuleCache(cache, header, raw))
+    return invalid;
+  auto meta = base::JSONReader::ReadDict(header, base::JSON_PARSE_RFC);
+  if (!meta || meta->FindInt("format") != 1)
+    return invalid;
+  auto matches = [&](const char* key, std::string_view expected) {
+    const auto* value = meta->FindString(key);
+    return value && *value == expected;
+  };
+  const auto time = meta->FindDouble("fetchedAt");
+  if (!matches("url", endpoint.spec()) || !matches("inputFormat", format) ||
+      !matches("ruleType", rule_type) || !time || !std::isfinite(*time))
+    return invalid;
+  const auto fetched = base::Time::FromMillisecondsSinceUnixEpoch(*time);
+  if (fetched > now)
+    return invalid;
+  if (fetched + base::Days(7) <= now) {
+    invalid.error = "cache_expired";
+    return invalid;
+  }
+  auto rules = ParseSubscriptionRules(raw, format, rule_type, fetched);
+  if (!rules.usable(now) || !matches("sha256", rules.digest))
+    return invalid;
   return rules;
 }
 }  // namespace chrome::ohos::url_protection

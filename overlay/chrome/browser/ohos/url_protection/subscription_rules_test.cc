@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license in LICENSE.
 #include "chrome/browser/ohos/url_protection/subscription_rules.h"
 
+#include <sys/resource.h>
 #include <iostream>
 #include "base/files/file_util.h"
 #include "base/strings/string_number_conversions.h"
@@ -105,6 +106,48 @@ int RunSubscriptionTests(const base::FilePath& benchmarks) {
   expect(!generic.dangerous(), "unclassified cloud result not reinterpreted");
   generic.matched_source_ids.push_back("source-1");
   expect(generic.dangerous(), "explicit local threat match blocks");
+  const GURL endpoint("https://rules.example.com/list");
+  const auto cached =
+      EncodeSubscriptionCache(endpoint, "domains", exact, "evil.example.com\n");
+  const auto recovered =
+      DecodeSubscriptionCache(cached, endpoint, "domains", "host_exact", now);
+  expect(recovered.usable(now) &&
+             recovered.Matches(GURL("https://evil.example.com"), now),
+         "cache recovery");
+  expect(
+      !DecodeSubscriptionCache(cached, GURL("https://other.example.com/list"),
+                               "domains", "host_exact", now)
+           .usable(now),
+      "cache endpoint isolation");
+  expect(
+      !DecodeSubscriptionCache(cached, endpoint, "domains", "host_suffix", now)
+           .usable(now),
+      "cache cannot expand match type");
+  expect(!DecodeSubscriptionCache(cached, endpoint, "urls", "url_exact", now)
+              .usable(now),
+         "cache format isolation");
+  expect(DecodeSubscriptionCache(cached, endpoint, "domains", "host_exact",
+                                 now + base::Days(7))
+                 .error == "cache_expired",
+         "expired cache on restart");
+  expect(!DecodeSubscriptionCache(cached, endpoint, "domains", "host_exact",
+                                  now - base::Seconds(1))
+              .usable(now),
+         "future cache timestamp");
+  expect(!DecodeSubscriptionCache(cached.substr(0, cached.size() - 2), endpoint,
+                                  "domains", "host_exact", now)
+              .usable(now),
+         "truncated cache");
+  auto changed_cache = cached;
+  changed_cache.back() = 'x';
+  expect(!DecodeSubscriptionCache(changed_cache, endpoint, "domains",
+                                  "host_exact", now)
+              .usable(now),
+         "cache payload digest");
+  expect(!DecodeSubscriptionCache("invalid", endpoint, "domains", "host_exact",
+                                  now)
+              .usable(now),
+         "corrupt cache");
   for (const auto& [file, expected] : {std::pair{"hagezi.txt", 236628},
                                        std::pair{"phishdestroy.txt", 89449}}) {
     std::string raw;
@@ -118,8 +161,11 @@ int RunSubscriptionTests(const base::FilePath& benchmarks) {
                rules.input_count == static_cast<size_t>(expected),
            "complete full feed without truncation");
     const auto lookups = base::TimeTicks::Now();
+    int hits = 0;
     for (int i = 0; i < 10000; ++i)
-      rules.Matches(GURL("https://a.b.c.example.com/test?x#y"), now);
+      hits += rules.Matches(GURL("https://a.b.c.example.com/test?x#y"), now);
+    rusage usage{};
+    getrusage(RUSAGE_SELF, &usage);
     std::cout << "Subscription benchmark " << file
               << ": input=" << rules.input_count
               << " unique=" << rules.hashes.size()
@@ -127,6 +173,7 @@ int RunSubscriptionTests(const base::FilePath& benchmarks) {
               << " index_bytes=" << rules.hashes.capacity() * 32
               << " parse_ms=" << parsed_ms << " lookup_10000_ms="
               << (base::TimeTicks::Now() - lookups).InMilliseconds()
+              << " hits=" << hits << " process_peak_rss_kib=" << usage.ru_maxrss
               << " error=" << rules.error << '\n';
   }
   std::cout << "Subscription validation: " << failures << " failures\n";
