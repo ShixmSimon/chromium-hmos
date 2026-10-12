@@ -44,6 +44,13 @@ jobs:
           crypto/signature_verifier.h
           services/network/public/cpp/simple_url_loader.h
           services/network/public/cpp/resource_request.h
+          services/network/public/mojom/client_security_state.mojom
+          services/network/public/mojom/local_network_access_check.mojom
+          services/network/public/mojom/url_loader_factory.mojom
+          services/network/url_loader.cc
+          services/network/local_network_access_checker.cc
+          net/base/registry_controlled_domains/registry_controlled_domain.h
+          url/url_canon.h
           chrome/browser/profiles/profile.h
           content/public/browser/storage_partition.h
           base/files/important_file_writer.h
