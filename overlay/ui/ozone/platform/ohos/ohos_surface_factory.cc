@@ -8,6 +8,8 @@
 #include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
 #endif
 
+#include <native_window/external_window.h>
+#include "base/auto_reset.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
@@ -18,15 +20,17 @@
 #include "ui/gfx/presentation_feedback.h"
 #include "ui/gfx/vsync_provider.h"
 #include "ui/gl/gl_bindings.h"
+#include "ui/gl/gl_context.h"
 #include "ui/gl/gl_display.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_surface_egl.h"
+#include "ui/gl/gl_version_info.h"
 #include "ui/ozone/common/egl_util.h"
 #include "ui/ozone/common/gl_ozone_egl.h"
-#include <native_window/external_window.h>
 
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
 #include "ui/ozone/platform/ohos/ohos_screen.h"
 #include "ui/ozone/platform/ohos/ohos_vsync_provider.h"
 
@@ -495,6 +499,99 @@ class OhosDetachedGLSurface : public gl::PbufferGLSurfaceEGL {
   ~OhosDetachedGLSurface() override = default;
 };
 
+// Phone fork children cannot import the browser's native window. A pbuffer
+// still uses the physical GPU; only presentation is copied through shared
+// memory. Keep this separate from the native-window path used by appspawn.
+class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
+ public:
+  OhosPhoneGpuGLSurface(gl::GLDisplayEGL* display,
+                        gfx::AcceleratedWidget widget)
+      : PbufferGLSurfaceEGL(display, gfx::Size(1, 1)), widget_(widget) {}
+
+  // EGL must choose a PBUFFER_BIT config, while viz must treat this as a
+  // view surface and call SwapBuffers to send frames to the browser.
+  EGLConfig GetConfig() override {
+    base::AutoReset<bool> selecting(&selecting_config_, true);
+    return PbufferGLSurfaceEGL::GetConfig();
+  }
+  bool IsOffscreen() override { return selecting_config_; }
+  bool Resize(const gfx::Size& size,
+              float scale_factor,
+              const gfx::ColorSpace& color_space,
+              bool has_alpha) override {
+    phone_gpu::Frame frame;
+    frame.widget = widget_;
+    frame.sequence = 1;
+    frame.width = size.width();
+    frame.height = size.height();
+    if (!phone_gpu::FrameBytes(frame))
+      return false;
+    return PbufferGLSurfaceEGL::Resize(size, scale_factor, color_space,
+                                       has_alpha);
+  }
+  gfx::SwapResult SwapBuffers(PresentationCallback callback,
+                              gfx::FrameData data) override {
+    phone_gpu::Frame frame;
+    frame.widget = widget_;
+    frame.sequence = 1;  // Submit assigns the connection's monotonic sequence.
+    frame.width = GetSize().width();
+    frame.height = GetSize().height();
+    auto result = phone_gpu::Result::kFailed;
+    if (!failed_ && buffer_.Resize(phone_gpu::FrameBytes(frame),
+                                   OhosPhoneGpuMinimumBufferFd())) {
+      const bool es3 =
+          gl::GLContext::GetCurrent()->GetVersionInfo()->IsAtLeastGLES(3, 0);
+      GLint framebuffer = 0, alignment = 4;
+      GLint pack_buffer = 0, row_length = 0, skip_rows = 0, skip_pixels = 0;
+      glGetIntegerv(es3 ? GL_READ_FRAMEBUFFER_BINDING : GL_FRAMEBUFFER_BINDING,
+                    &framebuffer);
+      glGetIntegerv(GL_PACK_ALIGNMENT, &alignment);
+      if (es3) {
+        glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &pack_buffer);
+        glGetIntegerv(GL_PACK_ROW_LENGTH, &row_length);
+        glGetIntegerv(GL_PACK_SKIP_ROWS, &skip_rows);
+        glGetIntegerv(GL_PACK_SKIP_PIXELS, &skip_pixels);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+        glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+        glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
+      }
+      glBindFramebuffer(es3 ? GL_READ_FRAMEBUFFER : GL_FRAMEBUFFER, 0);
+      glPixelStorei(GL_PACK_ALIGNMENT, 4);
+      glReadPixels(0, 0, frame.width, frame.height, GL_RGBA, GL_UNSIGNED_BYTE,
+                   buffer_.data());
+      const GLenum error = glGetError();
+      glPixelStorei(GL_PACK_ALIGNMENT, alignment);
+      glBindFramebuffer(es3 ? GL_READ_FRAMEBUFFER : GL_FRAMEBUFFER,
+                        framebuffer);
+      if (es3) {
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pack_buffer);
+        glPixelStorei(GL_PACK_ROW_LENGTH, row_length);
+        glPixelStorei(GL_PACK_SKIP_ROWS, skip_rows);
+        glPixelStorei(GL_PACK_SKIP_PIXELS, skip_pixels);
+      }
+      if (error == GL_NO_ERROR)
+        result = SubmitOhosPhoneGpuFrame(frame, buffer_.fd());
+    }
+    failed_ = result == phone_gpu::Result::kFailed;
+    const auto feedback =
+        result == phone_gpu::Result::kPresented
+            ? gfx::PresentationFeedback(base::TimeTicks::Now(),
+                                        base::Milliseconds(16), 0)
+            : gfx::PresentationFeedback::Failure();
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback), feedback));
+    return failed_ ? gfx::SwapResult::SWAP_FAILED : gfx::SwapResult::SWAP_ACK;
+  }
+
+ private:
+  ~OhosPhoneGpuGLSurface() override = default;
+  const gfx::AcceleratedWidget widget_;
+  phone_gpu::Buffer buffer_;
+  bool failed_ = false;
+  bool selecting_config_ = false;
+};
+
 class GLOzoneEGLOhos : public GLOzoneEGL {
  public:
   GLOzoneEGLOhos() = default;
@@ -503,6 +600,11 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
   scoped_refptr<gl::GLSurface> CreateViewGLSurface(
       gl::GLDisplay* display,
       gfx::AcceleratedWidget widget) override {
+    if (IsOhosPhoneGpuChild()) {
+      return gl::InitializeGLSurface(
+          base::MakeRefCounted<OhosPhoneGpuGLSurface>(
+              display->GetAs<gl::GLDisplayEGL>(), widget));
+    }
     std::optional<OhosNativeSurface> surface = GetOhosNativeSurface(widget);
     if ((!surface || !surface->window) &&
         IsOhosNativeSurfaceExpected(widget)) {
@@ -546,7 +648,7 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
   }
 
   bool CanImportNativePixmap(viz::SharedImageFormat format) override {
-    return IsOhosNativePixmapFormat(format);
+    return !IsOhosPhoneGpuChild() && IsOhosNativePixmapFormat(format);
   }
 
   // A YUV buffer is sampled whole, through GL_TEXTURE_EXTERNAL_OES with the
@@ -559,6 +661,8 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
       const gfx::ColorSpace& color_space,
       GLenum target,
       GLuint texture_id) override {
+    if (IsOhosPhoneGpuChild())
+      return nullptr;
     if (plane_index.has_value()) {
       LOG(ERROR) << "OHOS native pixmap: per-plane import of "
                  << plane_format.ToString() << " is not supported";
@@ -611,12 +715,12 @@ scoped_refptr<gfx::NativePixmap> OhosSurfaceFactory::CreateNativePixmap(
     viz::SharedImageFormat format,
     gfx::BufferUsage usage,
     std::optional<gfx::Size> framebuffer_size) {
-  return CreateOhosNativePixmap(size, format);
+  return IsOhosPhoneGpuChild() ? nullptr : CreateOhosNativePixmap(size, format);
 }
 
 bool OhosSurfaceFactory::CanCreateNativePixmapForFormat(
     viz::SharedImageFormat format) {
-  return IsOhosNativePixmapFormat(format);
+  return !IsOhosPhoneGpuChild() && IsOhosNativePixmapFormat(format);
 }
 
 scoped_refptr<gfx::NativePixmap>
@@ -625,13 +729,16 @@ OhosSurfaceFactory::CreateNativePixmapFromHandle(
     gfx::Size size,
     viz::SharedImageFormat format,
     gfx::NativePixmapHandle handle) {
-  return CreateOhosNativePixmapFromHandle(size, format, std::move(handle));
+  return IsOhosPhoneGpuChild() ? nullptr
+                               : CreateOhosNativePixmapFromHandle(
+                                     size, format, std::move(handle));
 }
 
 bool OhosSurfaceFactory::IsFormatSupportedForTexturing(
     viz::SharedImageFormat format) const {
   // Asked about YUV formats, for sampling video as one texture.
-  return format.is_multi_plane() && IsOhosNativePixmapFormat(format);
+  return !IsOhosPhoneGpuChild() && format.is_multi_plane() &&
+         IsOhosNativePixmapFormat(format);
 }
 
 #if BUILDFLAG(ENABLE_VULKAN)
@@ -641,7 +748,7 @@ OhosSurfaceFactory::CreateVulkanImplementation(bool use_swiftshader,
   // No SwiftShader in this build: it needs ANGLE's Vulkan backend, which
   // needs the very thing being created here. Asking for it gets nothing
   // rather than something that will fail later and less clearly.
-  if (use_swiftshader) {
+  if (use_swiftshader || IsOhosPhoneGpuChild()) {
     LOG(WARNING) << "OHOS: no SwiftShader Vulkan in this build";
     return nullptr;
   }

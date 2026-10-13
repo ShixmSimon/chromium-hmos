@@ -34,6 +34,12 @@ source_set("native_window_registry") {
   sources = [
     "ohos_gpu_child_channel.cc",
     "ohos_gpu_child_channel.h",
+    "ohos_phone_gpu_channel.cc",
+    "ohos_phone_gpu_channel.h",
+    "ohos_phone_gpu_presenter.cc",
+    "ohos_phone_gpu_presenter.h",
+    "ohos_phone_gpu_transport.cc",
+    "ohos_phone_gpu_transport.h",
     "ohos_native_window_registry.cc",
     "ohos_native_window_registry.h",
   ]
@@ -44,6 +50,7 @@ source_set("native_window_registry") {
     "child_process",
     "hilog_ndk.z",
     "ipc_capi",
+    "native_buffer",
     "native_window",
   ]
 

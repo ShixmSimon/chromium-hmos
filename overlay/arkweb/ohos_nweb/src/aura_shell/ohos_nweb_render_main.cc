@@ -34,6 +34,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
 
 extern "C" int ChromeMain(int argc, const char** argv);
 
@@ -267,7 +268,28 @@ int RunNativeChild(const char* encoded_params,
   if (!RestoreResourceDescriptors(resources, isolated_renderer)) {
     return 76;
   }
-  if (!RestoreFileDescriptors(fds)) {
+  std::vector<std::pair<int, int>> chromium_fds;
+  bool phone_gpu = false;
+  for (const auto& mapping : fds) {
+    if (!gpu_child &&
+        command_line.GetSwitchValueASCII("type") == "gpu-process" &&
+        mapping.first == ui::phone_gpu::kChannelDescriptor) {
+      if (gpu_child || phone_gpu ||
+          command_line.GetSwitchValueASCII("type") != "gpu-process" ||
+          !ui::InitializeOhosPhoneGpuChild(mapping.second)) {
+        return 71;
+      }
+      phone_gpu = true;
+    } else {
+      chromium_fds.push_back(mapping);
+    }
+  }
+  if (!gpu_child && command_line.GetSwitchValueASCII("type") == "gpu-process" &&
+      !phone_gpu) {
+    return 71;
+  }
+  gpu_child |= phone_gpu;
+  if (!RestoreFileDescriptors(chromium_fds)) {
     return 71;
   }
   base::internal::ReportOhosForkStage(

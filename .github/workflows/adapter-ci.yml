@@ -23,6 +23,8 @@ jobs:
         run: python3 scripts/tests/test-incremental-patches.py
       - name: Check experimental OHOS fork server transport
         run: scripts/test-ohos-fork-server.sh
+      - name: Check experimental phone GPU frame transport
+        run: scripts/test-ohos-phone-gpu.sh
       - name: Check memfd write-seal contract
         run: python3 scripts/check-memfd-seals.py
       - name: Check test-page media byte ranges

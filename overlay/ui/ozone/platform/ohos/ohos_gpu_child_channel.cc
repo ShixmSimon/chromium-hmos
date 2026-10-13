@@ -24,6 +24,7 @@
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
+#include "base/process/fork_server_ohos.h"
 #include "base/process/launch_ohos.h"
 #include "base/process/process_handle.h"
 #include "base/synchronization/condition_variable.h"
@@ -32,8 +33,9 @@
 #include "base/task/thread_pool.h"
 #include "base/thread_annotations.h"
 #include "native_window/external_window.h"
-#include "vulkan/vulkan_core.h"
 #include "ui/gfx/geometry/rect.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
+#include "vulkan/vulkan_core.h"
 
 namespace ui {
 namespace {
@@ -215,8 +217,10 @@ void NoteGpuChildInDoubt() {
 
 void ClearGpuChildDoubtIfSettled(uint64_t generation) {
   // A stale generation only means a later launch took over.
-  if (History().generation.load() != generation ||
-      History().fell_back.load()) {
+  if (History().generation.load() != generation || History().fell_back.load() ||
+      (base::CommandLine::ForCurrentProcess()->HasSwitch(
+           base::internal::kOhosPhoneFork) &&
+       !OhosPhoneGpuHasPresented())) {
     return;
   }
   const base::FilePath marker = GpuChildFailedMarker();
@@ -324,7 +328,11 @@ base::ProcessId LaunchGpuChild(const std::string& encoded_params,
     history.fell_back = true;
   }
   NoteGpuChildInDoubt();
-  const base::ProcessId pid = StartGpuChild(encoded_params, fds);
+  const bool phone_fork = base::CommandLine::ForCurrentProcess()->HasSwitch(
+      base::internal::kOhosPhoneFork);
+  const base::ProcessId pid = phone_fork
+                                  ? LaunchOhosPhoneGpuChild(encoded_params, fds)
+                                  : StartGpuChild(encoded_params, fds);
   if (pid == base::kNullProcessId) {
     history.start_failed = true;
     return pid;
@@ -534,6 +542,8 @@ void AttachOhosGpuChildLogging() {
 }
 
 bool IsOhosGpuChildProcess() {
+  if (IsOhosPhoneGpuChild())
+    return true;
   ChildSide& side = Child();
   base::AutoLock lock(side.lock);
   return side.is_child;

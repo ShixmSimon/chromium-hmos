@@ -16,15 +16,18 @@
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 
 // The GPU process as a HarmonyOS native child of its own.
+// Phone fork uses a separate GL readback transport instead of Binder:
+// ohos_phone_gpu_channel.h. The description below is the official NCP path.
 //
-// Renderers are native children started with OH_Ability_StartNativeChildProcess,
-// which passes arguments and file descriptors and nothing else. The GPU
-// process needs one more thing: the XComponent windows it draws into, and
-// those live in the browser process. HarmonyOS will not look a window up by
-// surface id from another process, but it will carry one through an IPC
-// parcel (OH_NativeWindow_WriteToParcel), and only a child started with
-// OH_Ability_CreateNativeChildProcess has an IPC channel to its parent. So the
-// GPU process is started that way, and the channel carries, in order:
+// Renderers are native children started with
+// OH_Ability_StartNativeChildProcess, which passes arguments and file
+// descriptors and nothing else. The GPU process needs one more thing: the
+// XComponent windows it draws into, and those live in the browser process.
+// HarmonyOS will not look a window up by surface id from another process, but
+// it will carry one through an IPC parcel (OH_NativeWindow_WriteToParcel), and
+// only a child started with OH_Ability_CreateNativeChildProcess has an IPC
+// channel to its parent. So the GPU process is started that way, and the
+// channel carries, in order:
 //
 //   1. its command line and file descriptors, which the other kind of child
 //      gets from the launch call itself;

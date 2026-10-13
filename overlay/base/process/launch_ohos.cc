@@ -293,12 +293,20 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
       CommandLine::ForCurrentProcess()->HasSwitch(kOhosPhoneFork);
   if (phone_fork) {
     if (isolate_renderer || options.wait ||
-        (process_type != "renderer" && process_type != "utility")) {
+        (process_type != "renderer" && process_type != "utility" &&
+         process_type != "gpu-process")) {
       LOG(ERROR) << "OHOS phone fork unsupported launch policy; refused";
       return Process();
     }
-    const ProcessId pid = LaunchOhosForkChild(
-        encoded_params, {options.fds_to_remap.begin(), options.fds_to_remap.end()});
+    const std::vector<std::pair<int, int>> fds(options.fds_to_remap.begin(),
+                                               options.fds_to_remap.end());
+    // GPU bootstrap also carries the private frame channel. These PIDs are
+    // owned by the fork server, never by the appspawn exit callback registry.
+    const ProcessId pid =
+        process_type == "gpu-process"
+            ? (g_gpu_child_launcher ? g_gpu_child_launcher(encoded_params, fds)
+                                    : kNullProcessId)
+            : LaunchOhosForkChild(encoded_params, fds);
     if (pid <= 0) {
       PLOG(ERROR) << "OHOS phone fork child launch failed";
       return Process();

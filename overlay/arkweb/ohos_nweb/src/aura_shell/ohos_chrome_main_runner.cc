@@ -263,8 +263,10 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (started_) {
     if (startup_config_.experimental_phone_fork !=
-        config.experimental_phone_fork) {
-      AURA_LOG_E("AuraShell phone fork switch requires a cold app restart");
+            config.experimental_phone_fork ||
+        (config.experimental_phone_fork &&
+         startup_config_.gpu_process != config.gpu_process)) {
+      AURA_LOG_E("AuraShell process mode switch requires a cold app restart");
       return false;
     }
     return true;
@@ -293,8 +295,7 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
   }
   if (config.experimental_phone_fork) {
     if ((config.device_class != "phone" && config.device_class != "foldable") ||
-        config.headless || config.gpu_process == "separate" ||
-        startup_command_line.HasSwitch("single-process") ||
+        config.headless || startup_command_line.HasSwitch("single-process") ||
         startup_command_line.HasSwitch("type") ||
         startup_command_line.HasSwitch(base::internal::kOhosIsolateRenderers) ||
         base::CommandLine::InitializedForCurrentProcess()) {
@@ -469,7 +470,8 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
     // Vulkan, which presents through VK_OHOS_surface
     // (ohos-angle.patch) and is here to be measured against
     // GLES before it could be anyone's default.
-    if (config.angle_backend == "vulkan") {
+    if (config.angle_backend == "vulkan" &&
+        !(config.experimental_phone_fork && config.gpu_process == "separate")) {
       arguments.push_back("--use-angle=vulkan");
       AURA_LOG_I("AuraShell ANGLE backend vulkan by config");
     } else {
@@ -579,8 +581,9 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
     }
   }
   const bool gpu_in_own_process =
-      !config.experimental_phone_fork && separate_gpu_process &&
-      supports_native_child_process && !config.headless;
+      separate_gpu_process &&
+      (supports_native_child_process || config.experimental_phone_fork) &&
+      !config.headless;
   if (gpu_in_own_process) {
     AURA_LOG_I("AuraShell GPU in a process of its own by config");
   } else {
@@ -597,13 +600,14 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   // Vulkan cannot be brought up there, Chromium falls back to GL by itself;
   // the GPU process says which step failed (ohos_gpu_child_channel.cc).
   if (config.skia_backend == "vulkan") {
-    if (gpu_in_own_process) {
+    if (gpu_in_own_process && !config.experimental_phone_fork) {
       arguments.push_back("--use-vulkan=native");
       AppendToListSwitch(&arguments, "enable-features", "Vulkan");
       AURA_LOG_I("AuraShell Skia on Vulkan by config");
     } else {
-      AURA_LOG_E("AuraShell ignored skiaBackend vulkan: the GPU is not in a "
-                 "process of its own");
+      AURA_LOG_E(
+          "AuraShell ignored skiaBackend vulkan: the GPU is not in a "
+          "supported native-window process (phone fork uses GL readback)");
     }
   }
 

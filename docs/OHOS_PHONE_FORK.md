@@ -1,7 +1,8 @@
 # 手机 fork 子进程实验
 
 `experimentalPhoneFork` 是默认关闭的启动配置。开启后，手机/折叠屏尝试通过
-提前创建的 fork 服务运行 renderer 和 utility，GPU 仍在浏览器进程内。
+提前创建的 fork 服务运行 renderer 和 utility，GPU 默认仍在浏览器进程内。
+显式选择 `gpuProcess='separate'` 时，GPU 也使用该服务，并通过 GL 离屏读回呈现画面。
 这不是官方 NativeChildProcess 在手机上的支持，也不提供 renderer 安全沙箱。
 
 ## 开关
@@ -21,7 +22,7 @@ AppStorage.setOrCreate('startupConfig', JSON.stringify(config));
 手机单进程，支持官方子进程的设备使用官方 API。
 
 仅接受 `deviceClass` 为 `phone` 或 `foldable` 的非 headless 启动。以下配置拒绝启动：
-`gpuProcess: 'separate'`、显式 `--single-process`、`--type`、
+显式 `--single-process`、`--type`、
 `--ohos-isolate-renderers`，或 Chromium 全局 CommandLine 已初始化。
 不能只在 additional switches 中写 `--ohos-phone-fork` 来绕过启动时序。
 该内部参数由类型化配置生成，不需要外壳重复添加。
@@ -35,8 +36,9 @@ AppStorage.setOrCreate('startupConfig', JSON.stringify(config));
 - 主入口为 `lumie://flags`，打开原生实验设置页，展示当前进程模式和“实验性多进程”开关。
 - `lumie://multi-process` 可作为直达该设置项的别名；`muti-process` 是拼写错误，
   不作为正式命令。进入页面本身不修改进程模式。
-- 默认 `experimentalPhoneFork=false`；启用后为 `true`，GPU 始终保持
-  `gpuProcess='in-process'`。不联动修改 JIT、ANGLE 或 Skia 设置。
+- 默认 `experimentalPhoneFork=false`；启用多进程后为 `true`，GPU 默认保持
+  `gpuProcess='in-process'`。独立 GPU 是另一个显式实验选项，设为 `separate`，
+  同样需要确认重启后生效。首轮独立 GPU 使用 GL，不联动修改 JIT。
 - 此选择仅适用于 phone/foldable；不改变平板/2in1 的既有官方子进程策略。
 
 ### 重启确认与回滚
@@ -85,7 +87,8 @@ ArkTS / 浏览器宿主
   ├─ 浏览器 ChromeMain + 进程内 GPU
   └─ 提前 fork 的服务（单线程，拥有并回收自己的子进程）
        ├─ renderer → libnweb_render.so → ChromeMain
-       └─ utility  → libnweb_render.so → ChromeMain
+       ├─ utility  → libnweb_render.so → ChromeMain
+       └─ 可选 gpu-process → GL pbuffer → memfd/socket → 宿主 NativeWindow
 ```
 
 服务在 `EnsureStarted` 内、Chromium ICU/ChromeMain/工作线程初始化前创建。
@@ -204,3 +207,51 @@ scripts/test-ohos-fork-server.sh
 
 `server ready` 只证明控制通道建立，`child created` 只证明获得 PID，均不表示网页可用。
 同 UID 的地址空间分离也不等于权限隔离，不得将本实验当成安全沙箱。
+
+
+## 手机独立 GPU：GL 兼容呈现
+
+```ts
+config.experimentalPhoneFork = true;
+config.gpuProcess = 'separate';
+config.angleBackend = 'gles';
+config.skiaBackend = 'gl';
+```
+
+仅删掉 `gpuProcess='in-process'` 不会启用独立 GPU：未填写仍保持原默认。
+进程模式改变必须重启整个应用，不能热切换；外壳沿用上文的重启确认和失败回滚。
+
+手机 fork 无法通过 Surface ID 导入宿主 XComponent，也没有 appspawn GPU 的
+Binder 窗口通道。本路径在 GPU 子进程创建 EGL pbuffer，读取 RGBA8 像素，
+通过私有 SOCK_SEQPACKET 和 SCM_RIGHTS 传递 memfd。宿主工作线程读出像素、
+处理 stride 和上下方向、等待缓冲区 fence，再交给真实 NativeWindow 显示。
+这是硬件 GL 绘制加 CPU 拷贝，不是零拷贝，也不表示性能优于进程内 GPU。
+首版禁用该路径的 NativePixmap 互操作，ANGLE/Skia Vulkan 暂不启用。
+
+协议限制：最大 8192 边长且整帧不超过 64 MiB；单连接只允许一个未确认帧；
+2 秒确认超时后关闭通道并返回 SWAP_FAILED。接收端拒绝尺寸/FD 数量/文件长度
+不符的数据，关闭多余 FD。手机 API 26 对传来的 memfd 可能允许 pread 但拒绝
+fstat(EACCES)，此时用 lseek 校验长度；不映射对端文件，防止截短引发宿主 SIGBUS。
+NativeWindow 在注册表锁内取得引用；尺寸变化前的旧帧丢弃；新 GPU 替换旧通道，
+旧通道不能再呈现。GPU 启动失败标记只有在收到真实帧且经过稳定等待后才能清除，
+否则下次启动自动回到进程内 GPU 一次。
+
+日志验收点：`OHOS phone GPU: fork child pid=`、
+`OHOS phone GPU: first frame presented widget=`、`OHOS GPU child: settled`。
+只有 GPU PID、没有 first frame，不能判为呈现通过。外壳还需验证网页、滚动、
+视频、WebGL、弹窗、旋转/折叠、后台恢复和 GPU 崩溃重启；检查画面方向和颜色。
+Vulkan、HDR、零拷贝视频与完整 Chromium 页面性能均不在本次探针通过范围内。
+
+2026-10-13 Mate 70 Pro+ / HarmonyOS 7.0.0.109 / API 26 探针：
+生产 fork 服务 + 生产帧传输/呈现代码连续 100/100 帧成功，64×64 → 65×33
+尺寸变化成功，真实 GL renderer 为 Maleoon 920，子进程退出码 0。
+这只是图形链路验证，不能替代完整 Chromium 154 / Lumie 独立 GPU 验收。
+
+## df24c8dd renderer 复测更新（2026-10-13，外壳回报）
+
+A 单进程基线通过；B/C 各 5 次受控崩溃刷新、20 轮标签开关、3 轮多标签冷启动
+恢复全部通过，本轮未复现原白屏或 15 秒连接超时。C 确认 renderer 实际运行 JIT。
+一次其他测试造成的后台干扰单独记录，切回刷新成功。这支持 FD 修复有效，
+仍需 release 签名和长期稳定性验证，不能外推为独立 GPU 已通过。
+报告：Downloads/Lumie-phone-fork-df24c8dd-20261013/REPORT.md。
+手机普通配置与外壳源码已恢复，外壳本轮没有提交或推送。
