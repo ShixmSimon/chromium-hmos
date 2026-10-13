@@ -21,6 +21,17 @@
 #include <string>
 #include <vector>
 
+// The test DSO resolves these wrappers so the same fixture can run from a
+// Linux executable or the phone probe's native shared library.
+extern "C" __attribute__((visibility("default"))) int ForkTestDuplicateFd(int fd) {
+  return base::internal::DuplicateOhosChildDescriptor(fd);
+}
+extern "C" __attribute__((visibility("default"))) void ForkTestReportStage(
+    uint32_t stage, int detail) {
+  base::internal::ReportOhosForkStage(
+      static_cast<base::internal::OhosForkStage>(stage), detail);
+}
+
 namespace {
 using namespace base::internal;
 int cached_runtime_fd = -1;
@@ -132,7 +143,8 @@ bool Normal(int iteration, pid_t& server, std::string* detail = nullptr) {
   }
   return ok && waited.value_or(false) && code == 0 && state &&
          !state->running && WIFEXITED(state->wait_status) &&
-         WEXITSTATUS(state->wait_status) == 0;
+         WEXITSTATUS(state->wait_status) == 0 &&
+         state->stage == static_cast<uint32_t>(OhosForkStage::kReturned);
 }
 }  // namespace
 
@@ -204,6 +216,11 @@ std::string RunOhosForkServerTests(const std::string& child_library) {
             WaitForOhosForkChild(abnormal, 5000, &code).value_or(false) &&
             code == 23,
         "preserve nonzero exit code 23");
+  auto progress = GetOhosForkChildStatus(abnormal);
+  check(progress &&
+            progress->stage == static_cast<uint32_t>(OhosForkStage::kNativeMain) &&
+            progress->detail == -23,
+        "child progress and signed detail survive reaping");
   pid_t crash = LaunchOhosForkChild("crash", {});
   bool waited =
       crash > 0 && WaitForOhosForkChild(crash, 5000, &code).value_or(false);
@@ -275,6 +292,11 @@ int main(int argc, char** argv) {
     if (child <= 0 || recv(channel[0], &ready, 1, 0) != 1 || ready != 'R')
       return 1;
     close(channel[0]);
+    auto live = GetOhosForkChildStatus(child);
+    if (!live || !live->running ||
+        live->stage != static_cast<uint32_t>(OhosForkStage::kConnected) ||
+        live->detail != 42)
+      return 1;
     if (kill(server, SIGKILL))
       return 1;
     siginfo_t info = {};
@@ -304,6 +326,9 @@ int main(int argc, char** argv) {
     bool ok = child > 0 &&
               WaitForOhosForkChild(child, 5000, &code).value_or(false) &&
               code == 78;
+    auto progress = GetOhosForkChildStatus(child);
+    ok &= progress &&
+          progress->stage == static_cast<uint32_t>(OhosForkStage::kLoading);
     StopOhosForkServer();
     puts(ok ? "PASS missing library: nonzero bootstrap exit"
             : "FAIL missing library");

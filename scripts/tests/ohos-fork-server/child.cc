@@ -2,16 +2,23 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 #include <AbilityKit/native_child_process.h>
+#include <dlfcn.h>
 #include <pthread.h>
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 
+#include "base/process/fork_server_ohos.h"
+
 static void* Thread(void* value) {
+  // Model a late system-library cleanup, after Chromium restores its FDs.
+  // Reusing low FD 3 here would close a live Chromium channel.
+  close(3);
   *static_cast<int*>(value) = 42;
   return nullptr;
 }
@@ -20,6 +27,22 @@ static void* Thread(void* value) {
 // tests the real server/SCM_RIGHTS/reaper, not Mojo or the renderer itself.
 extern "C" __attribute__((visibility("default"))) void ChromiumNativeChildMain(
     NativeChildProcess_Args args) {
+  // NAPI loads the phone fixture's host library with local visibility. Look
+  // it up explicitly; the production shim likewise resolves its engine DSO.
+#if defined(OHOS_FORK_TEST_SHARED_HOST)
+  void* host = dlopen("libforkprobe.so", RTLD_NOW | RTLD_LOCAL);
+  if (!host)
+    _exit(99);
+#else
+  void* host = RTLD_DEFAULT;
+#endif
+  auto duplicate = reinterpret_cast<int (*)(int)>(
+      dlsym(host, "ForkTestDuplicateFd"));
+  auto report = reinterpret_cast<void (*)(uint32_t, int)>(
+      dlsym(host, "ForkTestReportStage"));
+  if (!duplicate || !report)
+    _exit(99);
+  report(static_cast<uint32_t>(base::internal::OhosForkStage::kNativeMain), -23);
   if (!strcmp(args.entryParams, "exit23"))
     _exit(23);
   if (!strcmp(args.entryParams, "crash")) {
@@ -28,6 +51,7 @@ extern "C" __attribute__((visibility("default"))) void ChromiumNativeChildMain(
     _exit(92);
   }
   if (!strcmp(args.entryParams, "hang")) {
+    report(static_cast<uint32_t>(base::internal::OhosForkStage::kConnected), 42);
     if (args.fdList.head) {
       char ready = 'R';
       send(args.fdList.head->fd, &ready, 1, MSG_NOSIGNAL);
@@ -42,6 +66,10 @@ extern "C" __attribute__((visibility("default"))) void ChromiumNativeChildMain(
     if (!strcmp(node->fdName, "88"))
       memory = node->fd;
   }
+  // Exercise the production helper used by RestoreFileDescriptors, rather
+  // than merely using the server's parked inputs throughout the test.
+  channel = duplicate(channel);
+  memory = duplicate(memory);
   if (channel < 0 || memory < 0)
     _exit(93);
   int progress[] = {0, getppid(), 0, 1};

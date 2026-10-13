@@ -11,12 +11,14 @@
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +27,7 @@
 #include <cstring>
 #include <map>
 #include <mutex>
+#include <new>
 #include <thread>
 
 #include "AbilityKit/native_child_process.h"
@@ -51,19 +54,38 @@ struct Request {
   char params[kMaxParams] = {};
 };
 constexpr size_t kRequestHeader = offsetof(Request, params);
+// One lock-free word keeps stage and detail coherent across processes. Only
+// the owning child writes; the server snapshots it before reusing the slot.
+static_assert(std::atomic<uint64_t>::is_always_lock_free);
+struct ChildProgress {
+  std::atomic<uint64_t> value{0};
+};
+ChildProgress* child_progress = nullptr;
+int child_minimum_fd = 3;
+uint64_t SnapshotProgress(const ChildProgress* progress) {
+  return progress->value.load(std::memory_order_relaxed);
+}
+void SetProgress(OhosForkChildStatus& state, uint64_t value) {
+  state.stage = static_cast<uint32_t>(value >> 32);
+  state.detail = static_cast<int32_t>(value);
+}
 struct ExitRecord {
   int32_t pid = 0;
   int32_t status = -1;
+  uint64_t progress = 0;
 };
 struct Reply {
   uint32_t magic = kMagic;
   int32_t error = 0;
   int32_t pid = 0;
+  int32_t progress_pid = 0;
+  uint64_t progress = 0;
   uint32_t exited_count = 0;
   ExitRecord exited[kMaxChildren] = {};
 };
 struct ServerChild {
   pid_t pid = 0;
+  ChildProgress* progress = nullptr;
 };
 struct Client {
   const pid_t owner = getpid();
@@ -235,7 +257,8 @@ void ReapServerChildren(std::array<ServerChild, kMaxChildren>& children,
       // Keep a record until a reply transfers it to the browser. At most
       // kMaxChildren records, because these slots are reused only after send.
       reply.exited[reply.exited_count++] = {child.pid,
-                                            result > 0 ? status : -1};
+                                            result > 0 ? status : -1,
+                                            SnapshotProgress(child.progress)};
       child.pid = 0;
     }
   }
@@ -263,7 +286,12 @@ void ResetSignals() {
                            pid_t server,
                            const char* library,
                            Request& request,
-                           const std::vector<int>& fds) {
+                           const std::vector<int>& fds,
+                           ChildProgress* progress,
+                           int minimum_fd) {
+  child_progress = progress;
+  child_minimum_fd = minimum_fd;
+  ReportOhosForkStage(OhosForkStage::kForked);
   close(control);
   if (!BindLifetime(server))
     _exit(77);
@@ -283,6 +311,7 @@ void ResetSignals() {
   NativeChildProcess_Args args{request.params,
                                {fds.empty() ? nullptr : nodes.data()}};
   prctl(PR_SET_NAME, "ohos-fork-load", 0, 0, 0);
+  ReportOhosForkStage(OhosForkStage::kLoading);
   void* handle = dlopen(library, RTLD_NOW | RTLD_LOCAL);
   using Entry = void (*)(NativeChildProcess_Args);
   auto entry =
@@ -291,7 +320,9 @@ void ResetSignals() {
   if (!entry)
     _exit(78);
   prctl(PR_SET_NAME, "ohos-fork-entry", 0, 0, 0);
+  ReportOhosForkStage(OhosForkStage::kEntry);
   entry(args);
+  ReportOhosForkStage(OhosForkStage::kReturned);
   _exit(0);
 }
 
@@ -301,7 +332,16 @@ void ResetSignals() {
   if (!BindLifetime(browser) || !CloseInheritedFds(socket, minimum_received_fd))
     _exit(79);
   prctl(PR_SET_NAME, "ohos-fork-server", 0, 0, 0);
+  void* shared = mmap(nullptr, sizeof(ChildProgress) * kMaxChildren,
+                      PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+  if (shared == MAP_FAILED)
+    _exit(79);
+  auto* progress = static_cast<ChildProgress*>(shared);
   std::array<ServerChild, kMaxChildren> children{};
+  for (size_t i = 0; i < children.size(); ++i) {
+    new (&progress[i]) ChildProgress;
+    children[i].progress = &progress[i];
+  }
   Reply pending;
   if (!SendReply(socket, pending))
     _exit(79);
@@ -335,10 +375,12 @@ void ResetSignals() {
       } else if (!slot || !request.bytes) {
         reply.error = slot ? EINVAL : EAGAIN;
       } else {
+        slot->progress->value.store(0, std::memory_order_relaxed);
         pid_t server = getpid();
         pid_t child = fork();
         if (!child)
-          RunChild(socket, server, library, request, fds);
+          RunChild(socket, server, library, request, fds, slot->progress,
+                   minimum_received_fd);
         if (child < 0)
           reply.error = errno;
         else {
@@ -360,6 +402,15 @@ void ResetSignals() {
       stop = true;
     } else if (request.operation != Operation::kStatus) {
       reply.error = EINVAL;
+    }
+    if (request.operation == Operation::kStatus) {
+      for (const auto& child : children) {
+        if (child.pid > 0 && child.pid == request.pid) {
+          reply.progress_pid = child.pid;
+          reply.progress = SnapshotProgress(child.progress);
+          break;
+        }
+      }
     }
     CloseFds(fds);
     if (!SendReply(socket, reply))
@@ -394,8 +445,10 @@ void LoseServer(Client& client) {
     client.server = -1;
   }
   for (auto& [pid, state] : client.children) {
-    if (state.running)
-      state = {false, -1};
+    if (state.running) {
+      state.running = false;
+      state.wait_status = -1;
+    }
   }
 }
 
@@ -411,9 +464,14 @@ bool ReadReply(Client& client, Reply& reply) {
     return false;
   for (size_t i = 0; i < reply.exited_count; ++i) {
     auto found = client.children.find(reply.exited[i].pid);
-    if (found != client.children.end())
+    if (found != client.children.end()) {
       found->second = {false, reply.exited[i].status};
+      SetProgress(found->second, reply.exited[i].progress);
+    }
   }
+  auto found = client.children.find(reply.progress_pid);
+  if (found != client.children.end() && found->second.running)
+    SetProgress(found->second, reply.progress);
   return true;
 }
 
@@ -439,6 +497,41 @@ bool Rpc(Client& client,
 }
 
 }  // namespace
+
+void ReportOhosForkStage(OhosForkStage stage, int detail) {
+  if (child_progress) {
+    child_progress->value.store(
+        (static_cast<uint64_t>(stage) << 32) | static_cast<uint32_t>(detail),
+        std::memory_order_relaxed);
+  }
+}
+
+const char* OhosForkStageName(uint32_t stage) {
+  switch (static_cast<OhosForkStage>(stage)) {
+    case OhosForkStage::kNotStarted: return "not-started";
+    case OhosForkStage::kForked: return "forked";
+    case OhosForkStage::kLoading: return "loading";
+    case OhosForkStage::kEntry: return "entry";
+    case OhosForkStage::kNativeMain: return "native-main";
+    case OhosForkStage::kDescriptors: return "descriptors";
+    case OhosForkStage::kChromeMain: return "chrome-main";
+    case OhosForkStage::kAcceptInvitation: return "accept-invitation";
+    case OhosForkStage::kInvitationAccepted: return "invitation-accepted";
+    case OhosForkStage::kConnected: return "connected";
+    case OhosForkStage::kChannelError: return "channel-error";
+    case OhosForkStage::kConnectionTimeout: return "connection-timeout";
+    case OhosForkStage::kReturned: return "returned";
+  }
+  return "unknown";
+}
+
+int DuplicateOhosChildDescriptor(int fd) {
+  int result;
+  do {
+    result = fcntl(fd, F_DUPFD_CLOEXEC, child_minimum_fd);
+  } while (result < 0 && errno == EINTR);
+  return result;
+}
 
 bool StartOhosForkServer(const std::string& child_library) {
   Client& client = GetClient();
@@ -552,6 +645,7 @@ std::optional<OhosForkChildStatus> GetOhosForkChildStatus(pid_t pid) {
   if (found->second.running) {
     Request request;
     request.operation = Operation::kStatus;
+    request.pid = pid;
     Reply reply;
     Rpc(client, request, {}, reply);
   }

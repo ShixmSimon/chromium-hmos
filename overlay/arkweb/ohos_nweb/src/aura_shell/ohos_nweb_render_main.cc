@@ -29,6 +29,7 @@
 #include "base/logging.h"
 #include "base/path_service.h"
 #include "base/posix/global_descriptors.h"
+#include "base/process/fork_server_ohos.h"
 #include "base/process/launch_ohos.h"
 #include "base/strings/string_number_conversions.h"
 #include "ohos_nweb/src/nweb_hilog.h"
@@ -75,9 +76,8 @@ int RunChromeMain(std::vector<std::string> argv_strings) {
 // descriptor this process received.
 bool RestoreFileDescriptors(const std::vector<std::pair<int, int>>& fds) {
   // GlobalDescriptors maps logical keys to actual descriptors; there is no
-  // dup2 to fixed descriptor numbers here. Request the lowest free non-stdio
-  // descriptor instead of assuming the child has an RLIMIT_NOFILE above 1000.
-  constexpr int kMinChromiumDescriptor = 3;
+  // dup2 to fixed descriptor numbers here. Fork children must keep these
+  // copies above inherited runtime FD numbers, just like SCM_RIGHTS inputs.
   using DescriptorMapping =
       std::pair<base::GlobalDescriptors::Key, base::ScopedFD>;
   std::vector<DescriptorMapping> mappings;
@@ -88,7 +88,7 @@ bool RestoreFileDescriptors(const std::vector<std::pair<int, int>>& fds) {
       return false;
     }
     base::ScopedFD duplicated_fd(
-        fcntl(received_fd, F_DUPFD_CLOEXEC, kMinChromiumDescriptor));
+        base::internal::DuplicateOhosChildDescriptor(received_fd));
     if (!duplicated_fd.is_valid()) {
       LOG(ERROR) << "OHOS child bootstrap duplicate descriptor failed errno="
                  << errno << " key="
@@ -156,7 +156,7 @@ bool RestoreResourceDescriptors(const std::map<std::string, int>& resources,
       LOG(ERROR) << "OHOS child bootstrap invalid readonly resource";
       return false;
     }
-    base::ScopedFD fd(fcntl(received_fd, F_DUPFD_CLOEXEC, 3));
+    base::ScopedFD fd(base::internal::DuplicateOhosChildDescriptor(received_fd));
     if (!fd.is_valid()) {
       LOG(ERROR) << "OHOS child bootstrap resource duplicate failed errno="
                  << errno;
@@ -270,6 +270,8 @@ int RunNativeChild(const char* encoded_params,
   if (!RestoreFileDescriptors(fds)) {
     return 71;
   }
+  base::internal::ReportOhosForkStage(
+      base::internal::OhosForkStage::kDescriptors);
   if (!ApplyLaunchParams(launch_params)) {
     return 72;
   }
@@ -287,6 +289,8 @@ int RunNativeChild(const char* encoded_params,
   // to distinguish bootstrap failure from a child stuck inside Chromium.
   LOG(WARNING) << "OHOS child bootstrap entering ChromeMain argc="
                << launch_params.argv.size() << " fds=" << fds.size();
+  base::internal::ReportOhosForkStage(
+      base::internal::OhosForkStage::kChromeMain);
   const int exit_code = RunChromeMain(std::move(launch_params.argv));
   LOG(WARNING) << "AuraShell native child end pid=" << getpid()
                << " code=" << exit_code;
@@ -297,6 +301,8 @@ int RunNativeChild(const char* encoded_params,
 
 extern "C" __attribute__((visibility("default"))) void
 ChromiumHarmonyOSNativeChildMain(NativeChildProcess_Args args) {
+  base::internal::ReportOhosForkStage(
+      base::internal::OhosForkStage::kNativeMain);
   logging::SetLogMessageHandler(&ForwardChromiumChildLogToHilog);
   LOG(WARNING) << "AuraShell native child start pid=" << getpid();
   struct rlimit fd_limit = {};

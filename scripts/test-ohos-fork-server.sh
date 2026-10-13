@@ -6,8 +6,8 @@ fork_tests="$fork_repo/scripts/tests/ohos-fork-server"
 fork_tmp=$(mktemp -d)
 trap 'rm -rf "$fork_tmp"' EXIT
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -fPIC -shared -pthread \
-  -I "$fork_tests/stubs" "$fork_tests/child.cc" -o "$fork_tmp/libnweb_render.so"
-"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+  -I "$fork_repo/overlay" -I "$fork_tests/stubs" "$fork_tests/child.cc" -o "$fork_tmp/libnweb_render.so"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread -rdynamic \
   -I "$fork_repo/overlay" -I "$fork_tests/stubs" \
   "$fork_repo/overlay/base/process/fork_server_ohos.cc" "$fork_tests/suite.cc" \
   -ldl -o "$fork_tmp/fork-server-tests"

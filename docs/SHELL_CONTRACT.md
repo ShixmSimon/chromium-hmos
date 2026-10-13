@@ -1212,8 +1212,9 @@ OHOS ANGLE Vulkan 默认关闭 MSRTSS（直接渲染到单采样纹理）优化�
 启动配置 `experimentalPhoneFork?: boolean` 默认 `false`。设为 `true` 后，手机/折叠屏
 尝试通过提前创建的 fork 服务运行 renderer/utility，GPU 保持进程内。开关改变需要
 结束应用进程再冷启动；窗口变化时重新生成配置须保留开关值。不支持 headless、独立 GPU、
-显式 single-process 或 isolated renderers。此路径同 UID、没有安全沙箱，尚未完成
-完整 Chromium renderer/Mojo/首帧验收，只用于实验包。接入和验证步骤见
+显式 single-process 或 isolated renderers。此路径同 UID、没有安全沙箱。Chromium 154
+已在真机跑通网页与 renderer JIT，但有间歇性 renderer 未连接即退出，稳定性验收
+未全通过，仍只用于实验包。接入和验证步骤见
 [手机 fork 子进程实验](OHOS_PHONE_FORK.md)。
 
 ### 怎么自查

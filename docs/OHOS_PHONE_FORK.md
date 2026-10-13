@@ -39,14 +39,16 @@ ArkTS / 浏览器宿主
 服务在 `EnsureStarted` 内、Chromium ICU/ChromeMain/工作线程初始化前创建。
 此时 ArkTS、系统库以及引擎映射已经存在，因此仍会继承运行时状态和潜在的锁，
 不能把它等同于 exec 或 appspawn 的全新进程。没有清理匿名映射的 `munmap` 技巧。
-此路径只有完成完整内核的真机测试后才能判断是否可用。
+真实 Chromium 154 已在手机跑通网页与 renderer JIT，但稳定性验收仍有失败，见下文。
 
 浏览器通过私有 `SOCK_SEQPACKET` 控制通道发送编码参数与 `SCM_RIGHTS` FD。
 服务关闭继承的非标准 FD，重置生命周期信号和信号屏蔽，再根据请求 fork；保留系统运行时
 的私有信号处理。收到的 FD 在 fork 前复制到不低于 256、且高于继承 FD 最大编号的位置，
 避免与继承运行时缓存的低编号 FD 冲突。手机实测未迁移时通道会在入口握手前关闭，
 迁移后通过；具体关闭它的系统库尚未定位。
-子进程复用 `ChromiumNativeChildMain` 入口和现有参数/FD 恢复逻辑。
+子进程复用 `ChromiumNativeChildMain` 入口和参数/FD 恢复逻辑。
+恢复为 Chromium GlobalDescriptors 时的副本也必须保持上述高编号，不能再次复制回
+低编号；官方 appspawn 子进程仍以 3 为最低可用编号。
 参数上限小于 64 KiB，每次最多 16 个 FD，服务最多同时管理 64 个活跃子进程；
 Chromium 默认 renderer 上限为 16。
 
@@ -79,25 +81,74 @@ Chromium 默认 renderer 上限为 16。
 - 固定 Chromium 154 修订 `b510e9d7cd3a2fbd78d0ddc42234103206c5f78d`：
   全新主补丁之后、增量 child-exit-observation 补丁之后，新增补丁均可应用。
 
-宿主测试使用测试 DSO，只验证服务传输和生命周期，**不代表 Chromium renderer、Mojo
-握手或网页首帧已经通过**。真实 HAP 测试项目在本机 Downloads/ForkChildProbe；结果
-保存在项目的 `artifacts/fork-server-*` 中。完整 Chromium 154 编译及设备验收尚未完成；
-本机已有的原生构建树为 Chromium 150，不能用它代替本分支版本验证。
+宿主测试使用测试 DSO，只验证服务传输和生命周期；真实 HAP 测试项目在本机
+Downloads/ForkChildProbe，结果保存在该项目 `artifacts/fork-server-*` 中。
 
-可重复的 Linux 检查（需要 Linux C++17 编译器）：
+### 真实 Chromium 154 外壳验收（2026-10-13）
+
+Lumie 外壳 `937cc03e` 使用本分支 `fd5a771f` HAR，CI
+[38351864547](https://github.com/miramira8295/chromium-hmos/actions/runs/38351864547)
+构建成功。Mate 70 Pro+ / HarmonyOS 7.0.0.109 / API 26，**debug 签名**：
+
+- A：关闭 fork，单进程基线通过。
+- B：fork + jitless，网页、交互和多进程通过；一次 renderer 崩溃后的刷新白屏，
+  冷启动复测恢复成功，仍有后台 renderer 未连接即退出。
+- C：fork + JIT，正式冷启动和崩溃恢复通过；独立 renderer PID 的 trace 记录到
+  Maglev 代码生成、优化编译及优化函数安装，确认实际 JIT。首次安装会话仍出现同类失败。
+
+三组 getAboutInfo 均确认 `fd5a771f`。此轮证明了网页运行和 renderer JIT，
+**没有通过完整稳定性验收，也没有验证 release 签名下的 renderer JIT**。
+原始报告及证据目录：本机 `Downloads/Lumie-phone-fork-fd5a771-20261013`。
+
+B 失败 renderer 58890 在 14:09:55.032 创建，14:10:10.085 出现通道错误，
+最终 `channel_connected=0 status=0 exit_code=0`。Chromium 154 的
+`ChildThreadImpl::EnsureConnected` 默认 15 秒未连接就以 0 退出，与该现象吻合；
+尚需子进程阶段记录确认，不能单凭这个退出码认定启动成功或归因于 jitless。
+成功与失败子进程均缺少 hilog，因此缺少启动日志本身也不能当成故障证据。
+
+### 本轮修正与下一轮验收
+
+针对已发现的 FD 恢复隐患，保持 Chromium FD 副本在高编号；shim 无法解析引擎入口
+时以 78 退出。新增固定大小的共享内存阶段记录，不依赖子进程 hilog，服务在
+`waitpid` 后保存最终阶段并交给宿主。它是诊断信息，不是安全边界或独立的就绪判据。
+
+宿主查询退出状态时会输出（示例，不是已采集到的真机结果）：
+
+```text
+OHOS phone fork child exit pid=... stage=connection-timeout detail=15 wait_status=0
+```
+
+阶段包括 `forked`、`loading`、`entry`、`native-main`、`descriptors`、`chrome-main`、
+`accept-invitation`、`invitation-accepted`、`connected`、`channel-error`、
+`connection-timeout` 和 `returned`。`invitation-accepted` 只表示 Accept 调用返回，
+`connected` 才表示 Chromium 的连接回调已到达。记录为最新阶段，不是完整事件序列；
+`wait_status` 为原始 POSIX 状态，不能直接当退出码使用。
+
+本轮 Linux 126/126 通过，另含服务丢失、动态库缺失用例；验证运行中及已回收子进程的
+阶段读取。新增“FD 恢复后系统库关闭缓存低 FD”的回归，临时改回低编号会复现 EOF，
+修正后通过。Mate 70 Pro+ 的 Release 探针 HAP 同样 126/126 通过，100 次普通启动
+宿主 FD 为 44→44，已回收子进程的阶段与 detail 校验通过；证据为探针目录
+`artifacts/fork-server-phone-fd-restore-final.txt`（宿主 PID 44798）。首轮测试 DSO 因 NAPI
+宿主库局部符号可见性查找失败，显式解析宿主库后重测通过。
+此结果**不能代替 Lumie 白屏故障的复测**。
+
+可重复的 Linux 检查：
 
 ```sh
 scripts/test-ohos-fork-server.sh
 ```
 
-下一阶段必须使用同一次 Chromium 154 构建的引擎和 HAR，在手机开启开关验收：
+外壳下一轮保持现有接入，不增加 fork 或子进程启动 API：
 
-1. `jitless: true` 冷启动，确认浏览器、fork 服务和 renderer PID 不同；
-   日志必须越过 `OHOS child bootstrap entering ChromeMain`，并完成 Mojo 握手。
-2. 加载本地确定性测试页，确认首帧、DOM/JS、输入、导航、跨站新标签和 utility 服务。
-3. 只终止一个 renderer，确认主界面继续响应，页面报错或重建且无僵尸进程。
-4. 循环打开/关闭页面，检查 FD、RSS、子进程数量，以及后台/前台、整应用退出清理。
-5. 关闭开关冷启动，回归原手机单进程路径；再单独验收 JIT 权限及可执行内存。
+1. 替换本轮构建的 HAR，清理依赖缓存并用 getAboutInfo 核对新提交；保留旧 HAR 和失败证据。
+2. A/B/C 保持同样配置，每次结束整个应用再冷启动。B/C 都测试多标签恢复、跨站导航，
+   并循环执行测试 renderer 的 Page.crash → 页面重载，确认宿主存活及 DOM/JS 恢复。
+3. 特别保留刷新前后至少 20 秒宿主日志，按 PID 对齐 `child created`、`renderer launched`、
+   `phone fork child exit` 和 `renderer process died`，附 CDP target/PID、页面事件及白屏截图。
+4. 若再次出现 `stage=connection-timeout detail=15`，说明确实到达 Chromium 连接超时；
+   若停在 `loading` / `entry` / `chrome-main`，则沿对应加载或启动阶段继续定位。
+5. 统计多轮失败次数，检查 FD、RSS、存活子进程和整应用退出清理；一次成功不消除旧失败。
+   release 签名的网页/JIT 和长期压力仍需单独验收。
 
 `server ready` 只证明控制通道建立，`child created` 只证明获得 PID，均不表示网页可用。
 同 UID 的地址空间分离也不等于权限隔离，不得将本实验当成安全沙箱。
