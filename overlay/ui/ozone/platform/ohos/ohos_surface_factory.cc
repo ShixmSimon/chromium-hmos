@@ -194,7 +194,8 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
                              std::unique_ptr<gfx::VSyncProvider> vsync_provider)
       : gl::NativeViewGLSurfaceEGL(display, window, std::move(vsync_provider)),
         widget_(widget),
-        hdr_panel_(OhosDisplaySupportsHdr()),
+        sdr_output_(OhosRequiresSdrOutput()),
+        hdr_panel_(!sdr_output_ && OhosDisplaySupportsHdr()),
         // Whether the window has alpha is only known at the first Resize;
         // until then, a popup is the window that draws it.
         ten_bit_(hdr_panel_ && !IsOhosAnchoredWindow(widget)) {
@@ -255,7 +256,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
     const EGLNativeWindowType window =
         reinterpret_cast<EGLNativeWindowType>(surface->window);
     if (window != window_) {
-      tagged_pq_ = false;
+      tagged_pq_.reset();
       original_format_.reset();
     }
     window_ = window;
@@ -333,11 +334,11 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
   // and the page went grey. The native window keeps a colour space and an
   // HDR metadata type that the system stamps on every buffer it hands out
   // from then on, so tagging it before the next frame is drawn is enough --
-  // no surface has to be recreated. Back to sRGB once PQ output stops; a
-  // window that never drew PQ is left as the system made it.
+  // no surface has to be recreated. Explicitly tag sRGB on a new/replaced
+  // window too: a previous GPU generation may have left HDR metadata on it.
   void TagNativeWindowColorSpace() {
     auto* native_window = reinterpret_cast<OHNativeWindow*>(window_);
-    if (!native_window || pq_output_ == tagged_pq_) {
+    if (!native_window || (tagged_pq_ && pq_output_ == *tagged_pq_)) {
       return;
     }
     tagged_pq_ = pq_output_;
@@ -381,7 +382,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
       }
       return;
     }
-    if (IsOhosAnchoredWindow(widget_)) {
+    if (sdr_output_ || IsOhosAnchoredWindow(widget_)) {
       RequestAlphaCapableBuffer(native_window);
     } else if (original_format_) {
       OH_NativeWindow_NativeWindowHandleOpt(native_window, SET_FORMAT,
@@ -396,7 +397,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
   }
 
   bool pq_output_ = false;
-  bool tagged_pq_ = false;
+  std::optional<bool> tagged_pq_;
   // The buffer format the window had before it was raised to 10 bits.
   std::optional<int32_t> original_format_;
 
@@ -413,7 +414,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
     }
 
     window_ = next_window;
-    tagged_pq_ = false;
+    tagged_pq_.reset();
     original_format_.reset();
     LOG(INFO) << "OHOS XComponent native window changed; recreating EGL "
                  "surface";
@@ -473,6 +474,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
   EGLNativeWindowType held_window_ = 0;
 
   const gfx::AcceleratedWidget widget_;
+  const bool sdr_output_;
   const bool hdr_panel_;
   bool ten_bit_;
   // The driver had no 10-bit window config, or could not make a window from

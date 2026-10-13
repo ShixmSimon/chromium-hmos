@@ -98,3 +98,7 @@ OHOS Skia reshape: format=... color_type=... alpha_type=... color_space=... size
 `GaneshVulkan` 与 `In-process GPU: false`。测试不透明网页、透明内容、HDR 视频、
 旋转及标签切换；HDR 视频预期显示为 SDR。CI 编译成功只证明构建通过，
 不能代替设备上的 Vulkan 启用及画面正确性验收。
+
+后续 Pad 现场确认了常规 Vulkan 的 10 位请求 / 8 位 swapchain 不一致，现已将
+SDR 输出策略扩展到 OHOS 原生 Skia Vulkan 会话及其 GL 回退，详见
+[Pad / PC 输出颜色协商](OHOS_PAD_SKIA_VULKAN.md)。

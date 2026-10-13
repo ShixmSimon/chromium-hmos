@@ -1,0 +1,43 @@
+diff --git a/content/browser/gpu/gpu_process_host.cc b/content/browser/gpu/gpu_process_host.cc
+index 8b0506b0..fb6ef17d 100644
+--- a/content/browser/gpu/gpu_process_host.cc
++++ b/content/browser/gpu/gpu_process_host.cc
+@@ -1507,6 +1507,16 @@ bool GpuProcessHost::LaunchGpuProcess() {
+   GpuDataManagerImpl::GetInstance()->AppendGpuCommandLine(cmd_line.get(),
+                                                           kind_);
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Keep the browser's output color policy across GPU restarts. Vulkan may
++  // have been disabled in GPU preferences by now; this marker only fixes the
++  // display/GL target to SDR and must not re-enable the failed backend.
++  if (browser_command_line.GetSwitchValueASCII("use-vulkan") == "native" ||
++      browser_command_line.HasSwitch("ohos-sdr-output")) {
++    cmd_line->AppendSwitch("ohos-sdr-output");
++  }
++#endif
++
+   // If specified, prepend a launcher program to the command line.
+   if (!gpu_launcher.empty())
+     cmd_line->PrependWrapper(gpu_launcher);
+diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.cc b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
+index eeb2a5d6..42b77b66 100644
+--- a/components/viz/service/display_embedder/skia_output_device_vulkan.cc
++++ b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
+@@ -348,6 +348,17 @@ bool SkiaOutputDeviceVulkan::Initialize() {
+       sk_color_type;
+   capabilities_.sk_color_type_map[SinglePlaneFormat::kBGRA_8888] =
+       sk_color_type;
++#if BUILDFLAG(IS_OHOS)
++  // Opaque output uses the same physical 8-bit swapchain. Alpha semantics
++  // are carried separately by Reshape, as in the GL output device.
++  capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBX_8888] =
++      sk_color_type;
++  LOG(WARNING) << "OHOS Vulkan: swapchain format=" << surface_format
++               << " color_space="
++               << vulkan_surface_->surface_format().colorSpace
++               << " sk_color_type=" << sk_color_type
++               << "; output is 8-bit sRGB";
++#endif
+   // BGRX_8888 is used on Windows.
+   capabilities_.sk_color_type_map[SinglePlaneFormat::kBGRX_8888] =
+       sk_color_type;

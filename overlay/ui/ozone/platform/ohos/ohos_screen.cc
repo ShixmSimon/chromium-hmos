@@ -45,15 +45,11 @@ constexpr gfx::Size kOhosPrimaryDisplaySize(1920, 1080);
 // popup's corners, and the factory keeps those windows 8-bit.
 gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
   gfx::DisplayColorSpaces color_spaces(gfx::ColorSpace::CreateSRGB());
-  const auto* command_line = base::CommandLine::ForCurrentProcess();
-  if (IsOhosPhoneGpuChild() ||
-      (command_line->HasSwitch(base::internal::kOhosPhoneFork) &&
-       !command_line->HasSwitch("in-process-gpu"))) {
-    // The phone fork transport allocates RGBA8 buffers for both GL and
-    // Vulkan, regardless of the panel's HDR support. Advertise SDR so Viz
-    // tone-maps HDR content instead of requesting an unsupported 10-bit
-    // target or sending PQ pixels to an untagged sRGB NativeBuffer.
-    LOG(WARNING) << "OHOS phone GPU: display output is RGBA8 sRGB; "
+  if (OhosRequiresSdrOutput()) {
+    // Both the native Vulkan swapchain and phone shared buffers use 8-bit
+    // sRGB. Keep display negotiation consistent with the actual target,
+    // including any GL fallback during the same browser session.
+    LOG(WARNING) << "OHOS display: session output is RGBA8 sRGB; "
                     "HDR content is tone-mapped";
     return color_spaces;
   }
@@ -112,6 +108,15 @@ DisplayChangeRelay& GetDisplayChangeRelay() {
 
 }  // namespace
 
+bool OhosRequiresSdrOutput() {
+  const auto* command_line = base::CommandLine::ForCurrentProcess();
+  return command_line->HasSwitch("ohos-sdr-output") ||
+         command_line->GetSwitchValueASCII("use-vulkan") == "native" ||
+         IsOhosPhoneGpuChild() ||
+         (command_line->HasSwitch(base::internal::kOhosPhoneFork) &&
+          !command_line->HasSwitch("in-process-gpu"));
+}
+
 bool OhosDisplaySupportsHdr() {
   NativeDisplayManager_DisplayInfo* info = nullptr;
   if (OH_NativeDisplayManager_CreateDisplayById(0, &info) !=
@@ -138,9 +143,8 @@ bool OhosDisplaySupportsHdr() {
   static base::NoDestructor<std::string> last_said;
   const std::string said =
       "panel HDR formats [" + formats + " ], " +
-      (hdr ? "HDR content is output as Rec. 2020 PQ, opaque windows in "
-             "RGBA_1010102"
-           : "HDR content is tone-mapped to sRGB");
+      (hdr ? "HDR panel; output depends on the rendering surface"
+           : "SDR panel");
   base::AutoLock hold(*lock);
   if (*last_said != said) {
     *last_said = said;

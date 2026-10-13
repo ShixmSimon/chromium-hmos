@@ -12,6 +12,10 @@
 
 namespace ui {
 
+// The OHOS Skia Vulkan swapchain and phone shared buffers are SDR-only.
+// This remains true for a Vulkan session after its GPU falls back to GL.
+bool OhosRequiresSdrOutput();
+
 // Whether the default display reports any HDR format. Asked by the screen,
 // to tell the compositor what to draw HDR content in, and by the GL surface
 // factory, to give a window a 10-bit buffer to draw it into.
