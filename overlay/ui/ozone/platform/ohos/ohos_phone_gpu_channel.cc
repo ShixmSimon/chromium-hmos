@@ -7,7 +7,10 @@
 #include <native_window/external_window.h>
 #include <sys/socket.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
+#include <map>
 #include <memory>
 
 #include "base/files/scoped_file.h"
@@ -19,6 +22,8 @@
 #include "base/task/thread_pool.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_presenter.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
+#include "ui/ozone/platform/ohos/ohos_vsync_provider.h"
 
 namespace ui {
 namespace {
@@ -43,6 +48,9 @@ struct ChildState {
   base::ScopedFD socket;
   bool initialized = false;
   uint64_t sequence GUARDED_BY(lock) = 0;
+  base::TimeTicks timebase GUARDED_BY(lock);
+  base::TimeDelta interval GUARDED_BY(lock);
+  base::TimeTicks timing_updated GUARDED_BY(lock);
 };
 ChildState& Child() {
   static base::NoDestructor<ChildState> state;
@@ -52,7 +60,115 @@ ChildState& Child() {
 void ReceiveFrames(std::shared_ptr<Connection> connection) {
   uint64_t last_sequence = 0;
   std::vector<uint8_t> pixels;
+  struct Pending {
+    phone_gpu::SharedPacket packet;
+    std::unique_ptr<phone_gpu::SharedBufferLease> buffer;
+  };
+  std::map<uint64_t, Pending> leases;
+  OhosVSyncProvider timing(GetOhosApplicationWindowId(), true);
   while (connection->active.load()) {
+    uint32_t magic = 0;
+    if (!phone_gpu::PeekPhoneGpuMessage(connection->socket.get(), &magic,
+                                        200)) {
+      if (errno == ETIMEDOUT) {
+        timing.PollIdle();
+        continue;
+      }
+      break;
+    }
+    if (magic == phone_gpu::kSharedMagic) {
+      phone_gpu::SharedMessage request, response;
+      if (!phone_gpu::ReceiveSharedMessage(connection->socket.get(), &request,
+                                           0) ||
+          request.packet.sequence <= last_sequence)
+        break;
+      last_sequence = request.packet.sequence;
+      const auto& p = request.packet;
+      auto& reply = response.packet;
+      reply.sequence = p.sequence;
+      reply.widget = p.widget;
+      reply.lease = p.lease;
+      reply.operation = phone_gpu::SharedOp::kReply;
+      reply.result = static_cast<uint32_t>(phone_gpu::Result::kFailed);
+      {
+        base::AutoLock lock(Browser().lock);
+        if (Browser().current != connection || !connection->active.load())
+          break;
+        using Op = phone_gpu::SharedOp;
+        if (p.operation == Op::kAcquire) {
+          reply.operation = Op::kUnavailable;
+          auto surface = AcquireOhosNativeSurfaceForPhoneGpu(p.widget);
+          if (surface && surface->window) {
+            if (leases.size() < 4 && phone_gpu::SharedBufferAllocatorReady() &&
+                surface->bounds.width() == static_cast<int>(p.width) &&
+                surface->bounds.height() == static_cast<int>(p.height)) {
+              reply.operation = Op::kBuffer;
+              reply.width = p.width;
+              reply.height = p.height;
+              reply.lease = p.sequence;
+              auto buffer = std::make_unique<phone_gpu::SharedBufferLease>();
+              if (buffer->Acquire(surface->window, &response)) {
+                leases.emplace(reply.lease, Pending{reply, std::move(buffer)});
+              } else {
+                response.CloseFds();
+                reply = phone_gpu::SharedPacket{};
+                reply.sequence = p.sequence;
+                reply.widget = p.widget;
+                reply.operation = Op::kUnavailable;
+              }
+            }
+            OH_NativeWindow_NativeObjectUnreference(surface->window);
+          }
+        } else if (p.operation == Op::kPresent || p.operation == Op::kCancel ||
+                   p.operation == Op::kDiscard) {
+          auto it = leases.find(p.lease);
+          if (it == leases.end() || it->second.packet.widget != p.widget)
+            break;
+          if (p.operation == Op::kCancel) {
+            it->second.buffer->CancelBeforeDrawing();
+            reply.result = static_cast<uint32_t>(phone_gpu::Result::kDropped);
+          } else if (p.operation == Op::kDiscard) {
+            reply.result = static_cast<uint32_t>(phone_gpu::Result::kDropped);
+          } else {
+            auto surface = AcquireOhosNativeSurfaceForPhoneGpu(p.widget);
+            bool current = surface &&
+                           surface->window == it->second.buffer->window() &&
+                           surface->bounds.width() ==
+                               static_cast<int>(it->second.packet.width) &&
+                           surface->bounds.height() ==
+                               static_cast<int>(it->second.packet.height);
+            if (surface && surface->window)
+              OH_NativeWindow_NativeObjectUnreference(surface->window);
+            if (current && it->second.buffer->Present(request.TakeFence())) {
+              reply.result =
+                  static_cast<uint32_t>(phone_gpu::Result::kPresented);
+              if (!connection->presented.exchange(true))
+                LOG(WARNING) << "OHOS phone GPU: first frame presented using "
+                                "shared NativeBuffer";
+            } else if (!current) {
+              // Destructor detaches this allocation; no stale frame is flushed.
+              reply.result = static_cast<uint32_t>(phone_gpu::Result::kDropped);
+            }
+          }
+          leases.erase(it);
+        } else if (p.operation == Op::kTiming) {
+          if (p.width >= 30 && p.width <= 120)
+            timing.SetPreferredFrameInterval(base::Seconds(1.0 / p.width));
+          reply.result = static_cast<uint32_t>(phone_gpu::Result::kDropped);
+        } else {
+          break;
+        }
+      }
+      base::TimeTicks timebase;
+      base::TimeDelta interval;
+      if (timing.GetVSyncParametersIfAvailable(&timebase, &interval)) {
+        reply.timebase_us = timebase.since_origin().InMicroseconds();
+        reply.interval_us = interval.InMicroseconds();
+      }
+      if (!phone_gpu::SendSharedMessage(connection->socket.get(), response))
+        break;
+      continue;
+    }
     phone_gpu::Frame frame;
     int received = -1;
     if (!phone_gpu::ReceiveFrame(connection->socket.get(), &frame, &received,
@@ -97,6 +213,10 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
     if (!phone_gpu::SendReply(connection->socket.get(), reply))
       break;
   }
+  {
+    base::AutoLock lock(Browser().lock);
+    leases.clear();
+  }
   connection->active = false;
   shutdown(connection->socket.get(), SHUT_RDWR);
   LOG(WARNING) << "OHOS phone GPU: frame channel closed";
@@ -133,7 +253,7 @@ base::ProcessId LaunchOhosPhoneGpuChild(
   base::ThreadPool::PostTask(FROM_HERE, {base::MayBlock()},
                              base::BindOnce(&ReceiveFrames, connection));
   LOG(WARNING) << "OHOS phone GPU: fork child pid=" << pid
-               << " using GL readback presentation";
+               << " with shared-buffer negotiation and readback fallback";
   return pid;
 }
 bool OhosPhoneGpuHasPresented() {
@@ -174,5 +294,107 @@ phone_gpu::Result SubmitOhosPhoneGpuFrame(phone_gpu::Frame frame,
     return phone_gpu::Result::kFailed;
   }
   return result;
+}
+namespace {
+bool ExchangeShared(phone_gpu::SharedMessage* request,
+                    phone_gpu::SharedMessage* response) {
+  auto& state = Child();
+  base::AutoLock lock(state.lock);
+  request->packet.sequence = ++state.sequence;
+  if (!state.socket.is_valid() ||
+      !phone_gpu::SendSharedMessage(state.socket.get(), *request) ||
+      !phone_gpu::ReceiveSharedMessage(state.socket.get(), response,
+                                       phone_gpu::kFrameTimeoutMs) ||
+      response->packet.sequence != request->packet.sequence ||
+      response->packet.widget != request->packet.widget) {
+    if (state.socket.is_valid())
+      shutdown(state.socket.get(), SHUT_RDWR);
+    state.socket.reset();
+    return false;
+  }
+  if (response->packet.interval_us >= 4000 &&
+      response->packet.interval_us <= 100000 &&
+      response->packet.timebase_us > 0) {
+    state.timebase =
+        base::TimeTicks() + base::Microseconds(response->packet.timebase_us);
+    state.interval = base::Microseconds(response->packet.interval_us);
+    state.timing_updated = base::TimeTicks::Now();
+  }
+  return true;
+}
+}  // namespace
+bool AcquireOhosPhoneGpuBuffer(phone_gpu::Frame frame,
+                               phone_gpu::SharedMessage* response) {
+  phone_gpu::SharedMessage request;
+  request.packet.widget = frame.widget;
+  request.packet.width = frame.width;
+  request.packet.height = frame.height;
+  return ExchangeShared(&request, response) &&
+         response->packet.operation == phone_gpu::SharedOp::kBuffer;
+}
+phone_gpu::Result PresentOhosPhoneGpuBuffer(uint64_t widget,
+                                            uint64_t lease,
+                                            int completion_fd) {
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kPresent;
+  request.packet.widget = widget;
+  request.packet.lease = lease;
+  request.packet.has_fence = 1;
+  request.fds.push_back(completion_fd);
+  if (!ExchangeShared(&request, &response) ||
+      response.packet.operation != phone_gpu::SharedOp::kReply ||
+      response.packet.lease != lease)
+    return phone_gpu::Result::kFailed;
+  return static_cast<phone_gpu::Result>(response.packet.result);
+}
+void DiscardOhosPhoneGpuBuffer(uint64_t widget, uint64_t lease) {
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kDiscard;
+  request.packet.widget = widget;
+  request.packet.lease = lease;
+  ExchangeShared(&request, &response);
+}
+bool CancelOhosPhoneGpuBuffer(uint64_t widget, uint64_t lease) {
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kCancel;
+  request.packet.widget = widget;
+  request.packet.lease = lease;
+  return ExchangeShared(&request, &response) &&
+         response.packet.operation == phone_gpu::SharedOp::kReply &&
+         response.packet.lease == lease;
+}
+bool GetOhosPhoneGpuTiming(uint64_t widget,
+                           base::TimeTicks* timebase,
+                           base::TimeDelta* interval) {
+  auto& state = Child();
+  {
+    base::AutoLock lock(state.lock);
+    if (!state.interval.is_zero() &&
+        base::TimeTicks::Now() - state.timing_updated <
+            base::Milliseconds(100)) {
+      *timebase = state.timebase;
+      *interval = state.interval;
+      return true;
+    }
+  }
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kTiming;
+  request.packet.widget = widget;
+  ExchangeShared(&request, &response);
+  base::AutoLock lock(state.lock);
+  *timebase = state.timebase;
+  *interval = state.interval;
+  return !interval->is_zero();
+}
+void SetOhosPhoneGpuFrameInterval(uint64_t widget, base::TimeDelta interval) {
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kTiming;
+  request.packet.widget = widget;
+  request.packet.width =
+      interval.is_positive()
+          ? static_cast<uint32_t>(
+                std::clamp(std::lround(1.0 / interval.InSecondsF()), 30l, 120l))
+          : 120;
+  ExchangeShared(&request, &response);
 }
 }  // namespace ui

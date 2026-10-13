@@ -116,9 +116,9 @@ bool Receive(int socket, void* data, size_t size, int* fd, int timeout_ms) {
 }  // namespace
 
 size_t FrameBytes(const Frame& frame) {
-  if (frame.magic != Frame{}.magic || frame.reserved || !frame.widget ||
-      !frame.sequence || !frame.width || !frame.height || frame.width > 8192 ||
-      frame.height > 8192)
+  if (frame.magic != Frame{}.magic || (frame.reserved & ~kTopLeftRows) ||
+      !frame.widget || !frame.sequence || !frame.width || !frame.height ||
+      frame.width > 8192 || frame.height > 8192)
     return 0;
   const uint64_t bytes = uint64_t{frame.width} * frame.height * 4;
   return bytes <= kMaxFrameBytes ? static_cast<size_t>(bytes) : 0;

@@ -20,11 +20,12 @@ inline constexpr size_t kMaxFrameBytes = 64 * 1024 * 1024;
 inline constexpr int kFrameTimeoutMs = 2000;
 enum class Result : uint32_t { kPresented = 0, kDropped = 1, kFailed = 2 };
 
+inline constexpr uint32_t kTopLeftRows = 1;
 struct Frame {
   uint32_t magic = 0x50475031;
   uint32_t width = 0;
   uint32_t height = 0;
-  uint32_t reserved = 0;
+  uint32_t reserved = 0;  // kTopLeftRows or zero (legacy bottom-up).
   uint64_t widget = 0;
   uint64_t sequence = 0;
 };

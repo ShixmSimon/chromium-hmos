@@ -27,6 +27,7 @@
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 
 extern "C" int ChromeMain(int argc, const char** argv);
@@ -302,6 +303,10 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
       AURA_LOG_E("AuraShell phone fork configuration conflicts or runtime "
                  "already initialized; startup refused");
       return false;
+    }
+    if (config.gpu_process == "separate") {
+      const bool prepared = ui::phone_gpu::PrepareSharedBufferAllocator();
+      AURA_LOG_I("AuraShell phone GPU shared-buffer allocator prepared=%{public}d", prepared);
     }
     Dl_info module = {};
     if (!dladdr(reinterpret_cast<const void*>(&ConfigureRuntimePaths), &module) ||

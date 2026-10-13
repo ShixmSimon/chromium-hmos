@@ -1,6 +1,15 @@
 #include "ui/ozone/platform/ohos/ohos_surface_factory.h"
 
 #include <optional>
+#include <map>
+#include <cstring>
+#include <utility>
+#include <unistd.h>
+#include "base/functional/callback_helpers.h"
+#include "base/threading/watchdog.h"
+#include <native_buffer/native_buffer.h>
+#include "base/files/scoped_file.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
 #include <string>
 #include <vector>
 
@@ -499,22 +508,49 @@ class OhosDetachedGLSurface : public gl::PbufferGLSurfaceEGL {
   ~OhosDetachedGLSurface() override = default;
 };
 
-// Phone fork children cannot import the browser's native window. A pbuffer
-// still uses the physical GPU; only presentation is copied through shared
-// memory. Keep this separate from the native-window path used by appspawn.
+// The browser owns the NativeWindow queue; this fork child draws directly into
+// leased buffers. The pbuffer only keeps the EGL context current. Skia sees one
+// stable FBO whose attachment is changed before each BeginPaint.
+class PhoneGpuVSyncProvider final : public gfx::VSyncProvider {
+ public:
+  explicit PhoneGpuVSyncProvider(uint64_t widget) : widget_(widget) {}
+  void GetVSyncParameters(UpdateVSyncCallback callback) override {
+    base::TimeTicks timebase;
+    base::TimeDelta interval;
+    if (GetVSyncParametersIfAvailable(&timebase, &interval))
+      std::move(callback).Run(timebase, interval);
+  }
+  bool GetVSyncParametersIfAvailable(base::TimeTicks* timebase,
+                                     base::TimeDelta* interval) override {
+    return GetOhosPhoneGpuTiming(widget_, timebase, interval);
+  }
+  bool SupportGetVSyncParametersIfAvailable() const override { return true; }
+  bool IsHWClock() const override { return true; }
+  void SetPreferredFrameInterval(base::TimeDelta interval) override {
+    SetOhosPhoneGpuFrameInterval(widget_, interval);
+  }
+
+ private:
+  const uint64_t widget_;
+};
+
 class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
  public:
   OhosPhoneGpuGLSurface(gl::GLDisplayEGL* display,
                         gfx::AcceleratedWidget widget)
-      : PbufferGLSurfaceEGL(display, gfx::Size(1, 1)), widget_(widget) {}
-
-  // EGL must choose a PBUFFER_BIT config, while viz must treat this as a
-  // view surface and call SwapBuffers to send frames to the browser.
+      : PbufferGLSurfaceEGL(display, gfx::Size(1, 1)),
+        widget_(widget),
+        timing_(widget) {}
   EGLConfig GetConfig() override {
     base::AutoReset<bool> selecting(&selecting_config_, true);
     return PbufferGLSurfaceEGL::GetConfig();
   }
   bool IsOffscreen() override { return selecting_config_; }
+  gfx::SurfaceOrigin GetOrigin() const override {
+    return gfx::SurfaceOrigin::kTopLeft;
+  }
+  gfx::VSyncProvider* GetVSyncProvider() override { return &timing_; }
+  gfx::Size GetSize() override { return output_size_; }
   bool Resize(const gfx::Size& size,
               float scale_factor,
               const gfx::ColorSpace& color_space,
@@ -526,16 +562,272 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
     frame.height = size.height();
     if (!phone_gpu::FrameBytes(frame))
       return false;
-    return PbufferGLSurfaceEGL::Resize(size, scale_factor, color_space,
-                                       has_alpha);
+    if (size != GetSize()) {
+      ReleaseLease();
+      ClearImports();
+      prepared_ = false;
+      fallback_size_ = gfx::Size();
+    }
+    output_size_ = size;
+    return true;
+  }
+  unsigned int GetBackingFramebufferObject() override {
+    if (prepared_ || failed_)
+      return fbo_;
+    auto* context = gl::GLContext::GetCurrent();
+    if (!context) {
+      failed_ = true;
+      return fbo_;
+    }
+    owner_context_ = eglGetCurrentContext();
+    const bool es3 = context->GetVersionInfo()->IsAtLeastGLES(3, 0);
+    GLint draw = 0, read = 0, texture = 0;
+    glGetIntegerv(es3 ? GL_DRAW_FRAMEBUFFER_BINDING : GL_FRAMEBUFFER_BINDING,
+                  &draw);
+    if (es3)
+      glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture);
+    if (!fbo_)
+      glGenFramebuffersEXT(1, &fbo_);
+    glBindFramebufferEXT(GL_FRAMEBUFFER, fbo_);
+    bool attached = false;
+    if (!sharing_disabled_)
+      attached = AttachShared();
+    if (!attached)
+      attached = AttachFallback(es3);
+    failed_ = !attached;
+    prepared_ = attached;
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glBindFramebufferEXT(es3 ? GL_DRAW_FRAMEBUFFER : GL_FRAMEBUFFER, draw);
+    if (es3)
+      glBindFramebufferEXT(GL_READ_FRAMEBUFFER, read);
+    return fbo_;
   }
   gfx::SwapResult SwapBuffers(PresentationCallback callback,
                               gfx::FrameData data) override {
+    auto result = phone_gpu::Result::kFailed;
+    if (!failed_ && prepared_) {
+      if (lease_) {
+        const EGLint attributes[] = {EGL_NONE};
+        const EGLDisplay display =
+            GetGLDisplay()->GetAs<gl::GLDisplayEGL>()->GetDisplay();
+        EGLSyncKHR sync = eglCreateSyncKHR(
+            display, EGL_SYNC_NATIVE_FENCE_ANDROID, attributes);
+        glFlush();
+        int fence = sync == EGL_NO_SYNC_KHR
+                        ? -1
+                        : eglDupNativeFenceFDANDROID(display, sync);
+        if (sync != EGL_NO_SYNC_KHR)
+          eglDestroySyncKHR(display, sync);
+        if (fence >= 0) {
+          result = PresentOhosPhoneGpuBuffer(widget_, lease_, fence);
+          lease_ = 0;
+        } else {
+          // Work may already be running: detach, never abort/reuse this buffer.
+          ReleaseLease();
+        }
+      } else {
+        result = Readback();
+      }
+    }
+    prepared_ = false;
+    failed_ = result == phone_gpu::Result::kFailed;
+    base::TimeTicks timebase;
+    base::TimeDelta interval;
+    GetOhosPhoneGpuTiming(widget_, &timebase, &interval);
+    // Submission acknowledgment, not a measured display timestamp. Do not set
+    // HWCompletion/VSync flags or invent a fixed 16 ms display interval.
+    const auto feedback =
+        result == phone_gpu::Result::kPresented
+            ? gfx::PresentationFeedback(base::TimeTicks::Now(), interval, 0)
+            : gfx::PresentationFeedback::Failure();
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback), feedback));
+    return failed_ ? gfx::SwapResult::SWAP_FAILED : gfx::SwapResult::SWAP_ACK;
+  }
+  void Destroy() override {
+    ReleaseLease();
+    ClearImports();
+    if (OwnContextCurrent()) {
+      if (fallback_texture_)
+        glDeleteTextures(1, &fallback_texture_);
+      if (fbo_)
+        glDeleteFramebuffersEXT(1, &fbo_);
+    }
+    fallback_texture_ = fbo_ = 0;
+    PbufferGLSurfaceEGL::Destroy();
+  }
+
+ private:
+  class ImportTimeout final : public base::Watchdog::Delegate {
+   public:
+    void Alarm() override {
+      LOG(ERROR)
+          << "OHOS phone GPU: shared import timed out; terminating GPU child";
+      _exit(75);
+    }
+  };
+  struct Imported {
+    OH_NativeBuffer* native = nullptr;
+    OHNativeWindowBuffer* window_buffer = nullptr;
+    EGLImageKHR image = EGL_NO_IMAGE_KHR;
+    GLuint texture = 0;
+  };
+  ~OhosPhoneGpuGLSurface() override { Destroy(); }
+  void ReleaseLease() {
+    if (lease_)
+      DiscardOhosPhoneGpuBuffer(widget_, std::exchange(lease_, 0));
+  }
+  bool OwnContextCurrent() const {
+    return owner_context_ != EGL_NO_CONTEXT &&
+           eglGetCurrentContext() == owner_context_ &&
+           gl::GLContext::GetCurrent();
+  }
+  void ClearImports() {
+    const bool current = OwnContextCurrent();
+    // Resize/teardown only, never per frame. Retire old GPU references first.
+    if (current && !imports_.empty())
+      glFinish();
+    for (auto& [key, entry] : imports_) {
+      if (current && entry.texture)
+        glDeleteTextures(1, &entry.texture);
+      if (entry.image != EGL_NO_IMAGE_KHR)
+        eglDestroyImageKHR(
+            GetGLDisplay()->GetAs<gl::GLDisplayEGL>()->GetDisplay(),
+            entry.image);
+      if (entry.window_buffer)
+        OH_NativeWindow_DestroyNativeWindowBuffer(entry.window_buffer);
+      if (entry.native)
+        OH_NativeBuffer_Unreference(entry.native);
+    }
+    imports_.clear();
+  }
+  bool AttachShared() {
+    const EGLDisplay display =
+        GetGLDisplay()->GetAs<gl::GLDisplayEGL>()->GetDisplay();
+    if (!checked_extensions_) {
+      checked_extensions_ = true;
+      const char* extensions = eglQueryString(display, EGL_EXTENSIONS);
+      sharing_disabled_ =
+          !extensions || !strstr(extensions, "EGL_ANDROID_native_fence_sync") ||
+          !strstr(extensions, "EGL_KHR_wait_sync");
+      if (sharing_disabled_)
+        LOG(WARNING)
+            << "OHOS phone GPU: native fence unavailable; readback fallback";
+    }
+    if (sharing_disabled_)
+      return false;
+    phone_gpu::Frame frame;
+    frame.widget = widget_;
+    frame.sequence = 1;
+    frame.width = GetSize().width();
+    frame.height = GetSize().height();
+    phone_gpu::SharedMessage message;
+    if (!AcquireOhosPhoneGpuBuffer(frame, &message))
+      return false;
+    // A mapper/Binder regression must not freeze the GPU sequence forever.
+    // Chromium's GPU recovery handles this exit; the browser detaches leases.
+    if (!import_watchdog_) {
+      import_watchdog_ = std::make_unique<base::Watchdog>(
+          base::Seconds(2), "PhoneGpuImport", true, &import_timeout_);
+    }
+    import_watchdog_->Arm();
+    base::ScopedClosureRunner disarm(base::BindOnce(
+        &base::Watchdog::Disarm, base::Unretained(import_watchdog_.get())));
+    const uint64_t lease = message.packet.lease;
+    const uint32_t key = message.packet.prefix[0];
+    if (!imports_.contains(key)) {
+      // NativeWindow normally rotates 3 buffers. Bound old surface generations.
+      if (imports_.size() >= 8)
+        ClearImports();
+      auto& entry = imports_[key];
+      entry.native = phone_gpu::ImportSharedBuffer(message);
+      if (entry.native)
+        entry.window_buffer =
+            OH_NativeWindow_CreateNativeWindowBufferFromNativeBuffer(
+                entry.native);
+      if (entry.window_buffer) {
+        const EGLint attrs[] = {EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE};
+        entry.image = eglCreateImageKHR(display, EGL_NO_CONTEXT, 0x34E1,
+                                        entry.window_buffer, attrs);
+      }
+      if (entry.image != EGL_NO_IMAGE_KHR) {
+        glGenTextures(1, &entry.texture);
+        glBindTexture(GL_TEXTURE_2D, entry.texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, entry.image);
+      }
+    }
+    const auto& entry = imports_.at(key);
+    bool ok = entry.texture && glGetError() == GL_NO_ERROR;
+    if (ok) {
+      glFramebufferTexture2DEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                GL_TEXTURE_2D, entry.texture, 0);
+      ok = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER) ==
+           GL_FRAMEBUFFER_COMPLETE;
+    }
+    base::ScopedFD acquire(message.TakeFence());
+    if (ok && acquire.is_valid()) {
+      const EGLint attrs[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID, acquire.get(),
+                              EGL_NONE};
+      EGLSyncKHR sync =
+          eglCreateSyncKHR(display, EGL_SYNC_NATIVE_FENCE_ANDROID, attrs);
+      if (sync != EGL_NO_SYNC_KHR) {
+        (void)acquire.release();  // EGL now owns this FD.
+        ok = eglWaitSyncKHR(display, sync, 0) == EGL_TRUE;
+        eglDestroySyncKHR(display, sync);
+      } else {
+        ok = false;
+      }
+    }
+    if (!ok) {
+      // No drawing into the leased allocation has occurred yet.
+      CancelOhosPhoneGpuBuffer(widget_, lease);
+      sharing_disabled_ = true;
+      LOG(WARNING) << "OHOS phone GPU: shared import failed; readback fallback";
+      return false;
+    }
+    lease_ = lease;
+    if (!logged_shared_) {
+      logged_shared_ = true;
+      LOG(WARNING) << "OHOS phone GPU: direct shared-buffer FBO active (no "
+                      "readback/blit)";
+    }
+    return true;
+  }
+  bool AttachFallback(bool es3) {
+    if (!fallback_texture_)
+      glGenTextures(1, &fallback_texture_);
+    glBindTexture(GL_TEXTURE_2D, fallback_texture_);
+    if (fallback_size_ != GetSize()) {
+      GLint unpack = 0;
+      if (es3) {
+        glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+      }
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, GetSize().width(),
+                   GetSize().height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      if (es3)
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, unpack);
+      fallback_size_ = GetSize();
+      LOG(WARNING) << "OHOS phone GPU: readback fallback FBO "
+                   << GetSize().ToString();
+    }
+    glFramebufferTexture2DEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                              GL_TEXTURE_2D, fallback_texture_, 0);
+    return glCheckFramebufferStatusEXT(GL_FRAMEBUFFER) ==
+           GL_FRAMEBUFFER_COMPLETE;
+  }
+  phone_gpu::Result Readback() {
     phone_gpu::Frame frame;
     frame.widget = widget_;
     frame.sequence = 1;  // Submit assigns the connection's monotonic sequence.
     frame.width = GetSize().width();
     frame.height = GetSize().height();
+    frame.reserved = phone_gpu::kTopLeftRows;
     auto result = phone_gpu::Result::kFailed;
     if (!failed_ && buffer_.Resize(phone_gpu::FrameBytes(frame),
                                    OhosPhoneGpuMinimumBufferFd())) {
@@ -556,7 +848,7 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
         glPixelStorei(GL_PACK_SKIP_ROWS, 0);
         glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
       }
-      glBindFramebufferEXT(es3 ? GL_READ_FRAMEBUFFER : GL_FRAMEBUFFER, 0);
+      glBindFramebufferEXT(es3 ? GL_READ_FRAMEBUFFER : GL_FRAMEBUFFER, fbo_);
       glPixelStorei(GL_PACK_ALIGNMENT, 4);
       glReadPixels(0, 0, frame.width, frame.height, GL_RGBA, GL_UNSIGNED_BYTE,
                    buffer_.data());
@@ -573,23 +865,25 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
       if (error == GL_NO_ERROR)
         result = SubmitOhosPhoneGpuFrame(frame, buffer_.fd());
     }
-    failed_ = result == phone_gpu::Result::kFailed;
-    const auto feedback =
-        result == phone_gpu::Result::kPresented
-            ? gfx::PresentationFeedback(base::TimeTicks::Now(),
-                                        base::Milliseconds(16), 0)
-            : gfx::PresentationFeedback::Failure();
-    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE, base::BindOnce(std::move(callback), feedback));
-    return failed_ ? gfx::SwapResult::SWAP_FAILED : gfx::SwapResult::SWAP_ACK;
+    return result;
   }
-
- private:
-  ~OhosPhoneGpuGLSurface() override = default;
   const gfx::AcceleratedWidget widget_;
+  PhoneGpuVSyncProvider timing_;
   phone_gpu::Buffer buffer_;
+  std::map<uint32_t, Imported> imports_;
+  ImportTimeout import_timeout_;
+  std::unique_ptr<base::Watchdog> import_watchdog_;
+  gfx::Size output_size_{1, 1};
+  gfx::Size fallback_size_;
+  EGLContext owner_context_ = EGL_NO_CONTEXT;
+  GLuint fbo_ = 0, fallback_texture_ = 0;
+  uint64_t lease_ = 0;
+  bool prepared_ = false;
   bool failed_ = false;
   bool selecting_config_ = false;
+  bool sharing_disabled_ = false;
+  bool checked_extensions_ = false;
+  bool logged_shared_ = false;
 };
 
 class GLOzoneEGLOhos : public GLOzoneEGL {

@@ -96,11 +96,13 @@ class OhosVSyncProvider::CallbackTarget
   raw_ptr<OhosVSyncProvider> provider_ GUARDED_BY(lock_);
 };
 
-OhosVSyncProvider::OhosVSyncProvider(int32_t window_id)
+OhosVSyncProvider::OhosVSyncProvider(int32_t window_id, bool polling)
     : callback_target_(base::MakeRefCounted<CallbackTarget>(this)),
       interval_(kFallbackInterval) {
-  idle_callback_ = base::BindPostTaskToCurrentDefault(base::BindRepeating(
-      &OhosVSyncProvider::ReleaseFrameRateIfIdle, weak_factory_.GetWeakPtr()));
+  if (!polling) {
+    idle_callback_ = base::BindPostTaskToCurrentDefault(base::BindRepeating(
+        &OhosVSyncProvider::ReleaseFrameRateIfIdle, weak_factory_.GetWeakPtr()));
+  }
   // A connection bound to the window is what lets the system apply the
   // requested frame rate to it; an unassociated one gets whatever rate the
   // system picked for the app.
@@ -253,6 +255,10 @@ void OhosVSyncProvider::ApplyFrameRate(int32_t expected) {
                << (expected ? " (content policy)" : " (idle, request released)");
 }
 
+void OhosVSyncProvider::PollIdle() {
+  ReleaseFrameRateIfIdle();
+}
+
 void OhosVSyncProvider::ReleaseFrameRateIfIdle() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   {
@@ -309,7 +315,7 @@ void OhosVSyncProvider::OnVSyncOnAnyThread(base::TimeTicks timebase) {
   }
   if (keep_requesting) {
     RequestFrameIfIdle();
-  } else {
+  } else if (idle_callback_) {
     idle_callback_.Run();
   }
 }

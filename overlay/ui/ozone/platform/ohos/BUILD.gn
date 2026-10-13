@@ -34,14 +34,20 @@ source_set("native_window_registry") {
   sources = [
     "ohos_gpu_child_channel.cc",
     "ohos_gpu_child_channel.h",
+    "ohos_native_window_registry.cc",
+    "ohos_native_window_registry.h",
     "ohos_phone_gpu_channel.cc",
     "ohos_phone_gpu_channel.h",
     "ohos_phone_gpu_presenter.cc",
     "ohos_phone_gpu_presenter.h",
+    "ohos_phone_gpu_shared_buffer.cc",
+    "ohos_phone_gpu_shared_buffer.h",
+    "ohos_phone_gpu_shared_transport.cc",
+    "ohos_phone_gpu_shared_transport.h",
     "ohos_phone_gpu_transport.cc",
     "ohos_phone_gpu_transport.h",
-    "ohos_native_window_registry.cc",
-    "ohos_native_window_registry.h",
+    "ohos_vsync_provider.cc",
+    "ohos_vsync_provider.h",
   ]
 
   # The GPU process's own native child and the channel that carries its
@@ -51,6 +57,7 @@ source_set("native_window_registry") {
     "hilog_ndk.z",
     "ipc_capi",
     "native_buffer",
+    "native_vsync",
     "native_window",
   ]
 
@@ -58,6 +65,7 @@ source_set("native_window_registry") {
     "//base",
     "//third_party/vulkan-headers/src:vulkan_headers",
     "//ui/base",
+    "//ui/gfx",
     "//ui/gfx/geometry",
   ]
 }
@@ -80,8 +88,6 @@ source_set("ohos") {
     "ohos_screen.h",
     "ohos_surface_factory.cc",
     "ohos_surface_factory.h",
-    "ohos_vsync_provider.cc",
-    "ohos_vsync_provider.h",
     "ozone_platform_ohos.cc",
     "ozone_platform_ohos.h",
   ]

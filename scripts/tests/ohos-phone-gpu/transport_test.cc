@@ -98,10 +98,16 @@ int main() {
   assert(!p::ReceiveFrame(s[1], &got, &fd, 100));
   assert(fd == -1 && FdCount() == before);
   invalid = frame;
-  invalid.reserved = 1;
+  invalid.reserved = 2;
   SendRaw(s[0], invalid, buffer.fd(), 1);
   assert(!p::ReceiveFrame(s[1], &got, &fd, 100));
   assert(fd == -1 && FdCount() == before);
+  auto top_left = frame;
+  top_left.reserved = p::kTopLeftRows;
+  assert(p::SendFrame(s[0], top_left, buffer.fd()));
+  assert(p::ReceiveFrame(s[1], &got, &fd, 100));
+  assert(got.reserved == p::kTopLeftRows);
+  close(fd);
   // The receiver checks file length, and a later truncation fails safely.
   assert(p::SendFrame(s[0], frame, buffer.fd()));
   assert(p::ReceiveFrame(s[1], &got, &fd, 100));

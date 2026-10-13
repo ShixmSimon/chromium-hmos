@@ -54,11 +54,14 @@ bool Present(void* target, const Frame& frame, const void* pixels) {
         uint64_t{frame.height} * config.stride <=
             static_cast<uint64_t>(handle->size) &&
         OH_NativeBuffer_Map(native, &address) == 0 && address) {
-      // OpenGL readback starts at the bottom; NativeWindow starts at the top.
+      // Legacy pbuffer rows are bottom-up; the shared-output FBO is top-left.
       for (uint32_t y = 0; y < frame.height; ++y) {
-        memcpy(static_cast<char*>(address) + size_t{y} * config.stride,
-               static_cast<const char*>(pixels) + (frame.height - y - 1) * row,
-               row);
+        memcpy(
+            static_cast<char*>(address) + size_t{y} * config.stride,
+            static_cast<const char*>(pixels) +
+                ((frame.reserved & kTopLeftRows) ? y : frame.height - y - 1) *
+                    row,
+            row);
       }
       copied = OH_NativeBuffer_Unmap(native) == 0;
     }
