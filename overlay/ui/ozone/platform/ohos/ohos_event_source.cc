@@ -34,7 +34,6 @@ struct EventSourceBridge {
   base::Lock lock;
   scoped_refptr<base::SingleThreadTaskRunner> task_runner GUARDED_BY(lock);
   base::WeakPtr<OhosEventSource> event_source GUARDED_BY(lock);
-  base::TimeTicks last_touch_press GUARDED_BY(lock);
   std::map<TouchMoveKey, std::shared_ptr<PendingTouchMove>> pending_touch_moves
       GUARDED_BY(lock);
   uint64_t touch_moves_received GUARDED_BY(lock) = 0;
@@ -92,9 +91,6 @@ bool OhosEventSource::PostEvent(std::unique_ptr<Event> event,
   {
     EventSourceBridge& bridge = GetEventSourceBridge();
     base::AutoLock lock(bridge.lock);
-    if (event->type() == EventType::kTouchPressed) {
-      bridge.last_touch_press = base::TimeTicks::Now();
-    }
     task_runner = bridge.task_runner;
     event_source = bridge.event_source;
     if (task_runner && event->IsTouchEvent()) {
@@ -222,14 +218,6 @@ bool OhosEventSource::PostEvent(std::unique_ptr<Event> event,
             }
           },
           std::move(event_source), std::move(event), target_hint));
-}
-
-// static
-bool OhosEventSource::WasTouchInteractionRecent() {
-  EventSourceBridge& bridge = GetEventSourceBridge();
-  base::AutoLock lock(bridge.lock);
-  return !bridge.last_touch_press.is_null() &&
-         base::TimeTicks::Now() - bridge.last_touch_press < base::Seconds(1);
 }
 
 // static

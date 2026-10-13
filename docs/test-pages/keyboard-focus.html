@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网页焦点与键盘验收</title>
+<style>
+  body { max-width: 42rem; margin: 1rem auto; padding: 0 1rem; font: 18px/1.6 sans-serif; }
+  input, textarea, button { font: inherit; max-width: 95%; padding: .4rem; }
+  label { display: block; margin: .7rem 0; }
+  [contenteditable] { border: 1px solid #888; padding: .5rem; min-height: 3rem; }
+  iframe { width: 95%; height: 6rem; }
+  #status { white-space: pre-wrap; }
+</style>
+<h1>网页焦点与键盘验收</h1>
+<p>先收起键盘。自动切换焦点时，键盘应保持收起；手指点输入区域时应正常弹出。</p>
+<button id="start">延迟 1.5 秒后自动切换焦点</button>
+<button id="stop">停止</button>
+<p id="status" role="status">等待测试</p>
+<label>加载时自动聚焦 <input id="auto" autofocus autocomplete="off"></label>
+<label>普通文本 <input id="text" autocomplete="off"></label>
+<label>数字 <input id="number" inputmode="numeric" autocomplete="off"></label>
+<label>多行 <textarea id="area"></textarea></label>
+<div id="editable" contenteditable="true" aria-label="可编辑区域">点此编辑</div>
+<label>禁止软键盘 <input id="none" inputmode="none" autocomplete="off"></label>
+<iframe id="frame" title="子框架输入"></iframe>
+<p>完成后：点普通文本框 → 用系统返回收起键盘 → 再点同一个框，键盘应重新弹出。
+再测试中文候选、删除、回车以及数字键盘。禁止软键盘的输入框不应唤起键盘。</p>
+<script>
+  const status = document.querySelector('#status');
+  const frame = document.querySelector('#frame');
+  frame.srcdoc = '<!doctype html><html lang="zh-CN"><label>子框架 <input id="child" autocomplete="off"></label></html>';
+  let generation = 0;
+  let focusCount = 0;
+  let resizeCount = 0;
+  const height = () => Math.round(window.visualViewport?.height ?? innerHeight);
+  function report(message) {
+    status.textContent = `${message}\n焦点切换 ${focusCount} 次；视口 resize ${resizeCount} 次；高度 ${height()} px。\n视口变化仅作辅助记录，是否弹出系统键盘需真机观察。`;
+  }
+  window.visualViewport?.addEventListener('resize', () => { resizeCount++; });
+  const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  async function run() {
+    const id = ++generation;
+    focusCount = resizeCount = 0;
+    document.activeElement?.blur();
+    report('即将开始，请勿点输入框');
+    await pause(1500);
+    for (let i = 0; i < 40 && id === generation; i++) {
+      const child = frame.contentDocument?.querySelector('#child');
+      const fields = ['#auto', '#text', '#number', '#area', '#editable', '#none']
+        .map(selector => document.querySelector(selector));
+      if (child) fields.push(child);
+      const field = fields[i % fields.length];
+      field.focus({preventScroll: true});
+      focusCount++;
+      report(`自动切换：${i + 1}/40`);
+      await pause(180);
+      field.blur();
+      await pause(100);
+    }
+    if (id === generation) report('完成：过程中键盘应保持收起');
+  }
+  document.querySelector('#start').addEventListener('click', run);
+  document.querySelector('#stop').addEventListener('click', () => {
+    generation++;
+    document.activeElement?.blur();
+    report('已停止');
+  });
+  if (new URL(location.href).searchParams.has('autorun')) run();
+</script>
+</html>

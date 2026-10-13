@@ -31,7 +31,6 @@ class OhosEventSource : public PlatformEventSource {
       gfx::AcceleratedWidget target_hint = gfx::kNullAcceleratedWidget);
   static bool ResetPointerCaptures(
       gfx::AcceleratedWidget widget = gfx::kNullAcceleratedWidget);
-  static bool WasTouchInteractionRecent();
   static gfx::AcceleratedWidget GetCurrentDispatchTarget();
   static TouchMoveQueueStats GetTouchMoveQueueStatsForTesting();
 
