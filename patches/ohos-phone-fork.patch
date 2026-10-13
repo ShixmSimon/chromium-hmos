@@ -1,0 +1,133 @@
+diff --git a/base/BUILD.gn b/base/BUILD.gn
+--- a/base/BUILD.gn
++++ b/base/BUILD.gn
+@@ -1127,6 +1127,8 @@
+ 
+   if (is_ohos) {
+     sources += [
++      "process/fork_server_ohos.cc",
++      "process/fork_server_ohos.h",
+       "process/launch_ohos.cc",
+       "process/launch_ohos.h",
+     ]
+diff --git a/base/process/kill_posix.cc b/base/process/kill_posix.cc
+--- a/base/process/kill_posix.cc
++++ b/base/process/kill_posix.cc
+@@ -18,6 +18,7 @@
+ #include "build/build_config.h"
+ 
+ #if BUILDFLAG(IS_OHOS)
++#include "base/process/fork_server_ohos.h"
+ #include "base/process/launch_ohos.h"
+ #endif
+ 
+@@ -48,12 +49,37 @@
+       return TERMINATION_STATUS_ABNORMAL_TERMINATION;
+   }
+ }
++
++TerminationStatus GetOhosForkTerminationStatus(
++    const internal::OhosForkChildStatus& state,
++    int* exit_code) {
++  *exit_code = 0;
++  if (state.running)
++    return TERMINATION_STATUS_STILL_RUNNING;
++  if (state.wait_status >= 0) {
++    if (WIFSIGNALED(state.wait_status))
++      return GetOhosTerminationStatusFromSignal(WTERMSIG(state.wait_status),
++                                              exit_code);
++    if (WIFEXITED(state.wait_status)) {
++      *exit_code = WEXITSTATUS(state.wait_status);
++      return *exit_code == 0 ? TERMINATION_STATUS_NORMAL_TERMINATION
++                            : TERMINATION_STATUS_ABNORMAL_TERMINATION;
++    }
++  }
++  *exit_code = -1;
++  return TERMINATION_STATUS_ABNORMAL_TERMINATION;
++}
+ #endif
+ 
+ TerminationStatus GetTerminationStatusImpl(ProcessHandle handle,
+                                            bool can_block,
+                                            int* exit_code) {
+   DCHECK(exit_code);
++
++#if BUILDFLAG(IS_OHOS)
++  if (auto state = internal::GetOhosForkChildStatus(handle))
++    return GetOhosForkTerminationStatus(*state, exit_code);
++#endif
+ 
+ #if BUILDFLAG(IS_OHOS)
+   // Native children are created by appspawn, so they are not waitable children
+@@ -133,6 +159,15 @@
+ TerminationStatus GetKnownDeadTerminationStatus(ProcessHandle handle,
+                                                 int* exit_code) {
+ #if BUILDFLAG(IS_OHOS)
++  if (auto state = internal::GetOhosForkChildStatus(handle)) {
++    if (state->running) {
++      internal::SignalOhosForkChild(handle, SIGKILL);
++      internal::WaitForOhosForkChild(handle, 5000, nullptr);
++      state = internal::GetOhosForkChildStatus(handle);
++    }
++    return GetOhosForkTerminationStatus(*state, exit_code);
++  }
++
+   if (std::optional<int> signal =
+           internal::GetOhosNativeChildExitSignal(handle)) {
+     LOG(WARNING) << "OHOS known-dead child already exited pid=" << handle
+diff --git a/base/process/process_posix.cc b/base/process/process_posix.cc
+--- a/base/process/process_posix.cc
++++ b/base/process/process_posix.cc
+@@ -24,6 +24,10 @@
+ #include "base/time/time.h"
+ #include "base/trace_event/trace_event.h"
+ #include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "base/process/fork_server_ohos.h"
++#endif
+ 
+ #if BUILDFLAG(IS_MAC)
+ #include <sys/event.h>
+@@ -292,6 +296,22 @@
+   // exit_code isn't supportable.
+   DCHECK(IsValid());
+   CHECK_GT(process_, 0);
++#if BUILDFLAG(IS_OHOS)
++  // The early fork server owns/reaps these children. Signal through it so an
++  // already reaped/reused PID can never target an unrelated process.
++  const int fork_signal =
++      !wait && exit_code == Process::kResultCodeKilledBadMessage ? SIGKILL
++                                                              : SIGTERM;
++  if (auto sent = internal::SignalOhosForkChild(process_, fork_signal)) {
++    if (!*sent)
++      return false;
++    if (!wait || WaitForExitWithTimeout(Seconds(60), nullptr))
++      return true;
++    if (!internal::SignalOhosForkChild(process_, SIGKILL).value_or(false))
++      return false;
++    return WaitForExit(nullptr);
++  }
++#endif
+   return TerminateInternal(exit_code, wait);
+ }
+ #endif
+@@ -341,7 +361,17 @@
+   }
+ 
+   int local_exit_code = 0;
+-  bool exited = WaitForExitWithTimeoutImpl(Handle(), &local_exit_code, timeout);
++  bool exited;
++#if BUILDFLAG(IS_OHOS)
++  if (auto waited = internal::WaitForOhosForkChild(
++          Handle(), timeout.is_max() ? -1 : timeout.InMilliseconds(),
++          &local_exit_code)) {
++    exited = *waited;
++  } else
++#endif
++  {
++    exited = WaitForExitWithTimeoutImpl(Handle(), &local_exit_code, timeout);
++  }
+   if (exited) {
+     Exited(local_exit_code);
+     if (exit_code) {

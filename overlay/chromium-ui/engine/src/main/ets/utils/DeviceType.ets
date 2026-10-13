@@ -153,8 +153,13 @@ export interface AuraStartupConfig {
   // Where the GPU runs. Unset or 'in-process' keeps it in the browser
   // process; 'separate' gives it a process of its own on a tablet or 2in1,
   // so a GPU fault takes down that process and not the browser. Ignored on
-  // a phone, which cannot start one. Read once, at startup.
+  // a phone on the default path. Rejected by experimentalPhoneFork.
+  // Read once, at startup.
   gpuProcess?: 'in-process' | 'separate';
+  // EXPERIMENTAL, default false. Start a same-UID fork server before ChromeMain
+  // on phone/foldable; keep GPU in process. Requires a cold app restart.
+  // This provides no renderer security sandbox. Startup fails on conflicts.
+  experimentalPhoneFork?: boolean;
   // What Skia draws with in the GPU process. Unset or 'gl' is GL; 'vulkan'
   // is Vulkan, for comparing the two. Only with gpuProcess 'separate', and
   // ignored otherwise. If Vulkan cannot start, the engine falls back to GL.

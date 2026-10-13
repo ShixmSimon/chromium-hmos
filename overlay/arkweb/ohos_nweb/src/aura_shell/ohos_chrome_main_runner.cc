@@ -4,6 +4,7 @@
 #include "ohos_nweb/src/aura_shell/ohos_chrome_main_runner.h"
 
 #include <dlfcn.h>
+#include <errno.h>
 #include <hilog/log.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -21,6 +22,7 @@
 #include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/path_service.h"
+#include "base/process/fork_server_ohos.h"
 #include "base/process/launch_ohos.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "ohos_nweb/src/nweb_hilog.h"
@@ -260,6 +262,11 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
 
   std::lock_guard<std::mutex> lock(mutex_);
   if (started_) {
+    if (startup_config_.experimental_phone_fork !=
+        config.experimental_phone_fork) {
+      AURA_LOG_E("AuraShell phone fork switch requires a cold app restart");
+      return false;
+    }
     return true;
   }
 
@@ -278,6 +285,38 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
     AURA_LOG_E("AuraShell isolated renderers require native child processes; "
                "startup refused");
     return false;
+  }
+  if (config.experimental_phone_fork !=
+      startup_command_line.HasSwitch(base::internal::kOhosPhoneFork)) {
+    AURA_LOG_E("AuraShell phone fork must be selected by experimentalPhoneFork");
+    return false;
+  }
+  if (config.experimental_phone_fork) {
+    if ((config.device_class != "phone" && config.device_class != "foldable") ||
+        config.headless || config.gpu_process == "separate" ||
+        startup_command_line.HasSwitch("single-process") ||
+        startup_command_line.HasSwitch("type") ||
+        startup_command_line.HasSwitch(base::internal::kOhosIsolateRenderers) ||
+        base::CommandLine::InitializedForCurrentProcess()) {
+      AURA_LOG_E("AuraShell phone fork configuration conflicts or runtime "
+                 "already initialized; startup refused");
+      return false;
+    }
+    Dl_info module = {};
+    if (!dladdr(reinterpret_cast<const void*>(&ConfigureRuntimePaths), &module) ||
+        !module.dli_fname ||
+        !base::internal::StartOhosForkServer(
+            base::FilePath(module.dli_fname)
+                .DirName()
+                .AppendASCII("libnweb_render.so")
+                .value())) {
+      AURA_LOG_E(
+          "AuraShell failed to start early phone fork server errno=%{public}d",
+          errno);
+      return false;
+    }
+    AURA_LOG_I("AuraShell experimental phone fork server ready before ChromeMain; "
+               "same UID, no renderer sandbox");
   }
   started_ = true;
   if (!config.headless) {
@@ -513,10 +552,14 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
 
   const bool supports_native_child_process =
       SupportsNativeChildProcess(config.device_class);
-  if (supports_native_child_process) {
+  if (supports_native_child_process || config.experimental_phone_fork) {
     arguments.push_back("--renderer-process-limit=16");
   } else {
     arguments.push_back("--single-process");
+  }
+
+  if (config.experimental_phone_fork) {
+    arguments.push_back(std::string("--") + base::internal::kOhosPhoneFork);
   }
 
   // The GPU stays in this process unless the shell asks otherwise and the
@@ -535,9 +578,9 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
       separate_gpu_process = false;
     }
   }
-  const bool gpu_in_own_process = separate_gpu_process &&
-                                  supports_native_child_process &&
-                                  !config.headless;
+  const bool gpu_in_own_process =
+      !config.experimental_phone_fork && separate_gpu_process &&
+      supports_native_child_process && !config.headless;
   if (gpu_in_own_process) {
     AURA_LOG_I("AuraShell GPU in a process of its own by config");
   } else {
@@ -606,6 +649,8 @@ void OhosChromeMainRunner::RunChromeMainOnThread() {
   logging::SetLogMessageHandler(&ForwardChromiumLogToHilog);
   if (!InitializeIcuFromRawFile(startup_config) ||
       !ConfigureRuntimePaths(startup_config)) {
+    if (startup_config.experimental_phone_fork)
+      base::internal::StopOhosForkServer();
     std::lock_guard<std::mutex> lock(mutex_);
     started_ = false;
     return;
@@ -619,6 +664,8 @@ void OhosChromeMainRunner::RunChromeMainOnThread() {
 
   AURA_LOG_I("AuraShell starting ChromeMain argc=%{public}zu", argv.size());
   const int exit_code = ChromeMain(static_cast<int>(argv.size()), argv.data());
+  if (startup_config.experimental_phone_fork)
+    base::internal::StopOhosForkServer();
   mcp_server_.Stop();
   chrome::ohos::NotifyAuraShellBrowserStopped();
   {

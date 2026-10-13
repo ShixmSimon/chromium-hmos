@@ -407,6 +407,31 @@ TEST(NWebAuraShellTest, ChromiumArgumentsPlaceTheGpuProcess) {
   EXPECT_FALSE(ContainsArgument(arguments, "--use-vulkan=native"));
 }
 
+TEST(NWebAuraShellTest, PhoneForkIsExplicitAndKeepsGpuInProcess) {
+  AuraStartupConfig config;
+  config.device_class = "phone";
+  OhosChromeMainRunner runner;
+  EXPECT_FALSE(config.experimental_phone_fork);
+  EXPECT_TRUE(ContainsArgument(runner.BuildArgumentsForTesting(config),
+                               "--single-process"));
+  EXPECT_FALSE(ContainsArgument(runner.BuildArgumentsForTesting(config),
+                                "--ohos-phone-fork"));
+  config.experimental_phone_fork = true;
+  auto arguments = runner.BuildArgumentsForTesting(config);
+  EXPECT_TRUE(ContainsArgument(arguments, "--ohos-phone-fork"));
+  EXPECT_FALSE(ContainsArgument(arguments, "--single-process"));
+  EXPECT_TRUE(ContainsArgument(arguments, "--in-process-gpu"));
+  EXPECT_TRUE(ContainsArgument(arguments, "--renderer-process-limit=16"));
+
+  // EnsureStarted refuses this conflict; argument generation must never
+  // accidentally enable a separate GPU while the fork experiment is set.
+  config.gpu_process = "separate";
+  config.skia_backend = "vulkan";
+  arguments = runner.BuildArgumentsForTesting(config);
+  EXPECT_TRUE(ContainsArgument(arguments, "--in-process-gpu"));
+  EXPECT_FALSE(ContainsArgument(arguments, "--use-vulkan=native"));
+}
+
 TEST(NWebAuraShellTest, ChromiumArgumentsFollowAngleBackend) {
   AuraStartupConfig config;
   OhosChromeMainRunner runner;

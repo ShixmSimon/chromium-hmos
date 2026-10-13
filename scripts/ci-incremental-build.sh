@@ -221,6 +221,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-csv-import-lifecycle.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-memfd-shared-memory.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-child-exit-observation.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-phone-fork.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-video-zero-copy.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-hevc-capability.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-adaptive-vsync.patch"
