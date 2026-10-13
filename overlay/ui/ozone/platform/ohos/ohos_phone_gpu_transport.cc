@@ -27,8 +27,12 @@ bool Wait(int fd, short events, int timeout_ms) {
                           .count();
     pollfd item{fd, events, 0};
     int result = poll(&item, 1, left > 0 ? static_cast<int>(left) : 0);
-    if (result > 0)
-      return (item.revents & events) != 0;
+    if (result > 0) {
+      if (item.revents & events)
+        return true;
+      errno = (item.revents & POLLNVAL) ? EBADF : ECONNRESET;
+      return false;
+    }
     if (result == 0) {
       errno = ETIMEDOUT;
       return false;

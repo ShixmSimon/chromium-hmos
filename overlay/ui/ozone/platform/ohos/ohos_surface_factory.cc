@@ -556,14 +556,14 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
         glPixelStorei(GL_PACK_SKIP_ROWS, 0);
         glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
       }
-      glBindFramebuffer(es3 ? GL_READ_FRAMEBUFFER : GL_FRAMEBUFFER, 0);
+      glBindFramebufferEXT(es3 ? GL_READ_FRAMEBUFFER : GL_FRAMEBUFFER, 0);
       glPixelStorei(GL_PACK_ALIGNMENT, 4);
       glReadPixels(0, 0, frame.width, frame.height, GL_RGBA, GL_UNSIGNED_BYTE,
                    buffer_.data());
       const GLenum error = glGetError();
       glPixelStorei(GL_PACK_ALIGNMENT, alignment);
-      glBindFramebuffer(es3 ? GL_READ_FRAMEBUFFER : GL_FRAMEBUFFER,
-                        framebuffer);
+      glBindFramebufferEXT(es3 ? GL_READ_FRAMEBUFFER : GL_FRAMEBUFFER,
+                           framebuffer);
       if (es3) {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pack_buffer);
         glPixelStorei(GL_PACK_ROW_LENGTH, row_length);

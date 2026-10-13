@@ -121,6 +121,11 @@ int main() {
   close(s[0]);
   assert(!p::ReceiveFrame(s[1], &got, &fd, 100));
   close(s[1]);
+  // A previous idle timeout must not hide a closed/invalid channel. The
+  // browser retries timeouts; reporting one here would cause a busy loop.
+  errno = ETIMEDOUT;
+  assert(!p::ReceiveFrame(s[1], &got, &fd, 100));
+  assert(errno == EBADF);
   std::cout << "PASS: RGBA transfer, FD ownership/truncation, bounds, short "
                "file, stale reply, timeout, EOF\n";
 }
