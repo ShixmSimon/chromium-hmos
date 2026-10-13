@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include "base/command_line.h"
+#include "base/process/fork_server_ohos.h"
 #include "components/viz/common/resources/shared_image_format.h"
 #include "ui/gfx/display_color_spaces.h"
 
@@ -16,6 +18,7 @@
 #include "base/synchronization/lock.h"
 #include "base/task/single_thread_task_runner.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
 
 namespace ui {
 
@@ -41,8 +44,20 @@ constexpr gfx::Size kOhosPrimaryDisplaySize(1920, 1080);
 // with alpha stays RGBA_8888: two bits of alpha is not enough to round a
 // popup's corners, and the factory keeps those windows 8-bit.
 gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
-  const bool hdr = OhosDisplaySupportsHdr();
   gfx::DisplayColorSpaces color_spaces(gfx::ColorSpace::CreateSRGB());
+  const auto* command_line = base::CommandLine::ForCurrentProcess();
+  if (IsOhosPhoneGpuChild() ||
+      (command_line->HasSwitch(base::internal::kOhosPhoneFork) &&
+       !command_line->HasSwitch("in-process-gpu"))) {
+    // The phone fork transport allocates RGBA8 buffers for both GL and
+    // Vulkan, regardless of the panel's HDR support. Advertise SDR so Viz
+    // tone-maps HDR content instead of requesting an unsupported 10-bit
+    // target or sending PQ pixels to an untagged sRGB NativeBuffer.
+    LOG(WARNING) << "OHOS phone GPU: display output is RGBA8 sRGB; "
+                    "HDR content is tone-mapped";
+    return color_spaces;
+  }
+  const bool hdr = OhosDisplaySupportsHdr();
   if (!hdr) {
     return color_spaces;
   }

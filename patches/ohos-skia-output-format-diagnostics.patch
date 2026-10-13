@@ -1,0 +1,49 @@
+diff --git a/components/viz/service/display_embedder/skia_output_surface_impl.cc b/components/viz/service/display_embedder/skia_output_surface_impl.cc
+index c2694cb7..fe4aa4d3 100644
+--- a/components/viz/service/display_embedder/skia_output_surface_impl.cc
++++ b/components/viz/service/display_embedder/skia_output_surface_impl.cc
+@@ -16,6 +16,7 @@
+ #include "base/containers/heap_array.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback_helpers.h"
++#include "base/logging.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "base/no_destructor.h"
+ #include "base/observer_list.h"
+@@ -435,6 +436,13 @@ void SkiaOutputSurfaceImpl::Reshape(const ReshapeParams& params) {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+   DCHECK(!params.size.IsEmpty());
+ 
++#if BUILDFLAG(IS_OHOS)
++  const bool log_output_format =
++      color_type_ == kUnknown_SkColorType || format_ != params.format ||
++      alpha_type_ != static_cast<SkAlphaType>(params.alpha_type);
++  // A later unsupported format must not reuse the previous reshape's type.
++  color_type_ = kUnknown_SkColorType;
++#endif
+   size_ = params.size;
+   format_ = params.format;
+   alpha_type_ = static_cast<SkAlphaType>(params.alpha_type);
+@@ -443,6 +451,22 @@ void SkiaOutputSurfaceImpl::Reshape(const ReshapeParams& params) {
+   if (it != capabilities_.sk_color_type_map.end()) {
+     color_type_ = it->second;
+   }
++#if BUILDFLAG(IS_OHOS)
++  // Log before the CHECK: output-device Reshape runs too late to diagnose
++  // unsupported formats. Limit normal logging to initial/changed formats.
++  if (log_output_format || color_type_ == kUnknown_SkColorType) {
++    std::string mappings;
++    for (const auto& [format, type] : capabilities_.sk_color_type_map) {
++      mappings += format.ToString() + "=" + std::to_string(type) + " ";
++    }
++    LOG(WARNING) << "OHOS Skia reshape: format=" << params.format.ToString()
++                 << " color_type=" << color_type_
++                 << " alpha_type=" << alpha_type_
++                 << " color_space=" << params.color_space.ToString()
++                 << " size=" << params.size.ToString() << " mappings=["
++                 << mappings << "]";
++  }
++#endif
+   CHECK_NE(color_type_, kUnknown_SkColorType)
+       << "SkColorType is invalid for format: " << params.format.ToString();
+ 

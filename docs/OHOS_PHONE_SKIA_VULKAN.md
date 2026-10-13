@@ -66,3 +66,35 @@ fence，由主进程 FlushBuffer。Vulkan 成功导出时的 -1 表示已完成�
 
 实际显示时间仍未知，反馈使用提交确认，刷新间隔从主进程 NativeVSync 获取。
 私有 Parcel 布局、驱动 NativeBuffer 导入和跨 API 资源兼容性仍需真机确认。
+
+## 2026-10-14：启动时颜色格式断言修复
+
+`ae5f4ecb` 手机现场已符号化至 `SkiaOutputSurfaceImpl::Reshape()` 的
+`CHECK_NE(color_type_, kUnknown_SkColorType)`。这发生在 output device 的
+`Reshape()` 之前，GPU 重启后回退 GaneshGL，多进程仍开启。旧日志没有实际
+`params.format`，因此不能断言该次请求一定是 RGBX。
+
+源码确认两处能力不一致，本次分别修正：
+
+- 手机 Vulkan 补齐 `RGBX_8888` 映射。RGBA/RGBX/BGRA/BGRX 请求统一对应真实的
+  RGBA8 NativeBuffer/VkImage，Skia 颜色类型为 `kRGBA_8888_SkColorType`；
+  `alpha_type` 独立保留，不透明请求仍为 opaque。
+- 手机 fork 独立 GPU 的 GL/Vulkan 共享传输均只支持 RGBA8，屏幕层现在声明
+  RGBA8 sRGB 输出，并将 HDR 内容色调映射到 SDR。之前按面板 HDR 能力声明
+  不透明窗口为 `RGBA_1010102`，也可能触发缺失映射断言。手机单进程及
+  平板/PC 原有屏幕能力声明不变；此实验路径暂不支持 HDR 输出。
+
+OHOS 在首次 Reshape、格式或 alpha 类型变化、映射缺失时，在断言前输出：
+
+```text
+OHOS Skia reshape: format=... color_type=... alpha_type=... color_space=... size=... mappings=[...]
+```
+
+映射缺失时清除上一轮颜色类型，避免错误沿用旧格式；保留原断言。手机 Vulkan
+设备还会记录支持的四种请求格式和 RGBA8 SDR 物理格式，并拒绝意外的 HDR
+颜色空间或非 RGBA8 Skia 类型，通过现有 GPU 恢复机制回退。
+
+真机复测需完整退出应用后冷启动，保留上述日志及 Vulkan 首帧日志，同时核对
+`GaneshVulkan` 与 `In-process GPU: false`。测试不透明网页、透明内容、HDR 视频、
+旋转及标签切换；HDR 视频预期显示为 SDR。CI 编译成功只证明构建通过，
+不能代替设备上的 Vulkan 启用及画面正确性验收。

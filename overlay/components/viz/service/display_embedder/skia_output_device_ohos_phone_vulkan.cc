@@ -264,10 +264,16 @@ SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
   capabilities_.supports_target_damage = false;
   capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBA_8888] =
       kRGBA_8888_SkColorType;
+  // The shared NativeBuffer is RGBA8 even for an opaque RGBX/BGRX
+  // request. Reshape keeps the caller's alpha type independently.
+  capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBX_8888] =
+      kRGBA_8888_SkColorType;
   capabilities_.sk_color_type_map[SinglePlaneFormat::kBGRA_8888] =
       kRGBA_8888_SkColorType;
   capabilities_.sk_color_type_map[SinglePlaneFormat::kBGRX_8888] =
       kRGBA_8888_SkColorType;
+  LOG(WARNING) << "OHOS phone Vulkan: output formats RGBA_8888, RGBX_8888, "
+                  "BGRA_8888, BGRX_8888; NativeBuffer/VkImage is RGBA8 SDR";
 }
 
 SkiaOutputDeviceOhosPhoneVulkan::~SkiaOutputDeviceOhosPhoneVulkan() {
@@ -280,8 +286,12 @@ SkiaOutputDeviceOhosPhoneVulkan::~SkiaOutputDeviceOhosPhoneVulkan() {
 bool SkiaOutputDeviceOhosPhoneVulkan::Reshape(const ReshapeParams& params) {
   auto& s = *state_;
   CHECK(!s.lease);
+  if (params.image_info.colorType() != kRGBA_8888_SkColorType ||
+      params.color_space.IsHDR()) {
+    Fail("unsupported output color type or HDR color space");
+  }
   s.Clear();
-  s.info = params.image_info.makeColorType(kRGBA_8888_SkColorType);
+  s.info = params.image_info;
   s.samples = params.sample_count;
   return !s.info.isEmpty();
 }
