@@ -15,6 +15,7 @@
 
 #if BUILDFLAG(ENABLE_VULKAN)
 #include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
+#include "gpu/vulkan/vulkan_surface.h"
 #endif
 
 #include <native_window/external_window.h>
@@ -1036,15 +1037,52 @@ bool OhosSurfaceFactory::IsFormatSupportedForTexturing(
 }
 
 #if BUILDFLAG(ENABLE_VULKAN)
+namespace {
+class PhoneVulkanImplementation final : public gpu::VulkanImplementationOhos {
+ public:
+  PhoneVulkanImplementation() : VulkanImplementationOhos(true, {}, {}) {}
+  std::vector<const char*> GetRequiredDeviceExtensions() override {
+    auto extensions = VulkanImplementationOhos::GetRequiredDeviceExtensions();
+    extensions.push_back("VK_OHOS_external_memory");
+    extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
+    extensions.push_back(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME);
+    return extensions;
+  }
+  std::vector<const char*> GetOptionalDeviceExtensions() override {
+    std::vector<const char*> optional;
+    for (const char* extension :
+         VulkanImplementationOhos::GetOptionalDeviceExtensions()) {
+      if (std::strcmp(extension, VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME) &&
+          std::strcmp(extension, VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME)) {
+        optional.push_back(extension);
+      }
+    }
+    return optional;
+  }
+  std::unique_ptr<gpu::VulkanSurface> CreateViewSurface(
+      gfx::AcceleratedWidget widget) override {
+    // Phone Skia uses the shared-buffer output device, never a child window.
+    return nullptr;
+  }
+};
+}  // namespace
 std::unique_ptr<gpu::VulkanImplementation>
 OhosSurfaceFactory::CreateVulkanImplementation(bool use_swiftshader,
                                                bool allow_protected_memory) {
   // No SwiftShader in this build: it needs ANGLE's Vulkan backend, which
   // needs the very thing being created here. Asking for it gets nothing
   // rather than something that will fail later and less clearly.
-  if (use_swiftshader || IsOhosPhoneGpuChild()) {
+  if (use_swiftshader) {
     LOG(WARNING) << "OHOS: no SwiftShader Vulkan in this build";
     return nullptr;
+  }
+  if (IsOhosPhoneGpuChild()) {
+    if (!AllowOhosPhoneVulkan()) {
+      LOG(WARNING) << "OHOS phone Vulkan: unavailable or failed earlier; use GL";
+      return nullptr;
+    }
+    LOG(WARNING) << "OHOS phone Vulkan: enabling shared-buffer Skia output";
+    return std::make_unique<PhoneVulkanImplementation>();
   }
   // A widget's window as the GL path finds it: from the registry -- the
   // mirror of the browser's, in a GPU process of its own -- waiting for it

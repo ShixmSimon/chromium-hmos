@@ -605,14 +605,14 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   // Vulkan cannot be brought up there, Chromium falls back to GL by itself;
   // the GPU process says which step failed (ohos_gpu_child_channel.cc).
   if (config.skia_backend == "vulkan") {
-    if (gpu_in_own_process && !config.experimental_phone_fork) {
+    if (gpu_in_own_process) {
       arguments.push_back("--use-vulkan=native");
       AppendToListSwitch(&arguments, "enable-features", "Vulkan");
       AURA_LOG_I("AuraShell Skia on Vulkan by config");
     } else {
       AURA_LOG_E(
           "AuraShell ignored skiaBackend vulkan: the GPU is not in a "
-          "supported native-window process (phone fork uses GL readback)");
+          "separate GPU process");
     }
   }
 

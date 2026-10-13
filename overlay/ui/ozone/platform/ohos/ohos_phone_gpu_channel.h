@@ -18,8 +18,12 @@ base::ProcessId LaunchOhosPhoneGpuChild(
     const std::string& params,
     const std::vector<std::pair<int, int>>& fds);
 bool OhosPhoneGpuHasPresented();
+// Phone GPU only. A failed Vulkan generation stays on GL until app restart.
+bool AllowOhosPhoneVulkan();
+void ReportOhosPhoneVulkanFailure();
 bool AcquireOhosPhoneGpuBuffer(phone_gpu::Frame frame,
                                phone_gpu::SharedMessage* response);
+// Takes ownership of completion_fd; -1 is an already-complete frame.
 phone_gpu::Result PresentOhosPhoneGpuBuffer(uint64_t widget,
                                             uint64_t lease,
                                             int completion_fd);

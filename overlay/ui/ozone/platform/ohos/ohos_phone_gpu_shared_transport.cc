@@ -74,12 +74,14 @@ bool ValidSharedPacket(const SharedPacket& p, size_t count) {
              (p.tail_bytes == v[3] * 4 || p.tail_bytes == v[3] * 4 + 20);
     }
     case SharedOp::kPresent:
-      return p.lease && !p.fd_count && p.has_fence && !p.tail_bytes;
+      return p.lease && !p.fd_count && !p.tail_bytes;
     case SharedOp::kDiscard:
     case SharedOp::kCancel:
       return p.lease && !count && !p.tail_bytes;
     case SharedOp::kReply:
     case SharedOp::kUnavailable:
+    case SharedOp::kVulkanState:
+    case SharedOp::kVulkanFailed:
     case SharedOp::kTiming:
       return !count && !p.tail_bytes && p.result <= 2;
   }

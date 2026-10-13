@@ -20,7 +20,9 @@ enum class SharedOp : uint32_t {
   kReply,
   kUnavailable,
   kTiming,
-  kDiscard
+  kDiscard,
+  kVulkanState,
+  kVulkanFailed
 };
 struct SharedPacket {
   uint32_t magic = kSharedMagic;

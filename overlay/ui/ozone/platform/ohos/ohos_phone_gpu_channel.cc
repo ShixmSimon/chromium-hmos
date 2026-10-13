@@ -32,12 +32,14 @@ struct Connection {
   base::ScopedFD socket;
   std::atomic<bool> active{true};
   std::atomic<bool> presented{false};
+  std::atomic<bool> vulkan_requested{false};
 };
 struct BrowserState {
   // Serializes presentation with replacing a GPU generation. Never held by
   // the UI thread; registry changes only use the registry's own lock.
   base::Lock lock;
   std::shared_ptr<Connection> current GUARDED_BY(lock);
+  bool vulkan_failed GUARDED_BY(lock) = false;
 };
 BrowserState& Browser() {
   static base::NoDestructor<BrowserState> state;
@@ -97,6 +99,10 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
         using Op = phone_gpu::SharedOp;
         if (p.operation == Op::kAcquire) {
           reply.operation = Op::kUnavailable;
+          reply.result =
+              static_cast<uint32_t>(phone_gpu::SharedBufferAllocatorReady()
+                                        ? phone_gpu::Result::kDropped
+                                        : phone_gpu::Result::kFailed);
           auto surface = AcquireOhosNativeSurfaceForPhoneGpu(p.widget);
           if (surface && surface->window) {
             if (leases.size() < 4 && phone_gpu::SharedBufferAllocatorReady() &&
@@ -115,6 +121,10 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
                 reply.sequence = p.sequence;
                 reply.widget = p.widget;
                 reply.operation = Op::kUnavailable;
+                reply.result = static_cast<uint32_t>(
+                    phone_gpu::SharedBufferAllocatorReady()
+                        ? phone_gpu::Result::kDropped
+                        : phone_gpu::Result::kFailed);
               }
             }
             OH_NativeWindow_NativeObjectUnreference(surface->window);
@@ -151,6 +161,19 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
             }
           }
           leases.erase(it);
+        } else if (p.operation == Op::kVulkanState) {
+          const bool allowed = !Browser().vulkan_failed &&
+                               phone_gpu::SharedBufferAllocatorReady();
+          if (allowed)
+            connection->vulkan_requested = true;
+          reply.result =
+              static_cast<uint32_t>(allowed ? phone_gpu::Result::kPresented
+                                            : phone_gpu::Result::kDropped);
+        } else if (p.operation == Op::kVulkanFailed) {
+          Browser().vulkan_failed = true;
+          reply.result = static_cast<uint32_t>(phone_gpu::Result::kDropped);
+          LOG(ERROR)
+              << "OHOS phone Vulkan: failed; subsequent GPU generations use GL";
         } else if (p.operation == Op::kTiming) {
           if (p.width >= 30 && p.width <= 120)
             timing.SetPreferredFrameInterval(base::Seconds(1.0 / p.width));
@@ -215,6 +238,8 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
   }
   {
     base::AutoLock lock(Browser().lock);
+    if (connection->vulkan_requested.load())
+      Browser().vulkan_failed = true;
     leases.clear();
   }
   connection->active = false;
@@ -245,6 +270,8 @@ base::ProcessId LaunchOhosPhoneGpuChild(
   {
     base::AutoLock lock(Browser().lock);
     if (Browser().current) {
+      if (Browser().current->vulkan_requested.load())
+        Browser().vulkan_failed = true;
       Browser().current->active = false;
       shutdown(Browser().current->socket.get(), SHUT_RDWR);
     }
@@ -323,6 +350,23 @@ bool ExchangeShared(phone_gpu::SharedMessage* request,
   return true;
 }
 }  // namespace
+bool AllowOhosPhoneVulkan() {
+  if (!IsOhosPhoneGpuChild())
+    return false;
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kVulkanState;
+  request.packet.widget = 1;  // Connection-scoped control request.
+  return ExchangeShared(&request, &response) &&
+         response.packet.operation == phone_gpu::SharedOp::kReply &&
+         response.packet.result ==
+             static_cast<uint32_t>(phone_gpu::Result::kPresented);
+}
+void ReportOhosPhoneVulkanFailure() {
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kVulkanFailed;
+  request.packet.widget = 1;
+  ExchangeShared(&request, &response);
+}
 bool AcquireOhosPhoneGpuBuffer(phone_gpu::Frame frame,
                                phone_gpu::SharedMessage* response) {
   phone_gpu::SharedMessage request;
@@ -335,12 +379,17 @@ bool AcquireOhosPhoneGpuBuffer(phone_gpu::Frame frame,
 phone_gpu::Result PresentOhosPhoneGpuBuffer(uint64_t widget,
                                             uint64_t lease,
                                             int completion_fd) {
+  if (completion_fd < -1)
+    return phone_gpu::Result::kFailed;
   phone_gpu::SharedMessage request, response;
   request.packet.operation = phone_gpu::SharedOp::kPresent;
   request.packet.widget = widget;
   request.packet.lease = lease;
-  request.packet.has_fence = 1;
-  request.fds.push_back(completion_fd);
+  // -1 means already complete (successful Vulkan SYNC_FD export).
+  if (completion_fd >= 0) {
+    request.packet.has_fence = 1;
+    request.fds.push_back(completion_fd);
+  }
   if (!ExchangeShared(&request, &response) ||
       response.packet.operation != phone_gpu::SharedOp::kReply ||
       response.packet.lease != lease)

@@ -139,7 +139,8 @@ int main() {
   }
   assert(CountFds() == before);
   for (auto op :
-       {p::SharedOp::kCancel, p::SharedOp::kDiscard, p::SharedOp::kReply}) {
+       {p::SharedOp::kCancel, p::SharedOp::kDiscard, p::SharedOp::kReply,
+        p::SharedOp::kVulkanState, p::SharedOp::kVulkanFailed}) {
     p::SharedMessage send, got;
     send.packet.operation = op;
     send.packet.sequence = 2;
@@ -149,6 +150,32 @@ int main() {
     assert(p::ReceiveSharedMessage(s[1], &got, 100));
     assert(got.packet.operation == op);
   }
+  // Vulkan SYNC_FD export supports both pending and already-signaled fences.
+  for (bool pending : {false, true}) {
+    p::SharedMessage send, got;
+    send.packet.operation = p::SharedOp::kPresent;
+    send.packet.sequence = 3;
+    send.packet.widget = 42;
+    send.packet.lease = 1;
+    send.packet.has_fence = pending;
+    if (pending)
+      send.fds.push_back(dup(source));
+    assert(p::SendSharedMessage(s[0], send));
+    assert(p::ReceiveSharedMessage(s[1], &got, 100));
+    int fence = got.TakeFence();
+    assert((fence >= 0) == pending);
+    if (fence >= 0)
+      close(fence);
+    send.packet.has_fence = !pending;
+    assert(!p::ValidSharedPacket(send.packet, send.fds.size()));
+  }
+  // Control messages may never smuggle an allocation or fence descriptor.
+  for (auto op : {p::SharedOp::kVulkanState, p::SharedOp::kVulkanFailed}) {
+    auto control = buffer;
+    control.operation = op;
+    reject(control);
+  }
+  assert(CountFds() == before);
   p::SharedMessage got;
   auto start = std::chrono::steady_clock::now();
   assert(!p::ReceiveSharedMessage(s[1], &got, 20));

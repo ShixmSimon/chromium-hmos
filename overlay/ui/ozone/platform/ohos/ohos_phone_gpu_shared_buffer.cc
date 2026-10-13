@@ -170,7 +170,7 @@ bool SharedBufferLease::Acquire(void* target, SharedMessage* m) {
   return true;
 }
 bool SharedBufferLease::Present(int completion_fd) {
-  if (!window_ || !buffer_ || resolved_ || completion_fd < 0) {
+  if (!window_ || !buffer_ || resolved_ || completion_fd < -1) {
     if (completion_fd >= 0)
       close(completion_fd);
     return false;

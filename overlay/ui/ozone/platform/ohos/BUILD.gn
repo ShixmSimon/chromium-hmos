@@ -29,6 +29,7 @@ source_set("native_window_registry") {
     # Losing the GPU context is noticed here, and the shell has to hear
     # about it. Widened for that one call rather than for the header.
     "//gpu/ipc/service:*",
+    "//components/viz/service:*",
   ]
 
   sources = [
