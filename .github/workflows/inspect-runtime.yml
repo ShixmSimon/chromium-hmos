@@ -48,6 +48,11 @@ jobs:
           components/viz/common/resources/shared_image_format_utils.h
           components/viz/service/BUILD.gn
           ui/gfx/display_color_spaces.cc
+          gpu/vulkan/vulkan_surface.cc
+          gpu/vulkan/vulkan_surface.h
+          gpu/vulkan/ohos/vulkan_implementation_ohos.cc
+          content/browser/gpu/gpu_process_host.cc
+          components/viz/service/display/direct_renderer.cc
           third_party/skia/include/core/SkColorType.h
           third_party/angle/src/libANGLE/renderer/vulkan/TextureVk.cpp
           third_party/angle/src/libANGLE/renderer/vulkan/TextureVk.h
