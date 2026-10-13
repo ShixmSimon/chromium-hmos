@@ -31,6 +31,7 @@
 #include "base/no_destructor.h"
 #include "base/path_service.h"
 #include "base/posix/eintr_wrapper.h"
+#include "base/process/fork_server_ohos.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/synchronization/lock.h"
 #include "base/threading/scoped_blocking_call.h"
@@ -271,9 +272,6 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
     return Process();
   }
 
-  const bool exit_callback_registered =
-      EnsureNativeChildExitCallbackRegistered();
-
   CommandLine child_command_line(argv);
   const std::string process_type =
       child_command_line.GetSwitchValueASCII("type");
@@ -290,6 +288,37 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
     LOG(ERROR) << "Failed to serialize OHOS native child process arguments";
     return Process();
   }
+
+  const bool phone_fork =
+      CommandLine::ForCurrentProcess()->HasSwitch(kOhosPhoneFork);
+  if (phone_fork) {
+    if (isolate_renderer || options.wait ||
+        (process_type != "renderer" && process_type != "utility" &&
+         process_type != "gpu-process")) {
+      LOG(ERROR) << "OHOS phone fork unsupported launch policy; refused";
+      return Process();
+    }
+    const std::vector<std::pair<int, int>> fds(options.fds_to_remap.begin(),
+                                               options.fds_to_remap.end());
+    // GPU bootstrap also carries the private frame channel. These PIDs are
+    // owned by the fork server, never by the appspawn exit callback registry.
+    const ProcessId pid =
+        process_type == "gpu-process"
+            ? (g_gpu_child_launcher ? g_gpu_child_launcher(encoded_params, fds)
+                                    : kNullProcessId)
+            : LaunchOhosForkChild(encoded_params, fds);
+    if (pid <= 0) {
+      PLOG(ERROR) << "OHOS phone fork child launch failed";
+      return Process();
+    }
+    LOG(WARNING) << "OHOS phone fork child created pid=" << pid
+                 << " type=" << process_type
+                 << " (same UID; waiting for Chromium IPC bootstrap)";
+    return Process(pid);
+  }
+
+  const bool exit_callback_registered =
+      EnsureNativeChildExitCallbackRegistered();
 
   if (process_type == "gpu-process") {
     if (!g_gpu_child_launcher) {

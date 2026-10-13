@@ -1,0 +1,14 @@
+diff --git a/third_party/blink/renderer/platform/widget/widget_base.cc b/third_party/blink/renderer/platform/widget/widget_base.cc
+--- a/third_party/blink/renderer/platform/widget/widget_base.cc
++++ b/third_party/blink/renderer/platform/widget/widget_base.cc
+@@ -1401,7 +1401,9 @@
+ 
+ void WidgetBase::ShowVirtualKeyboardOnElementFocus() {
+   base::WeakPtr<WidgetBase> weak_this = weak_ptr_factory_.GetWeakPtr();
+-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_IOS_TVOS)
++#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_IOS_TVOS) || BUILDFLAG(IS_OHOS)
++  // OHOS also waits for an explicit gesture/keyboard request. Script-driven
++  // focus (including benchmark form updates) only synchronizes editor state.
+   // On ChromeOS, virtual keyboard is triggered only when users leave the
+   // mouse button or the finger and a text input element is focused at that
+   // time. Focus event itself shouldn't trigger virtual keyboard.

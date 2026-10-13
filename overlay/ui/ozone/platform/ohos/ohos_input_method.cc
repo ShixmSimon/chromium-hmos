@@ -26,7 +26,6 @@
 #include "ui/events/event_constants.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/range/range.h"
-#include "ui/ozone/platform/ohos/ohos_event_source.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 
 namespace ui {
@@ -316,13 +315,15 @@ void OhosInputMethod::CancelComposition(const TextInputClient* client) {
 
 void OhosInputMethod::SetVirtualKeyboardVisibilityIfEnabled(
     bool should_show) {
+  // Focus/type updates only connect the editor. Showing the keyboard requires
+  // Blink's explicit tap/long-press request (or a native Views request), never
+  // a stale pointer focus reason or a time window after an unrelated touch.
+  TextInputClient* client = GetTextInputClient();
+  if (should_show && (!focused_ || !client || IsTextInputTypeNone() ||
+                      client->GetTextInputMode() == TEXT_INPUT_MODE_NONE)) {
+    return;
+  }
   InputMethodMinimal::SetVirtualKeyboardVisibilityIfEnabled(should_show);
-  // The page asking for the keyboard: a tap on an editable element that
-  // already has focus, or navigator.virtualKeyboard. Attach() decides once,
-  // from how the element got focus, whether the keyboard comes up -- an
-  // element focused by the page itself (autofocus) does not bring it up,
-  // as on Android -- and a tap on that same element changes no focus, so
-  // nothing attached again and the keyboard never came. Ask for it here.
   const bool was_attached = input_method_proxy_ != nullptr;
   if (should_show && !was_attached) {
     UpdateImeState();
@@ -395,29 +396,12 @@ bool OhosInputMethod::Attach() {
     return false;
   }
 
-  bool show_keyboard = false;
-  InputMethod_RequestKeyboardReason request_reason = IME_REQUEST_REASON_OTHER;
-  if (TextInputClient* client = GetTextInputClient()) {
-    switch (client->GetFocusReason()) {
-      case TextInputClient::FOCUS_REASON_TOUCH:
-      case TextInputClient::FOCUS_REASON_PEN:
-        show_keyboard = true;
-        request_reason = IME_REQUEST_REASON_TOUCH;
-        break;
-      case TextInputClient::FOCUS_REASON_MOUSE:
-        request_reason = IME_REQUEST_REASON_MOUSE;
-        break;
-      default:
-        if (OhosEventSource::WasTouchInteractionRecent()) {
-          show_keyboard = true;
-          request_reason = IME_REQUEST_REASON_TOUCH;
-        }
-        break;
-    }
-  }
-
+  // BrowserBench and other pages move DOM focus without asking the user to
+  // type. RenderWidgetHostViewAura's focus reason describes the view's last
+  // pointer focus, not the newly focused DOM element. Never show on attach;
+  // SetVirtualKeyboardVisibilityIfEnabled handles genuine keyboard requests.
   attach_options_ = OH_AttachOptions_CreateWithRequestKeyboardReason(
-      show_keyboard, request_reason);
+      false, IME_REQUEST_REASON_OTHER);
   if (!attach_options_) {
     LOG(ERROR) << "HarmonyOS IME failed to create attach options";
     OH_TextEditorProxy_Destroy(text_editor_proxy_);
@@ -447,7 +431,7 @@ bool OhosInputMethod::Attach() {
 
   LOG(INFO) << "HarmonyOS IME attached windowId="
             << GetOhosApplicationWindowIdForWidget(widget_)
-            << " showKeyboard=" << show_keyboard;
+            << " showKeyboard=false";
   OnInputMethodChanged();
   NotifyCursorRect();
   return true;

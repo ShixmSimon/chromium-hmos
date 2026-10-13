@@ -1,0 +1,82 @@
+diff --git a/components/viz/service/BUILD.gn b/components/viz/service/BUILD.gn
+index 064c467..3c7e741 100644
+--- a/components/viz/service/BUILD.gn
++++ b/components/viz/service/BUILD.gn
+@@ -539,6 +539,14 @@ viz_component("service") {
+   if (enable_vulkan) {
+     deps += [ "//gpu/vulkan" ]
+ 
++    if (is_ohos) {
++      sources += [
++        "display_embedder/skia_output_device_ohos_phone_vulkan.cc",
++        "display_embedder/skia_output_device_ohos_phone_vulkan.h",
++      ]
++      deps += [ "//ui/ozone/platform/ohos:native_window_registry" ]
++    }
++
+     sources += [
+       "display_embedder/skia_output_device_vulkan.cc",
+       "display_embedder/skia_output_device_vulkan.h",
+diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+index 5daede0..34f7b96 100644
+--- a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
++++ b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+@@ -106,6 +106,10 @@
+ 
+ #if BUILDFLAG(ENABLE_VULKAN)
+ #include "components/viz/service/display_embedder/skia_output_device_vulkan.h"
++#if BUILDFLAG(IS_OHOS)
++#include "components/viz/service/display_embedder/skia_output_device_ohos_phone_vulkan.h"
++#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
++#endif
+ #include "gpu/vulkan/vulkan_device_queue.h"
+ #include "gpu/vulkan/vulkan_fence_helper.h"
+ #include "gpu/vulkan/vulkan_function_pointers.h"
+@@ -2086,6 +2090,15 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
+     return true;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (ui::IsOhosPhoneGpuChild()) {
++    output_device_ = std::make_unique<SkiaOutputDeviceOhosPhoneVulkan>(
++        vulkan_context_provider_, dependency_->GetSurfaceHandle(),
++        shared_gpu_deps_->memory_tracker(), GetDidSwapBuffersCompleteCallback());
++    return true;
++  }
++#endif
++
+ #if BUILDFLAG(IS_ANDROID)
+   if (vulkan_context_provider_->GetGrSecondaryCBDrawContext()) {
+     output_device_ = std::make_unique<SkiaOutputDeviceVulkanSecondaryCB>(
+diff --git a/components/viz/service/gl/gpu_service_impl.cc b/components/viz/service/gl/gpu_service_impl.cc
+index cc7e8b0..34e74fa 100644
+--- a/components/viz/service/gl/gpu_service_impl.cc
++++ b/components/viz/service/gl/gpu_service_impl.cc
+@@ -132,6 +132,10 @@
+ #include "components/vrp_flags/vrp_flags_impl.h"  // nogncheck
+ #endif                                            // BUILDFLAG(ENABLE_VRP_FLAGS)
+ 
++#if BUILDFLAG(IS_OHOS) && BUILDFLAG(ENABLE_VULKAN)
++#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
++#endif
++
+ namespace viz {
+ 
+ namespace {
+@@ -256,6 +260,16 @@ GpuServiceImpl::GpuServiceImpl(
+         (is_native_vulkan && is_native_gl) ? &gpu_info_ : nullptr);
+     if (!vulkan_context_provider_) {
+       DLOG(ERROR) << "Failed to create Vulkan context provider.";
++#if BUILDFLAG(IS_OHOS)
++      // Only the phone fork path uses this channel. Without a provider the
++      // preferences must also switch to GL before any channel is created.
++      if (ui::IsOhosPhoneGpuChild()) {
++        ui::ReportOhosPhoneVulkanFailure();
++        gpu_preferences_.gr_context_type = gpu::GrContextType::kGL;
++        gpu_feature_info_.status_values[gpu::GPU_FEATURE_TYPE_VULKAN] =
++            gpu::kGpuFeatureStatusDisabled;
++      }
++#endif
+     }
+ #if BUILDFLAG(IS_OHOS)
+     // A Vulkan device is not yet one Skia can draw with. On the 2in1

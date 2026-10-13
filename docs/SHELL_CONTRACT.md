@@ -1192,11 +1192,14 @@ OHOS ANGLE Vulkan 默认关闭 MSRTSS（直接渲染到单采样纹理）优化�
 
 启动配置里的 `gpuProcess?: 'in-process' | 'separate'` 决定 GPU 放在哪。不填或
 `'in-process'` 是现在的做法,GPU 在浏览器进程里;`'separate'` 在平板和 2in1 上
-给 GPU 单独开一个进程,GPU 出错时只会影响这个进程,不会连带浏览器。手机不能创建
-子进程,传了也会忽略,hilog 里记一行 `AuraShell ignored gpuProcess separate`。
+给 GPU 单独开一个进程,GPU 出错时只会影响这个进程,不会连带浏览器。手机默认路径不支持
+官方子进程,传了也会忽略,hilog 里记一行 `AuraShell ignored gpuProcess separate`。
+手机 fork 实验开启后可显式选择 `gpuProcess: 'separate'`，使用独立 GPU 的 GL
+离屏读回和宿主呈现兼容层（实验中）。不填写仍为进程内 GPU。该模式暂不支持
+ANGLE/Skia Vulkan、NativePixmap 互操作；具体限制和验收见 [手机 fork](OHOS_PHONE_FORK.md)。
 
 **Skia 走 Vulkan(测试中)。** `skiaBackend?: 'gl' | 'vulkan'`,不填是 GL。只在
-`gpuProcess: 'separate'` 时有效,进程内 GPU 时忽略,hilog 里记一行
+官方子进程路径的 `gpuProcess: 'separate'` 时有效,进程内 GPU 和手机 fork 时忽略,hilog 里记一行
 `AuraShell ignored skiaBackend vulkan`。Vulkan 起不来时 Chromium 自己退回 GL,不会黑
 屏;GPU 进程启动时的 `OHOS GPU child Vulkan probe` 几行日志说明卡在哪一步(加载器、
 实例扩展、实例、物理设备、交换链支持),Chromium 自己的步骤看 `OHOS Vulkan:` 开头的
@@ -1205,6 +1208,20 @@ OHOS ANGLE Vulkan 默认关闭 MSRTSS（直接渲染到单采样纹理）优化�
 所有窗口走的是同一条通道,但还没有逐一验证(主窗口之外:无痕、拖出的标签、画中
 画、PWA、弹出菜单);GPU 进程崩溃重启和 `gpuContextLost`/`gpuFallback` 事件也还没
 接。只在测试版里打开。
+
+### 手机 fork 子进程（默认关闭的实验）
+
+启动配置 `experimentalPhoneFork?: boolean` 默认 `false`。设为 `true` 后，手机/折叠屏
+尝试通过提前创建的 fork 服务运行 renderer/utility，GPU 默认保持进程内，显式
+`gpuProcess='separate'` 可测试 GL 兼容呈现。任一进程模式改变需要结束应用进程再冷启动；
+窗口变化时重新生成配置须保留同一配置。不支持 headless、
+显式 single-process 或 isolated renderers。此路径同 UID、没有安全沙箱。Chromium 154
+已在真机跑通网页与 renderer JIT，但有间歇性 renderer 未连接即退出，稳定性验收
+未全通过，属于默认关闭的实验能力。Lumie 的产品约定为所有包默认手机单进程，
+保留 `lumie://flags` 手动入口（由外壳实现，上架许可另行确认）。切换必须弹出
+重启确认；取消不保存，点击“重启应用”后才尝试应用，失败回滚旧设置。
+不得将待重启的配置刷新进当前内核。详细事务流程、接入和验证步骤见
+[手机 fork 子进程实验](OHOS_PHONE_FORK.md)。
 
 ### 怎么自查
 
@@ -1243,7 +1260,7 @@ HAR 的 `module.json5` 声明了 13 项权限(包括 WebAuthn 用到的 `ACCESS_
 | 限制 | 说明 |
 |---|---|
 | 一个进程只能有一个浏览器 `WebWindow` | 同一个进程里只能初始化一次 Chromium。多窗口(PWA)通过 `onAuxiliaryWindowState` 的 `pwa` 角色另开窗口。 |
-| 手机上是单进程模式 | 手机上网页和浏览器在同一个进程里(`--single-process`)。平板和 2in1 是多进程。 |
+| 手机上默认是单进程模式 | 手机上网页和浏览器默认在同一个进程里(`--single-process`)。平板和 2in1 是多进程。可显式开启默认关闭的 `experimentalPhoneFork` 实验，验证范围见第 8 节。 |
 | 远程调试端口始终打开 | 非 headless 模式下,引擎监听 `127.0.0.1:9222`。**发布正式版之前必须关闭**,目前还没有开关。 |
 | JIT 取决于启动环境 | 构建包含 JIT 编译器，启动时探测能否映射可执行内存：能则启用（平板、2in1、调试签名的手机包），不能则用解释器（手机正式包，JS 简单循环约慢 5 倍），启动配置也可以要求 jitless。本次启动状态看 `aboutInfo.jitEnabled`。解释器模式下 WebAssembly 由 DrumBrake 解释器执行，能用但比 JIT 慢。 |
 | SURFACE 模式下的旋转未验证 | 手机横竖屏、平板和折叠屏的展开折叠,还需要在真机上确认。 |

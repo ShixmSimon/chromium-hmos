@@ -407,6 +407,36 @@ TEST(NWebAuraShellTest, ChromiumArgumentsPlaceTheGpuProcess) {
   EXPECT_FALSE(ContainsArgument(arguments, "--use-vulkan=native"));
 }
 
+TEST(NWebAuraShellTest,
+     PhoneForkDefaultsToInProcessGpuAndAllowsExplicitGlRelay) {
+  AuraStartupConfig config;
+  config.device_class = "phone";
+  OhosChromeMainRunner runner;
+  EXPECT_FALSE(config.experimental_phone_fork);
+  EXPECT_TRUE(ContainsArgument(runner.BuildArgumentsForTesting(config),
+                               "--single-process"));
+  EXPECT_FALSE(ContainsArgument(runner.BuildArgumentsForTesting(config),
+                                "--ohos-phone-fork"));
+  config.experimental_phone_fork = true;
+  auto arguments = runner.BuildArgumentsForTesting(config);
+  EXPECT_TRUE(ContainsArgument(arguments, "--ohos-phone-fork"));
+  EXPECT_FALSE(ContainsArgument(arguments, "--single-process"));
+  EXPECT_TRUE(ContainsArgument(arguments, "--in-process-gpu"));
+  EXPECT_TRUE(ContainsArgument(arguments, "--renderer-process-limit=16"));
+
+  // Only an explicit GPU selection enables the readback relay. Vulkan
+  // requires native-window presentation, which this path does not provide.
+  config.gpu_process = "separate";
+  config.skia_backend = "vulkan";
+  arguments = runner.BuildArgumentsForTesting(config);
+  EXPECT_FALSE(ContainsArgument(arguments, "--in-process-gpu"));
+  EXPECT_FALSE(ContainsArgument(arguments, "--use-vulkan=native"));
+  config.angle_backend = "vulkan";
+  arguments = runner.BuildArgumentsForTesting(config);
+  EXPECT_TRUE(ContainsArgument(arguments, "--use-angle=gles-egl"));
+  EXPECT_FALSE(ContainsArgument(arguments, "--use-angle=vulkan"));
+}
+
 TEST(NWebAuraShellTest, ChromiumArgumentsFollowAngleBackend) {
   AuraStartupConfig config;
   OhosChromeMainRunner runner;

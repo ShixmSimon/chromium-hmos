@@ -1,0 +1,204 @@
+diff --git a/base/BUILD.gn b/base/BUILD.gn
+index 6b4d10c..51cece3 100644
+--- a/base/BUILD.gn
++++ b/base/BUILD.gn
+@@ -1127,6 +1127,8 @@ component("base") {
+ 
+   if (is_ohos) {
+     sources += [
++      "process/fork_server_ohos.cc",
++      "process/fork_server_ohos.h",
+       "process/launch_ohos.cc",
+       "process/launch_ohos.h",
+     ]
+diff --git a/base/process/kill_posix.cc b/base/process/kill_posix.cc
+index 9070311..fbffafb 100644
+--- a/base/process/kill_posix.cc
++++ b/base/process/kill_posix.cc
+@@ -18,6 +18,7 @@
+ #include "build/build_config.h"
+ 
+ #if BUILDFLAG(IS_OHOS)
++#include "base/process/fork_server_ohos.h"
+ #include "base/process/launch_ohos.h"
+ #endif
+ 
+@@ -48,6 +49,31 @@ TerminationStatus GetOhosTerminationStatusFromSignal(int signal,
+       return TERMINATION_STATUS_ABNORMAL_TERMINATION;
+   }
+ }
++
++TerminationStatus GetOhosForkTerminationStatus(
++    ProcessHandle pid,
++    const internal::OhosForkChildStatus& state,
++    int* exit_code) {
++  *exit_code = 0;
++  if (state.running)
++    return TERMINATION_STATUS_STILL_RUNNING;
++  LOG(WARNING) << "OHOS phone fork child exit pid=" << pid
++               << " stage=" << internal::OhosForkStageName(state.stage)
++               << " detail=" << state.detail
++               << " wait_status=" << state.wait_status;
++  if (state.wait_status >= 0) {
++    if (WIFSIGNALED(state.wait_status))
++      return GetOhosTerminationStatusFromSignal(WTERMSIG(state.wait_status),
++                                              exit_code);
++    if (WIFEXITED(state.wait_status)) {
++      *exit_code = WEXITSTATUS(state.wait_status);
++      return *exit_code == 0 ? TERMINATION_STATUS_NORMAL_TERMINATION
++                            : TERMINATION_STATUS_ABNORMAL_TERMINATION;
++    }
++  }
++  *exit_code = -1;
++  return TERMINATION_STATUS_ABNORMAL_TERMINATION;
++}
+ #endif
+ 
+ TerminationStatus GetTerminationStatusImpl(ProcessHandle handle,
+@@ -55,6 +81,11 @@ TerminationStatus GetTerminationStatusImpl(ProcessHandle handle,
+                                            int* exit_code) {
+   DCHECK(exit_code);
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (auto state = internal::GetOhosForkChildStatus(handle))
++    return GetOhosForkTerminationStatus(handle, *state, exit_code);
++#endif
++
+ #if BUILDFLAG(IS_OHOS)
+   // Native children are created by appspawn, so they are not waitable children
+   // of the browser process. Probe the returned PID directly instead of
+@@ -133,6 +164,15 @@ TerminationStatus GetTerminationStatus(ProcessHandle handle, int* exit_code) {
+ TerminationStatus GetKnownDeadTerminationStatus(ProcessHandle handle,
+                                                 int* exit_code) {
+ #if BUILDFLAG(IS_OHOS)
++  if (auto state = internal::GetOhosForkChildStatus(handle)) {
++    if (state->running) {
++      internal::SignalOhosForkChild(handle, SIGKILL);
++      internal::WaitForOhosForkChild(handle, 5000, nullptr);
++      state = internal::GetOhosForkChildStatus(handle);
++    }
++    return GetOhosForkTerminationStatus(handle, *state, exit_code);
++  }
++
+   if (std::optional<int> signal =
+           internal::GetOhosNativeChildExitSignal(handle)) {
+     LOG(WARNING) << "OHOS known-dead child already exited pid=" << handle
+diff --git a/base/process/process_posix.cc b/base/process/process_posix.cc
+index 40f0df4..110effc 100644
+--- a/base/process/process_posix.cc
++++ b/base/process/process_posix.cc
+@@ -25,6 +25,10 @@
+ #include "base/trace_event/trace_event.h"
+ #include "build/build_config.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "base/process/fork_server_ohos.h"
++#endif
++
+ #if BUILDFLAG(IS_MAC)
+ #include <sys/event.h>
+ #endif
+@@ -292,6 +296,22 @@ bool Process::Terminate(int exit_code, bool wait) const {
+   // exit_code isn't supportable.
+   DCHECK(IsValid());
+   CHECK_GT(process_, 0);
++#if BUILDFLAG(IS_OHOS)
++  // The early fork server owns/reaps these children. Signal through it so an
++  // already reaped/reused PID can never target an unrelated process.
++  const int fork_signal =
++      !wait && exit_code == Process::kResultCodeKilledBadMessage ? SIGKILL
++                                                              : SIGTERM;
++  if (auto sent = internal::SignalOhosForkChild(process_, fork_signal)) {
++    if (!*sent)
++      return false;
++    if (!wait || WaitForExitWithTimeout(Seconds(60), nullptr))
++      return true;
++    if (!internal::SignalOhosForkChild(process_, SIGKILL).value_or(false))
++      return false;
++    return WaitForExit(nullptr);
++  }
++#endif
+   return TerminateInternal(exit_code, wait);
+ }
+ #endif
+@@ -341,7 +361,17 @@ bool Process::WaitForExitWithTimeout(TimeDelta timeout, int* exit_code) const {
+   }
+ 
+   int local_exit_code = 0;
+-  bool exited = WaitForExitWithTimeoutImpl(Handle(), &local_exit_code, timeout);
++  bool exited;
++#if BUILDFLAG(IS_OHOS)
++  if (auto waited = internal::WaitForOhosForkChild(
++          Handle(), timeout.is_max() ? -1 : timeout.InMilliseconds(),
++          &local_exit_code)) {
++    exited = *waited;
++  } else
++#endif
++  {
++    exited = WaitForExitWithTimeoutImpl(Handle(), &local_exit_code, timeout);
++  }
+   if (exited) {
+     Exited(local_exit_code);
+     if (exit_code) {
+diff --git a/content/child/child_thread_impl.cc b/content/child/child_thread_impl.cc
+index 25f8eed..e2fd677 100644
+--- a/content/child/child_thread_impl.cc
++++ b/content/child/child_thread_impl.cc
+@@ -111,6 +111,10 @@
+ extern "C" void __llvm_profile_set_file_object(FILE* File, int EnableMerge);
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "base/process/fork_server_ohos.h"
++#endif
++
+ namespace content {
+ namespace {
+ 
+@@ -291,7 +295,16 @@ mojo::IncomingInvitation InitializeMojoIPCChannel() {
+     flags |= MOJO_ACCEPT_INVITATION_FLAG_INHERIT_BROKER;
+   }
+ 
+-  return mojo::IncomingInvitation::Accept(std::move(endpoint), flags);
++#if BUILDFLAG(IS_OHOS)
++  base::internal::ReportOhosForkStage(
++      base::internal::OhosForkStage::kAcceptInvitation, endpoint.is_valid());
++#endif
++  auto invitation = mojo::IncomingInvitation::Accept(std::move(endpoint), flags);
++#if BUILDFLAG(IS_OHOS)
++  base::internal::ReportOhosForkStage(
++      base::internal::OhosForkStage::kInvitationAccepted);
++#endif
++  return invitation;
+ }
+ 
+ // Callback passed to variations::ChildProcessFieldTrialSyncer. Notifies the
+@@ -825,11 +838,17 @@ bool ChildThreadImpl::ShouldBeDestroyed() {
+ }
+ 
+ void ChildThreadImpl::OnChannelConnected(int32_t peer_pid) {
++#if BUILDFLAG(IS_OHOS)
++  base::internal::ReportOhosForkStage(
++      base::internal::OhosForkStage::kConnected, peer_pid);
++#endif
+   channel_connected_factory_.reset();
+ }
+ 
+ void ChildThreadImpl::OnChannelError() {
+ #if BUILDFLAG(IS_OHOS)
++  base::internal::ReportOhosForkStage(
++      base::internal::OhosForkStage::kChannelError);
+   LOG(WARNING) << "OHOS ChildThreadImpl::OnChannelError";
+ #endif
+   on_channel_error_called_ = true;
+@@ -954,6 +973,10 @@ void ChildThreadImpl::OnProcessFinalRelease() {
+ void ChildThreadImpl::SetBatterySaverMode(bool battery_saver_mode_enabled) {}
+ 
+ void ChildThreadImpl::EnsureConnected(int connection_timeout) {
++#if BUILDFLAG(IS_OHOS)
++  base::internal::ReportOhosForkStage(
++      base::internal::OhosForkStage::kConnectionTimeout, connection_timeout);
++#endif
+   VLOG(0) << "Terminating current process after " << connection_timeout
+           << " seconds with no connection.";
+   base::Process::TerminateCurrentProcessImmediately(0);

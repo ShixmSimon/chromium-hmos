@@ -6,6 +6,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "AbilityKit/native_child_process.h"
 
@@ -97,7 +98,9 @@ extern "C" __attribute__((visibility("default"))) void ChromiumNativeChildMain(
   using Entry = void (*)(NativeChildProcess_Args);
   Entry entry = reinterpret_cast<Entry>(
       ResolveEngineEntry("ChromiumHarmonyOSNativeChildMain"));
-  if (entry) {
-    entry(args);
+  if (!entry) {
+    // Loader failure is a bootstrap error, never a successful child exit.
+    _exit(78);
   }
+  entry(args);
 }

@@ -82,6 +82,8 @@ struct AuraStartupConfig {
   // keeps it in the browser process. See ui/ozone/platform/ohos/
   // ohos_gpu_child_channel.h.
   std::string gpu_process;
+  // Phone-only experiment; same UID, GPU stays in process. Read once.
+  bool experimental_phone_fork = false;
   // "vulkan" has Skia composite and rasterize with Vulkan in the GPU
   // process; anything else keeps GL. Only with gpu_process "separate":
   // upstream does not run Skia on Vulkan with the GPU in the browser

@@ -1,5 +1,6 @@
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 
+#include <native_window/external_window.h>
 #include <algorithm>
 #include <limits>
 #include <map>
@@ -258,7 +259,8 @@ class NativeWindowRegistry {
     bounds_callbacks_.erase(widget);
   }
 
-  std::optional<OhosNativeSurface> Get(gfx::AcceleratedWidget widget) {
+  std::optional<OhosNativeSurface> Get(gfx::AcceleratedWidget widget,
+                                       bool take_reference = false) {
     base::AutoLock lock(lock_);
     auto binding = widget_bindings_.find(widget);
     if (binding == widget_bindings_.end()) {
@@ -266,6 +268,11 @@ class NativeWindowRegistry {
     }
     auto surface = surfaces_.find(binding->second);
     if (surface == surfaces_.end()) {
+      return std::nullopt;
+    }
+    if (take_reference && surface->second.surface.window &&
+        OH_NativeWindow_NativeObjectReference(surface->second.surface.window) !=
+            0) {
       return std::nullopt;
     }
     return surface->second.surface;
@@ -892,6 +899,11 @@ std::optional<OhosNativeSurface> GetOhosNativeSurface(
     return GetOhosGpuChildSurface(widget);
   }
   return GetRegistry().Get(widget);
+}
+
+std::optional<OhosNativeSurface> AcquireOhosNativeSurfaceForPhoneGpu(
+    gfx::AcceleratedWidget widget) {
+  return GetRegistry().Get(widget, true);
 }
 
 void ExpectOhosNativeSurface(gfx::AcceleratedWidget widget) {

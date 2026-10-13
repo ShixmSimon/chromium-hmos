@@ -1173,6 +1173,8 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
     config.additional_switches.push_back({"ohos-download-dir", *directory});
   }
 
+  config.experimental_phone_fork =
+      dict.FindBool("experimentalPhoneFork").value_or(false);
   config.gpu_rasterization = dict.FindBool("gpuRasterization");
   config.gpu_compositing = dict.FindBool("gpuCompositing");
   if (std::optional<bool> show_frame_rate = dict.FindBool("showFrameRate")) {

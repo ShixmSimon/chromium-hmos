@@ -27,7 +27,9 @@ class OhosVSyncProvider final : public gfx::VSyncProvider {
  public:
   // |window_id| ties the connection to the window whose frame rate is being
   // requested; 0 falls back to an unassociated connection.
-  explicit OhosVSyncProvider(int32_t window_id);
+  explicit OhosVSyncProvider(int32_t window_id, bool polling = false);
+  // Blocking phone channel workers poll idle policy on their owning sequence.
+  void PollIdle();
   OhosVSyncProvider(const OhosVSyncProvider&) = delete;
   OhosVSyncProvider& operator=(const OhosVSyncProvider&) = delete;
   ~OhosVSyncProvider() override;

@@ -41,6 +41,14 @@ git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-url-protection-updates.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-rule-sources.patch"
+git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-phone-fork.patch"
+git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-phone-gpu-shared-output.patch"
+git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-ime-explicit-keyboard-request.patch"
+git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-phone-skia-vulkan.patch"
 while read -r deps_path deps_patch; do
   [[ -z "${deps_path}" || "${deps_path}" == \#* ]] && continue
   git -C "${chromium_src}/${deps_path}" apply --binary \
