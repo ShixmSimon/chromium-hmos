@@ -34,6 +34,21 @@ jobs:
           root = Path(os.environ.get('CHROMIUM_SRC', '/root/chromium-154/src'))
           paths = '''
           out/ohos_arm64/args.gn
+          components/viz/service/display_embedder/skia_output_surface_impl.cc
+          components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+          components/viz/service/display_embedder/skia_output_device.h
+          components/viz/service/display_embedder/skia_output_device.cc
+          components/viz/service/display_embedder/skia_output_device_vulkan.cc
+          components/viz/service/display_embedder/skia_output_device_gl.cc
+          components/viz/service/display_embedder/skia_output_device_buffer_queue.cc
+          components/viz/service/display/output_surface.h
+          components/viz/service/display/display.cc
+          components/viz/service/display/skia_renderer.cc
+          components/viz/common/resources/shared_image_format.h
+          components/viz/common/resources/shared_image_format_utils.h
+          components/viz/service/BUILD.gn
+          ui/gfx/display_color_spaces.cc
+          third_party/skia/include/core/SkColorType.h
           third_party/angle/src/libANGLE/renderer/vulkan/TextureVk.cpp
           third_party/angle/src/libANGLE/renderer/vulkan/TextureVk.h
           third_party/angle/src/libANGLE/renderer/vulkan/vk_renderer.cpp
