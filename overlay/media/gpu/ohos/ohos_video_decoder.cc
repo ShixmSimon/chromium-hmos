@@ -228,6 +228,7 @@ void OhosVideoDecoder::Initialize(const VideoDecoderConfig& config,
              config_.codec() == VideoCodec::kAV1)
                 ? viz::MultiPlaneFormat::kP010
                 : viz::MultiPlaneFormat::kNV12,
+            config_.is_encrypted(),
             base::BindPostTask(
                 task_runner_,
                 base::BindOnce(&OhosVideoDecoder::OnGpuInitialized,

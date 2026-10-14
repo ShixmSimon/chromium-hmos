@@ -20,6 +20,7 @@
 #include "gpu/ipc/service/gpu_channel.h"
 #include "gpu/ipc/service/gpu_channel_shared_image_interface.h"
 #include "gpu/ipc/service/shared_image_stub.h"
+#include "gpu/vulkan/buildflags.h"
 #include "media/base/format_utils.h"
 #include "media/base/video_types.h"
 #include "ui/gfx/gpu_fence.h"
@@ -27,6 +28,11 @@
 #include "ui/gl/gl_fence.h"
 #include "ui/gl/gl_surface_egl.h"
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
+
+#if BUILDFLAG(ENABLE_VULKAN)
+#include "components/viz/common/gpu/vulkan_context_provider.h"
+#include "ui/ozone/platform/ohos/ohos_video_vulkan.h"
+#endif
 
 namespace media {
 namespace {
@@ -51,6 +57,7 @@ OhosVideoFrameConverter::~OhosVideoFrameConverter() {
 }
 
 void OhosVideoFrameConverter::Initialize(viz::SharedImageFormat format,
+                                         bool is_encrypted,
                                          base::OnceCallback<void(bool)> done) {
   DCHECK(gpu_task_runner_->RunsTasksInCurrentSequence());
   if (!initialized_) {
@@ -64,14 +71,30 @@ void OhosVideoFrameConverter::Initialize(viz::SharedImageFormat format,
       sis_ = stub_->channel()->shared_image_stub();
     }
   }
-  // Native Skia Vulkan and Graphite import need a separate implementation.
-  // ANGLE Vulkan is allowed when its EGL NativeBuffer and fence support exist.
-  bool supported = sis_ && sis_->MakeContextCurrent(/*needs_gl=*/true) &&
+  use_vulkan_ = sis_ && sis_->shared_context_state()->GrContextIsVulkan();
+  bool supported = sis_ && sis_->MakeContextCurrent(/*needs_gl=*/!use_vulkan_) &&
                    !sis_->shared_context_state()->context_lost() &&
-                   sis_->shared_context_state()->gr_context_type() ==
-                       gpu::GrContextType::kGL &&
-                   gl::GLFence::IsGpuFenceSupported() &&
                    ui::IsOhosNativePixmapFormat(format);
+  if (use_vulkan_) {
+#if BUILDFLAG(ENABLE_VULKAN)
+    // Protected imports need a protected VkDevice/queue, which this path
+    // does not create. Keep encrypted playback on the existing fallback.
+    auto context = sis_->shared_context_state();
+    supported = supported && !is_encrypted &&
+                context->vk_context_provider() &&
+                context->external_semaphore_pool() &&
+                ui::CanImportOhosVideoVulkan(
+                    context->vk_context_provider()->GetDeviceQueue());
+#else
+    supported = false;
+#endif
+    LOG(WARNING) << "OHOS video zero-copy: native Vulkan available=" << supported;
+    std::move(done).Run(supported);
+    return;
+  }
+  // ANGLE Vulkan still uses the GL/EGL import path.
+  supported = supported && sis_->shared_context_state()->GrContextIsGL() &&
+              gl::GLFence::IsGpuFenceSupported();
   if (supported) {
     auto* display = gl::GLSurfaceEGL::GetGLDisplayEGL();
     const char* extensions =
@@ -151,7 +174,7 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
     fail("visible rect outside native allocation");
     return;
   }
-  if (!sis_->MakeContextCurrent(/*needs_gl=*/true)) {
+  if (!sis_->MakeContextCurrent(/*needs_gl=*/!use_vulkan_)) {
     fail("MakeContextCurrent failed");
     return;
   }
@@ -172,15 +195,21 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
     return;
   }
   // Read-only GPU uses. No scanout, CPU mapping, or direct WebGPU import.
+  gpu::SharedImageUsageSet usage = gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
+                                   gpu::SHARED_IMAGE_USAGE_RASTER_READ;
+  if (!use_vulkan_) {
+    usage |= gpu::SHARED_IMAGE_USAGE_GLES2_READ;
+  }
   const gpu::SharedImageInfo info(pixmap->GetSharedImageFormat(),
                                   pixmap->GetBufferSize(), color_space,
                                   kTopLeft_GrSurfaceOrigin, kOpaque_SkAlphaType,
-                                  gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
-                                      gpu::SHARED_IMAGE_USAGE_RASTER_READ |
-                                      gpu::SHARED_IMAGE_USAGE_GLES2_READ,
+                                  usage,
                                   "OhosVideoDecoder");
+  // Vulkan retains the original Surface lease in VkImage. Caching that image
+  // would pin decoder queue slots; use one import per frame until a separate
+  // cache/lease protocol is implemented for Vulkan.
   std::optional<uint32_t> reusable_buffer_id =
-      ui::GetOhosVideoNativePixmapId(*pixmap);
+      use_vulkan_ ? std::nullopt : ui::GetOhosVideoNativePixmapId(*pixmap);
   scoped_refptr<gpu::ClientSharedImage> shared_image;
   gpu::SyncToken ready_token;
   const bool had_acquire_fence = !acquire_fence.is_null();
@@ -213,8 +242,8 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
       reusable_buffer_id.reset();
       import_pixmap = pixmap;
       if (uncached_frames_ == 0) {
-        LOG(WARNING) << "OHOS video zero-copy: independent import wrapper "
-                        "unavailable; using uncached frame import";
+        LOG(WARNING) << "OHOS video zero-copy: uncached frame import; Vulkan="
+                     << use_vulkan_;
       }
       ++uncached_frames_;
     }

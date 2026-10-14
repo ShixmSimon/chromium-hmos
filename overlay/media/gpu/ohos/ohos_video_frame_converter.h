@@ -29,8 +29,8 @@ struct SyncToken;
 
 namespace media {
 
-// GPU-sequence bridge for decoder-owned buffers. Imports can outlive a frame,
-// but its separate queue lease is held until the GPU read-completion token.
+// GPU-sequence bridge for decoder-owned buffers. GL imports can be cached;
+// Vulkan imports keep the queue lease until VkImage fence-helper cleanup.
 class OhosVideoFrameConverter
     : public gpu::CommandBufferStub::DestructionObserver,
       public base::RefCountedDeleteOnSequence<OhosVideoFrameConverter> {
@@ -46,6 +46,7 @@ class OhosVideoFrameConverter
 
   // All public methods run on the GPU sequence; construction may run elsewhere.
   void Initialize(viz::SharedImageFormat format,
+                  bool is_encrypted,
                   base::OnceCallback<void(bool)> done);
   void Reset(uint32_t generation);
   void Convert(uint32_t generation,
@@ -82,6 +83,7 @@ class OhosVideoFrameConverter
   GetCommandBufferStubCB get_stub_cb_;
   const gpu::GpuDriverBugWorkarounds workarounds_;
   bool initialized_ = false;
+  bool use_vulkan_ = false;
   raw_ptr<gpu::CommandBufferStub> stub_ = nullptr;
   raw_ptr<gpu::SharedImageStub> sis_ = nullptr;
   gpu::SequenceId wait_sequence_id_;

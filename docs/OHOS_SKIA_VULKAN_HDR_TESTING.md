@@ -404,3 +404,26 @@ HAR 与签名 HAP 内的 `libweb_engine.so` SHA-256 一致：
 边界、FD 最后持有者释放、手机 GPU 通道回归测试；补丁重复应用和公开树检查。
 完整内核构建及安装、HDR / SDR 像素对照、WebGL 视频纹理、暂停 / 跳转 /
 前后台恢复、长时间掉帧测量尚未完成。
+
+### 非 fork Skia Vulkan 原生视频导入（待 CI 编译及实机验收）
+
+非 fork 的 GPU 进程内解码器现接入同一 NV12 / P010 Vulkan 导入函数。
+该路径直接传递 `NativePixmap` 引用，不序列化 NativeBuffer parcel，也不建立
+释放通知 socket。Skia 通过只读 SharedImage 采样原始解码缓冲区，保留源色彩
+空间、HDR 元数据和 P010 位深。
+
+- 非 fork Vulkan 实现将 `VK_OHOS_external_memory` 列为可选扩展；原生视频
+  导入还要求 external-semaphore-fd、foreign queue family 和属性查询函数。
+  能力不足或 Surface 初始化失败时使用原有缓冲输出；加密视频不走此 Vulkan
+  路径。GL/EGL 继续使用原有导入及缓存逻辑。
+- 解码器的 acquire fence 导入 Vulkan 信号量；每个 VkImage 持有原始 Surface
+  队列租约，GPU fence 完成后的销毁才归还缓冲区。Vulkan 暂不缓存逐帧导入，
+  避免缓存占住有限的解码队列。暂停、丢帧后的释放使用同一 cleanup fence 轮询。
+- Vulkan 视频 SharedImage 仅声明 DISPLAY_READ / RASTER_READ；WebGL 视频
+  纹理经 Raster 转换。此改动没有补齐原生 Display-P3 SDR 输出。
+
+验收须分别记录 fork 与非 fork、GL 与 Vulkan 的真实后端，并固定同一份
+HEVC Main10 素材及清晰度。覆盖首帧与保留帧正确性、持续播放掉帧、全屏、
+暂停与跳转、后台恢复、切换视频、GPU 重建及内存/FD 占用；另外复测 H264 SDR、
+VP9 软件解码与 WebGL 视频纹理。旧版本或手机 fork 的结果不能代替非 fork
+设备验收。构建仅通过推送触发的 GitHub Actions 执行。

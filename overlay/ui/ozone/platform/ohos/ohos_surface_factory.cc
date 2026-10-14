@@ -1044,9 +1044,24 @@ bool OhosSurfaceFactory::IsFormatSupportedForTexturing(
 
 #if BUILDFLAG(ENABLE_VULKAN)
 namespace {
-class PhoneVulkanImplementation final : public gpu::VulkanImplementationOhos {
+class VideoVulkanImplementation : public gpu::VulkanImplementationOhos {
  public:
-  PhoneVulkanImplementation() : VulkanImplementationOhos(true, {}, {}) {}
+  using VulkanImplementationOhos::VulkanImplementationOhos;
+
+  std::vector<const char*> GetOptionalDeviceExtensions() override {
+    auto extensions = VulkanImplementationOhos::GetOptionalDeviceExtensions();
+    // Optional on non-fork devices: missing video import support must not
+    // disable Vulkan page rendering or its existing window swapchain.
+    extensions.push_back("VK_OHOS_external_memory");
+    return extensions;
+  }
+  // Same-process video is registered explicitly by the decoder. Do not
+  // advertise generic NativePixmap import for unrelated GL/WebGPU buffers.
+};
+
+class PhoneVulkanImplementation final : public VideoVulkanImplementation {
+ public:
+  PhoneVulkanImplementation() : VideoVulkanImplementation(true, {}, {}) {}
   std::vector<const char*> GetRequiredDeviceExtensions() override {
     auto extensions = VulkanImplementationOhos::GetRequiredDeviceExtensions();
     extensions.push_back("VK_OHOS_external_memory");
@@ -1066,7 +1081,7 @@ class PhoneVulkanImplementation final : public gpu::VulkanImplementationOhos {
     return optional;
   }
   bool CanImportGpuMemoryBuffer(gpu::VulkanDeviceQueue* queue,
-                                gfx::GpuMemoryBufferType type) override {
+                               gfx::GpuMemoryBufferType type) override {
     return type == gfx::NATIVE_PIXMAP && CanImportOhosVideoVulkan(queue);
   }
   std::unique_ptr<gpu::VulkanImage> CreateImageFromGpuMemoryHandle(
@@ -1105,7 +1120,7 @@ OhosSurfaceFactory::CreateVulkanImplementation(bool use_swiftshader,
   // A widget's window as the GL path finds it: from the registry -- the
   // mirror of the browser's, in a GPU process of its own -- waiting for it
   // when one is expected and has not arrived yet.
-  return std::make_unique<gpu::VulkanImplementationOhos>(
+  return std::make_unique<VideoVulkanImplementation>(
       /*force_native=*/true,
       base::BindRepeating([](gfx::AcceleratedWidget widget) -> void* {
         std::optional<OhosNativeSurface> surface =

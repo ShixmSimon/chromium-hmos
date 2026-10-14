@@ -11,7 +11,6 @@
 #include "gpu/vulkan/vulkan_image.h"
 #include "gpu/vulkan/vulkan_ycbcr_info.h"
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
-#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
 
 namespace ui {
 namespace {
@@ -23,9 +22,13 @@ GetProperties GetQuery(VkDevice device) {
 }  // namespace
 
 bool CanImportOhosVideoVulkan(gpu::VulkanDeviceQueue* queue) {
-  if (!IsOhosPhoneGpuChild() || !queue ||
+  if (!queue ||
       !queue->enabled_extensions().contains(
           VK_OHOS_EXTERNAL_MEMORY_EXTENSION_NAME) ||
+      !queue->enabled_extensions().contains(
+          VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME) ||
+      !queue->enabled_extensions().contains(
+          VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME) ||
       !GetQuery(queue->GetVulkanDevice()))
     return false;
   // NativeBuffer-specific properties are checked again for every import.
@@ -49,16 +52,43 @@ std::unique_ptr<gpu::VulkanImage> ImportOhosVideoVulkan(
     format = viz::MultiPlaneFormat::kNV12;
   else
     return nullptr;
-  const VkFormat expected_format =
-      prefix[8] == NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
-          ? VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16
-          : VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
   format.SetPrefersExternalSampler();
   auto pixmap = ImportOhosVideoNativePixmap(
       size, format, std::move(handle).native_pixmap_handle());
-  if (!pixmap)
+  return ImportOhosVideoVulkan(queue, std::move(pixmap), color_space);
+}
+
+std::unique_ptr<gpu::VulkanImage> ImportOhosVideoVulkan(
+    gpu::VulkanDeviceQueue* queue,
+    scoped_refptr<gfx::NativePixmap> pixmap,
+    const gfx::ColorSpace& color_space) {
+  if (!CanImportOhosVideoVulkan(queue) || !pixmap ||
+      !GetOhosVideoNativePixmapId(*pixmap).has_value())
+    return nullptr;
+  auto format = pixmap->GetSharedImageFormat();
+  if (!format.PrefersExternalSampler())
+    return nullptr;
+  format.ClearPrefersExternalSampler();
+  if (format != viz::MultiPlaneFormat::kP010 &&
+      format != viz::MultiPlaneFormat::kNV12)
+    return nullptr;
+  const bool p010 = format == viz::MultiPlaneFormat::kP010;
+  const VkFormat expected_format =
+      p010 ? VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16
+           : VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+  const auto size = pixmap->GetBufferSize();
+  if (size.IsEmpty() || size.width() > 8192 || size.height() > 8192)
     return nullptr;
   auto* native = static_cast<OH_NativeBuffer*>(GetOhosNativeBuffer(*pixmap));
+  if (!native)
+    return nullptr;
+  OH_NativeBuffer_Config config{};
+  OH_NativeBuffer_GetConfig(native, &config);
+  const int expected_native_format = p010 ? NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
+                                         : NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP;
+  if (config.width != size.width() || config.height != size.height() ||
+      config.format != expected_native_format)
+    return nullptr;
   const VkDevice device = queue->GetVulkanDevice();
   VkNativeBufferFormatPropertiesOHOS native_format{
       VK_STRUCTURE_TYPE_NATIVE_BUFFER_FORMAT_PROPERTIES_OHOS};

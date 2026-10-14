@@ -128,15 +128,18 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  #include "build/build_config.h"
  #include "components/viz/common/resources/shared_image_format_utils.h"
  #include "gpu/command_buffer/common/shared_image_info.h"
-@@ -50,6 +52,7 @@
+@@ -50,6 +52,10 @@
  #include "third_party/skia/include/gpu/vk/VulkanMutableTextureState.h"
  #include "third_party/skia/include/private/chromium/GrPromiseImageTexture.h"
  #include "ui/gfx/buffer_types.h"
 +#include "ui/gfx/gpu_fence.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_video_vulkan.h"
++#endif
  #include "ui/gl/buildflags.h"
  #include "ui/gl/gl_context.h"
  #include "ui/gl/gl_utils.h"
-@@ -85,6 +88,22 @@
+@@ -85,6 +91,22 @@
  namespace gpu {
  
  namespace {
@@ -159,7 +162,52 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  
  class ScopedDedicatedMemoryObject {
   public:
-@@ -379,8 +398,15 @@
+@@ -263,6 +285,44 @@
+ 
+   return backing;
+ }
++
++#if BUILDFLAG(IS_OHOS)
++std::unique_ptr<ExternalVkImageBacking>
++ExternalVkImageBacking::CreateForOhosVideo(
++    scoped_refptr<SharedContextState> context_state,
++    const Mailbox& mailbox,
++    const SharedImageInfo& si_info,
++    scoped_refptr<gfx::NativePixmap> pixmap) {
++  // No GL/WebGPU/write access: this backing has no transfer command pool.
++  // WebGL consumers must copy through the Raster video conversion path.
++  if (!context_state || !context_state->GrContextIsVulkan() ||
++      context_state->context_lost() || !context_state->vk_context_provider() ||
++      !context_state->external_semaphore_pool() || !pixmap ||
++      si_info.usage != (SHARED_IMAGE_USAGE_DISPLAY_READ |
++                        SHARED_IMAGE_USAGE_RASTER_READ) ||
++      si_info.size != pixmap->GetBufferSize() ||
++      si_info.format != pixmap->GetSharedImageFormat()) {
++    return nullptr;
++  }
++  auto image = ui::ImportOhosVideoVulkan(
++      context_state->vk_context_provider()->GetDeviceQueue(), std::move(pixmap),
++      si_info.color_space);
++  if (!image) {
++    return nullptr;
++  }
++  const size_t estimated_size = image->device_size();
++  std::vector<TextureHolderVk> textures;
++  textures.emplace_back(std::move(image), si_info.format, si_info.color_space);
++  auto backing = std::make_unique<ExternalVkImageBacking>(
++      base::PassKey<ExternalVkImageBacking>(), mailbox, si_info, estimated_size,
++      std::move(context_state), std::move(textures), /*command_pool=*/nullptr,
++      /*use_separate_gl_texture=*/false,
++      /*enable_webgpu_on_vk_via_gl_interop=*/false);
++  backing->SetCleared();
++  backing->latest_content_ = kInVkImage;
++  return backing;
++}
++#endif
+ 
+ // static
+ std::unique_ptr<ExternalVkImageBacking> ExternalVkImageBacking::CreateFromGMB(
+@@ -379,8 +439,15 @@
        use_separate_gl_texture_(use_separate_gl_texture),
        enable_webgpu_on_vk_via_gl_interop_(enable_webgpu_on_vk_via_gl_interop) {
  #if BUILDFLAG(IS_OZONE)
@@ -177,7 +225,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
      pixmap_ = ui::OzonePlatform::GetInstance()
                    ->GetSurfaceFactoryOzone()
                    ->CreateNativePixmapFromHandle(
-@@ -391,6 +417,10 @@
+@@ -391,6 +458,10 @@
  }
  
  ExternalVkImageBacking::~ExternalVkImageBacking() {
@@ -188,7 +236,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
    auto semaphores = std::move(read_semaphores_);
    if (write_semaphore_) {
      semaphores.emplace_back(std::move(write_semaphore_));
-@@ -406,6 +436,16 @@
+@@ -406,6 +477,16 @@
          std::move(vk_texture.vulkan_image));
    }
    vk_textures_.clear();
@@ -205,7 +253,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  
    if (!gl_textures_.empty()) {
      // Ensure that a context is current before glDeleteTexture().
-@@ -651,6 +691,18 @@
+@@ -651,6 +732,18 @@
  }
  
  void ExternalVkImageBacking::Update(std::unique_ptr<gfx::GpuFence> in_fence) {
@@ -497,3 +545,110 @@ diff --git a/ui/gfx/native_pixmap_handle.h b/ui/gfx/native_pixmap_handle.h
  
  #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
    // The modifier is retrieved from GBM library and passed to EGL driver.
+diff --git a/gpu/command_buffer/service/shared_context_state.cc b/gpu/command_buffer/service/shared_context_state.cc
+--- a/gpu/command_buffer/service/shared_context_state.cc
++++ b/gpu/command_buffer/service/shared_context_state.cc
+@@ -73,6 +73,7 @@
+ #include "gpu/command_buffer/service/external_semaphore_pool.h"
+ #if BUILDFLAG(IS_OHOS)
+ #include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
++#include "ui/ozone/platform/ohos/ohos_video_vulkan.h"
+ #endif
+ #endif
+ 
+@@ -312,8 +313,9 @@
+     (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN) || \
+      BUILDFLAG(IS_OHOS))
+ #if BUILDFLAG(IS_OHOS)
+-      if (ui::IsOhosPhoneGpuChild() &&
+-          gr_context_type_ == GrContextType::kVulkan)
++      if (gr_context_type_ == GrContextType::kVulkan &&
++          (ui::IsOhosPhoneGpuChild() || ui::CanImportOhosVideoVulkan(
++               vk_context_provider_->GetDeviceQueue())))
+ #endif
+       {
+         external_semaphore_pool_ =
+diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.h b/gpu/command_buffer/service/shared_image/external_vk_image_backing.h
+--- a/gpu/command_buffer/service/shared_image/external_vk_image_backing.h
++++ b/gpu/command_buffer/service/shared_image/external_vk_image_backing.h
+@@ -34,6 +34,15 @@
+ 
+ class ExternalVkImageBacking final : public ClearTrackingSharedImageBacking {
+  public:
++#if BUILDFLAG(IS_OHOS)
++  // The VkImage holds the decoder Surface lease until GPU cleanup completes.
++  static std::unique_ptr<ExternalVkImageBacking> CreateForOhosVideo(
++      scoped_refptr<SharedContextState> context_state,
++      const Mailbox& mailbox,
++      const SharedImageInfo& si_info,
++      scoped_refptr<gfx::NativePixmap> pixmap);
++#endif
++
+   static std::unique_ptr<ExternalVkImageBacking> Create(
+       scoped_refptr<SharedContextState> context_state,
+       bool enable_webgpu_on_vk_via_gl_interop,
+diff --git a/gpu/ipc/service/gpu_channel_shared_image_interface.cc b/gpu/ipc/service/gpu_channel_shared_image_interface.cc
+--- a/gpu/ipc/service/gpu_channel_shared_image_interface.cc
++++ b/gpu/ipc/service/gpu_channel_shared_image_interface.cc
+@@ -24,6 +24,10 @@
+ #endif
+ 
+ #if BUILDFLAG(IS_OHOS)
++#include "gpu/vulkan/buildflags.h"
++#if BUILDFLAG(ENABLE_VULKAN)
++#include "gpu/command_buffer/service/shared_image/external_vk_image_backing.h"
++#endif
+ #include "gpu/command_buffer/service/shared_image/ozone_image_backing.h"
+ #include "ui/gfx/gpu_fence.h"
+ #include "ui/gl/gl_fence.h"
+@@ -159,29 +163,43 @@
+     gfx::GpuFenceHandle acquire_fence,
+     const GpuDriverBugWorkarounds& workarounds) {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
+-  if (!shared_image_stub_ || !pixmap ||
+-      !shared_image_stub_->MakeContextCurrent(/*needs_gl=*/true)) {
++  if (!shared_image_stub_ || !pixmap) {
+     return nullptr;
+   }
+   auto context = shared_image_stub_->shared_context_state();
++  const bool use_vulkan = context->GrContextIsVulkan();
+   if (context->context_lost() ||
+-      context->gr_context_type() != GrContextType::kGL ||
+-      !gl::GLFence::IsGpuFenceSupported()) {
++      !shared_image_stub_->MakeContextCurrent(/*needs_gl=*/!use_vulkan)) {
+     return nullptr;
+   }
+   const auto mailbox = Mailbox::Generate();
+-  auto backing = std::make_unique<OzoneImageBacking>(
+-      mailbox, si_info, context, std::move(pixmap), workarounds);
++  std::unique_ptr<SharedImageBacking> backing;
++#if BUILDFLAG(ENABLE_VULKAN)
++  if (use_vulkan) {
++    backing = ExternalVkImageBacking::CreateForOhosVideo(
++        context, mailbox, si_info, std::move(pixmap));
++  } else
++#endif
++  if (context->GrContextIsGL() && gl::GLFence::IsGpuFenceSupported()) {
++    backing = std::make_unique<OzoneImageBacking>(
++        mailbox, si_info, context, std::move(pixmap), workarounds);
++  }
++  if (!backing) {
++    return nullptr;
++  }
+   backing->SetCleared();
+   if (!acquire_fence.is_null()) {
+     backing->Update(std::make_unique<gfx::GpuFence>(std::move(acquire_fence)));
+   }
++  if (context->context_lost()) {
++    return nullptr;
++  }
+   if (!shared_image_stub_->factory()->RegisterBacking(std::move(backing))) {
+     return nullptr;
+   }
+   return base::WrapRefCounted<ClientSharedImage>(
+       new ClientSharedImage(mailbox, si_info, GenVerifiedSyncToken(), holder_,
+-                            GL_TEXTURE_EXTERNAL_OES));
++                            use_vulkan ? 0 : GL_TEXTURE_EXTERNAL_OES));
+ }
+ #endif
+ 
