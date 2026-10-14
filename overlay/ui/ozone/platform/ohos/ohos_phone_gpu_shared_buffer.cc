@@ -118,7 +118,16 @@ bool Encode(OH_NativeBuffer* native, SharedMessage* m) {
   if (!ValidSharedPacket(p, m->fds.size())) {
     LOG(ERROR) << "OHOS shared buffer: step=packet-validation mode="
                << static_cast<uint32_t>(p.color.mode)
-               << " fd_count=" << p.fd_count << " received=" << m->fds.size();
+               << " fd_count=" << p.fd_count << " received=" << m->fds.size()
+               << " size=" << p.width << "x" << p.height
+               << " stride=" << v[5] << " allocation_bytes=" << v[7]
+               << " required_bytes=" << uint64_t{v[5]} * p.height
+               << " sequence=" << p.sequence << " widget=" << p.widget
+               << " lease=" << p.lease
+               << " color_generation=" << p.color_generation
+               << " has_fence=" << p.has_fence
+               << " tail_bytes=" << p.tail_bytes
+               << " reserve_ints=" << v[3];
     return false;
   }
   return true;
