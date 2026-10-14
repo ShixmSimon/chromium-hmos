@@ -82,6 +82,46 @@ bool SetColor(Target* target,
                          reinterpret_cast<uint8_t*>(&metadata)));
       });
 }
+bool SingleDisplaySupportsHdr10(uint64_t* display_id, bool log_details) {
+  NativeDisplayManager_DisplaysInfo* displays = nullptr;
+  const auto result = OH_NativeDisplayManager_CreateAllDisplays(&displays);
+  if (log_details) {
+    LOG(WARNING) << "OHOS HDR display probe: result=" << result
+                 << " count=" << (displays ? displays->displaysLength : 0)
+                 << " has_infos=" << (displays && displays->displaysInfo);
+  }
+  if (result != DISPLAY_MANAGER_OK || !displays)
+    return false;
+  if (log_details && displays->displaysInfo) {
+    for (uint32_t i = 0; i < displays->displaysLength; ++i) {
+      const auto& info = displays->displaysInfo[i];
+      std::string formats;
+      if (info.hdrFormat && info.hdrFormat->hdrFormats) {
+        for (uint32_t j = 0; j < info.hdrFormat->hdrFormatLength; ++j) {
+          formats += " " + base::NumberToString(info.hdrFormat->hdrFormats[j]);
+        }
+      }
+      LOG(WARNING) << "OHOS HDR display probe: id=" << info.id
+                   << " state=" << info.state << " formats=[" << formats
+                   << " ]";
+    }
+  }
+  bool supported = false;
+  // No permission-heavy enumeration of other apps' windows. Multiple displays
+  // remain SDR until per-window display IDs can be verified by the shell.
+  if (displays->displaysLength == 1 && displays->displaysInfo) {
+    if (display_id)
+      *display_id = displays->displaysInfo[0].id;
+    const auto* formats = displays->displaysInfo[0].hdrFormat;
+    if (formats && formats->hdrFormats) {
+      for (uint32_t i = 0; i < formats->hdrFormatLength; ++i)
+        supported |=
+            formats->hdrFormats[i] == 2;  // hdrCapability.HDRFormat.VIDEO_HDR10
+    }
+  }
+  OH_NativeDisplayManager_DestroyAllDisplays(displays);
+  return supported;
+}
 }  // namespace
 void UpdateOhosDisplayBrightness(std::optional<OhosDisplayBrightness> value) {
   base::RepeatingClosure changed;
@@ -135,48 +175,41 @@ void NoteOhosOutputColorFailure(const char* reason) {
 }
 OhosOutputColor GetOhosRequestedOutputColor() {
   auto* command = base::CommandLine::ForCurrentProcess();
-  if (OhosOutputColorFailed())
-    return {};
   const auto mode = command->GetSwitchValueASCII("ohos-vulkan-output");
+  const auto white = command->GetSwitchValueASCII("ohos-hdr-white-millinits");
+  const auto peak = command->GetSwitchValueASCII("ohos-hdr-peak-millinits");
+  const auto selected = [&](OhosOutputColor color, const char* reason) {
+    // Output construction only. Distinguish startup inputs from the selected
+    // SDR packet, whose luminance fields are deliberately zero.
+    LOG(WARNING) << "OHOS output color selection: requested=" << mode
+                 << " startup_white_millinits=" << white
+                 << " startup_peak_millinits=" << peak
+                 << " selected=" << static_cast<uint32_t>(color.mode)
+                 << " reason=" << reason;
+    return color;
+  };
+  if (OhosOutputColorFailed())
+    return selected({}, "session-fallback");
   if (mode == "sdr10")
-    return {OhosOutputMode::kSdr10};
+    return selected({OhosOutputMode::kSdr10}, "explicit-sdr10");
   if (mode != "hdr10" && mode != "auto")
-    return {};
+    return selected({}, "sdr8-or-disabled");
   OhosOutputColor hdr{OhosOutputMode::kHdr10};
-  base::StringToUint(command->GetSwitchValueASCII("ohos-hdr-white-millinits"),
-                     &hdr.white_millinits);
-  base::StringToUint(command->GetSwitchValueASCII("ohos-hdr-peak-millinits"),
-                     &hdr.peak_millinits);
-  if (ValidOhosOutputColor(hdr))
-    return mode == "auto" && !OhosSingleDisplaySupportsHdr10()
-               ? OhosOutputColor{OhosOutputMode::kSdr10}
-               : hdr;
-  LOG(WARNING) << "OHOS output color: system HDR brightness unavailable; "
-                  "using SDR output";
-  return mode == "auto" ? OhosOutputColor{OhosOutputMode::kSdr10}
-                        : OhosOutputColor{};
+  base::StringToUint(white, &hdr.white_millinits);
+  base::StringToUint(peak, &hdr.peak_millinits);
+  if (ValidOhosOutputColor(hdr)) {
+    if (mode == "auto" &&
+        !SingleDisplaySupportsHdr10(nullptr, /*log_details=*/true)) {
+      return selected({OhosOutputMode::kSdr10}, "display-capability-gate");
+    }
+    return selected(hdr, "hdr10-request");
+  }
+  return selected(mode == "auto" ? OhosOutputColor{OhosOutputMode::kSdr10}
+                                 : OhosOutputColor{},
+                  "startup-brightness-unavailable-or-invalid");
 }
 bool OhosSingleDisplaySupportsHdr10(uint64_t* display_id) {
-  NativeDisplayManager_DisplaysInfo* displays = nullptr;
-  if (OH_NativeDisplayManager_CreateAllDisplays(&displays) !=
-          DISPLAY_MANAGER_OK ||
-      !displays)
-    return false;
-  bool supported = false;
-  // No permission-heavy enumeration of other apps' windows. Multiple displays
-  // remain SDR until per-window display IDs can be verified by the shell.
-  if (displays->displaysLength == 1 && displays->displaysInfo) {
-    if (display_id)
-      *display_id = displays->displaysInfo[0].id;
-    const auto* formats = displays->displaysInfo[0].hdrFormat;
-    if (formats && formats->hdrFormats) {
-      for (uint32_t i = 0; i < formats->hdrFormatLength; ++i)
-        supported |=
-            formats->hdrFormats[i] == 2;  // hdrCapability.HDRFormat.VIDEO_HDR10
-    }
-  }
-  OH_NativeDisplayManager_DestroyAllDisplays(displays);
-  return supported;
+  return SingleDisplaySupportsHdr10(display_id, /*log_details=*/false);
 }
 bool OhosHdrDisplayGuard::Validate() {
   const auto now = base::TimeTicks::Now();

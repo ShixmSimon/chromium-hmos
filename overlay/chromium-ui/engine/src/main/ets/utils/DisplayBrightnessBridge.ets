@@ -13,9 +13,15 @@ export class DisplayBrightnessBridge {
   private brightnessListening: boolean = false;
   private displayListening: boolean = false;
   private warned: boolean = false;
+  private queryReported: boolean = false;
+  private eventReported: boolean = false;
   private onBrightness = (id: number, info: display.BrightnessInfo): void => {
     if (id !== this.displayId) {
       return;
+    }
+    if (!this.eventReported) {
+      this.report('first-event', info);
+      this.eventReported = true;
     }
     this.publish(info);
   };
@@ -47,7 +53,12 @@ export class DisplayBrightnessBridge {
   refresh(): void {
     try {
       this.displayId = display.getDefaultDisplaySync().id;
-      this.publish(display.getBrightnessInfo(this.displayId));
+      const info = display.getBrightnessInfo(this.displayId);
+      if (!this.queryReported) {
+        this.report('first-query', info);
+        this.queryReported = true;
+      }
+      this.publish(info);
     } catch (error) {
       // Older systems retain the existing GL defaults / Vulkan SDR10 path.
       this.port.UpdateDisplayBrightness(0, 0, 0, 0);
@@ -78,6 +89,13 @@ export class DisplayBrightnessBridge {
   private publish(info: display.BrightnessInfo): void {
     this.port.UpdateDisplayBrightness(this.displayId, info.sdrNits,
       info.currentHeadroom, info.maxHeadroom);
+  }
+
+  private report(source: string, info: display.BrightnessInfo): void {
+    // Chromium's hilog handler is not installed yet during the initial query.
+    console.info(`OHOS brightness bridge: source=${source} display=${this.displayId}` +
+      ` sdr_nits=${info.sdrNits} current_headroom=${info.currentHeadroom}` +
+      ` max_headroom=${info.maxHeadroom}`);
   }
 
   private warn(error: Object): void {

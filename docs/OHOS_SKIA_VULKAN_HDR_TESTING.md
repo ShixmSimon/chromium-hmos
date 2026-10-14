@@ -132,3 +132,34 @@ ce4ac7d 真机请求的是 SDR10（mode=1）。NativeBuffer 设置和读取均�
 
 ce4ac7d 的 FD 跟踪显示原缓存保留且 Dawn 到达 after-vkCreateInstance，未发现新
 SIGBUS。证据包里的 native-crash.log 是 1ef4721 / 12:48:26 的历史文件，不能算新崩溃。
+# 2026-10-14：首次亮度与 HDR 选择诊断
+
+`ed3aece` 现场继续运行 Vulkan + SDR10，所采集日志内未再出现 SharedImage 创建失败和
+不存在 mailbox 的错误。这不等同于 HDR10 通过，也不替代 Canvas / WebGL 画面验收。
+
+14:50:37 首次出现有效亮度 hilog，不能证明亮度比启动晚到 21 秒：
+`DisplayBrightnessBridge.start()` 在 `Initialize()` 前同步查询；首次 NAPI 更新和
+启动参数快照发生在 `RunChromeMainOnThread()` 安装 Chromium hilog handler 之前。
+此外，SDR10 协议包要求 white / peak 为 0；即使启动亮度有效，`auto` 模式的显示器
+HDR 能力检查失败也会选择这个包。现有证据不足以区分这两种原因。
+
+本轮仅补诊断，不加入启动等待、重试、固定亮度或动态 SDR→HDR 格式切换。
+沿用 `vulkanOutputMode='auto'` 和系统亮度，不设置手工 nits，冷启动一次并保留以下日志：
+
+| 日志标识 | 能回答的问题 |
+| --- | --- |
+| `OHOS brightness bridge: source=first-query` | 同步查询实际返回的三个亮度字段 |
+| `OHOS brightness NAPI:` | 首次接收成功，或参数类型 / ID / 数值校验失败 |
+| `OHOS HDR startup:` | 生成启动参数时是否有有效亮度，以及最终传出的数值 |
+| `OHOS output color selection:` | GPU 收到的启动数值、选择的模式和原因 |
+| `OHOS HDR display probe:` | 能力查询返回码、显示器数量、ID、状态和 HDR 格式列表 |
+| `OHOS brightness bridge: source=first-event` | 第一次系统事件与同步查询的值是否不同 |
+
+`reason=startup-brightness-unavailable-or-invalid` 再回查查询 / NAPI / 启动快照；
+`reason=display-capability-gate` 则检查显示器枚举与 HDR10 格式，不再归因于亮度时序。
+`reason=hdr10-request` 后仍未上 HDR10，应检查 buffer probe / display guard / 回退日志。
+最终成功仍以 `active mode=2`、实际 HDR10 色彩空间及 metadata 为准。
+
+诊断仅记录首次查询、首次事件、各 NAPI 结果的首次出现，以及输出创建时的选择；
+不在每帧增加查询或日志。显示守卫原有周期检查也不打印新诊断。
+

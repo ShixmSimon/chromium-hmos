@@ -650,6 +650,15 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
           arguments.push_back("--ohos-hdr-peak-millinits=" +
                               std::to_string(color.peak_millinits));
         }
+        // This snapshot predates ForwardChromiumLogToHilog. Use the native
+        // startup logger so a successful initial query is not invisible.
+        AURA_LOG_I(
+            "OHOS HDR startup: requested=%{public}s "
+            "system_brightness=%{public}d "
+            "fixed=%{public}d white_millinits=%{public}u "
+            "peak_millinits=%{public}u",
+            config.vulkan_output_mode.c_str(), brightness.has_value(), fixed,
+            color.white_millinits, color.peak_millinits);
       }
     } else {
       AURA_LOG_E(
