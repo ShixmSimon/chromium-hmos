@@ -282,6 +282,7 @@ std::string RunOhosForkServerTests(const std::string& child_library) {
 namespace {
 bool check_loader_fds = false;
 bool simulate_loader_fd_loss = false;
+bool deny_loader_fstat = false;
 std::array<int, 2> loader_fds{-1, -1};
 std::array<struct stat, 2> loader_files{};
 std::array<int, 4> application_fds{-1, -1, -1, -1};
@@ -303,6 +304,17 @@ bool HasTrace(const std::string& contents,
   return false;
 }
 }  // namespace
+
+// Model the phone's getattr denial without changing readlink/fcntl/mmap.
+// Only the host test executable links --wrap=fstat, never the phone fixture.
+extern "C" int __real_fstat(int fd, struct stat* info);
+extern "C" int __wrap_fstat(int fd, struct stat* info) {
+  if (deny_loader_fstat && (fd == loader_fds[0] || fd == loader_fds[1])) {
+    errno = EACCES;
+    return -1;
+  }
+  return __real_fstat(fd, info);
+}
 
 // Called by the test DSO's constructor, during the real child's dlopen.
 extern "C" __attribute__((visibility("default"))) bool
@@ -339,7 +351,7 @@ ForkTestCheckLoaderFds() {
   for (size_t i = 0; i < loader_fds.size(); ++i) {
     int fd = loader_fds[i];
     struct stat info = {};
-    if (fstat(fd, &info) != 0 || info.st_dev != loader_files[i].st_dev ||
+    if (__real_fstat(fd, &info) != 0 || info.st_dev != loader_files[i].st_dev ||
         info.st_ino != loader_files[i].st_ino ||
         fcntl(fd, F_GETFD) != FD_CLOEXEC) {
       ok = false;
@@ -404,7 +416,8 @@ int main(int argc, char** argv) {
             : "FAIL trace FD lifecycle");
     return ok ? 0 : 1;
   }
-  if (argc == 3 && std::string(argv[2]) == "--loader-fds") {
+  if (argc == 3 && (std::string(argv[2]) == "--loader-fds" ||
+                    std::string(argv[2]) == "--loader-fstat-denied")) {
     for (size_t i = 0; i < loader_fds.size(); ++i) {
       int fd = syscall(SYS_memfd_create, "relro_cache", 1);
       loader_fds[i] = fd;
@@ -421,6 +434,7 @@ int main(int argc, char** argv) {
                    &application_fds[2]))
       return 1;
     check_loader_fds = true;
+    deny_loader_fstat = std::string(argv[2]) == "--loader-fstat-denied";
     char trace_path[] = "/tmp/ohos-fd-preserved-XXXXXX";
     int trace_file_fd = mkstemp(trace_path);
     if (trace_file_fd < 0)
@@ -445,6 +459,12 @@ int main(int argc, char** argv) {
       ok &= HasTrace(trace, "browser-before-server-fork", fd, "keep_relro=1");
       ok &= HasTrace(trace, "server-after-cleanup", fd, "keep_relro=1");
       ok &= HasTrace(trace, "test-loader-constructor", fd, "keep_relro=1");
+      if (deny_loader_fstat) {
+        for (const char* stage :
+             {"browser-before-server-fork", "server-after-cleanup",
+              "test-loader-constructor"})
+          ok &= HasTrace(trace, stage, fd, "stat_errno=13");
+      }
     }
     unlink(trace_path);
     for (int fd : application_fds) {
@@ -453,6 +473,8 @@ int main(int argc, char** argv) {
     }
     for (int fd : loader_fds)
       close(fd);
+    if (deny_loader_fstat)
+      puts("INJECT fstat EACCES on loader caches in parent/server/child");
     puts(ok ? "PASS loader RELRO original FDs survive dlopen and FD reuse; "
               "application FDs close"
             : "FAIL loader RELRO FD preservation");

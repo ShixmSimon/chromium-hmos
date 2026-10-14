@@ -213,10 +213,18 @@ bool SetOhosBufferOutputColor(OH_NativeBuffer* buffer,
   if (!SetColor(buffer, color, OH_NativeBuffer_SetColorSpace,
                 OH_NativeBuffer_SetMetadataValue))
     return false;
-  OH_NativeBuffer_ColorSpace actual;
-  return !OH_NativeBuffer_GetColorSpace(buffer, &actual) &&
-         actual == (color.mode == OhosOutputMode::kHdr10
-                        ? OH_COLORSPACE_BT2020_PQ_FULL
-                        : OH_COLORSPACE_SRGB_FULL);
+  const auto expected = color.mode == OhosOutputMode::kHdr10
+                            ? OH_COLORSPACE_BT2020_PQ_FULL
+                            : OH_COLORSPACE_SRGB_FULL;
+  OH_NativeBuffer_ColorSpace actual = OH_COLORSPACE_NONE;
+  const int result = OH_NativeBuffer_GetColorSpace(buffer, &actual);
+  if (result || actual != expected) {
+    LOG(ERROR) << "OHOS buffer color: step=color-space-readback mode="
+               << static_cast<uint32_t>(color.mode)
+               << " native_error=" << result << " expected=" << expected
+               << " actual=" << actual;
+    return false;
+  }
+  return true;
 }
 }  // namespace ui

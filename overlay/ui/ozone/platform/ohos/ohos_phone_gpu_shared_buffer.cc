@@ -29,18 +29,43 @@ ReadBuffer Reader() {
 }
 using Parcel = std::unique_ptr<OHIPCParcel, decltype(&OH_IPCParcel_Destroy)>;
 
+// Failures only: successful frames do not add logging to the 120 Hz path.
+bool BufferStep(const SharedPacket& packet, const char* step, int result) {
+  if (result)
+    LOG(ERROR) << "OHOS shared buffer: step=" << step
+               << " native_error=" << result << " widget=" << packet.widget
+               << " sequence=" << packet.sequence
+               << " mode=" << static_cast<uint32_t>(packet.color.mode)
+               << " format=" << OhosOutputNativeFormat(packet.color)
+               << " size=" << packet.width << "x" << packet.height;
+  return result == 0;
+}
 bool Encode(OH_NativeBuffer* native, SharedMessage* m) {
-  auto writer = Writer();
-  Parcel parcel(OH_IPCParcel_Create(), &OH_IPCParcel_Destroy);
-  if (!writer || !parcel || writer(native, parcel.get()))
-    return false;
   auto& p = m->packet;
+  auto writer = Writer();
+  if (!writer) {
+    LOG(ERROR) << "OHOS shared buffer: step=parcel-writer unavailable";
+    return false;
+  }
+  Parcel parcel(OH_IPCParcel_Create(), &OH_IPCParcel_Destroy);
+  if (!parcel) {
+    LOG(ERROR) << "OHOS shared buffer: step=parcel-create null";
+    return false;
+  }
+  if (!BufferStep(p, "parcel-write", writer(native, parcel.get())))
+    return false;
   constexpr size_t prefix_bytes = sizeof(p.prefix);
-  if (OH_IPCParcel_GetDataSize(parcel.get()) < static_cast<int>(prefix_bytes))
+  const int data_size = OH_IPCParcel_GetDataSize(parcel.get());
+  if (data_size < static_cast<int>(prefix_bytes)) {
+    LOG(ERROR) << "OHOS shared buffer: step=parcel-size bytes=" << data_size
+               << " required=" << prefix_bytes;
     return false;
+  }
   const auto* prefix = OH_IPCParcel_ReadBuffer(parcel.get(), prefix_bytes);
-  if (!prefix)
+  if (!prefix) {
+    LOG(ERROR) << "OHOS shared buffer: step=parcel-prefix null";
     return false;
+  }
   memcpy(p.prefix.data(), prefix, prefix_bytes);
   const auto& v = p.prefix;
   OH_NativeBuffer_Config config{};
@@ -50,28 +75,53 @@ bool Encode(OH_NativeBuffer* native, SharedMessage* m) {
       config.height != static_cast<int32_t>(p.height) ||
       config.format != static_cast<int32_t>(OhosOutputNativeFormat(p.color)) ||
       v[4] != p.width || v[6] != p.height ||
-      v[8] != OhosOutputNativeFormat(p.color) || v[13] != 1)
+      v[8] != OhosOutputNativeFormat(p.color) || v[13] != 1) {
+    LOG(ERROR) << "OHOS shared buffer: step=parcel-schema mode="
+               << static_cast<uint32_t>(p.color.mode)
+               << " requested=" << p.width << "x" << p.height << "/"
+               << OhosOutputNativeFormat(p.color) << " native=" << config.width
+               << "x" << config.height << "/" << config.format
+               << " parcel=" << v[4] << "x" << v[6] << "/" << v[8]
+               << " present=" << v[1] << " reserve_fds=" << v[2]
+               << " reserve_ints=" << v[3] << " fd_present=" << v[13];
     return false;
+  }
   p.fd_count = v[2] + 1;
   for (uint32_t i = 0; i < p.fd_count; ++i) {
     int fd = -1;
-    if (OH_IPCParcel_ReadFileDescriptor(parcel.get(), &fd) || fd < 0)
+    if (!BufferStep(p, "parcel-read-fd",
+                    OH_IPCParcel_ReadFileDescriptor(parcel.get(), &fd)))
       return false;
+    if (fd < 0) {
+      LOG(ERROR) << "OHOS shared buffer: step=parcel-fd invalid index=" << i;
+      return false;
+    }
     m->fds.push_back(fd);
   }
   int remaining = OH_IPCParcel_GetReadableBytes(parcel.get());
   if (remaining < 0 || remaining > static_cast<int>(p.tail.size()) ||
       (remaining != static_cast<int>(v[3] * 4) &&
-       remaining != static_cast<int>(v[3] * 4 + 20)))
+       remaining != static_cast<int>(v[3] * 4 + 20))) {
+    LOG(ERROR) << "OHOS shared buffer: step=parcel-tail-schema bytes="
+               << remaining << " reserve_ints=" << v[3];
     return false;
+  }
   p.tail_bytes = remaining;
   if (remaining) {
     auto* tail = OH_IPCParcel_ReadBuffer(parcel.get(), remaining);
-    if (!tail)
+    if (!tail) {
+      LOG(ERROR) << "OHOS shared buffer: step=parcel-tail null";
       return false;
+    }
     memcpy(p.tail.data(), tail, remaining);
   }
-  return ValidSharedPacket(p, m->fds.size());
+  if (!ValidSharedPacket(p, m->fds.size())) {
+    LOG(ERROR) << "OHOS shared buffer: step=packet-validation mode="
+               << static_cast<uint32_t>(p.color.mode)
+               << " fd_count=" << p.fd_count << " received=" << m->fds.size();
+    return false;
+  }
+  return true;
 }
 }  // namespace
 bool PrepareSharedBufferAllocator() {
@@ -197,32 +247,54 @@ SharedBufferLease::~SharedBufferLease() {
     OH_NativeWindow_NativeObjectUnreference(window);
 }
 bool SharedBufferLease::Acquire(void* target, SharedMessage* m) {
-  if (!target || window_ || !ready.load())
+  if (!target || window_ || !ready.load()) {
+    LOG(ERROR) << "OHOS shared buffer: step=acquire-state target="
+               << (target != nullptr)
+               << " already_acquired=" << (window_ != nullptr)
+               << " allocator_ready=" << ready.load();
     return false;
+  }
   auto* window = static_cast<OHNativeWindow*>(target);
+  const auto& p = m->packet;
   const uint64_t usage = NATIVEBUFFER_USAGE_MEM_DMA |
                          NATIVEBUFFER_USAGE_HW_RENDER |
                          NATIVEBUFFER_USAGE_HW_TEXTURE;
-  if (OH_NativeWindow_NativeWindowHandleOpt(
-          window, SET_FORMAT,
-          static_cast<int32_t>(OhosOutputNativeFormat(m->packet.color))) ||
-      OH_NativeWindow_NativeWindowHandleOpt(window, SET_USAGE, usage) ||
-      OH_NativeWindow_NativeWindowHandleOpt(
-          window, SET_BUFFER_GEOMETRY, static_cast<int32_t>(m->packet.width),
-          static_cast<int32_t>(m->packet.height)) ||
-      OH_NativeWindow_NativeWindowHandleOpt(window, SET_TIMEOUT, int32_t{200}))
+  if (!BufferStep(p, "set-format",
+                  OH_NativeWindow_NativeWindowHandleOpt(
+                      window, SET_FORMAT,
+                      static_cast<int32_t>(OhosOutputNativeFormat(p.color)))) ||
+      !BufferStep(
+          p, "set-usage",
+          OH_NativeWindow_NativeWindowHandleOpt(window, SET_USAGE, usage)) ||
+      !BufferStep(
+          p, "set-geometry",
+          OH_NativeWindow_NativeWindowHandleOpt(
+              window, SET_BUFFER_GEOMETRY, static_cast<int32_t>(p.width),
+              static_cast<int32_t>(p.height))) ||
+      !BufferStep(p, "set-timeout",
+                  OH_NativeWindow_NativeWindowHandleOpt(window, SET_TIMEOUT,
+                                                        int32_t{200})))
     return false;
   OHNativeWindowBuffer* buffer = nullptr;
   int fence = -1;
-  if (OH_NativeWindow_NativeWindowRequestBuffer(window, &buffer, &fence))
+  if (!BufferStep(
+          p, "request-buffer",
+          OH_NativeWindow_NativeWindowRequestBuffer(window, &buffer, &fence)))
     return false;
   window_ = window;
   buffer_ = buffer;
   OH_NativeWindow_NativeObjectReference(window);
   OH_NativeWindow_NativeObjectReference(buffer);
   OH_NativeBuffer* native = nullptr;
-  bool encoded = !OH_NativeBuffer_FromNativeWindowBuffer(buffer, &native) &&
-                 native && Encode(native, m);
+  bool encoded =
+      BufferStep(p, "from-window-buffer",
+                 OH_NativeBuffer_FromNativeWindowBuffer(buffer, &native));
+  if (encoded && !native) {
+    LOG(ERROR) << "OHOS shared buffer: step=from-window-buffer null";
+    encoded = false;
+  }
+  if (encoded)
+    encoded = Encode(native, m);
   // Per-buffer tags travel with this lease. Never relabel an entire window
   // while its consumer may still hold older SDR/PQ frames.
   if (encoded) {

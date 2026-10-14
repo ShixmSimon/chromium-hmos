@@ -136,6 +136,16 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
             WaitForOhosNativeSurface(p.widget, base::Milliseconds(500));
             surface = AcquireOhosNativeSurfaceForPhoneGpu(p.widget);
           }
+          if (p.operation == Op::kColorProbe) {
+            LOG(WARNING) << "OHOS phone output: color probe requested mode="
+                         << static_cast<uint32_t>(p.color.mode)
+                         << " white_millinits=" << p.color.white_millinits
+                         << " peak_millinits=" << p.color.peak_millinits
+                         << " widget=" << p.widget
+                         << " surface=" << (surface && surface->window)
+                         << " allocator_ready="
+                         << phone_gpu::SharedBufferAllocatorReady();
+          }
           if (surface && surface->window) {
             const bool probe = p.operation == Op::kColorProbe;
             auto active_color = colors.find(p.widget);
@@ -162,6 +172,14 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
                 (!probe || (!OhosOutputColorFailed() &&
                             (p.color.mode != OhosOutputMode::kHdr10 ||
                              OhosSingleDisplaySupportsHdr10())));
+            if (probe) {
+              LOG(WARNING)
+                  << "OHOS phone output: color probe guards color_valid="
+                  << color_valid << " hdr_valid=" << hdr_valid
+                  << " pending_leases=" << leases.size()
+                  << " size=" << surface->bounds.width() << "x"
+                  << surface->bounds.height();
+            }
             if (!color_valid || !hdr_valid)
               reply.result = static_cast<uint32_t>(phone_gpu::Result::kFailed);
             if (color_valid && hdr_valid && leases.size() < 4 &&

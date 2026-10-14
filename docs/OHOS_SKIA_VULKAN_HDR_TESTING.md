@@ -75,7 +75,8 @@ Chromium 共享内存，详见 [诊断记录](OHOS_VULKAN_RELRO_FD_DIAGNOSIS.md)
 HDR 队列转 SDR 或 GPU 重启时，先退出旧 lease，再通过 `OH_NativeWindow_CleanCache`
 回收旧 HDR 缓冲区。正常连续绘制、HDR 亮度变化不会触发逐帧清理。
 
-FD 部分本轮增加诊断，不宣称已消除 SIGBUS。保持原来的 separate GPU + Skia Vulkan
+1ef4721 跟踪已定位到 fstat EACCES 导致误关缓存，本轮修正该保留条件，真机待验收。
+保持原来的 separate GPU + Skia Vulkan
 配置，换 HAR 后正常冷启动一次即可，不需要另加实验参数或重复切换模式。
 
 - 外壳 `config.userDataDir` 目录自动生成 `PhoneForkFdTrace.log`；启动日志会显示
@@ -93,3 +94,21 @@ FD 部分本轮增加诊断，不宣称已消除 SIGBUS。保持原来的 separa
 记录固定缓冲区及文件 write，不在早期 fork 子进程初始化 hilog，不记录网页 URL/启动参数。
 它会包含应用打开文件的路径；作为本地诊断证据保存。只在手机实验 fork 模式启用，
 单进程及官方 NCP 不创建该文件。
+
+## 1ef4721 后的复测重点
+
+正常配置冷启动一次，保存同次日志即可，不必逐项切换参数：
+
+1. `PhoneForkFdTrace.log` 中原 RELRO FD 在清理后、Skia/Dawn 创建 instance 前仍是
+   `relro_cache`，`keep_relro=1`。`stat_errno=13` 可以仍然存在，不表示本次保留失败；
+   看原编号是否保留，而非固定要求编号为 19。
+2. hilog 搜索 `OHOS phone output: color probe requested`，先确认请求的 mode 1/2，
+   再看 `color probe guards`。mode 1 是 SDR10，mode 2 才是 HDR10。
+3. 如果继续回退，保存第一条 `OHOS shared buffer: step=...` 或
+   `OHOS buffer color: step=...` 及相邻日志。`native_error` 是对应 API 的原始返回值；
+   `parcel-schema` 会列出请求、实际分配和序列化的尺寸/格式；
+   `color-space-readback` 会列出预期、实际颜色空间和返回值。
+4. instance 成功后仍需 `active mode` / 首帧确认实际后端及位深。
+
+本轮 FD 修复仅影响手机实验 fork；新分配诊断只在失败时记录，probe 日志仅在协商时
+记录，不给成功绘制增加逐帧日志。若新包仍 SIGBUS，继续保存完整 native crash。

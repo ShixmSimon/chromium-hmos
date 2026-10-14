@@ -94,3 +94,12 @@ Vulkan HDR 暂限单显示器；运行中移除或改变显示器按已有保护
 上限，以及共享协议 FD/颜色/代际校验。ArkTS HAR 编译与 Chromium 154 完整编译
 分别验证。真机以正常浏览、HDR 内容、系统亮度调节和日志为主，不要求用户测量
 手工校准值或重复整套参数矩阵。120 Hz 的性能预算仍为 8.33 ms。
+
+
+### 2026-10-14：1ef4721 真机证据修正
+
+FD 生命周期已确认 server cleanup 因 `fstat` 返回 EACCES 而关闭仍有效的
+`relro_cache`。保留条件改为 procfs 目标精确匹配且 `F_GETFD` 成功，元数据查询
+只用于诊断。主机注入 EACCES 的真实 fork/dlopen 回归通过，真机修复待验收。
+颜色探测与 SDR8 acquire 的具体失败步骤尚待确认，新增 NativeWindow、parcel、
+颜色读回错误日志，继续保留格式/传输校验和原回退策略。

@@ -1,12 +1,38 @@
 # 68e8b50 Vulkan layer SIGBUS 与继承 FD
 
-当前状态：**320ca09 真机仍发生同类 SIGBUS，保留 relro_cache 的修正并未解决问题。**
-其 HAR / crash Build ID 均为 `ce648c42647b0fd6dcc0cd50c057a73eedd95358`。
-最新完整 crash 的 memcpy 目标 `0x5a05d65000` 仍映射 shared-memory-region，
-偏移 `0x3e000`；源仍为 Trace3D。现有证据不能确定缓存失效发生在哪一阶段。
-本轮新增 `PhoneForkFdTrace.log`，使用方法见 [测试说明](OHOS_SKIA_VULKAN_HDR_TESTING.md)。
-下文保留首次诊断及其证据边界，不把模拟测试通过等同于真机修复成功。
+当前状态：**1ef4721 的完整 FD 跟踪已确认：fork server 清理误关 RELRO 缓存。**
+本轮去掉保留规则对 `fstat` 成功的依赖；新回归在注入 EACCES 后通过，旧代码同一
+回归失败。真机是否消除 SIGBUS 仍待新 HAR 验证，不把主机测试等同于真机验收。
 
+## 1ef4721 新证据及本轮修正
+
+同次运行 browser PID 15151、server PID 15549，崩溃 GPU PID 15845；HAR / crash
+Build ID 为 `fafeef64167087a2fdd6ea2f91c65e5bc7b8697b`。
+
+- FD 19 在 browser-before-server-fork、server-after-fork、server-before-cleanup
+  均指向 `/memfd:relro_cache (deleted)`，`link_errno=0`、`flags=0`，但
+  `stat_errno=13`，旧规则计算 `keep_relro=0`。
+- server-after-cleanup 中该 FD 已关闭；到 GPU 的 dawn-before-vkCreateInstance
+  已复用为 `/memfd:shared-memory-region (deleted)`。
+- 12:48:26 的 SIGBUS：memcpy 目标 `0x5a05ba8000` 映射该共享内存，偏移
+  `0x3e000`，源位于 Trace3D。完整 crash 保留 Maps / OpenFiles。
+
+`fstat` 的 EACCES 表示元数据查询被拒绝，不能视为描述符已关闭。无需先改变系统
+权限才能修正我们自己的误清理：现在要求 procfs 目标精确匹配且 `F_GETFD` 成功，
+保留原编号、原标志；普通 memfd、相似名称、socket 仍关闭。诊断仍记录 fstat
+返回值，但 `keep_relro` 与新的实际规则一致。具体系统为何拒绝 getattr 尚未确认。
+
+新增 `--loader-fstat-denied` 用链接器包装在真实 server 路径注入 EACCES，覆盖
+父进程、server、子进程；子进程 dlopen 的 DSO constructor 核对原缓存身份、
+CLOEXEC、`0x3e000` 映射读写及普通 FD 清理。两份缓存、连续三个子进程均通过。
+换回 1ef4721 的 production server 后，该回归失败，原有测试仍通过。
+
+同次运行的颜色协商失败、SDR8 acquire 返回 -13 是另一条尚未精确定位的输出问题。
+没有证据证明首个请求一定是 HDR10，也不能把这里的协议返回 -13 当作 errno 13。
+本轮补全请求模式、NativeWindow 选项/分配、parcel 布局与 FD 读取、颜色读回诊断；
+保持原有校验及回退行为，不把新增日志描述为已经修复 HDR。
+
+下文保留首次诊断及其证据边界。
 2026-10-14 读取手机上已经存在的完整 native crash，未重启应用、改配置或触发复现。
 对应设备为 Mate 70 Pro+ / API 26，内核为 68e8b50。
 原始文件保存在本机 `artifacts/68e8b50-relro-crash/native-crash.log`，不提交原始设备日志。
@@ -33,8 +59,9 @@ fork server 的 CloseInheritedFds 关闭除控制通道、标准流和目录之�
 现有 maps 与这一机制高度吻合。没有系统私有链接器源码和修正后真机结果，
 不能把该机制的每个内部细节视为已直接观测。
 
-修正只保留 `/proc/self/fd` 精确指向 `/memfd:relro_cache (deleted)`，且 fstat 确认为
-无目录链接的普通文件的 FD。保留原编号及原标志，不能关闭后重新复制到高位。
+首次修正要求 `/proc/self/fd` 精确指向 `/memfd:relro_cache (deleted)`，且 fstat
+确认为无目录链接的普通文件；1ef4721 真机证据表明后一个条件不成立，本轮已改为
+检查 `F_GETFD`。保留原编号及原标志，不能关闭后重新复制到高位。
 普通 memfd、socket 及名称仅带 relro_cache 前缀的文件仍关闭；Chromium 接收 FD
 继续停放在继承 FD 高水位以上。该路径仅用于显式启用的手机 fork server。
 

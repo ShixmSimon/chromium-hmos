@@ -170,8 +170,11 @@ bool IsLoaderRelroFd(int directory_fd, const char* name, int fd) {
   if (size != sizeof(kRelroTarget) - 1 ||
       memcmp(target, kRelroTarget, sizeof(kRelroTarget) - 1) != 0)
     return false;
-  struct stat info = {};
-  return fstat(fd, &info) == 0 && S_ISREG(info.st_mode) && info.st_nlink == 0;
+  // Phone policy can deny getattr (fstat returns EACCES) on this inherited
+  // system memfd while readlink, fcntl and mmap remain usable. Metadata access
+  // is not a liveness test. The exact procfs target identifies the cache; keep
+  // its live original descriptor even when metadata cannot be queried.
+  return fcntl(fd, F_GETFD) >= 0;
 }
 
 // Close inherited application channels before the server can fork children.
@@ -612,8 +615,7 @@ void TraceOhosForkDescriptors(const char* stage) {
           static_cast<long long>(info.st_size),
           static_cast<unsigned long long>(info.st_nlink),
           static_cast<unsigned int>(info.st_mode), flags, flags_error,
-          name_match,
-          name_match && !stat_error && S_ISREG(info.st_mode) && !info.st_nlink);
+          name_match, name_match && flags >= 0);
     }
     if (count > 0 && static_cast<size_t>(count) < sizeof(line)) {
       // One append per line: concurrent children cannot share/overwrite a seek
