@@ -21,12 +21,20 @@ bool OhosPhoneGpuHasPresented();
 // Phone GPU only. A failed Vulkan generation stays on GL until app restart.
 bool AllowOhosPhoneVulkan();
 void ReportOhosPhoneVulkanFailure();
-bool AcquireOhosPhoneGpuBuffer(phone_gpu::Frame frame,
+void ReportOhosPhoneOutputColorFailure();
+bool ProbeOhosPhoneOutputColor(uint64_t widget,
+                               const OhosOutputColor& color,
                                phone_gpu::SharedMessage* response);
+bool AcquireOhosPhoneGpuBuffer(phone_gpu::Frame frame,
+                               phone_gpu::SharedMessage* response,
+                               const OhosOutputColor& color = {},
+                               uint64_t color_generation = 0);
 // Takes ownership of completion_fd; -1 is an already-complete frame.
 phone_gpu::Result PresentOhosPhoneGpuBuffer(uint64_t widget,
                                             uint64_t lease,
-                                            int completion_fd);
+                                            int completion_fd,
+                                            const OhosOutputColor& color = {},
+                                            uint64_t color_generation = 0);
 void DiscardOhosPhoneGpuBuffer(uint64_t widget, uint64_t lease);
 bool CancelOhosPhoneGpuBuffer(uint64_t widget, uint64_t lease);
 bool GetOhosPhoneGpuTiming(uint64_t widget,

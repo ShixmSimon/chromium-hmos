@@ -150,6 +150,51 @@ int main() {
     assert(p::ReceiveSharedMessage(s[1], &got, 100));
     assert(got.packet.operation == op);
   }
+  // A 10-bit declaration must agree with the actual parcel and generation.
+  auto ten = buffer;
+  ten.color.mode = ui::OhosOutputMode::kSdr10;
+  ten.color_generation = 17;
+  assert(!p::ValidSharedPacket(ten, 1));  // RGBA8 parcel, not a 10-bit image.
+  ten.prefix[8] = 34;
+  assert(p::ValidSharedPacket(ten, 1));
+  ten.color = {ui::OhosOutputMode::kHdr10, 203000, 1000000};
+  {
+    RawSend(s[0], ten, source, 1);
+    p::SharedMessage got;
+    assert(p::ReceiveSharedMessage(s[1], &got, 100));
+    assert(got.packet.color == ten.color && got.packet.color_generation == 17);
+  }
+  auto malformed = ten;
+  malformed.color_generation = 0;
+  reject(malformed);
+  malformed = ten;
+  malformed.magic = 0x50475332;  // Old packet version is never reinterpreted.
+  reject(malformed);
+  malformed = ten;
+  malformed.color.mode = static_cast<ui::OhosOutputMode>(99);
+  reject(malformed);
+  for (const ui::OhosOutputColor color :
+       {ui::OhosOutputColor{ui::OhosOutputMode::kSdr8, 203000, 1000000},
+        ui::OhosOutputColor{ui::OhosOutputMode::kSdr10, 0, 1000000},
+        ui::OhosOutputColor{ui::OhosOutputMode::kHdr10, 0, 1000000},
+        ui::OhosOutputColor{ui::OhosOutputMode::kHdr10, 203000, 203000},
+        ui::OhosOutputColor{ui::OhosOutputMode::kHdr10, 203000, UINT32_MAX}}) {
+    malformed = ten;
+    malformed.color = color;
+    reject(malformed);
+  }
+  assert(CountFds() == before);
+  for (auto op : {p::SharedOp::kColorProbe, p::SharedOp::kColorFailed}) {
+    p::SharedMessage send, got;
+    send.packet.operation = op;
+    send.packet.sequence = 4;
+    send.packet.widget = 42;
+    send.packet.color_generation = 1;
+    assert(p::SendSharedMessage(s[0], send));
+    assert(p::ReceiveSharedMessage(s[1], &got, 100));
+    send.packet.has_fence = 1;
+    assert(!p::ValidSharedPacket(send.packet, 1));
+  }
   // Vulkan SYNC_FD export supports both pending and already-signaled fences.
   for (bool pending : {false, true}) {
     p::SharedMessage send, got;

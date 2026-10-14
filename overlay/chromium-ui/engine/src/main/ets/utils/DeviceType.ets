@@ -165,6 +165,13 @@ export interface AuraStartupConfig {
   // ignored otherwise. Phone fork uses shared NativeBuffers (ANGLE stays GLES).
   // Vulkan failure falls back to GL for this app session; cold restart retries.
   skiaBackend?: 'gl' | 'vulkan';
+  // Experimental output target; startup-only, defaults to SDR8. Requires
+  // separate Skia Vulkan. Actual capabilities may force SDR8 fallback.
+  vulkanOutputMode?: 'sdr8' | 'sdr10' | 'hdr10' | 'auto';
+  // Explicit lab calibration in nits, not detected panel specifications.
+  // HDR stays disabled without valid white (80..500) and peak (>white..10000).
+  vulkanHdrWhiteNits?: number;
+  vulkanHdrPeakNits?: number;
   // What the app menu's way back to this shell's UI is called. Not sending
   // it is how a shell says it does not want that item -- a phone has no
   // setting to come back to, and a shell drawing the browser itself has

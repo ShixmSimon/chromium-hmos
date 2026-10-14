@@ -1190,6 +1190,12 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
     config.skia_backend = *skia_backend;
   }
 
+  ReadStringField(dict, "vulkanOutputMode", &config.vulkan_output_mode);
+  config.vulkan_hdr_white_nits =
+      dict.FindDouble("vulkanHdrWhiteNits").value_or(0);
+  config.vulkan_hdr_peak_nits =
+      dict.FindDouble("vulkanHdrPeakNits").value_or(0);
+
   std::optional<bool> jitless = dict.FindBool("jitless");
   if (jitless.has_value()) {
     config.jitless = *jitless;

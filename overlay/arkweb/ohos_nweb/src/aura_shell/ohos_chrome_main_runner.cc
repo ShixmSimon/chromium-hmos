@@ -10,6 +10,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <cmath>
 #include <limits>
 #include <utility>
 
@@ -263,7 +264,10 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
 
   std::lock_guard<std::mutex> lock(mutex_);
   if (started_) {
-    if (startup_config_.experimental_phone_fork !=
+    if (startup_config_.vulkan_output_mode != config.vulkan_output_mode ||
+        startup_config_.vulkan_hdr_white_nits != config.vulkan_hdr_white_nits ||
+        startup_config_.vulkan_hdr_peak_nits != config.vulkan_hdr_peak_nits ||
+        startup_config_.experimental_phone_fork !=
             config.experimental_phone_fork ||
         (config.experimental_phone_fork &&
          startup_config_.gpu_process != config.gpu_process)) {
@@ -273,6 +277,9 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
     return true;
   }
 
+  // Only reset the color failure latch on a genuinely new browser session.
+  if (!config.user_data_dir.empty())
+    unlink((config.user_data_dir + "/GpuOutputColorFailed").c_str());
   startup_config_ = config;
   ApplySystemTimeZone();
   // ANGLE reaches the system EGL and GLES through the HarmonyOS wrapper's
@@ -609,6 +616,25 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
       arguments.push_back("--use-vulkan=native");
       AppendToListSwitch(&arguments, "enable-features", "Vulkan");
       AURA_LOG_I("AuraShell Skia on Vulkan by config");
+      if (config.vulkan_output_mode == "sdr10" ||
+          config.vulkan_output_mode == "hdr10" ||
+          config.vulkan_output_mode == "auto") {
+        arguments.push_back("--ohos-vulkan-output=" +
+                            config.vulkan_output_mode);
+        if (std::isfinite(config.vulkan_hdr_white_nits) &&
+            std::isfinite(config.vulkan_hdr_peak_nits) &&
+            config.vulkan_hdr_white_nits >= 80 &&
+            config.vulkan_hdr_white_nits <= 500 &&
+            config.vulkan_hdr_peak_nits > config.vulkan_hdr_white_nits &&
+            config.vulkan_hdr_peak_nits <= 10000) {
+          arguments.push_back("--ohos-hdr-white-millinits=" +
+                              std::to_string(static_cast<uint32_t>(
+                                  config.vulkan_hdr_white_nits * 1000)));
+          arguments.push_back("--ohos-hdr-peak-millinits=" +
+                              std::to_string(static_cast<uint32_t>(
+                                  config.vulkan_hdr_peak_nits * 1000)));
+        }
+      }
     } else {
       AURA_LOG_E(
           "AuraShell ignored skiaBackend vulkan: the GPU is not in a "

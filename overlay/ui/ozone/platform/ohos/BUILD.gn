@@ -28,8 +28,8 @@ source_set("native_window_registry") {
 
     # Losing the GPU context is noticed here, and the shell has to hear
     # about it. Widened for that one call rather than for the header.
-    "//gpu/ipc/service:*",
     "//components/viz/service:*",
+    "//gpu/ipc/service:*",
   ]
 
   sources = [
@@ -37,6 +37,9 @@ source_set("native_window_registry") {
     "ohos_gpu_child_channel.h",
     "ohos_native_window_registry.cc",
     "ohos_native_window_registry.h",
+    "ohos_output_color.h",
+    "ohos_output_color_config.cc",
+    "ohos_output_color_config.h",
     "ohos_phone_gpu_channel.cc",
     "ohos_phone_gpu_channel.h",
     "ohos_phone_gpu_presenter.cc",
@@ -55,6 +58,7 @@ source_set("native_window_registry") {
   # windows: ohos_gpu_child_channel.h.
   libs = [
     "child_process",
+    "native_display_manager",
     "hilog_ndk.z",
     "ipc_capi",
     "native_buffer",
@@ -64,6 +68,7 @@ source_set("native_window_registry") {
 
   deps = [
     "//base",
+    "//components/viz/common/resources:shared_image_format",
     "//third_party/vulkan-headers/src:vulkan_headers",
     "//ui/base",
     "//ui/gfx",

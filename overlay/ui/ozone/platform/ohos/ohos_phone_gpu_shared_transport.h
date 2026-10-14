@@ -8,9 +8,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include "ui/ozone/platform/ohos/ohos_output_color.h"
 
 namespace ui::phone_gpu {
-inline constexpr uint32_t kSharedMagic = 0x50475332;
+inline constexpr uint32_t kSharedMagic = 0x50475333;
 inline constexpr size_t kSharedMaxFds = 8;
 enum class SharedOp : uint32_t {
   kAcquire = 1,
@@ -22,7 +23,9 @@ enum class SharedOp : uint32_t {
   kTiming,
   kDiscard,
   kVulkanState,
-  kVulkanFailed
+  kVulkanFailed,
+  kColorProbe,
+  kColorFailed
 };
 struct SharedPacket {
   uint32_t magic = kSharedMagic;
@@ -30,6 +33,8 @@ struct SharedPacket {
   uint64_t sequence = 0;
   uint64_t widget = 0;
   uint64_t lease = 0;
+  OhosOutputColor color;
+  uint64_t color_generation = 0;
   uint32_t width = 0;
   uint32_t height = 0;
   uint32_t fd_count = 0;

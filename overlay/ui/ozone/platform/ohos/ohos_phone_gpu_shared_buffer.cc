@@ -10,10 +10,12 @@
 #include <atomic>
 #include <cstring>
 #include <utility>
+#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 
 namespace ui::phone_gpu {
 namespace {
 std::atomic<bool> ready{false};
+std::atomic<bool> color_used{false};
 using WriteBuffer = int32_t (*)(OH_NativeBuffer*, OHIPCParcel*);
 using ReadBuffer = int32_t (*)(OHIPCParcel*, OH_NativeBuffer**);
 WriteBuffer Writer() {
@@ -44,8 +46,10 @@ bool Encode(OH_NativeBuffer* native, SharedMessage* m) {
   OH_NativeBuffer_GetConfig(native, &config);
   if (v[1] != 1 || v[2] >= kSharedMaxFds - 1 || v[3] > 256 ||
       config.width != static_cast<int32_t>(p.width) ||
-      config.height != static_cast<int32_t>(p.height) || config.format != 12 ||
-      v[4] != p.width || v[6] != p.height || v[8] != 12 || v[13] != 1)
+      config.height != static_cast<int32_t>(p.height) ||
+      config.format != static_cast<int32_t>(OhosOutputNativeFormat(p.color)) ||
+      v[4] != p.width || v[6] != p.height ||
+      v[8] != OhosOutputNativeFormat(p.color) || v[13] != 1)
     return false;
   p.fd_count = v[2] + 1;
   for (uint32_t i = 0; i < p.fd_count; ++i) {
@@ -136,7 +140,9 @@ bool SharedBufferLease::Acquire(void* target, SharedMessage* m) {
   const uint64_t usage = NATIVEBUFFER_USAGE_MEM_DMA |
                          NATIVEBUFFER_USAGE_HW_RENDER |
                          NATIVEBUFFER_USAGE_HW_TEXTURE;
-  if (OH_NativeWindow_NativeWindowHandleOpt(window, SET_FORMAT, 12) ||
+  if (OH_NativeWindow_NativeWindowHandleOpt(
+          window, SET_FORMAT,
+          static_cast<int32_t>(OhosOutputNativeFormat(m->packet.color))) ||
       OH_NativeWindow_NativeWindowHandleOpt(window, SET_USAGE, usage) ||
       OH_NativeWindow_NativeWindowHandleOpt(
           window, SET_BUFFER_GEOMETRY, static_cast<int32_t>(m->packet.width),
@@ -154,13 +160,27 @@ bool SharedBufferLease::Acquire(void* target, SharedMessage* m) {
   OH_NativeBuffer* native = nullptr;
   bool encoded = !OH_NativeBuffer_FromNativeWindowBuffer(buffer, &native) &&
                  native && Encode(native, m);
+  // Per-buffer tags travel with this lease. Never relabel an entire window
+  // while its consumer may still hold older SDR/PQ frames.
+  if (encoded) {
+    const bool extended = m->packet.color.mode != OhosOutputMode::kSdr8;
+    const bool tagged = SetOhosBufferOutputColor(native, m->packet.color);
+    // Old SDR-only devices need not implement HDR metadata APIs. Once this
+    // browser has used tagged output, resetting it is mandatory, including
+    // after a GPU restart (whose local generation starts over).
+    if (extended || color_used.load())
+      encoded = tagged;
+    if (extended && tagged)
+      color_used.store(true);
+  }
   if (!encoded) {
     if (fence >= 0)
       close(fence);
     m->CloseFds();
     CancelBeforeDrawing();
-    ready.store(
-        false);  // Unknown layout: use readback for this browser session.
+    // Rejecting a 10-bit allocation must not disable the proven SDR allocator.
+    if (m->packet.color.mode == OhosOutputMode::kSdr8)
+      ready.store(false);
     return false;
   }
   if (fence >= 0) {

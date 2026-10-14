@@ -54,7 +54,9 @@ int SharedMessage::TakeFence() {
   return fd;
 }
 bool ValidSharedPacket(const SharedPacket& p, size_t count) {
-  if (p.magic != kSharedMagic || !p.sequence || !p.widget || p.has_fence > 1 ||
+  if (p.magic != kSharedMagic || !ValidOhosOutputColor(p.color) ||
+      (p.color.mode != OhosOutputMode::kSdr8 && !p.color_generation) ||
+      !p.sequence || !p.widget || p.has_fence > 1 ||
       p.fd_count > kSharedMaxFds || count > kSharedMaxFds ||
       p.fd_count + p.has_fence != count || p.tail_bytes > p.tail.size())
     return false;
@@ -67,12 +69,14 @@ bool ValidSharedPacket(const SharedPacket& p, size_t count) {
       const auto& v = p.prefix;
       return p.lease && p.fd_count && v[1] == 1 && v[2] < kSharedMaxFds - 1 &&
              p.fd_count == v[2] + 1 && v[3] <= 256 && v[4] == p.width &&
-             v[6] == p.height && v[8] == 12 && v[13] == 1 && p.width &&
-             p.height && p.width <= 8192 && p.height <= 8192 &&
-             v[5] >= uint64_t{p.width} * 4 && v[7] <= kMaxFrameBytes &&
-             uint64_t{v[5]} * p.height <= v[7] &&
+             v[6] == p.height && v[8] == OhosOutputNativeFormat(p.color) &&
+             v[13] == 1 && p.width && p.height && p.width <= 8192 &&
+             p.height <= 8192 && v[5] >= uint64_t{p.width} * 4 &&
+             v[7] <= kMaxFrameBytes && uint64_t{v[5]} * p.height <= v[7] &&
              (p.tail_bytes == v[3] * 4 || p.tail_bytes == v[3] * 4 + 20);
     }
+    case SharedOp::kColorProbe:
+      return !count && !p.lease && !p.tail_bytes && p.color_generation;
     case SharedOp::kPresent:
       return p.lease && !p.fd_count && !p.tail_bytes;
     case SharedOp::kDiscard:
@@ -82,6 +86,7 @@ bool ValidSharedPacket(const SharedPacket& p, size_t count) {
     case SharedOp::kUnavailable:
     case SharedOp::kVulkanState:
     case SharedOp::kVulkanFailed:
+    case SharedOp::kColorFailed:
     case SharedOp::kTiming:
       return !count && !p.tail_bytes && p.result <= 2;
   }
