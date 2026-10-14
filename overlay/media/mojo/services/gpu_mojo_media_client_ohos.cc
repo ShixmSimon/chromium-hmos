@@ -84,6 +84,9 @@ class GpuMojoMediaClientOhos final : public GpuMojoMediaClient {
  protected:
   std::unique_ptr<VideoDecoder> CreatePlatformVideoDecoder(
       VideoDecoderTraits& traits) final {
+    if (!CanUseOhosNativeCodecs()) {
+      return nullptr;
+    }
     // The configs are cached by GpuMojoMediaClient, so every decoder checks
     // its config against the same capability snapshot the renderer saw.
     return std::make_unique<OhosVideoDecoder>(
@@ -112,6 +115,9 @@ class GpuMojoMediaClientOhos final : public GpuMojoMediaClient {
   std::unique_ptr<AudioDecoder> CreatePlatformAudioDecoder(
       scoped_refptr<base::SequencedTaskRunner> task_runner,
       std::unique_ptr<MediaLog> media_log) final {
+    if (!CanUseOhosNativeCodecs()) {
+      return nullptr;
+    }
     return std::make_unique<OhosAudioDecoder>(std::move(task_runner),
                                               std::move(media_log));
   }
@@ -119,6 +125,10 @@ class GpuMojoMediaClientOhos final : public GpuMojoMediaClient {
   // WisePlay through DRM Kit; the AVCodecKit decoders above decrypt with it.
   std::unique_ptr<CdmFactory> CreatePlatformCdmFactory(
       mojom::FrameInterfaceFactory* frame_interfaces) final {
+    // This CDM depends on AVCodecKit to decrypt protected samples.
+    if (!CanUseOhosNativeCodecs()) {
+      return nullptr;
+    }
     return std::make_unique<OhosCdmFactory>(
         base::BindRepeating(&CreateProvisionFetcher, frame_interfaces));
   }

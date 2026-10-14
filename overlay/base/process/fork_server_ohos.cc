@@ -669,6 +669,10 @@ int DuplicateOhosChildDescriptor(int fd) {
   return result;
 }
 
+bool IsOhosForkChild() {
+  return child_progress != nullptr;
+}
+
 bool StartOhosForkServer(const std::string& child_library) {
   Client& client = GetClient();
   std::lock_guard<std::mutex> lock(client.mutex);

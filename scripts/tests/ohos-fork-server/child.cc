@@ -47,6 +47,10 @@ extern "C" __attribute__((visibility("default"))) void ChromiumNativeChildMain(
 #endif
   auto duplicate = reinterpret_cast<int (*)(int)>(
       dlsym(host, "ForkTestDuplicateFd"));
+  auto is_fork_child = reinterpret_cast<bool (*)()>(
+      dlsym(host, "ForkTestIsForkChild"));
+  if (!is_fork_child || !is_fork_child())
+    _exit(89);
   auto report = reinterpret_cast<void (*)(uint32_t, int)>(
       dlsym(host, "ForkTestReportStage"));
   if (!duplicate || !report)

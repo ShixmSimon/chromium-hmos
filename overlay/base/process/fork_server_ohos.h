@@ -25,6 +25,9 @@ inline constexpr char kOhosPhoneFork[] = "ohos-phone-fork";
 BASE_EXPORT bool StartOhosForkServer(const std::string& child_library);
 BASE_EXPORT void StopOhosForkServer();
 BASE_EXPORT bool IsOhosForkServerStarted();
+// True only in a child launched by this experimental server, not in its
+// browser or in an official appspawn/NCP child. Set before loading the shim.
+BASE_EXPORT bool IsOhosForkChild();
 // Optional phone diagnostic, opened before the first fork. No hilog/Chromium
 // logging is used in the server. The file is replaced for each browser session.
 BASE_EXPORT bool ConfigureOhosForkFdTrace(const std::string& path);

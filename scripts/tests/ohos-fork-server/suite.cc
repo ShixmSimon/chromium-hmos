@@ -30,6 +30,9 @@
 extern "C" __attribute__((visibility("default"))) int ForkTestDuplicateFd(int fd) {
   return base::internal::DuplicateOhosChildDescriptor(fd);
 }
+extern "C" __attribute__((visibility("default"))) bool ForkTestIsForkChild() {
+  return base::internal::IsOhosForkChild();
+}
 extern "C" __attribute__((visibility("default"))) void ForkTestReportStage(
     uint32_t stage, int detail) {
   base::internal::ReportOhosForkStage(
@@ -93,7 +96,7 @@ bool Normal(int iteration, pid_t& server, std::string* detail = nullptr) {
   int poll_result = -1;
   ssize_t received = -1;
   int ipc_errno = 0;
-  bool ok = child > 0 && caller_keeps_fds;
+  bool ok = child > 0 && caller_keeps_fds && !IsOhosForkChild();
   do {
     if (ok) {
       do {
@@ -162,6 +165,7 @@ std::string RunOhosForkServerTests(const std::string& child_library) {
     return ok;
   };
   check(!IsOhosForkServerStarted(), "default creates no server");
+  check(!IsOhosForkChild(), "browser is not a fork child");
   check(!GetOhosForkChildStatus(getpid()) &&
             !SignalOhosForkChild(getpid(), SIGKILL),
         "unowned PID stays on platform path");

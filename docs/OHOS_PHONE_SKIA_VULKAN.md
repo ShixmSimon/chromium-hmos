@@ -19,6 +19,30 @@ config.skiaBackend = 'vulkan';
 不要追加 `--single-process`、`--in-process-gpu`、`--disable-gpu`。
 切回对照组只改 `skiaBackend = 'gl'` 并冷启动。
 
+## 手机 fork 的媒体兼容限制（2026-10-14）
+
+实验 fork 子进程暂不查询或创建 AVCodecKit 编解码器。Mate 70 Pro+ API 26 的
+`0483a16` 完整 native crash 显示，GPU 查询 `OH_AVCodec_GetCapability` 时，
+HiAppEvent 上报进入 FFRT，`HExecuteUnit::PokeAddRtq` 调用空函数指针而 SIGSEGV。
+同次启动的 H.264/HEVC/VP9/AV1 硬件查询均未取得能力；反复 AC3/DTS 查询随后崩溃。
+这是运行环境兼容问题，不能据此认定设备没有对应硬件。
+
+本次采取兼容降级，未声称修复系统 FFRT 内部状态：能力列表返回空，拒绝原生
+视频/音频解码器、硬件编码器和依赖 AVCodecKit 的 WisePlay CDM 创建。
+Chromium 已编入的软件编解码器仍可用；没有软件实现的格式不能播放。
+Vulkan 合成、SDR10/HDR10 输出与该限制独立，VP9 10 位软件解码仍可用于 HDR 验证。
+单进程、浏览器内 GPU 和官方 NCP 子进程不受此策略影响。
+判断使用实际 fork 子进程标记，不依赖可继承的启动开关。
+
+手机 `libffrt.so`（Build ID `5e6c9bf8f81c4946556dbd4f3e3f8239`）已通过
+`pthread_atfork` 注册 `ffrt_child_init`。不重复调用此内部入口；公开源码也注明
+该入口仅供 clone 场景且只可调用一次。后续恢复硬解需单独实现并验证具有干净
+系统运行时的媒体服务，不能只在主进程查询能力后让 fork GPU 创建解码器。
+
+验收需覆盖多次冷启动、连续 MediaCapabilities/WebCodecs 查询、普通视频播放和
+SDR→HDR→SDR 切换。确认 `OHOS phone fork media: AVCodecKit disabled in fork child`
+日志、Vulkan 首帧及测试结束时 GPU PID，检查中途未因崩溃回退 GL。
+
 ## 如何确认实际启用
 
 同时满足：
