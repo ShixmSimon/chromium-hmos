@@ -60,6 +60,8 @@ git -C "${chromium_src}" apply \
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-phone-vulkan-shared-images.patch"
 git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-vulkan-cached-upload.patch"
+git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-phone-browser-media.patch"
 while read -r deps_path deps_patch; do
   [[ -z "${deps_path}" || "${deps_path}" == \#* ]] && continue

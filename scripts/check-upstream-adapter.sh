@@ -29,6 +29,7 @@ grep '^diff --git ' "${project_root}/patches/chromium-154-harmonyos.patch" \
   "${project_root}/patches/ohos-vulkan-sdr-output.patch" \
   "${project_root}/patches/ohos-vulkan-hdr-output.patch" \
   "${project_root}/patches/ohos-phone-vulkan-shared-images.patch" \
+  "${project_root}/patches/ohos-vulkan-cached-upload.patch" \
   "${project_root}/patches/ohos-phone-browser-media.patch" \
   "${project_root}/patches/ohos-ime-explicit-keyboard-request.patch" -h |
   awk '{sub(/^b\//, "/", $4); print $4}' |
@@ -92,6 +93,10 @@ if [[ "${compatible}" == true ]]; then
   fi
   if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
       "${project_root}/patches/ohos-phone-vulkan-shared-images.patch" 2>"${failure_log}"; then
+    compatible=false
+  fi
+  if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
+      "${project_root}/patches/ohos-vulkan-cached-upload.patch" 2>"${failure_log}"; then
     compatible=false
   fi
   if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \

@@ -1,0 +1,56 @@
+diff --git a/gpu/vulkan/skia_vk_memory_allocator_impl.cc b/gpu/vulkan/skia_vk_memory_allocator_impl.cc
+--- a/gpu/vulkan/skia_vk_memory_allocator_impl.cc
++++ b/gpu/vulkan/skia_vk_memory_allocator_impl.cc
+@@ -8,8 +8,11 @@
+ #include <vulkan/vulkan_core.h>
+ 
+ #include <array>
++#include <atomic>
+ 
+ #include "base/feature_list.h"
++#include "base/logging.h"
++#include "build/build_config.h"
+ #include "base/trace_event/trace_event.h"
+ #include "gpu/vulkan/vulkan_device_queue.h"
+ #include "gpu/vulkan/vulkan_function_pointers.h"
+@@ -93,9 +96,19 @@
+       info.preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+       break;
+     case BufferUsage::kTransfersFromCpuToGpu:
++#if BUILDFLAG(IS_OHOS)
++      // Large CPU video uploads need cached staging memory on unified-memory
++      // phone GPUs. Coherent-only selection can choose uncached device memory.
++      // Skia's VulkanAlloc tracks noncoherent memory and GrVkBuffer::vkUnmap
++      // flushes it through VMA before submission. Cached is a preference, so
++      // drivers without such a memory type retain the host-visible fallback.
++      info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
++      info.preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
++#else
+       info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+       info.preferredFlags = 0;
++#endif
+       break;
+     case BufferUsage::kTransfersFromGpuToCpu:
+       info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+@@ -124,6 +137,20 @@
+   VkResult result = vma::AllocateMemoryForBuffer(allocator_, buffer, &info,
+                                                  &allocation, nullptr);
+   if (VK_SUCCESS == result) {
++#if BUILDFLAG(IS_OHOS)
++    if (usage == BufferUsage::kTransfersFromCpuToGpu) {
++      static std::atomic<bool> logged{false};
++      if (!logged.exchange(true)) {
++        VmaAllocationInfo allocation_info;
++        vma::GetAllocationInfo(allocator_, allocation, &allocation_info);
++        VkMemoryPropertyFlags memory_flags;
++        vma::GetMemoryTypeProperties(allocator_, allocation_info.memoryType,
++                                    &memory_flags);
++        LOG(WARNING) << "OHOS Vulkan upload memory: type="
++                     << allocation_info.memoryType << " flags=" << memory_flags;
++      }
++    }
++#endif
+     if (info.preferredFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT) {
+       VmaAllocationInfo vma_info;
+       vma::GetAllocationInfo(allocator_, allocation, &vma_info);
