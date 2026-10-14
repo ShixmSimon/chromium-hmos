@@ -243,6 +243,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-ime-explicit-keyboard-request.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-video-zero-copy.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-hevc-capability.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-phone-browser-media.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-adaptive-vsync.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-phone-skia-vulkan.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-skia-output-format-diagnostics.patch"

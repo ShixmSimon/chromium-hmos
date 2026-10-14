@@ -38,6 +38,8 @@ class VideoFrame;
 // default, with Buffer mode as the compatibility fallback during initialization.
 class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
  public:
+  // A null gpu_task_runner selects Buffer output without a GPU converter,
+  // used by the browser-hosted phone media service.
   OhosVideoDecoder(scoped_refptr<base::SequencedTaskRunner> task_runner,
                    std::unique_ptr<MediaLog> media_log,
                    SupportedVideoDecoderConfigs supported_configs,

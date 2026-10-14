@@ -113,10 +113,11 @@ OhosVideoDecoder::OhosVideoDecoder(
       media_log_(std::move(media_log)),
       supported_configs_(std::move(supported_configs)),
       gpu_task_runner_(std::move(gpu_task_runner)),
-      frame_converter_(
-          base::MakeRefCounted<OhosVideoFrameConverter>(gpu_task_runner_,
-                                                        std::move(get_stub_cb),
-                                                        workarounds)) {
+      frame_converter_(gpu_task_runner_
+                           ? base::MakeRefCounted<OhosVideoFrameConverter>(
+                                 gpu_task_runner_, std::move(get_stub_cb),
+                                 workarounds)
+                           : nullptr) {
   DETACH_FROM_SEQUENCE(sequence_checker_);
 }
 
@@ -192,7 +193,8 @@ void OhosVideoDecoder::Initialize(const VideoDecoderConfig& config,
                         config_.profile() == VP9PROFILE_PROFILE0 ||
                         config_.profile() == VP9PROFILE_PROFILE2 ||
                         config_.profile() == AV1PROFILE_PROFILE_MAIN;
-  if (base::FeatureList::IsEnabled(kOhosZeroCopyVideo) && eligible) {
+  if (frame_converter_ &&
+      base::FeatureList::IsEnabled(kOhosZeroCopyVideo) && eligible) {
     gpu_task_runner_->PostTask(
         FROM_HERE,
         base::BindOnce(
@@ -211,7 +213,9 @@ void OhosVideoDecoder::Initialize(const VideoDecoderConfig& config,
     return;
   }
   if (base::FeatureList::IsEnabled(kOhosZeroCopyVideo)) {
-    LOG(WARNING) << "OHOS video zero-copy: profile ineligible; buffer mode";
+    LOG(WARNING) << "OHOS video zero-copy: "
+                 << (frame_converter_ ? "profile ineligible" : "browser media")
+                 << "; buffer mode";
   }
   FinishInitialize(std::move(bound_init_cb));
 }
@@ -567,6 +571,9 @@ void OhosVideoDecoder::AdvanceGeneration() {
   // first initialization and after seek/EOS. Updating only on destruction
   // leaves the cache one epoch behind and rejects every first Surface frame.
   ++generation_;
+  if (!frame_converter_) {
+    return;
+  }
   gpu_task_runner_->PostTask(
       FROM_HERE, base::BindOnce(&OhosVideoFrameConverter::Reset,
                                frame_converter_, generation_));

@@ -157,11 +157,11 @@ bool CanUseOhosNativeCodecs() {
   // Do not probe once and cache: even the first AVCodecKit query can submit
   // HiAppEvent work into inherited FFRT state. libc already runs FFRT's
   // pthread_atfork child hook; calling ffrt_child_init again is not a repair.
-  // Re-enable only with a codec service that has a clean system runtime.
+  // The phone browser media service owns native codec operations instead.
   // Log once per child, not on every renderer capability request.
   static const bool logged = [] {
     LOG(WARNING) << "OHOS phone fork media: AVCodecKit disabled in fork child; "
-                    "using Chromium software codecs (FFRT compatibility)";
+                    "native playback is routed to browser media service";
     return true;
   }();
   (void)logged;
