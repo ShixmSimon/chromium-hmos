@@ -221,6 +221,20 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-csv-import-lifecycle.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-memfd-shared-memory.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-child-exit-observation.patch"
+  # HDR intentionally replaces lines introduced by the phone Vulkan/SDR
+  # patches. Unstack it before checking those prerequisites on a persistent
+  # runner. Preserve mtimes when reapplying leaves identical contents, so an
+  # unchanged OutputSurface header does not recompile all of Viz every run.
+  hdr_patch_backup="$(mktemp -d)"
+  trap 'rm -rf "$hdr_patch_backup"' EXIT
+  while read -r hdr_file; do
+    if [[ -f "${src}/${hdr_file}" ]]; then
+      mkdir -p "${hdr_patch_backup}/$(dirname "$hdr_file")"
+      cp -p "${src}/${hdr_file}" "${hdr_patch_backup}/${hdr_file}"
+    fi
+  done < <(awk '/^diff --git / {sub(/^b\//, "", $4); print $4}' \
+    "${repo_root}/patches/ohos-vulkan-hdr-output.patch")
+  retire_incremental_patch "${repo_root}/patches/ohos-vulkan-hdr-output.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-phone-fork.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-phone-gpu-shared-output.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-ime-explicit-keyboard-request.patch"
@@ -231,6 +245,14 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-skia-output-format-diagnostics.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-sdr-output.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-hdr-output.patch"
+  while IFS= read -r -d '' hdr_saved; do
+    hdr_file="${hdr_saved#"${hdr_patch_backup}/"}"
+    if cmp -s "${hdr_saved}" "${src}/${hdr_file}"; then
+      touch -r "${hdr_saved}" "${src}/${hdr_file}"
+    fi
+  done < <(find "${hdr_patch_backup}" -type f -print0)
+  rm -rf "$hdr_patch_backup"
+  trap - EXIT
   apply_incremental_patch "${repo_root}/patches/ohos-tab-discarding.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-camera-frame-layout.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-camera-lifecycle.patch"

@@ -164,14 +164,15 @@ bool SharedBufferLease::Acquire(void* target, SharedMessage* m) {
   // while its consumer may still hold older SDR/PQ frames.
   if (encoded) {
     const bool extended = m->packet.color.mode != OhosOutputMode::kSdr8;
+    // Even a partially successful HDR tag must be cleared before reuse.
+    if (extended)
+      color_used.store(true);
     const bool tagged = SetOhosBufferOutputColor(native, m->packet.color);
     // Old SDR-only devices need not implement HDR metadata APIs. Once this
     // browser has used tagged output, resetting it is mandatory, including
     // after a GPU restart (whose local generation starts over).
     if (extended || color_used.load())
       encoded = tagged;
-    if (extended && tagged)
-      color_used.store(true);
   }
   if (!encoded) {
     if (fence >= 0)

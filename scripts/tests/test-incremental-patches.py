@@ -74,6 +74,63 @@ class IncrementalPatchTest(unittest.TestCase):
                     if deps:
                         self.assertEqual((chromium / "fixture.txt").read_text(), "chromium sentinel\n")
 
+    def test_dependent_hdr_patch_replay_preserves_only_unchanged_mtime(self):
+        retire = "retire_incremental_patch() {" + BUILD_SCRIPT.split(
+            "retire_incremental_patch() {", 1
+        )[1].split("# Compiling and packaging", 1)[0]
+        save = BUILD_SCRIPT.split('  hdr_patch_backup="$(mktemp -d)"', 1)[1].split(
+            '  apply_incremental_patch "${repo_root}/patches/ohos-phone-fork.patch"', 1
+        )[0]
+        save = 'hdr_patch_backup="$(mktemp -d)"' + save
+        restore = BUILD_SCRIPT.split(
+            '  apply_incremental_patch "${repo_root}/patches/ohos-vulkan-hdr-output.patch"', 1
+        )[1].split('  apply_incremental_patch "${repo_root}/patches/ohos-tab-discarding.patch"', 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            adapter, chromium = root / "adapter", root / "chromium"
+            for repo in (adapter, chromium):
+                repo.mkdir()
+                self.run_command("git", "init", "-q", cwd=repo)
+                self.run_command("git", "config", "core.autocrlf", "false", cwd=repo)
+            (adapter / "patches").mkdir()
+            fixture = chromium / "output.h"
+            fixture.write_text("before\nSDR8\nafter\n")
+            self.run_command("git", "add", "output.h", cwd=chromium)
+            import difflib
+            def patch(before, after):
+                return "diff --git a/output.h b/output.h\n" + "".join(
+                    difflib.unified_diff(before.splitlines(True), after.splitlines(True),
+                                         fromfile="a/output.h", tofile="b/output.h"))
+            (adapter / "patches/base.patch").write_text(
+                patch("before\nafter\n", "before\nSDR8\nafter\n"))
+            hdr = adapter / "patches/ohos-vulkan-hdr-output.patch"
+            script = "\n".join([
+                "set -euo pipefail", 'readonly repo_root="$(pwd)/adapter"',
+                'readonly src="$(pwd)/chromium"',
+                'say() { printf "%s\\n" "$*"; }',
+                'die() { printf "%s\\n" "$*" >&2; exit 1; }',
+                HELPER, retire, save,
+                'apply_incremental_patch "$repo_root/patches/base.patch"',
+                'apply_incremental_patch "$repo_root/patches/ohos-vulkan-hdr-output.patch"',
+                restore,
+            ])
+            (root / "exercise.sh").write_text(script)
+            fixture.write_text("before\nHDR10\nafter\n")
+            fixed_time = 1700000000000000000
+            os.utime(fixture, ns=(fixed_time, fixed_time))
+            for value in ("HDR10", "HDR10", "HDR12"):
+                hdr.write_text(patch("before\nSDR8\nafter\n", f"before\n{value}\nafter\n"))
+                self.run_command("git", "add", "patches", cwd=adapter)
+                self.run_command("git", "-c", "user.name=Patch Test", "-c",
+                                 "user.email=test@example.invalid", "commit", "--allow-empty",
+                                 "-qm", value, cwd=adapter)
+                self.run_command(BASH, "exercise.sh", cwd=root)
+                self.assertEqual(fixture.read_text(), f"before\n{value}\nafter\n")
+                if value == "HDR10":
+                    self.assertEqual(fixture.stat().st_mtime_ns, fixed_time)
+                else:
+                    self.assertGreater(fixture.stat().st_mtime_ns, fixed_time)
+
 
 if __name__ == "__main__":
     unittest.main()
