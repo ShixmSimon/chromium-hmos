@@ -24,10 +24,12 @@
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/logging.h"
+#include "base/memory/read_only_shared_memory_region.h"
 #include "base/numerics/checked_math.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/task/bind_post_task.h"
 #include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "media/base/decrypt_config.h"
 #include "media/base/video_codecs.h"
 #include "media/base/video_frame.h"
@@ -758,6 +760,7 @@ bool OhosVideoDecoder::UpdateOutputLayout() {
 scoped_refptr<VideoFrame> OhosVideoDecoder::CopyOutput(
     OH_AVBuffer* buffer,
     const OH_AVCodecBufferAttr& attr) {
+  TRACE_EVENT0("media", "OhosVideoDecoder::CopyOutput");
   if (!output_layout_ && !UpdateOutputLayout()) {
     return nullptr;
   }
@@ -854,10 +857,29 @@ scoped_refptr<VideoFrame> OhosVideoDecoder::CopyOutput(
       is_p010 ? PIXEL_FORMAT_YUV420P10 : pixel_format;
   // Both output formats have 2x2 chroma subsampling.
   const gfx::Size coded_size((layout.width + 1) & ~1, (layout.height + 1) & ~1);
-  scoped_refptr<VideoFrame> frame = VideoFrame::CreateFrame(
-      frame_format, coded_size, visible_rect,
-      config_.aspect_ratio().GetNaturalSize(visible_rect),
-      base::Microseconds(attr.pts));
+  const gfx::Size natural_size =
+      config_.aspect_ratio().GetNaturalSize(visible_rect);
+  const auto timestamp = base::Microseconds(attr.pts);
+  std::unique_ptr<base::MappedReadOnlyRegion> shared_memory;
+  scoped_refptr<VideoFrame> frame;
+  if (!gpu_task_runner_) {
+    // Browser-hosted decoding sends CPU frames across Mojo. Write the final
+    // planes directly into the IPC backing rather than allocating a heap frame
+    // that VideoFrameDataPtr::CreateRegion must copy again. Each frame owns its
+    // region; it is never recycled while a remote reader may still retain it.
+    shared_memory = std::make_unique<base::MappedReadOnlyRegion>(
+        base::ReadOnlySharedMemoryRegion::Create(
+            VideoFrame::AllocationSize(frame_format, coded_size)));
+    if (!shared_memory->IsValid()) {
+      return nullptr;
+    }
+    frame = VideoFrame::WrapExternalData(
+        frame_format, coded_size, visible_rect, natural_size,
+        shared_memory->mapping.GetMemoryAsSpan<uint8_t>(), timestamp);
+  } else {
+    frame = VideoFrame::CreateFrame(frame_format, coded_size, visible_rect,
+                                    natural_size, timestamp);
+  }
   if (!frame) {
     return nullptr;
   }
@@ -885,6 +907,16 @@ scoped_refptr<VideoFrame> OhosVideoDecoder::CopyOutput(
                      frame->writable_data(VideoFrame::Plane::kUV),
                      static_cast<int>(frame->stride(VideoFrame::Plane::kUV)),
                      uv_row_bytes.ValueOrDie(), static_cast<int>(uv_rows));
+  }
+
+  if (shared_memory) {
+    // Publish the read-only backing only after the last write; writable_data()
+    // intentionally rejects STORAGE_SHMEM. The destruction observer keeps the
+    // original writable mapping alive for the local frame's whole lifetime.
+    frame->BackWithSharedMemory(&shared_memory->region);
+    frame->AddDestructionObserver(base::BindOnce(
+        [](std::unique_ptr<base::MappedReadOnlyRegion>) {},
+        std::move(shared_memory)));
   }
 
   const gfx::ColorSpace& color_space = layout.color_space;
