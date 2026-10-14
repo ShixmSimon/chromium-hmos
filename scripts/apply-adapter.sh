@@ -63,11 +63,13 @@ git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-vulkan-cached-upload.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-phone-browser-media.patch"
+git -C "${chromium_src}" apply "${project_root}/patches/ohos-phone-vulkan-video.patch"
 while read -r deps_path deps_patch; do
   [[ -z "${deps_path}" || "${deps_path}" == \#* ]] && continue
   git -C "${chromium_src}/${deps_path}" apply --binary \
     "${deps_patch_root}/${deps_patch}"
 done <"${deps_patch_root}/series"
+git -C "${chromium_src}/third_party/skia" apply "${project_root}/patches/ohos-skia-native-ycbcr.patch"
 git -C "${chromium_src}/third_party/dawn" apply \
   "${project_root}/patches/ohos-dawn-instance-diagnostics.patch"
 git -C "${chromium_src}/third_party/angle" apply \

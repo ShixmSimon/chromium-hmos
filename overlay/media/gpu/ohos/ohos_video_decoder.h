@@ -30,9 +30,15 @@
 #include "media/gpu/ohos/ohos_video_frame_converter.h"
 #include "media/gpu/ohos/ohos_video_surface.h"
 
+namespace gpu {
+class SharedImageInterface;
+}
+
 namespace media {
 
 class VideoFrame;
+using OhosGetSharedImageInterfaceCB = base::RepeatingCallback<void(
+    base::OnceCallback<void(scoped_refptr<gpu::SharedImageInterface>)>)>;
 
 // AVCodecKit hardware decoding. Eligible streams use Surface -> SharedImage by
 // default, with Buffer mode as the compatibility fallback during initialization.
@@ -45,7 +51,8 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
                    SupportedVideoDecoderConfigs supported_configs,
                    scoped_refptr<base::SequencedTaskRunner> gpu_task_runner,
                    OhosVideoFrameConverter::GetCommandBufferStubCB get_stub_cb,
-                   const gpu::GpuDriverBugWorkarounds& workarounds);
+                   const gpu::GpuDriverBugWorkarounds& workarounds,
+                   OhosGetSharedImageInterfaceCB get_browser_sii = {});
   OhosVideoDecoder(const OhosVideoDecoder&) = delete;
   OhosVideoDecoder& operator=(const OhosVideoDecoder&) = delete;
   ~OhosVideoDecoder() override;
@@ -140,6 +147,13 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   void OnNewOutputBuffer(uint32_t generation, CodecBuffer output);
 
   void OnGpuInitialized(uint32_t generation, InitCB init_cb, bool supported);
+  void OnBrowserGpuInitialized(uint32_t generation,
+                               InitCB init_cb,
+                               scoped_refptr<gpu::SharedImageInterface> sii);
+  void ConvertBrowserFrame(uint32_t generation,
+                           scoped_refptr<gfx::NativePixmap> pixmap,
+                           gfx::GpuFenceHandle fence,
+                           SurfaceOutput output);
   void FinishInitialize(InitCB init_cb);
   void AdvanceGeneration();
   DecoderStatus CreateCodec();
@@ -170,6 +184,8 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   const scoped_refptr<base::SequencedTaskRunner> gpu_task_runner_;
   const scoped_refptr<OhosVideoFrameConverter> frame_converter_;
 
+  const OhosGetSharedImageInterfaceCB get_browser_sii_;
+  scoped_refptr<gpu::SharedImageInterface> browser_sii_;
   State state_ = State::kUninitialized;
   VideoDecoderConfig config_;
   OutputCB output_cb_;

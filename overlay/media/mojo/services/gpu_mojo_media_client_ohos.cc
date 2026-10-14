@@ -80,6 +80,8 @@ class OhosCdmFactory final : public CdmFactory {
 // capability while creating the codec in the GPU would still fail or crash.
 class OhosBrowserMediaClient final : public MojoMediaClient {
  public:
+  explicit OhosBrowserMediaClient(OhosGetSharedImageInterfaceCB get_sii)
+      : get_sii_(std::move(get_sii)) {}
   void Initialize() override {
     CHECK(CanUseOhosNativeCodecs());
     video_configs_ = GetOhosSupportedDecoderConfigs();
@@ -108,12 +110,13 @@ class OhosBrowserMediaClient final : public MojoMediaClient {
       RequestOverlayInfoCB request_overlay_info_cb,
       const gfx::ColorSpace& target_color_space,
       mojo::PendingRemote<mojom::VideoDecoder> oop_video_decoder) override {
-    // There is no GPU command buffer in this process. Use AVCodecKit Buffer
-    // output; Mojo transports NV12/P010 frames with their color/HDR metadata.
+    // AVCodecKit stays in the browser. The separate GPU can import its native
+    // Surface buffers through SharedImageInterface; unavailable import support
+    // keeps the existing shared-memory CPU output path.
     return std::make_unique<OhosVideoDecoder>(
         std::move(task_runner), media_log->Clone(), video_configs_, nullptr,
         OhosVideoFrameConverter::GetCommandBufferStubCB(),
-        gpu::GpuDriverBugWorkarounds());
+        gpu::GpuDriverBugWorkarounds(), get_sii_);
   }
 
   std::unique_ptr<AudioDecoder> CreateAudioDecoder(
@@ -130,6 +133,7 @@ class OhosBrowserMediaClient final : public MojoMediaClient {
   }
 
  private:
+  const OhosGetSharedImageInterfaceCB get_sii_;
   // Populated once before serving receivers. AudioDecoderReceivers may read
   // the audio snapshot on its own sequence; neither snapshot is mutated.
   SupportedVideoDecoderConfigs video_configs_;
@@ -138,8 +142,9 @@ class OhosBrowserMediaClient final : public MojoMediaClient {
 
 }  // namespace
 
-std::unique_ptr<MojoMediaClient> CreateOhosBrowserMediaClient() {
-  return std::make_unique<OhosBrowserMediaClient>();
+std::unique_ptr<MojoMediaClient> CreateOhosBrowserMediaClient(
+    OhosGetSharedImageInterfaceCB get_sii) {
+  return std::make_unique<OhosBrowserMediaClient>(std::move(get_sii));
 }
 
 class GpuMojoMediaClientOhos final : public GpuMojoMediaClient {

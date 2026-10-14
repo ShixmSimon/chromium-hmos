@@ -15,7 +15,9 @@
 
 #if BUILDFLAG(ENABLE_VULKAN)
 #include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
+#include "gpu/vulkan/vulkan_image.h"
 #include "gpu/vulkan/vulkan_surface.h"
+#include "ui/ozone/platform/ohos/ohos_video_vulkan.h"
 #endif
 
 #include <native_window/external_window.h>
@@ -1026,6 +1028,8 @@ OhosSurfaceFactory::CreateNativePixmapFromHandle(
     gfx::Size size,
     viz::SharedImageFormat format,
     gfx::NativePixmapHandle handle) {
+  if (!handle.ohos_buffer_prefix.empty())
+    return ImportOhosVideoNativePixmap(size, format, std::move(handle));
   return IsOhosPhoneGpuChild() ? nullptr
                                : CreateOhosNativePixmapFromHandle(
                                      size, format, std::move(handle));
@@ -1060,6 +1064,18 @@ class PhoneVulkanImplementation final : public gpu::VulkanImplementationOhos {
       }
     }
     return optional;
+  }
+  bool CanImportGpuMemoryBuffer(gpu::VulkanDeviceQueue* queue,
+                                gfx::GpuMemoryBufferType type) override {
+    return type == gfx::NATIVE_PIXMAP && CanImportOhosVideoVulkan(queue);
+  }
+  std::unique_ptr<gpu::VulkanImage> CreateImageFromGpuMemoryHandle(
+      gpu::VulkanDeviceQueue* queue,
+      gfx::GpuMemoryBufferHandle handle,
+      gfx::Size size,
+      VkFormat format,
+      const gfx::ColorSpace& color) override {
+    return ImportOhosVideoVulkan(queue, std::move(handle), size, color);
   }
   std::unique_ptr<gpu::VulkanSurface> CreateViewSurface(
       gfx::AcceleratedWidget widget) override {

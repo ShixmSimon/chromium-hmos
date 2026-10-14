@@ -224,12 +224,29 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-csv-import-lifecycle.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-memfd-shared-memory.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-child-exit-observation.patch"
+  # Video import layers over browser media and cached-upload capabilities.
+  # Unstack it before validating those prerequisite patches; preserve mtimes
+  # so an unchanged Mojo schema does not rebuild the whole browser.
+  video_patch_backup="$(mktemp -d)"
+  trap 'rm -rf "${video_patch_backup:-}"' EXIT
+  while read -r video_file; do
+    if [[ -f "${src}/${video_file}" ]]; then
+      mkdir -p "${video_patch_backup}/$(dirname "$video_file")"
+      cp -p "${src}/${video_file}" "${video_patch_backup}/${video_file}"
+    fi
+  done < <(awk '/^diff --git / {sub(/^b\//, "", $4); print $4}' \
+    "${repo_root}/patches/ohos-phone-vulkan-video.patch")
+  if git -C "$src" apply --reverse --check "${repo_root}/patches/ohos-phone-vulkan-video.patch" 2>/dev/null; then
+    git -C "$src" apply --reverse "${repo_root}/patches/ohos-phone-vulkan-video.patch"
+  else
+    retire_incremental_patch "${repo_root}/patches/ohos-phone-vulkan-video.patch"
+  fi
   # HDR intentionally replaces lines introduced by the phone Vulkan/SDR
   # patches. Unstack it before checking those prerequisites on a persistent
   # runner. Preserve mtimes when reapplying leaves identical contents, so an
   # unchanged OutputSurface header does not recompile all of Viz every run.
   hdr_patch_backup="$(mktemp -d)"
-  trap 'rm -rf "$hdr_patch_backup"' EXIT
+  trap 'rm -rf "$hdr_patch_backup" "${video_patch_backup:-}"' EXIT
   while read -r hdr_file; do
     if [[ -f "${src}/${hdr_file}" ]]; then
       mkdir -p "${hdr_patch_backup}/$(dirname "$hdr_file")"
@@ -256,10 +273,20 @@ else
     fi
   done < <(find "${hdr_patch_backup}" -type f -print0)
   rm -rf "$hdr_patch_backup"
-  trap - EXIT
+  trap 'rm -rf "${video_patch_backup:-}"' EXIT
   apply_incremental_patch "${repo_root}/patches/ohos-tab-discarding.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-phone-vulkan-shared-images.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-cached-upload.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-phone-vulkan-video.patch"
+  while IFS= read -r -d '' video_saved; do
+    video_file="${video_saved#"${video_patch_backup}/"}"
+    if cmp -s "${video_saved}" "${src}/${video_file}"; then
+      touch -r "${video_saved}" "${src}/${video_file}"
+    fi
+  done < <(find "${video_patch_backup}" -type f -print0)
+  rm -rf "$video_patch_backup"
+  trap - EXIT
+  apply_incremental_patch "${repo_root}/patches/ohos-skia-native-ycbcr.patch" "${src}/third_party/skia"
   apply_incremental_patch "${repo_root}/patches/ohos-camera-frame-layout.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-camera-lifecycle.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-camera-timeline.patch"

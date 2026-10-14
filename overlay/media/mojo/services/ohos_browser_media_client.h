@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "media/gpu/ohos/ohos_video_decoder.h"
 #include "media/mojo/services/media_mojo_export.h"
 #include "media/mojo/services/mojo_media_client.h"
 
@@ -15,8 +16,8 @@ namespace media {
 // For the phone fork launcher only. The browser owns AVCodecKit/DRM objects;
 // the existing Mojo media protocols carry requests, frames and audio buffers.
 // Initialize and use the client on the MediaService sequence, never the UI.
-MEDIA_MOJO_EXPORT std::unique_ptr<MojoMediaClient>
-CreateOhosBrowserMediaClient();
+MEDIA_MOJO_EXPORT std::unique_ptr<MojoMediaClient> CreateOhosBrowserMediaClient(
+    OhosGetSharedImageInterfaceCB get_sii);
 
 }  // namespace media
 

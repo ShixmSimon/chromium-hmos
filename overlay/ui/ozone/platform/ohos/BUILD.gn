@@ -90,6 +90,7 @@ source_set("ohos") {
     "ohos_input_method.h",
     "ohos_native_pixmap.cc",
     "ohos_native_pixmap.h",
+    "ohos_video_buffer_parcel.h",
     "ohos_native_window_adapter.cc",
     "ohos_native_window_adapter.h",
     "ohos_platform_window.cc",
@@ -106,6 +107,7 @@ source_set("ohos") {
 
   libs = [
     "image_source",
+    "ipc_capi",
     "native_buffer",
     "native_display_manager",
     "native_vsync",
@@ -138,6 +140,7 @@ source_set("ohos") {
   ]
 
   if (enable_vulkan) {
+    sources += [ "ohos_video_vulkan.cc", "ohos_video_vulkan.h" ]
     # The Vulkan implementation this platform hands back. It lives with the
     # other platforms' under //gpu/vulkan rather than here, so that the
     # ladder in gpu/vulkan/init and this one stay recognisably the same

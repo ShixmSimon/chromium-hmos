@@ -4,12 +4,15 @@
 
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
 
+#include <IPCKit/ipc_cparcel.h>
+#include <dlfcn.h>
 #include <linux/dma-buf.h>
 #include <native_buffer/native_buffer.h>
 #include <native_window/external_window.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include "ui/ozone/platform/ohos/ohos_video_buffer_parcel.h"
 
 #include <algorithm>
 #include <cstring>
@@ -888,6 +891,135 @@ scoped_refptr<gfx::NativePixmap> CloneOhosVideoNativePixmapForImport(
                          window, &OH_NativeWindow_DestroyNativeWindowBuffer)));
 }
 
+gfx::NativePixmapHandle ExportOhosVideoNativePixmap(
+    const gfx::NativePixmap& pixmap,
+    base::ScopedFD release_endpoint) {
+  gfx::NativePixmapHandle handle;
+  using Writer = int32_t (*)(OH_NativeBuffer*, OHIPCParcel*);
+  auto writer = reinterpret_cast<Writer>(
+      dlsym(RTLD_DEFAULT, "OH_NativeBuffer_WriteToParcel"));
+  auto* native = static_cast<OH_NativeBuffer*>(GetOhosNativeBuffer(pixmap));
+  if (!native || !writer)
+    return handle;
+  using Parcel = std::unique_ptr<OHIPCParcel, decltype(&OH_IPCParcel_Destroy)>;
+  Parcel parcel(OH_IPCParcel_Create(), &OH_IPCParcel_Destroy);
+  if (!parcel || writer(native, parcel.get()))
+    return handle;
+  const void* prefix = OH_IPCParcel_ReadBuffer(parcel.get(), 56);
+  if (!prefix)
+    return handle;
+  handle.ohos_buffer_prefix.resize(14);
+  memcpy(handle.ohos_buffer_prefix.data(), prefix, 56);
+  const auto& p = handle.ohos_buffer_prefix;
+  if (p[1] != 1 || p[2] > 6 || p[3] > 256 || p[13] != 1)
+    return {};
+  for (uint32_t i = 0; i < p[2] + 1; ++i) {
+    int fd = -1;
+    if (OH_IPCParcel_ReadFileDescriptor(parcel.get(), &fd) || fd < 0)
+      return {};
+    handle.ohos_buffer_fds.emplace_back(fd);
+  }
+  int remaining = OH_IPCParcel_GetReadableBytes(parcel.get());
+  if (remaining < 0 || remaining > 1044)
+    return {};
+  if (remaining) {
+    const void* tail = OH_IPCParcel_ReadBuffer(parcel.get(), remaining);
+    if (!tail)
+      return {};
+    handle.ohos_buffer_tail.resize(remaining);
+    memcpy(handle.ohos_buffer_tail.data(), tail, remaining);
+  }
+  auto format = pixmap.GetSharedImageFormat();
+  format.ClearPrefersExternalSampler();
+  const bool p010 = format == viz::MultiPlaneFormat::kP010;
+  const uint32_t native_format = p010 ? NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
+                                      : NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP;
+  if (!ValidOhosVideoBufferParcel(p, remaining, handle.ohos_buffer_fds.size(),
+                                  pixmap.GetBufferSize().width(),
+                                  pixmap.GetBufferSize().height(),
+                                  native_format, p010 ? 2 : 1)) {
+    LOG(ERROR) << "OHOS video parcel rejected size="
+               << pixmap.GetBufferSize().ToString() << " stride=" << p[5]
+               << " bytes=" << p[7] << " format=" << p[8];
+    return {};
+  }
+  // Describes plane bounds to Chromium's generic handle validator. Sampling
+  // uses the original native allocation, never these linear-layout hints.
+  const uint64_t y_bytes = uint64_t{p[5]} * p[6];
+  const uint64_t uv_bytes = uint64_t{p[5]} * ((p[6] + 1) / 2);
+  for (int i = 0; i < 2; ++i) {
+    base::ScopedFD fd(HANDLE_EINTR(dup(handle.ohos_buffer_fds[0].get())));
+    if (!fd.is_valid())
+      return {};
+    handle.planes.emplace_back(p[5], i ? y_bytes : 0, i ? uv_bytes : y_bytes,
+                               std::move(fd));
+  }
+  handle.ohos_video_release_fd = std::move(release_endpoint);
+  return handle;
+}
+
+scoped_refptr<gfx::NativePixmap> ImportOhosVideoNativePixmap(
+    gfx::Size size,
+    viz::SharedImageFormat format,
+    gfx::NativePixmapHandle handle) {
+  auto plain_format = format;
+  plain_format.ClearPrefersExternalSampler();
+  if (plain_format != viz::MultiPlaneFormat::kNV12 &&
+      plain_format != viz::MultiPlaneFormat::kP010)
+    return nullptr;
+  const bool p010 = plain_format == viz::MultiPlaneFormat::kP010;
+  const uint32_t native_format = p010 ? NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
+                                      : NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP;
+  if (!ValidOhosVideoBufferParcel(handle.ohos_buffer_prefix,
+                                  handle.ohos_buffer_tail.size(),
+                                  handle.ohos_buffer_fds.size(), size.width(),
+                                  size.height(), native_format, p010 ? 2 : 1))
+    return nullptr;
+  using Reader = int32_t (*)(OHIPCParcel*, OH_NativeBuffer**);
+  auto reader = reinterpret_cast<Reader>(
+      dlsym(RTLD_DEFAULT, "OH_NativeBuffer_ReadFromParcel"));
+  using Parcel = std::unique_ptr<OHIPCParcel, decltype(&OH_IPCParcel_Destroy)>;
+  Parcel parcel(OH_IPCParcel_Create(), &OH_IPCParcel_Destroy);
+  if (!reader || !parcel ||
+      OH_IPCParcel_WriteBuffer(
+          parcel.get(),
+          reinterpret_cast<const uint8_t*>(handle.ohos_buffer_prefix.data()),
+          56))
+    return nullptr;
+  for (const auto& fd : handle.ohos_buffer_fds)
+    if (!fd.is_valid() ||
+        OH_IPCParcel_WriteFileDescriptor(parcel.get(), fd.get()))
+      return nullptr;
+  if (!handle.ohos_buffer_tail.empty() &&
+      OH_IPCParcel_WriteBuffer(parcel.get(), handle.ohos_buffer_tail.data(),
+                               handle.ohos_buffer_tail.size()))
+    return nullptr;
+  OH_NativeBuffer* native = nullptr;
+  if (reader(parcel.get(), &native) || !native)
+    return nullptr;
+  OH_NativeBuffer_Config config{};
+  OH_NativeBuffer_GetConfig(native, &config);
+  if (config.width != size.width() || config.height != size.height() ||
+      config.format != static_cast<int>(native_format)) {
+    OH_NativeBuffer_Unreference(native);
+    return nullptr;
+  }
+  auto* window =
+      OH_NativeWindow_CreateNativeWindowBufferFromNativeBuffer(native);
+  const uint32_t id = OH_NativeBuffer_GetSeqNum(native);
+  OH_NativeBuffer_Unreference(native);
+  if (!window)
+    return nullptr;
+  format.SetPrefersExternalSampler();
+  return base::MakeRefCounted<OhosNativePixmap>(
+      window, size, format, id,
+      base::BindOnce(
+          [](OHNativeWindowBuffer* window, base::ScopedFD release) {
+            OH_NativeWindow_DestroyNativeWindowBuffer(window);
+          },
+          window, std::move(handle.ohos_video_release_fd)));
+}
+
 std::unique_ptr<NativePixmapGLBinding> ImportOhosNativePixmap(
     scoped_refptr<gfx::NativePixmap> pixmap,
     const gfx::ColorSpace& color_space,
@@ -929,6 +1061,14 @@ std::unique_ptr<NativePixmapGLBinding> ImportOhosNativePixmap(
 }
 
 void* GetOhosNativeBuffer(const gfx::NativePixmap& pixmap) {
+  const auto& video = static_cast<const OhosNativePixmap&>(pixmap);
+  if (video.video_buffer_id()) {
+    OH_NativeBuffer* native = nullptr;
+    if (OH_NativeBuffer_FromNativeWindowBuffer(
+            video.WindowBuffer(gfx::ColorSpace()), &native) == 0)
+      return native;
+    return nullptr;
+  }
   // Decoder surface pixmaps are GPU-only and are not offered to Dawn. Keep
   // this allocator-backed WebGPU path independent of video buffer ownership.
   if (!pixmap.AreDmaBufFdsValid()) {

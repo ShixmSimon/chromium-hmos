@@ -33,3 +33,9 @@ timeout 15s "$gpu_tmp/color-policy-test"
   "$gpu_repo/scripts/tests/ohos-phone-gpu/color_space_test.cc" \
   -o "$gpu_tmp/color-space-test"
 timeout 15s "$gpu_tmp/color-space-test"
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+  -I "$gpu_repo/overlay" \
+  "$gpu_repo/scripts/tests/ohos-phone-gpu/video_parcel_test.cc" \
+  -o "$gpu_tmp/video-parcel-test"
+timeout 15s "$gpu_tmp/video-parcel-test"

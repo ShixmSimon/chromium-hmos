@@ -10,6 +10,8 @@
 #include <multimedia/player_framework/native_avformat.h>
 #include <native_buffer/native_buffer.h>
 
+#include <poll.h>
+#include <sys/socket.h>
 #include <algorithm>
 #include <atomic>
 #include <limits>
@@ -26,11 +28,16 @@
 #include "base/logging.h"
 #include "base/memory/read_only_shared_memory_region.h"
 #include "base/numerics/checked_math.h"
+#include "base/posix/eintr_wrapper.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/task/bind_post_task.h"
+#include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
+#include "gpu/command_buffer/client/client_shared_image.h"
+#include "gpu/command_buffer/client/shared_image_interface.h"
 #include "media/base/decrypt_config.h"
+#include "media/base/format_utils.h"
 #include "media/base/video_codecs.h"
 #include "media/base/video_frame.h"
 #include "media/base/video_types.h"
@@ -42,6 +49,7 @@
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
+#include "ui/gfx/gpu_fence.h"
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
 
 namespace media {
@@ -111,16 +119,19 @@ OhosVideoDecoder::OhosVideoDecoder(
     SupportedVideoDecoderConfigs supported_configs,
     scoped_refptr<base::SequencedTaskRunner> gpu_task_runner,
     OhosVideoFrameConverter::GetCommandBufferStubCB get_stub_cb,
-    const gpu::GpuDriverBugWorkarounds& workarounds)
+    const gpu::GpuDriverBugWorkarounds& workarounds,
+    OhosGetSharedImageInterfaceCB get_browser_sii)
     : task_runner_(std::move(task_runner)),
       media_log_(std::move(media_log)),
       supported_configs_(std::move(supported_configs)),
       gpu_task_runner_(std::move(gpu_task_runner)),
       frame_converter_(gpu_task_runner_
                            ? base::MakeRefCounted<OhosVideoFrameConverter>(
-                                 gpu_task_runner_, std::move(get_stub_cb),
+                                 gpu_task_runner_,
+                                 std::move(get_stub_cb),
                                  workarounds)
-                           : nullptr) {
+                           : nullptr),
+      get_browser_sii_(std::move(get_browser_sii)) {
   DETACH_FROM_SEQUENCE(sequence_checker_);
 }
 
@@ -196,6 +207,14 @@ void OhosVideoDecoder::Initialize(const VideoDecoderConfig& config,
                         config_.profile() == VP9PROFILE_PROFILE0 ||
                         config_.profile() == VP9PROFILE_PROFILE2 ||
                         config_.profile() == AV1PROFILE_PROFILE_MAIN;
+  if (get_browser_sii_ && base::FeatureList::IsEnabled(kOhosZeroCopyVideo) &&
+      eligible) {
+    get_browser_sii_.Run(base::BindPostTask(
+        task_runner_, base::BindOnce(&OhosVideoDecoder::OnBrowserGpuInitialized,
+                                     weak_factory_.GetWeakPtr(), generation_,
+                                     std::move(bound_init_cb))));
+    return;
+  }
   if (frame_converter_ &&
       base::FeatureList::IsEnabled(kOhosZeroCopyVideo) && eligible) {
     gpu_task_runner_->PostTask(
@@ -236,6 +255,23 @@ void OhosVideoDecoder::OnGpuInitialized(uint32_t generation,
     LOG(WARNING)
         << "OHOS video zero-copy: GPU import/fences unavailable; buffer mode";
   }
+  FinishInitialize(std::move(init_cb));
+}
+
+void OhosVideoDecoder::OnBrowserGpuInitialized(
+    uint32_t generation,
+    InitCB init_cb,
+    scoped_refptr<gpu::SharedImageInterface> sii) {
+  if (generation != generation_) {
+    std::move(init_cb).Run(DecoderStatus::Codes::kAborted);
+    return;
+  }
+  browser_sii_ = std::move(sii);
+  surface_enabled_ =
+      browser_sii_ && !browser_sii_->IsLost() &&
+      browser_sii_->GetCapabilities().supports_ohos_video_native_buffers;
+  LOG(WARNING) << "OHOS phone video: Vulkan native-buffer path="
+               << surface_enabled_;
   FinishInitialize(std::move(init_cb));
 }
 
@@ -1001,6 +1037,12 @@ void OhosVideoDecoder::OnSurfaceFrameAvailable(uint32_t generation) {
   ++pending_conversions_;
   gfx::GpuFenceHandle fence;
   fence.Adopt(std::move(acquire_fence));
+  if (browser_sii_) {
+    ConvertBrowserFrame(generation, std::move(pixmap), std::move(fence),
+                        std::move(output));
+    RenderNextSurfaceOutput();
+    return;
+  }
   gpu_task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(
@@ -1013,6 +1055,83 @@ void OhosVideoDecoder::OnSurfaceFrameAvailable(uint32_t generation) {
               base::BindOnce(&OhosVideoDecoder::OnSurfaceFrameConverted,
                              weak_factory_.GetWeakPtr(), generation))));
   RenderNextSurfaceOutput();
+}
+
+void OhosVideoDecoder::ConvertBrowserFrame(
+    uint32_t generation,
+    scoped_refptr<gfx::NativePixmap> pixmap,
+    gfx::GpuFenceHandle fence,
+    SurfaceOutput output) {
+  TRACE_EVENT0("media", "OhosVideoDecoder::ConvertBrowserFrame");
+  int endpoints[2];
+  if (!browser_sii_ || browser_sii_->IsLost() ||
+      socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, endpoints)) {
+    OnSurfaceFrameConverted(generation, nullptr);
+    return;
+  }
+  base::ScopedFD receiver(endpoints[0]), sender(endpoints[1]);
+  auto handle = ui::ExportOhosVideoNativePixmap(*pixmap, std::move(sender));
+  if (handle.ohos_buffer_prefix.empty()) {
+    OnSurfaceFrameConverted(generation, nullptr);
+    return;
+  }
+  auto pixel_format = SharedImageFormatToVideoPixelFormat([&] {
+    auto format = pixmap->GetSharedImageFormat();
+    format.ClearPrefersExternalSampler();
+    return format;
+  }());
+  CHECK(pixel_format);
+  const gpu::SharedImageInfo info(pixmap->GetSharedImageFormat(),
+                                  pixmap->GetBufferSize(), output.color_space,
+                                  kTopLeft_GrSurfaceOrigin, kOpaque_SkAlphaType,
+                                  gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
+                                      gpu::SHARED_IMAGE_USAGE_RASTER_READ,
+                                  "OhosPhoneVideo");
+  auto image = browser_sii_->CreateSharedImage(
+      info, gfx::GpuMemoryBufferHandle(std::move(handle)));
+  // This independent lease survives VideoFrame release and decode reset. The
+  // GPU VulkanImage keeps its endpoint through fence-helper deferred cleanup.
+  // Consequently EOF means no import can still read the decoder allocation.
+  base::ThreadPool::PostTask(
+      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
+      base::BindOnce(
+          [](base::ScopedFD receiver, scoped_refptr<gfx::NativePixmap> lease) {
+            pollfd pfd{receiver.get(), POLLIN | POLLHUP, 0};
+            int result = HANDLE_EINTR(poll(&pfd, 1, -1));
+            // A wait failure must never return a buffer still used by the GPU
+            // to the decoder's reusable queue.
+            PCHECK(result == 1);
+            CHECK(pfd.revents & POLLHUP);
+          },
+          std::move(receiver), std::move(pixmap)));
+  if (!image) {
+    OnSurfaceFrameConverted(generation, nullptr);
+    return;
+  }
+  gpu::SyncToken ready = image->creation_sync_token();
+  if (!fence.is_null())
+    ready = image->BackingWasExternallyUpdated(
+        std::make_unique<gfx::GpuFence>(std::move(fence)));
+  browser_sii_->VerifySyncToken(ready);
+  auto frame = VideoFrame::WrapSharedImage(
+      *pixel_format, image, ready,
+      base::BindOnce(
+          [](scoped_refptr<gpu::SharedImageInterface> sii,
+             scoped_refptr<gpu::ClientSharedImage> image,
+             const gpu::SyncToken& token) {
+            image->UpdateDestructionSyncToken(token);
+            image.reset();
+            sii->VerifyFlush();
+          },
+          browser_sii_, image),
+      output.visible_rect, output.natural_size, output.timestamp);
+  if (frame) {
+    frame->set_color_space(output.color_space);
+    frame->set_hdr_metadata(output.hdr_metadata);
+    frame->metadata().power_efficient = true;
+    frame->metadata().read_lock_fences_enabled = true;
+  }
+  OnSurfaceFrameConverted(generation, std::move(frame));
 }
 
 void OhosVideoDecoder::OnSurfaceFrameConverted(

@@ -82,6 +82,16 @@ std::optional<uint32_t> GetOhosVideoNativePixmapId(
 scoped_refptr<gfx::NativePixmap> CloneOhosVideoNativePixmapForImport(
     const gfx::NativePixmap& pixmap);
 
+// Browser -> fork GPU transfer of decoder-owned NativeBuffers. The optional
+// release endpoint is kept by GPU imports until their last completed read.
+gfx::NativePixmapHandle ExportOhosVideoNativePixmap(
+    const gfx::NativePixmap& pixmap,
+    base::ScopedFD release_endpoint);
+scoped_refptr<gfx::NativePixmap> ImportOhosVideoNativePixmap(
+    gfx::Size size,
+    viz::SharedImageFormat format,
+    gfx::NativePixmapHandle handle);
+
 // Imports `pixmap` as an EGLImage through EGL_NATIVE_BUFFER_OHOS, tagged with
 // `color_space` so the driver converts YUV with the right matrix and range,
 // and binds it to `texture_id` on `target` (GL_TEXTURE_EXTERNAL_OES).
