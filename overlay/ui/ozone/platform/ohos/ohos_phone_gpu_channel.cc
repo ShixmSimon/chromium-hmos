@@ -19,6 +19,7 @@
 #include "base/no_destructor.h"
 #include "base/process/fork_server_ohos.h"
 #include "base/synchronization/lock.h"
+#include "base/synchronization/waitable_event.h"
 #include "base/task/thread_pool.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 #include "ui/ozone/platform/ohos/ohos_output_color_config.h"
@@ -35,6 +36,9 @@ struct Connection {
   std::atomic<bool> presented{false};
   std::atomic<bool> vulkan_requested{false};
   std::atomic<bool> color_retry{false};
+  std::shared_ptr<Connection> predecessor;
+  base::WaitableEvent retired{base::WaitableEvent::ResetPolicy::MANUAL,
+                              base::WaitableEvent::InitialState::NOT_SIGNALED};
 };
 struct BrowserState {
   // Serializes presentation with replacing a GPU generation. Never held by
@@ -62,6 +66,13 @@ ChildState& Child() {
 }
 
 void ReceiveFrames(std::shared_ptr<Connection> connection) {
+  // A previous receiver may still hold HDR leases when the GPU is replaced.
+  // Wait on this MayBlock worker, never on UI or under the presentation lock.
+  // The next generation must not acquire buffers before the old queue is clean.
+  if (connection->predecessor) {
+    connection->predecessor->retired.Wait();
+    connection->predecessor.reset();
+  }
   uint64_t last_sequence = 0;
   std::vector<uint8_t> pixels;
   struct Pending {
@@ -69,6 +80,7 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
     std::unique_ptr<phone_gpu::SharedBufferLease> buffer;
   };
   std::map<uint64_t, Pending> leases;
+  phone_gpu::SharedBufferColorState buffer_colors;
   // Bound to this connection and widget. A probe sequence is a fresh color
   // generation; a second probe is rejected while any lease is outstanding.
   struct ColorState {
@@ -84,6 +96,8 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
                                         200)) {
       if (errno == ETIMEDOUT) {
         timing.PollIdle();
+        base::AutoLock lock(Browser().lock);
+        buffer_colors.Prune();
         continue;
       }
       break;
@@ -168,7 +182,9 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
               reply.color_generation = probe ? p.sequence : p.color_generation;
               reply.lease = p.sequence;
               auto buffer = std::make_unique<phone_gpu::SharedBufferLease>();
-              if (buffer->Acquire(surface->window, &response)) {
+              if (buffer_colors.Prepare(surface->window, p.widget, p.color,
+                                        no_pending) &&
+                  buffer->Acquire(surface->window, &response)) {
                 // A same-format HDR luminance update is bound to this newly
                 // acquired lease. Prior queued buffers keep their own metadata.
                 if (probe || p.color_generation)
@@ -317,6 +333,8 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
     if (connection->vulkan_requested.load() && !connection->color_retry.load())
       Browser().vulkan_failed = true;
     leases.clear();
+    buffer_colors.Reset();
+    connection->retired.Signal();
   }
   connection->active = false;
   shutdown(connection->socket.get(), SHUT_RDWR);
@@ -346,6 +364,7 @@ base::ProcessId LaunchOhosPhoneGpuChild(
   {
     base::AutoLock lock(Browser().lock);
     if (Browser().current) {
+      connection->predecessor = Browser().current;
       if (Browser().current->vulkan_requested.load() &&
           !Browser().current->color_retry.load())
         Browser().vulkan_failed = true;
@@ -354,7 +373,8 @@ base::ProcessId LaunchOhosPhoneGpuChild(
     }
     Browser().current = connection;
   }
-  base::ThreadPool::PostTask(FROM_HERE, {base::MayBlock()},
+  base::ThreadPool::PostTask(FROM_HERE,
+                             {base::MayBlock(), base::WithBaseSyncPrimitives()},
                              base::BindOnce(&ReceiveFrames, connection));
   LOG(WARNING) << "OHOS phone GPU: fork child pid=" << pid
                << " with shared-buffer negotiation and readback fallback";

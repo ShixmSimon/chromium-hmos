@@ -1,18 +1,31 @@
 diff --git a/src/dawn/native/vulkan/BackendVk.cpp b/src/dawn/native/vulkan/BackendVk.cpp
 --- a/src/dawn/native/vulkan/BackendVk.cpp
 +++ b/src/dawn/native/vulkan/BackendVk.cpp
-@@ -31,6 +31,10 @@
+@@ -31,6 +31,11 @@
  #include <string>
  #include <utility>
  
 +#if defined(__OHOS__)
 +#include <hilog/log.h>
++extern "C" void OHOS_TraceForkDescriptors(const char* stage) __attribute__((weak));
 +#endif
 +
  #include "dawn/native/VulkanBackend.h"
  #include "src/dawn/common/GPUInfo.h"
  #include "src/dawn/common/SystemUtils.h"
-@@ -527,8 +531,35 @@
+@@ -353,6 +358,11 @@
+ }
+ 
+ MaybeError VulkanInstance::Initialize(const InstanceBase* instance, ICD icd) {
++#if defined(__OHOS__)
++    if (OHOS_TraceForkDescriptors) {
++        OHOS_TraceForkDescriptors("dawn-before-loader");
++    }
++#endif
+     // These environment variables need only be set while loading procs and gathering device
+     // info.
+     ScopedEnvironmentVar vkICDFilenames;
+@@ -527,8 +537,43 @@
          createInfoChain.Add(&validationFeatures, VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT);
      }
  
@@ -40,9 +53,17 @@ diff --git a/src/dawn/native/vulkan/BackendVk.cpp b/src/dawn/native/vulkan/Backe
 +        }
 +    }
 +#endif
++#if defined(__OHOS__)
++    if (OHOS_TraceForkDescriptors) {
++        OHOS_TraceForkDescriptors("dawn-before-vkCreateInstance");
++    }
++#endif
      DAWN_TRY(CheckVkSuccess(mFunctions.CreateInstance(&createInfo, nullptr, &mInstance),
                              "vkCreateInstance"));
 +#if defined(__OHOS__)
++    if (OHOS_TraceForkDescriptors) {
++        OHOS_TraceForkDescriptors("dawn-after-vkCreateInstance");
++    }
 +    OH_LOG_Print(LOG_APP, LOG_WARN, 0xC233, "OHOSVulkan", "Dawn vkCreateInstance succeeded");
 +#endif
      DAWN_INVALID_IF(mInstance == VK_NULL_HANDLE, "Failed to create VkInstance");

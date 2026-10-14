@@ -3,7 +3,9 @@
 // found in the LICENSE file.
 #ifndef UI_OZONE_PLATFORM_OHOS_OHOS_PHONE_GPU_SHARED_BUFFER_H_
 #define UI_OZONE_PLATFORM_OHOS_OHOS_PHONE_GPU_SHARED_BUFFER_H_
+#include <map>
 #include <memory>
+#include "ui/ozone/platform/ohos/ohos_buffer_color_policy.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_transport.h"
 
 struct OH_NativeBuffer;
@@ -14,6 +16,28 @@ bool SharedBufferAllocatorReady();
 // Reconstructs only the verified parcel schema; owns a native reference on
 // success.
 OH_NativeBuffer* ImportSharedBuffer(const SharedMessage& message);
+// Browser receiver only, serialized by its presentation lock. Owns references
+// to HDR-tagged queues until clean; Reset runs after outstanding leases retire.
+class SharedBufferColorState {
+ public:
+  SharedBufferColorState() = default;
+  ~SharedBufferColorState();
+  SharedBufferColorState(const SharedBufferColorState&) = delete;
+  SharedBufferColorState& operator=(const SharedBufferColorState&) = delete;
+  bool Prepare(void* window,
+               uint64_t widget,
+               const OhosOutputColor& color,
+               bool idle);
+  void Prune();
+  void Reset();
+
+ private:
+  struct WindowState {
+    uint64_t widget;
+    OhosHdrBufferState color;
+  };
+  std::map<void*, WindowState> windows_;
+};
 class SharedBufferLease {
  public:
   SharedBufferLease();

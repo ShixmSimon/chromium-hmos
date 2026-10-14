@@ -13,6 +13,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/synchronization/lock.h"
 #include "components/viz/common/resources/shared_image_format.h"
+#include "ui/ozone/platform/ohos/ohos_buffer_color_policy.h"
 
 namespace ui {
 namespace {
@@ -52,22 +53,33 @@ bool SetColor(Target* target,
               const OhosOutputColor& color,
               SetColorFn set_color,
               SetMetadataFn set_metadata) {
-  if (!target || !ValidOhosOutputColor(color))
+  if (!target)
     return false;
-  bool hdr = color.mode == OhosOutputMode::kHdr10;
-  if (set_color(target,
-                hdr ? OH_COLORSPACE_BT2020_PQ_FULL : OH_COLORSPACE_SRGB_FULL))
-    return false;
-  // NativeBuffer metadata type is encoded as the documented enum value. OHOS
-  // consumes its first byte; use the same one-byte representation as GL.
-  uint8_t type = static_cast<uint8_t>(hdr ? OH_VIDEO_HDR_HDR10 : OH_VIDEO_NONE);
-  if (set_metadata(target, OH_HDR_METADATA_TYPE, sizeof(type), &type))
-    return false;
-  if (!hdr)
-    return true;  // NONE explicitly disables stale HDR metadata.
-  auto metadata = OutputMetadata(color);
-  return !set_metadata(target, OH_HDR_STATIC_METADATA, sizeof(metadata),
-                       reinterpret_cast<uint8_t*>(&metadata));
+  const auto success = [&color](const char* step, int32_t result) {
+    if (result)
+      LOG(ERROR) << "OHOS buffer color: step=" << step
+                 << " mode=" << static_cast<uint32_t>(color.mode)
+                 << " native_error=" << result;
+    return result == 0;
+  };
+  return SetOhosBufferColorTags(
+      color,
+      [&](bool hdr) {
+        return success("color-space",
+                       set_color(target, hdr ? OH_COLORSPACE_BT2020_PQ_FULL
+                                             : OH_COLORSPACE_SRGB_FULL));
+      },
+      [&] {
+        uint8_t type = OH_VIDEO_HDR_HDR10;
+        if (!success("hdr-type", set_metadata(target, OH_HDR_METADATA_TYPE,
+                                              sizeof(type), &type)))
+          return false;
+        auto metadata = OutputMetadata(color);
+        return success(
+            "hdr-static",
+            set_metadata(target, OH_HDR_STATIC_METADATA, sizeof(metadata),
+                         reinterpret_cast<uint8_t*>(&metadata)));
+      });
 }
 }  // namespace
 void UpdateOhosDisplayBrightness(std::optional<OhosDisplayBrightness> value) {

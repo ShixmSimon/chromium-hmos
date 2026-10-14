@@ -10,12 +10,13 @@
 #include <atomic>
 #include <cstring>
 #include <utility>
+#include "base/logging.h"
+#include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 #include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 
 namespace ui::phone_gpu {
 namespace {
 std::atomic<bool> ready{false};
-std::atomic<bool> color_used{false};
 using WriteBuffer = int32_t (*)(OH_NativeBuffer*, OHIPCParcel*);
 using ReadBuffer = int32_t (*)(OHIPCParcel*, OH_NativeBuffer**);
 WriteBuffer Writer() {
@@ -91,6 +92,68 @@ bool PrepareSharedBufferAllocator() {
 bool SharedBufferAllocatorReady() {
   return ready.load();
 }
+SharedBufferColorState::~SharedBufferColorState() {
+  Reset();
+}
+bool SharedBufferColorState::Prepare(void* target,
+                                     uint64_t widget,
+                                     const OhosOutputColor& color,
+                                     bool idle) {
+  auto* window = static_cast<OHNativeWindow*>(target);
+  if (!window)
+    return false;
+  auto found = windows_.find(target);
+  if (found == windows_.end()) {
+    if (color.mode != OhosOutputMode::kHdr10)
+      return true;
+    Prune();
+    OH_NativeWindow_NativeObjectReference(window);
+    found = windows_.try_emplace(target, WindowState{widget, {}}).first;
+  }
+  const bool prepared = found->second.color.Prepare(color, idle, [window] {
+    const int result = OH_NativeWindow_CleanCache(window);
+    LOG(WARNING) << "OHOS phone output: retire HDR buffers before SDR, result="
+                 << result;
+    if (result)
+      ready.store(false);
+    return result == 0;
+  });
+  if (prepared && !found->second.color.dirty()) {
+    OH_NativeWindow_NativeObjectUnreference(window);
+    windows_.erase(found);
+  }
+  return prepared;
+}
+void SharedBufferColorState::Prune() {
+  for (auto it = windows_.begin(); it != windows_.end();) {
+    auto surface = AcquireOhosNativeSurfaceForPhoneGpu(it->second.widget);
+    const bool current = surface && surface->window == it->first;
+    if (surface && surface->window)
+      OH_NativeWindow_NativeObjectUnreference(surface->window);
+    if (current) {
+      ++it;
+    } else {
+      // A destroyed/replaced queue will not be reused. Release our reference
+      // without treating its disconnected consumer as a global GPU failure.
+      OH_NativeWindow_NativeObjectUnreference(it->first);
+      it = windows_.erase(it);
+    }
+  }
+}
+void SharedBufferColorState::Reset() {
+  Prune();
+  for (auto& [target, state] : windows_) {
+    auto* window = static_cast<OHNativeWindow*>(target);
+    const int result = OH_NativeWindow_CleanCache(window);
+    LOG(WARNING)
+        << "OHOS phone output: retire HDR buffers after GPU generation, result="
+        << result;
+    if (result)
+      ready.store(false);
+    OH_NativeWindow_NativeObjectUnreference(window);
+  }
+  windows_.clear();
+}
 OH_NativeBuffer* ImportSharedBuffer(const SharedMessage& m) {
   if (m.packet.operation != SharedOp::kBuffer ||
       !ValidSharedPacket(m.packet, m.fds.size()))
@@ -163,16 +226,7 @@ bool SharedBufferLease::Acquire(void* target, SharedMessage* m) {
   // Per-buffer tags travel with this lease. Never relabel an entire window
   // while its consumer may still hold older SDR/PQ frames.
   if (encoded) {
-    const bool extended = m->packet.color.mode != OhosOutputMode::kSdr8;
-    // Even a partially successful HDR tag must be cleared before reuse.
-    if (extended)
-      color_used.store(true);
-    const bool tagged = SetOhosBufferOutputColor(native, m->packet.color);
-    // Old SDR-only devices need not implement HDR metadata APIs. Once this
-    // browser has used tagged output, resetting it is mandatory, including
-    // after a GPU restart (whose local generation starts over).
-    if (extended || color_used.load())
-      encoded = tagged;
+    encoded = SetOhosBufferOutputColor(native, m->packet.color);
   }
   if (!encoded) {
     if (fence >= 0)

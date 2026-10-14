@@ -68,9 +68,21 @@ Vulkan 设备/上下文失败采用既有 GL 回退。全局 SDR fallback 不代
 旧二进制确认调用来自 Dawn VulkanInstance::CreateVkInstance。现存完整 crash 的
 maps 确认正在加载 Trace3D，RELRO 复制目标却映射了 Chromium 的 shared-memory-region，
 并有 EBADF 日志。fork server 曾关闭链接器缓存 FD，本轮改为保留精确匹配的
-relro_cache memfd 及其原始编号；其余应用 FD 仍关闭。该修正通过模拟 FD 复用的回归测试，
-是否消除真机 SIGBUS 仍待新包实测，详见 [诊断记录](OHOS_VULKAN_RELRO_FD_DIAGNOSIS.md)。
+relro_cache memfd 及其原始编号；其余应用 FD 仍关闭。320ca09 真机复测已确认该修正
+不足以消除 SIGBUS。本轮补充两次 fork、清理和 Vulkan 创建前后的 FD 生命周期诊断，
+区分保留条件未命中、fork 回调关闭和后续复用，详见 [诊断记录](OHOS_VULKAN_RELRO_FD_DIAGNOSIS.md)。
 构建流程保留按 Build ID 校验的旧二进制符号化。新包通过实际日志确认后端和首帧状态。
+
+320ca09 同时暴露 NativeBuffer 与 NativeWindow 元数据接口的行为差异：NativeBuffer
+将元数据首字节转成枚举并校验，SDR 的 NONE(-1) 编码为 255 后被拒绝。SDR8/SDR10
+现在只标记 sRGB；HDR10 仍要求类型和静态元数据成功。元数据失败会记录具体步骤和
+系统返回码，不把共享协议的 -13 当作权限错误。
+
+按窗口跟踪可能被 HDR 标记的队列，HDR 转 SDR 前必须没有未完成 lease，并调用
+NativeWindow CleanCache，包含 HDR 仅部分设置成功的情形。GPU 重启后，新接收线程
+等旧线程退还 lease、清理 HDR 队列后再处理新请求；等待发生在后台 MayBlock worker。
+已销毁/替换窗口的引用在空闲或新增 HDR 窗口时释放。SDR10 失败不触发 HDR 清理，
+不会把浏览器全局置为“SDR 元数据也必须成功”；稳定帧和动态亮度不清理队列。
 
 ## 范围与验证
 

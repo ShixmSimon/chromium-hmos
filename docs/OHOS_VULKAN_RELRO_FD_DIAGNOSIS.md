@@ -1,5 +1,12 @@
 # 68e8b50 Vulkan layer SIGBUS 与继承 FD
 
+当前状态：**320ca09 真机仍发生同类 SIGBUS，保留 relro_cache 的修正并未解决问题。**
+其 HAR / crash Build ID 均为 `ce648c42647b0fd6dcc0cd50c057a73eedd95358`。
+最新完整 crash 的 memcpy 目标 `0x5a05d65000` 仍映射 shared-memory-region，
+偏移 `0x3e000`；源仍为 Trace3D。现有证据不能确定缓存失效发生在哪一阶段。
+本轮新增 `PhoneForkFdTrace.log`，使用方法见 [测试说明](OHOS_SKIA_VULKAN_HDR_TESTING.md)。
+下文保留首次诊断及其证据边界，不把模拟测试通过等同于真机修复成功。
+
 2026-10-14 读取手机上已经存在的完整 native crash，未重启应用、改配置或触发复现。
 对应设备为 Mate 70 Pro+ / API 26，内核为 68e8b50。
 原始文件保存在本机 `artifacts/68e8b50-relro-crash/native-crash.log`，不提交原始设备日志。
@@ -47,3 +54,14 @@ fork server 后，仅新增的 RELRO 保留测试失败，确认该测试能检�
 真机由外壳替换新 HAR 后按 [测试说明](OHOS_SKIA_VULKAN_HDR_TESTING.md) 正常测试。
 先确认 GPU 不再因 layer 加载退出，再确认 Vulkan instance、实际输出格式和首帧。
 10 位/HDR 成功不能仅由无崩溃或配置值判断。
+
+新增 FD 生命周期测试会在真实 pthread_atfork 回调里关闭模拟缓存，再在测试 DSO 的
+constructor 中将相同编号复用成 shared-memory-region；断言日志显示首次 fork 后已
+EBADF、清理后仍 EBADF、加载后复用，避免再次只验证“手工保留 FD”的理想场景。
+保留成功的对照场景也验证清理后及 DSO constructor 中的 keep_relro=1。
+
+同时独立修正手机 SDR 元数据回退。公开实现可对照
+[NativeBuffer](https://github.com/openharmony/graphic_graphic_surface/blob/master/surface/src/native_buffer.cpp)
+和 [NativeWindow](https://github.com/openharmony/graphic_graphic_surface/blob/master/surface/src/native_window.cpp)：
+两者不能假定对 NONE(-1) 的字节编码具有相同行为。队列清理使用公开
+OH_NativeWindow_CleanCache，系统实现调用 Surface::CleanCache；不修改系统库。

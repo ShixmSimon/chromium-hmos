@@ -68,3 +68,28 @@ Vulkan 输出模式在窗口初始化时选择，调亮度不会切换 SDR/HDR �
 Chromium 共享内存，详见 [诊断记录](OHOS_VULKAN_RELRO_FD_DIAGNOSIS.md)。
 新包先看 instance 成功及实际提交日志；修复是否消除 SIGBUS，以实测为准。
 如果再次崩溃，请同时保存完整 native crash（含 maps / OpenFiles），避免只有 hilog 摘录。
+
+## 320ca09 后的回退修正与 FD 诊断
+
+这版 SDR8/SDR10 只设置 sRGB，不再向 NativeBuffer 发送无法表示的 `OH_VIDEO_NONE=-1`。
+HDR 队列转 SDR 或 GPU 重启时，先退出旧 lease，再通过 `OH_NativeWindow_CleanCache`
+回收旧 HDR 缓冲区。正常连续绘制、HDR 亮度变化不会触发逐帧清理。
+
+FD 部分本轮增加诊断，不宣称已消除 SIGBUS。保持原来的 separate GPU + Skia Vulkan
+配置，换 HAR 后正常冷启动一次即可，不需要另加实验参数或重复切换模式。
+
+- 外壳 `config.userDataDir` 目录自动生成 `PhoneForkFdTrace.log`；启动日志会显示
+  `phone FD trace enabled=1`。如果为 0，先保留启动日志，确认目录可写。
+- 保存同一次运行的该文件、hilog，以及发生崩溃时的完整 native crash。
+  文件每次应用冷启动重写，约 8 MiB 上限，所以收集后再启动下一轮。
+- 日志按 PID / stage 对比同一 FD 的 target、dev、inode、size、flags 和 errno。
+  `name_match` / `keep_relro` 表明当前保留规则是否命中。
+- 关键 stage：`browser-before-server-fork`、`server-after-fork`、
+  `server-before-cleanup`、`server-after-cleanup`、`server-before-child-fork`、
+  `forked`、`loading`、`entry`、`native-main`、`descriptors`、`chrome-main`、
+  `skia-before-loader`、`skia-before-vkCreateInstance`、`dawn-before-loader`、
+  `dawn-before-vkCreateInstance`。成功创建后还有对应 after 标记。
+
+记录固定缓冲区及文件 write，不在早期 fork 子进程初始化 hilog，不记录网页 URL/启动参数。
+它会包含应用打开文件的路径；作为本地诊断证据保存。只在手机实验 fork 模式启用，
+单进程及官方 NCP 不创建该文件。
