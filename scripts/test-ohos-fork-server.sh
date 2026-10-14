@@ -14,3 +14,4 @@ trap 'rm -rf "$fork_tmp"' EXIT
 timeout 60s "$fork_tmp/fork-server-tests" "$fork_tmp/libnweb_render.so"
 timeout 15s "$fork_tmp/fork-server-tests" "$fork_tmp/libnweb_render.so" --server-loss
 timeout 15s "$fork_tmp/fork-server-tests" "$fork_tmp/libnweb_render.so" --missing-library
+timeout 15s "$fork_tmp/fork-server-tests" "$fork_tmp/libnweb_render.so" --loader-fds

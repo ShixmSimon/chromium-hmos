@@ -64,9 +64,12 @@ extensions，再把支持的 colorspace 扩展加入扩展列表；Skia 显式�
 Vulkan 设备/上下文失败采用既有 GL 回退。全局 SDR fallback 不代表退回单进程。
 新应用会话重新尝试，不在失败时反复升级色彩模式。
 
-68e8b50 真机还报告系统 loader 在加载 layer 的动态链接阶段 SIGBUS。匹配 Build ID 的旧二进制已确认
-崩溃地址是 Dawn VulkanInstance::CreateVkInstance；不是 Skia 的创建函数。具体 layer
-与系统动态链接 SIGBUS 根因仍需完整 maps / layer 日志核对，不能声称已修复。
+68e8b50 真机还报告系统 loader 在加载 layer 的动态链接阶段 SIGBUS。匹配 Build ID 的
+旧二进制确认调用来自 Dawn VulkanInstance::CreateVkInstance。现存完整 crash 的
+maps 确认正在加载 Trace3D，RELRO 复制目标却映射了 Chromium 的 shared-memory-region，
+并有 EBADF 日志。fork server 曾关闭链接器缓存 FD，本轮改为保留精确匹配的
+relro_cache memfd 及其原始编号；其余应用 FD 仍关闭。该修正通过模拟 FD 复用的回归测试，
+是否消除真机 SIGBUS 仍待新包实测，详见 [诊断记录](OHOS_VULKAN_RELRO_FD_DIAGNOSIS.md)。
 构建流程保留按 Build ID 校验的旧二进制符号化。新包通过实际日志确认后端和首帧状态。
 
 ## 范围与验证

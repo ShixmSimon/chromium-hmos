@@ -63,5 +63,8 @@ Vulkan 输出模式在窗口初始化时选择，调亮度不会切换 SDR/HDR �
 协商色彩，浏览器全局 CSS HDR 声明仍保守。视频 Vulkan 零拷贝留到此轮输出完成后。
 
 68e8b50 真机报告已确认发生 Vulkan layer 加载阶段 SIGBUS，不能据此判断面板不支持
-10 位。本轮修正 Skia 的扩展误传 layer 参数，崩溃地址已用匹配 Build ID 的旧二进制确认为 Dawn 的 CreateVkInstance；
-崩溃修复是否有效，以新包实测为准。
+10 位。本轮修正 Skia 的扩展误传 layer 参数，并保留 fork 后链接器需要的 RELRO 缓存 FD。
+现存完整 crash 确认 Dawn 创建 instance 时加载 Trace3D，RELRO 写入目标却映射了
+Chromium 共享内存，详见 [诊断记录](OHOS_VULKAN_RELRO_FD_DIAGNOSIS.md)。
+新包先看 instance 成功及实际提交日志；修复是否消除 SIGBUS，以实测为准。
+如果再次崩溃，请同时保存完整 native crash（含 maps / OpenFiles），避免只有 hilog 摘录。

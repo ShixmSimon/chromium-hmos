@@ -14,6 +14,7 @@
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -129,7 +130,23 @@ void CloseFds(std::vector<int>& fds) {
   fds.clear();
 }
 
+bool IsLoaderRelroFd(int directory_fd, const char* name, int fd) {
+  // OHOS musl caches this descriptor in its inherited prelink state. Closing
+  // or renumbering it lets a later dlopen mmap an unrelated, reused FD at a
+  // RELRO offset (and can SIGBUS beyond that file's end). Keep the original
+  // descriptor, not just the existing mappings or a duplicate at another FD.
+  constexpr char kRelroTarget[] = "/memfd:relro_cache (deleted)";
+  char target[sizeof(kRelroTarget)];
+  ssize_t size = readlinkat(directory_fd, name, target, sizeof(target));
+  if (size != sizeof(kRelroTarget) - 1 ||
+      memcmp(target, kRelroTarget, sizeof(kRelroTarget) - 1) != 0)
+    return false;
+  struct stat info = {};
+  return fstat(fd, &info) == 0 && S_ISREG(info.st_mode) && info.st_nlink == 0;
+}
+
 // Close inherited application channels before the server can fork children.
+// Loader-owned RELRO cache FDs must survive at their original numbers.
 // No broad munmap of Ark/anonymous memory: mapped libraries may still use it.
 bool CloseInheritedFds(int keep, int& minimum_received_fd) {
   DIR* directory = opendir("/proc/self/fd");
@@ -144,7 +161,8 @@ bool CloseInheritedFds(int keep, int& minimum_received_fd) {
     if (*end == '\0' && fd >= 0 && fd < INT_MAX) {
       if (fd >= minimum_received_fd)
         minimum_received_fd = static_cast<int>(fd) + 1;
-      if (fd > 2 && fd != keep && fd != directory_fd)
+      if (fd > 2 && fd != keep && fd != directory_fd &&
+          !IsLoaderRelroFd(directory_fd, entry->d_name, static_cast<int>(fd)))
         close(static_cast<int>(fd));
     }
   }

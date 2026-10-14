@@ -13,10 +13,12 @@
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <array>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -275,7 +277,100 @@ std::string RunOhosForkServerTests(const std::string& child_library) {
 }
 
 #ifndef OHOS_FORK_TEST_EMBEDDED
+namespace {
+bool check_loader_fds = false;
+std::array<int, 2> loader_fds{-1, -1};
+std::array<struct stat, 2> loader_files{};
+std::array<int, 4> application_fds{-1, -1, -1, -1};
+constexpr off_t kRelroOffset = 0x3e000;
+constexpr int kRelroMarker = 0x52454c52;
+}  // namespace
+
+// Called by the test DSO's constructor, during the real child's dlopen.
+extern "C" __attribute__((visibility("default"))) bool
+ForkTestCheckLoaderFds() {
+  if (!check_loader_fds)
+    return true;
+  for (int fd : application_fds) {
+    if (fcntl(fd, F_GETFD) != -1 || errno != EBADF)
+      return false;
+  }
+  // Occupy the freed low numbers with short Chromium-like memory objects.
+  // A stale loader FD must neither disappear nor silently alias these files.
+  std::vector<int> replacements;
+  bool ok = true;
+  for (int i = 0; i < 32; ++i) {
+    int fd = syscall(SYS_memfd_create, "shared-memory-region", 1);
+    if (fd < 0)
+      return false;
+    replacements.push_back(fd);
+    ok &= ftruncate(fd, 4096) == 0;
+  }
+  for (size_t i = 0; i < loader_fds.size(); ++i) {
+    int fd = loader_fds[i];
+    struct stat info = {};
+    if (fstat(fd, &info) != 0 || info.st_dev != loader_files[i].st_dev ||
+        info.st_ino != loader_files[i].st_ino ||
+        fcntl(fd, F_GETFD) != FD_CLOEXEC) {
+      ok = false;
+      continue;
+    }
+    void* mapping = mmap(nullptr, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd,
+                         kRelroOffset);
+    if (mapping == MAP_FAILED) {
+      ok = false;
+      continue;
+    }
+    auto* marker = static_cast<volatile int*>(mapping);
+    ok &= *marker == kRelroMarker;
+    *marker = kRelroMarker + 1;
+    munmap(mapping, 4096);
+  }
+  for (int fd : replacements)
+    close(fd);
+  return ok;
+}
+
 int main(int argc, char** argv) {
+  if (argc == 3 && std::string(argv[2]) == "--loader-fds") {
+    for (size_t i = 0; i < loader_fds.size(); ++i) {
+      int fd = syscall(SYS_memfd_create, "relro_cache", 1);
+      loader_fds[i] = fd;
+      if (fd < 0 || ftruncate(fd, kRelroOffset + 4096) ||
+          pwrite(fd, &kRelroMarker, sizeof(kRelroMarker), kRelroOffset) !=
+              sizeof(kRelroMarker) ||
+          fstat(fd, &loader_files[i]))
+        return 1;
+    }
+    application_fds[0] = syscall(SYS_memfd_create, "shared-memory-region", 1);
+    application_fds[1] = syscall(SYS_memfd_create, "relro_cache-extra", 1);
+    if (application_fds[0] < 0 || application_fds[1] < 0 ||
+        socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0,
+                   &application_fds[2]))
+      return 1;
+    check_loader_fds = true;
+    if (!StartOhosForkServer(argv[1]))
+      return 1;
+    bool ok = true;
+    for (int i = 0; i < 3; ++i) {
+      pid_t child = LaunchOhosForkChild("exit23", {});
+      int code = -1;
+      ok &= child > 0 &&
+            WaitForOhosForkChild(child, 5000, &code).value_or(false) &&
+            code == 23;
+    }
+    StopOhosForkServer();
+    for (int fd : application_fds) {
+      ok &= fcntl(fd, F_GETFD) >= 0;
+      close(fd);
+    }
+    for (int fd : loader_fds)
+      close(fd);
+    puts(ok ? "PASS loader RELRO original FDs survive dlopen and FD reuse; "
+              "application FDs close"
+            : "FAIL loader RELRO FD preservation");
+    return ok ? 0 : 1;
+  }
   if (argc == 3 && std::string(argv[2]) == "--server-loss") {
     // Reap PDEATHSIG orphans ourselves, including in containers without init.
     if (prctl(PR_SET_CHILD_SUBREAPER, 1) || !StartOhosForkServer(argv[1]))

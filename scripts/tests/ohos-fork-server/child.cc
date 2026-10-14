@@ -15,6 +15,15 @@
 
 #include "base/process/fork_server_ohos.h"
 
+#if !defined(OHOS_FORK_TEST_SHARED_HOST)
+__attribute__((constructor)) static void CheckLoaderFds() {
+  auto check = reinterpret_cast<bool (*)()>(
+      dlsym(RTLD_DEFAULT, "ForkTestCheckLoaderFds"));
+  if (check && !check())
+    _exit(90);
+}
+#endif
+
 static void* Thread(void* value) {
   // Model a late system-library cleanup, after Chromium restores its FDs.
   // Reusing low FD 3 here would close a live Chromium channel.
