@@ -633,7 +633,8 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
         arguments.push_back("--ohos-vulkan-output=" +
                             config.vulkan_output_mode);
         auto brightness = ui::GetOhosDisplayBrightness();
-        auto color = brightness ? brightness->hdr : ui::OhosOutputColor{};
+        auto color = brightness ? ui::OhosContentOutputColor(*brightness)
+                                : ui::OhosOutputColor{};
         const bool fixed = config.vulkan_hdr_white_nits != 0 ||
                            config.vulkan_hdr_peak_nits != 0;
         if (fixed) {

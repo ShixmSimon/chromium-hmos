@@ -22,6 +22,9 @@ bool OhosPhoneGpuHasPresented();
 bool AllowOhosPhoneVulkan();
 void ReportOhosPhoneVulkanFailure();
 void ReportOhosPhoneOutputColorFailure();
+bool ReportOhosPhoneHdrOutputReady(uint64_t widget,
+                                  const OhosOutputColor& color,
+                                  uint64_t color_generation);
 // The browser owns the display-service connection. Never initialize or reuse
 // that service's Binder client in the forked GPU process.
 bool QueryOhosPhoneHdrDisplay(uint64_t* display_id);

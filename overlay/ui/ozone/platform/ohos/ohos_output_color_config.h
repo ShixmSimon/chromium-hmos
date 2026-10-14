@@ -17,10 +17,14 @@ void UpdateOhosDisplayBrightness(
 std::optional<OhosDisplayBrightness> GetOhosDisplayBrightness();
 void SetOhosDisplayBrightnessChangedCallback(base::RepeatingClosure callback);
 void ApplyOhosDisplayBrightness(gfx::DisplayColorSpaces& spaces);
+// Browser-only capability, set after the current GPU imports an HDR probe.
+// Reset on color/Vulkan failure or replacement of that GPU generation.
+void SetOhosVerifiedPhoneHdrOutput(bool available);
+bool HasOhosVerifiedPhoneHdrOutput();
 bool OhosDynamicOutputLuminance();
 inline constexpr char kOhosOutputColorFailedMarker[] = "GpuOutputColorFailed";
 // Desired mode only. Output devices must validate an actual allocation before
-// publishing it through their per-output capabilities. No global HDR promise.
+// publishing it through their per-output capabilities and browser screen info.
 OhosOutputColor GetOhosRequestedOutputColor();
 // Phone fork GPU queries are brokered by the browser. Other processes retain
 // the native display-service path. Details are logged only for startup probes.

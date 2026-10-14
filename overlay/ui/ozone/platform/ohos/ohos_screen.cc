@@ -47,14 +47,17 @@ constexpr gfx::Size kOhosPrimaryDisplaySize(1920, 1080);
 gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
   gfx::DisplayColorSpaces color_spaces(gfx::ColorSpace::CreateSRGB());
   ApplyOhosDisplayBrightness(color_spaces);
-  if (OhosRequiresSdrOutput()) {
+  const bool phone_hdr = HasOhosVerifiedPhoneHdrOutput();
+  if (OhosRequiresSdrOutput() && !phone_hdr) {
     // The global screen keeps the GL fallback contract. A Vulkan output
     // publishes its own verified format and merges this screen's luminance.
     LOG(WARNING) << "OHOS display: global screen keeps SDR fallback; "
                     "Vulkan negotiates color per output";
+    // Physical panel headroom alone must not advertise an HDR rendering path.
+    color_spaces.SetHDRMaxLuminanceRelative(1.f);
     return color_spaces;
   }
-  const bool hdr = OhosDisplaySupportsHdr();
+  const bool hdr = phone_hdr || OhosDisplaySupportsHdr();
   if (!hdr) {
     return color_spaces;
   }
@@ -329,10 +332,7 @@ void OhosScreen::OnDisplayChanged() {
 
 void OhosScreen::OnDisplayBrightnessChanged() {
   display::Display display = GetPrimaryDisplay();
-  auto colors = GetOhosDisplayBrightness() ? display.GetColorSpaces()
-                                           : ReadDisplayColorSpaces();
-  ApplyOhosDisplayBrightness(colors);
-  display.SetColorSpaces(colors);
+  display.SetColorSpaces(ReadDisplayColorSpaces());
   display_list_.UpdateDisplay(display, display::DisplayList::Type::PRIMARY);
 }
 

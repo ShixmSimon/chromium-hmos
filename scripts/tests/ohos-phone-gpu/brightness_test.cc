@@ -14,6 +14,19 @@ int main() {
   assert(capped && capped->hdr.peak_millinits == 800000);
   auto pq = ui::MakeOhosDisplayBrightness(7, 1000, 20, 20);
   assert(pq && pq->hdr.peak_millinits == 10000000);
+  // Changing panel brightness must not encode a darker SDR white into PQ.
+  // Native composition applies panel brightness after reading these pixels.
+  for (double panel_nits : {2.0, 12.5, 120.0, 500.0}) {
+    auto physical = ui::MakeOhosDisplayBrightness(7, panel_nits, 3, 5);
+    const auto content = ui::OhosContentOutputColor(*physical);
+    assert(content.white_millinits == 203000);
+    assert(content.peak_millinits == 609000);
+    assert(ui::ValidOhosOutputColor(content));
+  }
+  const auto dimmed_content = ui::OhosContentOutputColor(*dimmed);
+  assert(dimmed_content.white_millinits == dimmed_content.peak_millinits);
+  const auto capped_content = ui::OhosContentOutputColor(*capped);
+  assert(capped_content.peak_millinits == 812000);
   for (double invalid : {0.0, -1.0, std::numeric_limits<double>::infinity(),
                          std::numeric_limits<double>::quiet_NaN()}) {
     assert(!ui::MakeOhosDisplayBrightness(0, invalid, 2, 4));

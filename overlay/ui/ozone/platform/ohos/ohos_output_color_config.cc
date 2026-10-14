@@ -29,6 +29,7 @@ BrightnessState& Brightness() {
   return *state;
 }
 std::atomic<bool> failed{false};
+std::atomic<bool> verified_phone_hdr{false};
 base::FilePath FailurePath() {
   auto directory = base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
       "user-data-dir");
@@ -150,12 +151,27 @@ void SetOhosDisplayBrightnessChangedCallback(base::RepeatingClosure callback) {
   base::AutoLock lock(Brightness().lock);
   Brightness().changed = std::move(callback);
 }
+void SetOhosVerifiedPhoneHdrOutput(bool available) {
+  if (verified_phone_hdr.exchange(available) == available)
+    return;
+  base::RepeatingClosure changed;
+  {
+    base::AutoLock lock(Brightness().lock);
+    changed = Brightness().changed;
+  }
+  LOG(WARNING) << "OHOS phone HDR capability: verified=" << available;
+  if (changed)
+    changed.Run();
+}
+bool HasOhosVerifiedPhoneHdrOutput() {
+  return verified_phone_hdr.load();
+}
 void ApplyOhosDisplayBrightness(gfx::DisplayColorSpaces& spaces) {
   if (auto value = GetOhosDisplayBrightness()) {
-    spaces.SetSDRMaxLuminanceNits(value->hdr.white_millinits / 1000.f);
+    const auto color = OhosContentOutputColor(*value);
+    spaces.SetSDRMaxLuminanceNits(color.white_millinits / 1000.f);
     spaces.SetHDRMaxLuminanceRelative(
-        static_cast<float>(value->hdr.peak_millinits) /
-        value->hdr.white_millinits);
+        static_cast<float>(color.peak_millinits) / color.white_millinits);
   }
 }
 bool OhosDynamicOutputLuminance() {
@@ -168,6 +184,7 @@ bool OhosOutputColorFailed() {
 }
 void NoteOhosOutputColorFailure(const char* reason) {
   failed = true;
+  SetOhosVerifiedPhoneHdrOutput(false);
   auto path = FailurePath();
   if (!path.empty() && !base::WriteFile(path, "SDR8"))
     LOG(ERROR) << "OHOS output color: could not persist session fallback";

@@ -178,6 +178,30 @@ int main() {
   tiled.prefix[5] = UINT32_MAX;
   reject(tiled);
   ten.color = {ui::OhosOutputMode::kHdr10, 203000, 1000000};
+  // Capability publication must name a negotiated HDR generation; SDR,
+  // descriptors, and image payloads cannot masquerade as this control packet.
+  {
+    p::SharedMessage ready, got;
+    ready.packet.operation = p::SharedOp::kColorReady;
+    ready.packet.sequence = 3;
+    ready.packet.widget = 42;
+    ready.packet.color = ten.color;
+    ready.packet.color_generation = 17;
+    assert(p::SendSharedMessage(s[0], ready));
+    assert(p::ReceiveSharedMessage(s[1], &got, 100));
+    assert(got.packet.color_generation == 17);
+    for (int field = 0; field < 5; ++field) {
+      auto invalid = ready.packet;
+      if (field == 0) invalid.color_generation = 0;
+      if (field == 1) invalid.color = {};
+      if (field == 2) invalid.lease = 1;
+      if (field == 3) invalid.width = 1;
+      if (field == 4) invalid.tail_bytes = 4;
+      assert(!p::ValidSharedPacket(invalid, 0));
+    }
+    ready.packet.fd_count = 1;
+    assert(!p::ValidSharedPacket(ready.packet, 1));
+  }
   {
     RawSend(s[0], ten, source, 1);
     p::SharedMessage got;

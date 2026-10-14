@@ -27,7 +27,8 @@ enum class SharedOp : uint32_t {
   kColorProbe,
   kColorFailed,
   kHdrDisplayQuery,
-  kHdrDisplayState
+  kHdrDisplayState,
+  kColorReady
 };
 struct SharedPacket {
   uint32_t magic = kSharedMagic;

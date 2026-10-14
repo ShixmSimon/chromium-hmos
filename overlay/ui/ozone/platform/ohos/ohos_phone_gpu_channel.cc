@@ -268,6 +268,18 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
             }
           }
           leases.erase(it);
+        } else if (p.operation == Op::kColorReady) {
+          const auto found = colors.find(p.widget);
+          const bool ready = connection->vulkan_requested.load() &&
+                             !Browser().vulkan_failed &&
+                             !OhosOutputColorFailed() &&
+                             found != colors.end() &&
+                             found->second.generation == p.color_generation &&
+                             found->second.color == p.color;
+          if (ready) {
+            SetOhosVerifiedPhoneHdrOutput(true);
+            reply.result = static_cast<uint32_t>(phone_gpu::Result::kPresented);
+          }
         } else if (p.operation == Op::kHdrDisplayQuery) {
           uint64_t display_id = 0;
           const bool supported = OhosSingleDisplaySupportsHdr10(
@@ -292,6 +304,7 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
           reply.result = static_cast<uint32_t>(phone_gpu::Result::kDropped);
         } else if (p.operation == Op::kVulkanFailed) {
           Browser().vulkan_failed = true;
+          SetOhosVerifiedPhoneHdrOutput(false);
           reply.result = static_cast<uint32_t>(phone_gpu::Result::kDropped);
           LOG(ERROR)
               << "OHOS phone Vulkan: failed; subsequent GPU generations use GL";
@@ -359,6 +372,8 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
   }
   {
     base::AutoLock lock(Browser().lock);
+    if (Browser().current == connection)
+      SetOhosVerifiedPhoneHdrOutput(false);
     if (connection->vulkan_requested.load() && !connection->color_retry.load())
       Browser().vulkan_failed = true;
     leases.clear();
@@ -401,6 +416,7 @@ base::ProcessId LaunchOhosPhoneGpuChild(
       shutdown(Browser().current->socket.get(), SHUT_RDWR);
     }
     Browser().current = connection;
+    SetOhosVerifiedPhoneHdrOutput(false);
   }
   base::ThreadPool::PostTask(FROM_HERE,
                              {base::MayBlock(), base::WithBaseSyncPrimitives()},
@@ -514,6 +530,19 @@ void ReportOhosPhoneOutputColorFailure() {
   request.packet.operation = phone_gpu::SharedOp::kColorFailed;
   request.packet.widget = 1;
   ExchangeShared(&request, &response);
+}
+bool ReportOhosPhoneHdrOutputReady(uint64_t widget,
+                                  const OhosOutputColor& color,
+                                  uint64_t color_generation) {
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kColorReady;
+  request.packet.widget = widget;
+  request.packet.color = color;
+  request.packet.color_generation = color_generation;
+  return ExchangeShared(&request, &response) &&
+         response.packet.operation == phone_gpu::SharedOp::kReply &&
+         response.packet.result ==
+             static_cast<uint32_t>(phone_gpu::Result::kPresented);
 }
 bool ProbeOhosPhoneOutputColor(uint64_t widget,
                                const OhosOutputColor& color,

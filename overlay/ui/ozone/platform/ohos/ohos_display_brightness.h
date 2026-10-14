@@ -19,6 +19,18 @@ struct OhosDisplayBrightness {
            max_headroom == other.max_headroom;
   }
 };
+// NativeBuffer PQ uses a 203-nit content reference white. RenderService maps
+// it to the panel's sdrNits itself; using physical panel nits here dims twice.
+// Preserve current (possibly thermally limited) headroom in content units.
+inline OhosOutputColor OhosContentOutputColor(
+    const OhosDisplayBrightness& brightness) {
+  constexpr uint32_t kReferenceWhiteMillinits = 203000;
+  const double headroom = static_cast<double>(brightness.hdr.peak_millinits) /
+                          brightness.hdr.white_millinits;
+  return {OhosOutputMode::kHdr10, kReferenceWhiteMillinits,
+          static_cast<uint32_t>(std::lround(std::min(
+              kReferenceWhiteMillinits * headroom, 10000000.0)))};
+}
 inline std::optional<OhosDisplayBrightness> MakeOhosDisplayBrightness(
     uint64_t display_id,
     double sdr_nits,

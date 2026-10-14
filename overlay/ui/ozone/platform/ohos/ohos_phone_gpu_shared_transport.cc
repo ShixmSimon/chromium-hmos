@@ -90,6 +90,9 @@ bool ValidSharedPacket(const SharedPacket& p, size_t count) {
     }
     case SharedOp::kColorProbe:
       return !count && !p.lease && !p.tail_bytes && p.color_generation;
+    case SharedOp::kColorReady:
+      return !count && !p.lease && !p.tail_bytes && !p.width && !p.height &&
+             p.color_generation && p.color.mode == OhosOutputMode::kHdr10;
     case SharedOp::kPresent:
       return p.lease && !p.fd_count && !p.tail_bytes;
     case SharedOp::kDiscard:

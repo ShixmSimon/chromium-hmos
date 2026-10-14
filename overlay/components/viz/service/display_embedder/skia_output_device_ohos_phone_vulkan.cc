@@ -329,6 +329,9 @@ SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
       ui::MakeOhosOutputColorSpaces(s.color);
   s.hdr_capable = s.color.mode == ui::OhosOutputMode::kHdr10;
   if (s.hdr_capable) {
+    if (!ui::ReportOhosPhoneHdrOutputReady(s.widget, s.color,
+                                          s.color_generation))
+      s.ColorFailure("publish verified HDR capability");
     // Wide gamut alone does not make content HDR. Keep both SDR usages out
     // of the system's HDR tone mapper; only kHDR retains the PQ output.
     // Until a P3 SDR NativeBuffer path is negotiated, WCG is color-converted
