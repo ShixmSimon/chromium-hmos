@@ -21,16 +21,6 @@ struct OhosOutputColor {
     return !(*this == other);
   }
 };
-// The phone's HDR output also carries SDR/WCG frames. Their encoded pixels
-// cannot exceed SDR white: do not advertise unused display headroom as content
-// light levels to the system tone mapper. Keep the display capability snapshot
-// separate so an ensuing HDR frame can use the available range again.
-constexpr OhosOutputColor OhosOutputColorForContent(OhosOutputColor display,
-                                                    bool has_hdr_content) {
-  if (display.mode == OhosOutputMode::kHdr10 && !has_hdr_content)
-    display.peak_millinits = display.white_millinits;
-  return display;
-}
 constexpr bool ValidOhosOutputColor(const OhosOutputColor& color) {
   if (color.mode == OhosOutputMode::kSdr8 ||
       color.mode == OhosOutputMode::kSdr10)
@@ -39,6 +29,19 @@ constexpr bool ValidOhosOutputColor(const OhosOutputColor& color) {
          color.white_millinits <= 10000000 &&
          color.peak_millinits >= color.white_millinits &&
          color.peak_millinits <= 10000000;
+}
+// Only an output that probed HDR10 may switch between 10-bit SDR and HDR.
+// Mode changes require a fresh channel color probe/generation and retired
+// leases.
+constexpr bool CanSwitchOhosPhoneOutputColor(const OhosOutputColor& from,
+                                             const OhosOutputColor& to,
+                                             bool hdr_capable) {
+  return hdr_capable && ValidOhosOutputColor(from) &&
+         ValidOhosOutputColor(to) &&
+         ((from.mode == OhosOutputMode::kHdr10 &&
+           to.mode == OhosOutputMode::kSdr10) ||
+          (from.mode == OhosOutputMode::kSdr10 &&
+           to.mode == OhosOutputMode::kHdr10));
 }
 constexpr uint32_t OhosOutputNativeFormat(const OhosOutputColor& color) {
   return color.mode == OhosOutputMode::kSdr8 ? 12u : 34u;

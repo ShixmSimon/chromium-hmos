@@ -223,3 +223,28 @@ NativeBuffer 传输或协议版本，仅在手机 fork 独立 Vulkan GPU 中启�
 本地回归覆盖 SDR→HDR→SDR、系统 headroom 改变、SDR8/SDR10 不变，以及现有
 共享缓冲区传输 / FD / fence / 颜色回退。旧版偶发启动黑屏尚未定位，不因本次
 元数据实验而视为修复。
+
+### 真机结果及后续修正：按内容选择 SDR10 / HDR10
+
+82530b8 已编译、签名安装并确认 HDR10 首帧成功。RenderService 消费端确实收到
+修正后的峰值（376.799 nits），但普通网页依旧发灰。去掉弹窗遮罩后，灰阶
+0 / 32 / 64 / 128 / 192 / 255 显示约为 0 / 45 / 70 / 118 / 166 / 204。
+前后系统动态白点不同，不能把数值差异称为元数据修正的改善效果。
+因此撤去该实验的峰值钳制及专用 capability，不保留一个未证实有效的特例。
+
+后续改为按 Chromium 已有 content usage 选择输出：仅对已成功探测 HDR10 的
+手机 Vulkan 输出，将 kSRGB 项设为 sRGB + RGBA_1010102；HDR 项仍为 BT2020/PQ
+10 位，系统动态白点和 headroom 继续更新。WCG 仍走原 BT2020/PQ 路径，以免
+在尚未接入 P3 NativeBuffer 输出前静默裁剪为 sRGB。WCG/HDR 场景的亮度仍须
+独立验收，本次先解决普通 sRGB 网页不应被统一按 HDR 视频处理的问题。
+
+SDR10↔HDR10 切换仅在已经验证 HDR 能力的输出中允许。切换发生于无活跃 lease
+的 Reshape：先退休 Vulkan imports，再执行现有 color probe，取得新 generation，
+取消未绘制的 probe buffer，然后以新颜色创建后续绘制表面。浏览器已有 HDR→SDR
+清队列策略防止 HDR metadata 残留，旧 generation 仍被拒绝。正常帧不增加等待、
+probe 或日志；模式切换允许一次同步退休。此变化不新增协议字段，不影响普通
+NCP / WSI、单进程 GL 或固定 SDR10 输出。
+
+真机重点：普通网页首帧 active mode=1、灰阶恢复；HDR/WCG 内容进入 active mode=2，
+退出后回到 mode=1 且无 stale-generation、GPU 重启、HDR metadata 残留。SDR10
+是按内容选择的 10 位模式，不是 GPU 故障回退。切换日志和首帧日志应配对。

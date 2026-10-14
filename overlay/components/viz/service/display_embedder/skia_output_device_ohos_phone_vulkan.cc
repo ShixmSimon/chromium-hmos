@@ -100,6 +100,7 @@ struct SkiaOutputDeviceOhosPhoneVulkan::State {
   raw_ptr<gpu::MemoryTypeTracker> tracker;
   uint64_t widget;
   ui::OhosOutputColor color;
+  bool hdr_capable = false;
   ui::OhosHdrDisplayGuard display_guard;
   uint64_t color_generation = 0;
   VkFormat imported_format = VK_FORMAT_UNDEFINED;
@@ -323,7 +324,17 @@ SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
   }
   capabilities_.ohos_output_color_spaces =
       ui::MakeOhosOutputColorSpaces(s.color);
-  capabilities_.ohos_content_output_luminance = true;
+  s.hdr_capable = s.color.mode == ui::OhosOutputMode::kHdr10;
+  if (s.hdr_capable) {
+    // SDR content must not pass through the system's HDR video tone mapper.
+    // Keep the HDR entry/capability intact for actual HDR content.
+    for (bool alpha : {false, true}) {
+      capabilities_.ohos_output_color_spaces->SetOutputColorSpaceAndFormat(
+          gfx::ContentColorUsage::kSRGB, alpha, gfx::ColorSpace::CreateSRGB(),
+          SinglePlaneFormat::kRGBA_1010102);
+    }
+    // WCG retains the verified BT2020/PQ path; do not silently clip it to sRGB.
+  }
   capabilities_.ohos_dynamic_output_luminance =
       s.color.mode == ui::OhosOutputMode::kHdr10 &&
       ui::OhosDynamicOutputLuminance();
@@ -370,10 +381,26 @@ bool SkiaOutputDeviceOhosPhoneVulkan::Reshape(const ReshapeParams& params) {
   CHECK(!s.lease);
   if (params.ohos_output_color && *params.ohos_output_color != s.color) {
     const auto color = *params.ohos_output_color;
-    if (!ui::ValidOhosOutputColor(color) || color.mode != s.color.mode)
+    if (!ui::ValidOhosOutputColor(color))
       s.ColorFailure("output brightness contract changed");
+    if (color.mode != s.color.mode) {
+      if (!ui::CanSwitchOhosPhoneOutputColor(s.color, color, s.hdr_capable))
+        s.ColorFailure("unsupported output mode change");
+      // Retire imported images before the browser cleans HDR-tagged buffers.
+      // This happens on SDR/HDR content transitions, never per ordinary frame.
+      s.Clear();
+      ui::phone_gpu::SharedMessage probe;
+      if (!ui::ProbeOhosPhoneOutputColor(s.widget, color, &probe))
+        s.ColorFailure("content output color probe");
+      ui::CancelOhosPhoneGpuBuffer(s.widget, probe.packet.lease);
+      s.color_generation = probe.packet.color_generation;
+      s.logged = false;  // Log the first presented frame of the new mode.
+      LOG(WARNING) << "OHOS phone Vulkan: content output mode="
+                   << static_cast<uint32_t>(color.mode)
+                   << " color_generation=" << s.color_generation;
+    }
     s.color = color;
-    LOG(WARNING) << "OHOS phone Vulkan: HDR luminance updated white_millinits="
+    LOG(WARNING) << "OHOS phone Vulkan: output luminance updated white_millinits="
                  << color.white_millinits
                  << " peak_millinits=" << color.peak_millinits;
   }

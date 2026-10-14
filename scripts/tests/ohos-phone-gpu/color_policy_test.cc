@@ -11,6 +11,16 @@ int main() {
   const OhosOutputColor hdr{OhosOutputMode::kHdr10, 203000, 1000000};
   const OhosOutputColor sdr10{OhosOutputMode::kSdr10};
   const OhosOutputColor sdr8;
+  // SDR/HDR transitions cannot create capabilities that were never probed,
+  // upgrade an SDR8 fallback, or accept malformed luminance metadata.
+  assert(CanSwitchOhosPhoneOutputColor(hdr, sdr10, true));
+  assert(CanSwitchOhosPhoneOutputColor(sdr10, hdr, true));
+  assert(!CanSwitchOhosPhoneOutputColor(sdr10, hdr, false));
+  assert(!CanSwitchOhosPhoneOutputColor(sdr8, hdr, true));
+  assert(!CanSwitchOhosPhoneOutputColor(hdr, sdr8, true));
+  assert(!CanSwitchOhosPhoneOutputColor(hdr, hdr, true));
+  assert(!CanSwitchOhosPhoneOutputColor(
+      sdr10, {OhosOutputMode::kHdr10, 0, 1000000}, true));
   int metadata_calls = 0;
   // Model a device rejecting HDR metadata: both SDR formats must still work.
   auto reject_metadata = [&] { ++metadata_calls; return false; };
