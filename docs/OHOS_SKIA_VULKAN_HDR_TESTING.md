@@ -248,3 +248,26 @@ NCP / WSI、单进程 GL 或固定 SDR10 输出。
 真机重点：普通网页首帧 active mode=1、灰阶恢复；HDR/WCG 内容进入 active mode=2，
 退出后回到 mode=1 且无 stale-generation、GPU 重启、HDR metadata 残留。SDR10
 是按内容选择的 10 位模式，不是 GPU 故障回退。切换日志和首帧日志应配对。
+
+### 后续修正：宽色域 SDR 不再触发 HDR10
+
+2024b407 真机反馈最低系统亮度时普通网页显著偏暗，前台恢复时缓慢变亮。
+同期日志有 `active mode=2`、`white_millinits=2000` 及连续变化的峰值亮度；
+NodeSeek 的 CDP 截图仍为浅色。尚未证实该页面具体由哪个内容触发 HDR。
+
+修正手机 fork Vulkan 的输出映射：`kSRGB` 和 `kWideColorGamut` 两项均使用
+sRGB + RGBA_1010102，只有 `kHDR` 保留 BT2020/PQ。宽色域不等于高动态范围，
+不应仅因 P3 图片、CSS 或 Canvas 就将整页交给 HDR 色调映射。P3 SDR 的
+NativeBuffer 输出尚未接入，本次明确选择将 WCG 转换到 sRGB，无法保留超出
+sRGB 的色域；不能将此称为 P3 输出支持。HDR 亮度参数、能力探测和队列切换
+机制保持原有行为。
+
+用 `docs/test-pages/sdr-wide-gamut.html` 做输出回归：
+
+1. 在最低系统亮度打开，记录 sRGB 灰阶、白色背景及 `active mode=1`。
+2. 显示 P3 CSS / Canvas 色块，确认 Canvas 实际为 `display-p3`；灰阶不应变暗，
+   输出应维持 mode=1。再隐藏色块并进行前后台切换，白色不应渐变。
+3. 播放已确认的 HDR 素材，检查 mode=2；返回此页检查 mode=1、灰阶及无残留
+   HDR metadata。HDR 本身的低亮度映射仍需独立验收。
+
+修改后的编译和真机结果应单独记录，以上步骤不代表已经通过真机验证。

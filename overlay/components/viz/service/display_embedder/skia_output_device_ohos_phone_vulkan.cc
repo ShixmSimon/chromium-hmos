@@ -326,14 +326,18 @@ SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
       ui::MakeOhosOutputColorSpaces(s.color);
   s.hdr_capable = s.color.mode == ui::OhosOutputMode::kHdr10;
   if (s.hdr_capable) {
-    // SDR content must not pass through the system's HDR video tone mapper.
-    // Keep the HDR entry/capability intact for actual HDR content.
-    for (bool alpha : {false, true}) {
-      capabilities_.ohos_output_color_spaces->SetOutputColorSpaceAndFormat(
-          gfx::ContentColorUsage::kSRGB, alpha, gfx::ColorSpace::CreateSRGB(),
-          SinglePlaneFormat::kRGBA_1010102);
+    // Wide gamut alone does not make content HDR. Keep both SDR usages out
+    // of the system's HDR tone mapper; only kHDR retains the PQ output.
+    // Until a P3 SDR NativeBuffer path is negotiated, WCG is color-converted
+    // to sRGB. The Skia surface and NativeBuffer tags must agree on that gamut.
+    for (auto usage : {gfx::ContentColorUsage::kSRGB,
+                       gfx::ContentColorUsage::kWideColorGamut}) {
+      for (bool alpha : {false, true}) {
+        capabilities_.ohos_output_color_spaces->SetOutputColorSpaceAndFormat(
+            usage, alpha, gfx::ColorSpace::CreateSRGB(),
+            SinglePlaneFormat::kRGBA_1010102);
+      }
     }
-    // WCG retains the verified BT2020/PQ path; do not silently clip it to sRGB.
   }
   capabilities_.ohos_dynamic_output_luminance =
       s.color.mode == ui::OhosOutputMode::kHdr10 &&
