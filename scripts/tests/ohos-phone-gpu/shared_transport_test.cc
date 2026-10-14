@@ -170,6 +170,8 @@ int main() {
   malformed = ten;
   malformed.magic = 0x50475332;  // Old packet version is never reinterpreted.
   reject(malformed);
+  malformed.magic = 0x50475333;  // Before the brokered display-ID field.
+  reject(malformed);
   malformed = ten;
   malformed.color.mode = static_cast<ui::OhosOutputMode>(99);
   reject(malformed);
@@ -195,6 +197,39 @@ int main() {
     send.packet.has_fence = 1;
     assert(!p::ValidSharedPacket(send.packet, 1));
   }
+  // Display capability exchange must preserve display 0 and full 64-bit IDs,
+  // and must carry denial/error outcomes without becoming a successful reply.
+  for (uint64_t display_id : {uint64_t{0}, uint64_t{1} << 40}) {
+    for (uint32_t result : {0u, 1u, 2u}) {
+      p::SharedMessage request, got_request, response, got_response;
+      request.packet.operation = p::SharedOp::kHdrDisplayQuery;
+      request.packet.sequence = 8;
+      request.packet.widget = 1;
+      assert(p::SendSharedMessage(s[0], request));
+      assert(p::ReceiveSharedMessage(s[1], &got_request, 100));
+      assert(got_request.packet.operation == p::SharedOp::kHdrDisplayQuery);
+      response.packet.operation = p::SharedOp::kHdrDisplayState;
+      response.packet.sequence = got_request.packet.sequence;
+      response.packet.widget = got_request.packet.widget;
+      response.packet.display_id = display_id;
+      response.packet.result = result;
+      assert(p::SendSharedMessage(s[1], response));
+      assert(p::ReceiveSharedMessage(s[0], &got_response, 100));
+      assert(got_response.packet.operation == p::SharedOp::kHdrDisplayState);
+      assert(got_response.packet.sequence == 8 &&
+             got_response.packet.widget == 1);
+      assert(got_response.packet.display_id == display_id);
+      assert(got_response.packet.result == result);
+      assert(got_response.fds.empty());
+      response.packet.result = 3;
+      assert(!p::ValidSharedPacket(response.packet, 0));
+      request.packet.display_id = 1;
+      assert(!p::ValidSharedPacket(request.packet, 0));
+    }
+  }
+  bad = buffer;
+  bad.display_id = 1;
+  reject(bad);  // Display IDs cannot appear in allocation/lease messages.
   // Vulkan SYNC_FD export supports both pending and already-signaled fences.
   for (bool pending : {false, true}) {
     p::SharedMessage send, got;
@@ -215,7 +250,9 @@ int main() {
     assert(!p::ValidSharedPacket(send.packet, send.fds.size()));
   }
   // Control messages may never smuggle an allocation or fence descriptor.
-  for (auto op : {p::SharedOp::kVulkanState, p::SharedOp::kVulkanFailed}) {
+  for (auto op :
+       {p::SharedOp::kVulkanState, p::SharedOp::kVulkanFailed,
+        p::SharedOp::kHdrDisplayQuery, p::SharedOp::kHdrDisplayState}) {
     auto control = buffer;
     control.operation = op;
     reject(control);

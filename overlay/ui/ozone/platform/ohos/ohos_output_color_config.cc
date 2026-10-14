@@ -15,6 +15,7 @@
 #include "components/viz/common/resources/shared_image_format.h"
 #include "ui/ozone/platform/ohos/ohos_buffer_color_policy.h"
 #include "ui/ozone/platform/ohos/ohos_buffer_color_space.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
 
 namespace ui {
 namespace {
@@ -199,7 +200,7 @@ OhosOutputColor GetOhosRequestedOutputColor() {
   base::StringToUint(peak, &hdr.peak_millinits);
   if (ValidOhosOutputColor(hdr)) {
     if (mode == "auto" &&
-        !SingleDisplaySupportsHdr10(nullptr, /*log_details=*/true)) {
+        !OhosSingleDisplaySupportsHdr10(nullptr, /*log_details=*/true)) {
       return selected({OhosOutputMode::kSdr10}, "display-capability-gate");
     }
     return selected(hdr, "hdr10-request");
@@ -208,8 +209,19 @@ OhosOutputColor GetOhosRequestedOutputColor() {
                                  : OhosOutputColor{},
                   "startup-brightness-unavailable-or-invalid");
 }
-bool OhosSingleDisplaySupportsHdr10(uint64_t* display_id) {
-  return SingleDisplaySupportsHdr10(display_id, /*log_details=*/false);
+bool OhosSingleDisplaySupportsHdr10(uint64_t* display_id, bool log_details) {
+  if (IsOhosPhoneGpuChild()) {
+    uint64_t id = 0;
+    const bool supported = QueryOhosPhoneHdrDisplay(&id);
+    if (log_details) {
+      LOG(WARNING) << "OHOS HDR display probe: via=browser supported="
+                   << supported << " id=" << id;
+    }
+    if (supported && display_id)
+      *display_id = id;
+    return supported;
+  }
+  return SingleDisplaySupportsHdr10(display_id, log_details);
 }
 bool OhosHdrDisplayGuard::Validate() {
   const auto now = base::TimeTicks::Now();

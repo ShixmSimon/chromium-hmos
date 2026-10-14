@@ -74,6 +74,7 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
     connection->predecessor.reset();
   }
   uint64_t last_sequence = 0;
+  bool hdr_display_reported = false;
   std::vector<uint8_t> pixels;
   struct Pending {
     phone_gpu::SharedPacket packet;
@@ -267,6 +268,16 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
             }
           }
           leases.erase(it);
+        } else if (p.operation == Op::kHdrDisplayQuery) {
+          uint64_t display_id = 0;
+          const bool supported = OhosSingleDisplaySupportsHdr10(
+              &display_id, /*log_details=*/!hdr_display_reported);
+          hdr_display_reported = true;
+          reply.operation = Op::kHdrDisplayState;
+          reply.display_id = display_id;
+          reply.result =
+              static_cast<uint32_t>(supported ? phone_gpu::Result::kPresented
+                                              : phone_gpu::Result::kDropped);
         } else if (p.operation == Op::kVulkanState) {
           const bool allowed = !Browser().vulkan_failed &&
                                phone_gpu::SharedBufferAllocatorReady();
@@ -465,6 +476,22 @@ bool ExchangeShared(phone_gpu::SharedMessage* request,
   return true;
 }
 }  // namespace
+bool QueryOhosPhoneHdrDisplay(uint64_t* display_id) {
+  if (!IsOhosPhoneGpuChild())
+    return false;
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kHdrDisplayQuery;
+  request.packet.widget = 1;  // Connection-scoped; not a surface request.
+  if (!ExchangeShared(&request, &response) ||
+      response.packet.operation != phone_gpu::SharedOp::kHdrDisplayState ||
+      response.packet.result !=
+          static_cast<uint32_t>(phone_gpu::Result::kPresented)) {
+    return false;
+  }
+  if (display_id)
+    *display_id = response.packet.display_id;
+  return true;
+}
 bool AllowOhosPhoneVulkan() {
   if (!IsOhosPhoneGpuChild())
     return false;

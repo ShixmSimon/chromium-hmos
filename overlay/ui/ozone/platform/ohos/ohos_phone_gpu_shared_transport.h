@@ -11,7 +11,7 @@
 #include "ui/ozone/platform/ohos/ohos_output_color.h"
 
 namespace ui::phone_gpu {
-inline constexpr uint32_t kSharedMagic = 0x50475333;
+inline constexpr uint32_t kSharedMagic = 0x50475334;
 inline constexpr size_t kSharedMaxFds = 8;
 enum class SharedOp : uint32_t {
   kAcquire = 1,
@@ -25,7 +25,9 @@ enum class SharedOp : uint32_t {
   kVulkanState,
   kVulkanFailed,
   kColorProbe,
-  kColorFailed
+  kColorFailed,
+  kHdrDisplayQuery,
+  kHdrDisplayState
 };
 struct SharedPacket {
   uint32_t magic = kSharedMagic;
@@ -35,6 +37,9 @@ struct SharedPacket {
   uint64_t lease = 0;
   OhosOutputColor color;
   uint64_t color_generation = 0;
+  // Only kHdrDisplayState carries an ID. Zero is a valid primary display ID;
+  // result=kPresented means one HDR10-capable display was found by the host.
+  uint64_t display_id = 0;
   uint32_t width = 0;
   uint32_t height = 0;
   uint32_t fd_count = 0;

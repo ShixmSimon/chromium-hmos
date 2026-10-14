@@ -22,7 +22,10 @@ inline constexpr char kOhosOutputColorFailedMarker[] = "GpuOutputColorFailed";
 // Desired mode only. Output devices must validate an actual allocation before
 // publishing it through their per-output capabilities. No global HDR promise.
 OhosOutputColor GetOhosRequestedOutputColor();
-bool OhosSingleDisplaySupportsHdr10(uint64_t* display_id = nullptr);
+// Phone fork GPU queries are brokered by the browser. Other processes retain
+// the native display-service path. Details are logged only for startup probes.
+bool OhosSingleDisplaySupportsHdr10(uint64_t* display_id = nullptr,
+                                    bool log_details = false);
 // Poll at most once a second while drawing; hotplug revokes HDR on the next
 // check. Display-manager IPC is not added to every 120 Hz frame.
 class OhosHdrDisplayGuard {

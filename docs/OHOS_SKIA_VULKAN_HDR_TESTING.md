@@ -162,3 +162,32 @@ HDR 能力检查失败也会选择这个包。现有证据不足以区分这两�
 
 诊断仅记录首次查询、首次事件、各 NAPI 结果的首次出现，以及输出创建时的选择；
 不在每帧增加查询或日志。显示守卫原有周期检查也不打印新诊断。
+
+## 2026-10-14：手机 fork GPU 的显示能力查询改由主进程代办
+
+`fea3674` 真机诊断确认首次查询、NAPI、启动快照和 GPU 参数均收到 284.736 nits。
+实际失败的是 GPU 内 `OH_NativeDisplayManager_CreateAllDisplays`，返回 1400003，
+因此选择 SDR10。这个系统异常码不代表显示器不支持 HDR10；更底层的服务代理状态
+或访问限制尚未区分。
+
+修复只对 `IsOhosPhoneGpuChild()` 生效：启动选择和 `OhosHdrDisplayGuard` 共用的
+能力查询经现有私有通道交给浏览器主进程。主进程仍调用官方显示 API，要求单显示器
+且支持 HDR10，再返回支持状态和完整 display ID。守卫保留一秒检查周期、显示器 ID
+一致性检查和异常时现有的安全回退；不缓存一个永远有效的启动标志。
+普通 Native Child Process、平板 / PC 和单进程仍保留原有查询方式。
+
+协议新增无 FD 的显示查询 / 响应，版本升至 PGS4；旧版本、携带 FD 的控制请求和
+错误消息类型不能当作能力通过。主进程的颜色探测仍独立验证 HDR 能力、NativeBuffer
+格式与 metadata，只有真实协商成功才发布 HDR10 输出能力。没有额外逐帧显示服务查询。
+
+复测保留系统亮度和 `vulkanOutputMode='auto'`，替换 HAR 后完整冷启动：
+
+1. 主进程日志 `OHOS HDR display probe: result=... count=...` 及 HDR 格式列表应给出
+   实际查询结果；GPU 日志应为 `via=browser supported=1 id=...`。
+2. 检查 `reason=hdr10-request`、`negotiated output mode=2` 和首帧 `active mode=2`。
+   仅转发查询成功不算 HDR10 已启用。如果主进程也失败，保留其返回码和格式列表。
+3. 保持播放 / 滚动超过数秒，确认周期检查后仍维持 HDR10，没有 GPU 退出、SDR8/GL
+   回退或纹理错误。观察亮度、黑位、颜色及前后台恢复。
+
+本地协议测试覆盖 ID=0、64 位 ID、支持 / 拒绝 / 错误返回、旧版本拒绝及控制消息
+FD 清理。目标编译由 Chromium 154 CI 验证；主进程在真机的能力查询和 HDR 上屏仍待复测。

@@ -60,7 +60,14 @@ bool ValidSharedPacket(const SharedPacket& p, size_t count) {
       p.fd_count > kSharedMaxFds || count > kSharedMaxFds ||
       p.fd_count + p.has_fence != count || p.tail_bytes > p.tail.size())
     return false;
+  if (p.operation != SharedOp::kHdrDisplayState && p.display_id)
+    return false;
   switch (p.operation) {
+    case SharedOp::kHdrDisplayQuery:
+    case SharedOp::kHdrDisplayState:
+      return !count && !p.lease && !p.tail_bytes && !p.width && !p.height &&
+             p.color.mode == OhosOutputMode::kSdr8 && !p.color_generation &&
+             p.result <= 2;
     case SharedOp::kAcquire:
       return !count && !p.lease && !p.tail_bytes && p.width && p.height &&
              p.width <= 8192 && p.height <= 8192 &&
