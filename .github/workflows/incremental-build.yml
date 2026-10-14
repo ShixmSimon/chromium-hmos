@@ -6,7 +6,7 @@ name: Incremental build
 
 on:
   push:
-    branches: [hmos-154-adapter, hmos-154-dev]
+    branches: [hmos-154-adapter, hmos-154-dev, codex/phone-fork-renderers]
     paths:
       - 'overlay/**'
       - 'patches/**'
