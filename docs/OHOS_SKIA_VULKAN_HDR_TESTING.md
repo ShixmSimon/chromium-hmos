@@ -271,3 +271,112 @@ sRGB 的色域；不能将此称为 P3 输出支持。HDR 亮度参数、能力�
    HDR metadata。HDR 本身的低亮度映射仍需独立验收。
 
 修改后的编译和真机结果应单独记录，以上步骤不代表已经通过真机验证。
+
+## 2026-10-14 夜间真机调试：SDR 恢复、HDR 能力与视频上传
+
+设备 PLA-AL10 / HarmonyOS 7.0.0.109 / Maleoon 920；Lumie 手机 fork 独立
+GPU，Skia Vulkan，ANGLE GLES。保持用户最低系统亮度，系统报告 SDR 白点
+2 nits。调试期间用 `power-shell timeout -o 3600000` 延长自动息屏时间并定期
+续期，未通过锁屏切换来测试后台恢复。以下结果取代上文对应的待验证实验结论。
+
+### 已定位并修正
+
+- `86d3e3c9`：普通 sRGB 和 P3/WCG SDR 页面均输出 SDR10 / mode=1；只有
+  HDR 内容进入 PQ / mode=2。P3 SDR 暂时转换到 sRGB，不能称为原生 P3 输出。
+- `aee8cf89`：硬解 P010 CPU 帧原先触发 VideoResourceUpdater 不支持格式的
+  NOTREACHED，导致 renderer SIGTRAP。改用 libyuv 无损转为 I010，保留
+  10 位、BT2020/PQ 与 HDR metadata。源平面大小、stride 和对齐仍检查。
+- 同提交修正全屏切换的 NativeBuffer 分配检查：实际出现 1617×175、
+  stride=6656、allocation=1163264 的有效 optimal-tiled buffer，不能要求
+  allocation ≥ stride×height。保留逻辑像素大小下限、分配上限、尺寸、stride、
+  FD、lease 和 generation 检查；Vulkan 导入也检查实际分配上限。
+- `ef41993c`：物理面板白点不等于 PQ 内容参考白。内容白点归一化到
+  203 nits，保留系统 peak/white 比例及物理亮度诊断。避免把最低亮度的
+  2 nits 先编码进内容，再被系统映射一次。OpenHarmony RenderService 的
+  `RSBaseHdrUtil::DEFAULT_SDR_NITS` / HDR 映射使用 203-nit 内容参考白：
+  <https://github.com/openharmony/graphic_graphic_2d/blob/master/rosen/modules/render_service/core/feature/hdr/rs_hdr_util.cpp>。
+- 同提交加入经过 GPU 实际导入探测后发布的 HDR 能力。原先普通 SDR 页面
+  报告不支持 HDR，YouTube 因此只提供 SDR 菜单，即使源包含 HDR。现在探测
+  成功后发布能力，在颜色失败、Vulkan 失败及 GPU 连接关闭时撤销。
+- `2496eac1`：OHOS Vulkan CPU 上传优先使用 HOST_CACHED 内存，保留
+  Skia/VMA 非 coherent 内存 flush。设备实际选到 memory type=1、flags=11。
+- `4c4d755e`：phone Vulkan 根据 Skia 的 A16_UNORM 实际支持情况启用 R16
+  视频平面，避免不必要的 10-bit→FP16 转换；设备日志确认支持。
+- `9418fe70`：浏览器媒体服务直接把硬解帧写入只读 IPC 共享内存的本地
+  writable mapping，避免 Mojo 序列化时再次分配、复制完整视频帧。每帧独立
+  持有 region/mapping，不在远端可能仍持有时复用；完成写入后才发布 SHMEM。
+
+### 已执行的正确性检查
+
+- 灰阶测试页使用 `color-scheme: only light` 隔离手机强制深色策略。sRGB、
+  P3 CSS、实际 display-p3 Canvas、三次前后台切换均维持 SDR10，白色控制块
+  恢复到系统截图 255。原始 NodeSeek 页面重新加载后为可读深色主题；不将
+  强制深色网页本身作为中性灰阶对照。
+- HEVC Main10 HDR10 `bear-1280x720-hevc-10bit-hdr10.mp4` 为约 29.97 fps。
+  真机首帧 `VideoFrame.copyTo()` 得到 I420P10 / BT2020/PQ，2764800 bytes；
+  与 FFmpeg 解码首帧 SHA-256 完全一致：
+  `80360cd8644e9fc83c02bb3f87dae58e1bf7bca82f878bec7bd071fa52825580`。
+  样本覆盖低两位 0、1、2、3，未降为 8 位。
+- YouTube `diLzHHuJeuE` 菜单现在显示 HDR，实际选到 itag 335/336，
+  1080p60/1440p60、BT2020/PQ，原生输出 mode=2；退出 HDR 后回到 mode=1。
+  不能仅凭播放菜单或 capability 宣告实际 HDR 已输出。
+- Canvas 2D、WebGL2 清屏读回 RGBA `[64,128,191,255]`；WebGL 视频纹理
+  上传 / FBO 读回无 GL 错误，framebuffer complete，context 未丢失。
+- 多次 HDR/SDR 和全屏切换后，4c4d755e 同一 GPU 进程保持运行，未再看到
+  packet validation 失败、SIGTRAP、GPU 崩溃或 SDR8/GL 故障回退。
+- HDR 系统截图经过系统映射，不能据此测量面板 nits。本次没有光度计，
+  不宣称 HDR 的物理亮度或色准已完成仪器验收。
+
+### 性能结果与未通过项
+
+修复前 1080p HDR 的 GPU `WritePixelsYUVINTERNAL` trace 平均 12.82 ms；
+缓存上传后一次对应采样为 2.54 ms。两次 trace 的取样段不同，仅证明上传
+耗时明显下降，不能作为整机综合基准。
+
+4c4d755e 对 YouTube 1080p60 同一 32.65–42.66 s 片段，10 s 内
+599 帧丢 27 帧（4.5%）；较 ef41993c 同片段 600 帧丢 264 帧改善。
+1440p60 全屏约 32.65–42.27 s，594 帧丢 199 帧（33.5%）。
+720p 的重复采样也有明显波动，不能标成稳定流畅。
+
+设备 AVCodec 能力查询无 VP9/AV1 硬解，YouTube VP9 使用软件解码；但
+本地 1440p60 HEVC Main10 硬解同样出现掉帧和播放停顿，不能把问题全归于
+YouTube 编码。对硬解 trace，Mojo `VideoFrameDataPtr::CreateRegion` 平均
+10.58 ms/帧，进一步促成 9418fe70 的共享内存改动。
+
+因此本轮不能宣告“手机 Skia Vulkan 全部正常”或“全部测试通过”。
+已执行的协议、颜色策略、亮度、fork、补丁回归与 public-tree 检查通过，
+但并未运行 Chromium 全量测试套件，高分辨率视频流畅性仍须独立验收。
+
+### 9418fe70 安装后的复测
+
+HAR 与签名 HAP 内的 `libweb_engine.so` SHA-256 一致：
+`0af7e48584ce525d3a3927dd399846488b2d9e4921432b2b6809ac1c1b6b0f02`。
+执行 clean 后重打包再安装，避免应用增量打包误用旧 HAR。
+
+- HDR 首帧仍与上述 FFmpeg SHA-256 一致；保留首帧并继续播放 5 s，
+  再次复制该帧得到相同哈希，未被后续帧覆盖。
+- H264 SDR 对照为 NV12，首帧 SHA-256
+  `8e42304d3920c90825839f1deac12cf48e05daffef09ad9d29fc116ee442e8c5`
+  与 FFmpeg 一致；旧帧保留测试也通过。
+- Canvas/WebGL RGBA 精确读回、HDR 视频 WebGL 纹理上传再次通过。
+- 同一 1440p60 HEVC 素材的共享内存封装 trace 均值由 10.58 ms 降到
+  0.0127 ms；但 `OhosVideoDecoder::CopyOutput` 仍约 17.94 ms，
+  `CreateForSoftwareFrame` 约 8.25 ms，GPU 上传约 3.87 ms。各项跨线程
+  可能重叠，不能简单相加当作端到端延迟；也未排除调度/设备状态波动。
+- 本地 HEVC 1440p60、10 s 墙钟采样：565 帧丢 261 帧，媒体时间前进
+  约 9.36 s。消除重复 IPC 复制不等于解决硬解路径的全部性能问题。
+- YouTube 固定 1080p60 片段：601 帧丢 27 帧（4.49%）；1440p60 全屏
+  同片段：600 帧丢 16 帧（2.67%）。后者比此前结果好得多，但该共享内存
+  修改不作用于 VP9 软件解码，不能把变化归因于它，也不能据单次结果宣称
+  稳定达标。连续一分钟结果单独记录。
+
+连续一分钟 YouTube 1440p60 全屏结果：3597 帧丢 121 帧（3.36%）。
+各 10 s 窗口丢帧为 8 / 11 / 15 / 10 / 55 / 22，始终为可见页面、
+2560×1440、全屏，媒体时间正常前进。中间仍有一段约 9.2% 的掉帧；
+未达到稳定无明显掉帧的验收目标。原始计数、帧哈希、包哈希和检查范围见
+[`test-results/ohos-phone-hdr-2026-10-14.json`](test-results/ohos-phone-hdr-2026-10-14.json)。
+
+9418fe70 最后又完成三次 Home→恢复，宽色域 SDR 测试页仍为 mode=1，
+白色背景、六级灰阶正常，无 filter/opacity 遮暗；同一 GPU 31585 在
+23:48–23:57 的捕获日志中未重启，未发现 SIGTRAP、包验证失败或 GL/SDR8
+故障回退。手机保持亮屏并停留在该测试页，测试视频已暂停。
