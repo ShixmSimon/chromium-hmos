@@ -1,19 +1,66 @@
+diff --git a/components/viz/service/display/direct_renderer.cc b/components/viz/service/display/direct_renderer.cc
+--- a/components/viz/service/display/direct_renderer.cc
++++ b/components/viz/service/display/direct_renderer.cc
+@@ -364,6 +364,22 @@
+   reshape_params.device_scale_factor = device_scale_factor;
+   reshape_params.color_space = frame_color_space;
+   reshape_params.format = frame_si_format;
++#if BUILDFLAG(IS_OHOS)
++  if (output_surface_->capabilities().ohos_output_color_spaces) {
++    ui::OhosOutputColor color;
++    if (frame_color_space.IsHDR()) {
++      auto brightness = ui::MakeOhosDisplayBrightness(
++          0, display_color_spaces.GetSDRMaxLuminanceNits(),
++          display_color_spaces.GetHDRMaxLuminanceRelative(),
++          display_color_spaces.GetHDRMaxLuminanceRelative());
++      CHECK(brightness);
++      color = brightness->hdr;
++    } else if (frame_si_format == SinglePlaneFormat::kRGBA_1010102) {
++      color.mode = ui::OhosOutputMode::kSdr10;
++    }
++    reshape_params.ohos_output_color = color;
++  }
++#endif
+   reshape_params.alpha_type = root_render_pass->has_transparent_background
+                                   ? RenderPassAlphaType::kPremul
+                                   : RenderPassAlphaType::kOpaque;
 diff --git a/components/viz/service/display/display.cc b/components/viz/service/display/display.cc
 --- a/components/viz/service/display/display.cc
 +++ b/components/viz/service/display/display.cc
-@@ -488,6 +488,11 @@
+@@ -487,9 +487,32 @@
+ 
  void Display::SetDisplayColorSpaces(
      const gfx::DisplayColorSpaces& display_color_spaces) {
++#if BUILDFLAG(IS_OHOS)
++  const auto previous = display_color_spaces_;
++  const auto incoming = display_color_spaces;
++#endif
    display_color_spaces_ = display_color_spaces;
 +#if BUILDFLAG(IS_OHOS)
-+  if (output_surface_->capabilities().ohos_output_color_spaces)
-+    display_color_spaces_ =
-+        *output_surface_->capabilities().ohos_output_color_spaces;
++  const auto& caps = output_surface_->capabilities();
++  if (caps.ohos_output_color_spaces) {
++    display_color_spaces_ = *caps.ohos_output_color_spaces;
++    if (caps.ohos_dynamic_output_luminance) {
++      display_color_spaces_.SetSDRMaxLuminanceNits(
++          incoming.GetSDRMaxLuminanceNits());
++      display_color_spaces_.SetHDRMaxLuminanceRelative(
++          incoming.GetHDRMaxLuminanceRelative());
++    }
++  }
 +#endif
    if (aggregator_)
      aggregator_->SetDisplayColorSpaces(display_color_spaces_);
++#if BUILDFLAG(IS_OHOS)
++  if (aggregator_ && previous != display_color_spaces_) {
++    if (current_surface_id_.is_valid())
++      aggregator_->SetFullDamageForSurface(current_surface_id_);
++    damage_tracker_->SetRootSurfaceDamaged();
++  }
++#endif
  }
-@@ -538,6 +543,8 @@
+ 
+ void Display::SetOutputIsSecure(bool secure) {
+@@ -538,6 +561,8 @@
      resource_provider_ = std::move(resource_provider);
    }
  
@@ -33,25 +80,52 @@ diff --git a/components/viz/service/display/output_surface.h b/components/viz/se
  #include <vector>
  
  #include "base/functional/callback_helpers.h"
-@@ -25,6 +26,7 @@
+@@ -25,6 +26,10 @@
  #include "third_party/skia/include/core/SkM44.h"
  #include "ui/gfx/buffer_types.h"
  #include "ui/gfx/color_space.h"
 +#include "ui/gfx/display_color_spaces.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_display_brightness.h"
++#endif
  #include "ui/gfx/overlay_transform.h"
  #include "ui/gfx/surface_origin.h"
  #include "ui/latency/latency_info.h"
-@@ -81,6 +83,10 @@
+@@ -81,6 +86,11 @@
  #endif
  
    struct Capabilities {
 +#if BUILDFLAG(IS_OHOS)
 +    // Verified for this output, never inferred globally from a panel HDR flag.
 +    std::optional<gfx::DisplayColorSpaces> ohos_output_color_spaces;
++    bool ohos_dynamic_output_luminance = false;
 +#endif
      Capabilities();
      ~Capabilities();
      Capabilities(const Capabilities& capabilities);
+@@ -215,6 +225,9 @@
+     gfx::ColorSpace color_space;
+     SharedImageFormat format = SinglePlaneFormat::kRGBA_8888;
+     RenderPassAlphaType alpha_type = RenderPassAlphaType::kPremul;
++#if BUILDFLAG(IS_OHOS)
++    std::optional<ui::OhosOutputColor> ohos_output_color;
++#endif
+ 
+     friend bool operator==(const ReshapeParams&,
+                            const ReshapeParams&) = default;
+diff --git a/components/viz/service/display_embedder/skia_output_device.h b/components/viz/service/display_embedder/skia_output_device.h
+--- a/components/viz/service/display_embedder/skia_output_device.h
++++ b/components/viz/service/display_embedder/skia_output_device.h
+@@ -128,6 +128,9 @@
+     int sample_count = 1;
+     float device_scale_factor = 1.f;
+     gfx::OverlayTransform transform = gfx::OVERLAY_TRANSFORM_NONE;
++#if BUILDFLAG(IS_OHOS)
++    std::optional<ui::OhosOutputColor> ohos_output_color;
++#endif
+ 
+     gfx::Size GfxSize() const {
+       return gfx::SkISizeToSize(image_info.dimensions());
 diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.cc b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
 --- a/components/viz/service/display_embedder/skia_output_device_vulkan.cc
 +++ b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
@@ -98,7 +172,42 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
    if (!output_device->Initialize()) [[unlikely]] {
      return nullptr;
    }
-@@ -117,8 +141,13 @@
+@@ -111,14 +135,48 @@
+ #endif
+ 
+ bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
++  if (!vulkan_surface_)
++    return false;
++#if BUILDFLAG(IS_OHOS)
++  if (params.ohos_output_color && *params.ohos_output_color != output_color_) {
++    const auto color = *params.ohos_output_color;
++    if (!ui::ValidOhosOutputColor(color) || color.mode != output_color_.mode) {
++      ui::NoteOhosOutputColorFailure("WSI output color contract changed");
++      return false;
++    }
++    output_color_ = color;
++    if (color.mode == ui::OhosOutputMode::kHdr10) {
++      VkHdrMetadataEXT metadata{VK_STRUCTURE_TYPE_HDR_METADATA_EXT};
++      metadata.displayPrimaryRed = {0.708f, 0.292f};
++      metadata.displayPrimaryGreen = {0.170f, 0.797f};
++      metadata.displayPrimaryBlue = {0.131f, 0.046f};
++      metadata.whitePoint = {0.3127f, 0.3290f};
++      metadata.maxLuminance = color.peak_millinits / 1000.f;
++      metadata.maxContentLightLevel = metadata.maxLuminance;
++      metadata.maxFrameAverageLightLevel = metadata.maxLuminance;
++      if (!vulkan_surface_->SetHdrMetadata(metadata)) {
++        ui::NoteOhosOutputColorFailure("WSI HDR luminance metadata");
++        return false;
++      }
++      LOG(WARNING) << "OHOS Vulkan: HDR luminance updated white_millinits="
++                   << color.white_millinits
++                   << " peak_millinits=" << color.peak_millinits;
++    }
++  }
++#endif
+   DCHECK(!scoped_write_);
+ 
+   if (!vulkan_surface_) [[unlikely]] {
      return false;
    }
  
@@ -114,7 +223,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
  }
  
  void SkiaOutputDeviceVulkan::Submit(
-@@ -199,6 +228,13 @@
+@@ -199,6 +257,13 @@
    DCHECK(vulkan_surface_);
    DCHECK(!scoped_write_);
  
@@ -128,7 +237,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
    gpu::VulkanSwapChain::ScopedWrite scoped_write(vulkan_surface_->swap_chain());
    if (!scoped_write.success()) [[unlikely]] {
      // Return nullptr, and then the caller will make context lost.
-@@ -211,8 +247,7 @@
+@@ -211,8 +276,7 @@
    if (!sk_surface) [[unlikely]] {
      SkSurfaceProps surface_props;
      const auto surface_format = vulkan_surface_->surface_format().format;
@@ -138,7 +247,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
      GrVkImageInfo vk_image_info;
      vk_image_info.fImage = scoped_write.image();
      vk_image_info.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
-@@ -240,6 +275,10 @@
+@@ -240,6 +304,10 @@
          kTopLeft_GrSurfaceOrigin, sample_count_, color_type_, color_space_,
          &surface_props);
      if (!sk_surface) [[unlikely]] {
@@ -149,7 +258,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
        return nullptr;
      }
    } else {
-@@ -312,8 +351,55 @@
+@@ -312,8 +380,55 @@
      LOG(ERROR) << "Failed to create vulkan surface.";
      return false;
    }
@@ -189,7 +298,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
 +      metadata.maxLuminance = output_color_.peak_millinits / 1000.f;
 +      metadata.maxContentLightLevel = metadata.maxLuminance;
 +      metadata.maxFrameAverageLightLevel = metadata.maxLuminance;
-+      vulkan_surface->SetHdrMetadata(metadata);
++      result = vulkan_surface->SetHdrMetadata(metadata);
 +    }
 +    // Actually create the selected swapchain before publishing output caps.
 +    if (result)
@@ -207,7 +316,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
    if (!result) [[unlikely]] {
      LOG(ERROR) << "Failed to initialize vulkan surface.";
      vulkan_surface->Destroy();
-@@ -338,26 +424,26 @@
+@@ -338,26 +453,29 @@
    capabilities_.damage_area_from_skia_output_device = true;
  
    const auto surface_format = vulkan_surface_->surface_format().format;
@@ -229,6 +338,9 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
 -  // are carried separately by Reshape, as in the GL output device.
 +  capabilities_.ohos_output_color_spaces =
 +      ui::MakeOhosOutputColorSpaces(output_color_);
++  capabilities_.ohos_dynamic_output_luminance =
++      output_color_.mode == ui::OhosOutputMode::kHdr10 &&
++      ui::OhosDynamicOutputLuminance();
 +  if (output_color_.mode != ui::OhosOutputMode::kSdr8)
 +    capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBA_1010102] =
 +        sk_color_type;
@@ -279,6 +391,32 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.h
    bool Initialize();
    bool RecreateSwapChain(const SkImageInfo& image_info,
                           int sample_count,
+diff --git a/components/viz/service/display_embedder/skia_output_surface_impl.cc b/components/viz/service/display_embedder/skia_output_surface_impl.cc
+--- a/components/viz/service/display_embedder/skia_output_surface_impl.cc
++++ b/components/viz/service/display_embedder/skia_output_surface_impl.cc
+@@ -488,13 +488,15 @@
+   }
+ 
+   const SkiaOutputDevice::ReshapeParams device_reshape_params = {
+-      .image_info =
+-          SkImageInfo::Make(size_.width(), size_.height(), color_type_,
+-                            alpha_type_, sk_color_space_),
+-      .color_space = params.color_space,
+-      .sample_count = sample_count_,
+-      .device_scale_factor = params.device_scale_factor,
+-      .transform = GetDisplayTransform(),
++#if BUILDFLAG(IS_OHOS)
++    .ohos_output_color = params.ohos_output_color,
++#endif
++    .image_info = SkImageInfo::Make(size_.width(), size_.height(), color_type_,
++                                    alpha_type_, sk_color_space_),
++    .color_space = params.color_space,
++    .sample_count = sample_count_,
++    .device_scale_factor = params.device_scale_factor,
++    .transform = GetDisplayTransform(),
+   };
+   // impl_on_gpu_ is released on the GPU thread by a posted task from
+   // SkiaOutputSurfaceImpl::dtor. So it is safe to use base::Unretained.
 diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
 --- a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
 +++ b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
@@ -307,7 +445,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on
 diff --git a/content/browser/gpu/gpu_process_host.cc b/content/browser/gpu/gpu_process_host.cc
 --- a/content/browser/gpu/gpu_process_host.cc
 +++ b/content/browser/gpu/gpu_process_host.cc
-@@ -1508,6 +1508,18 @@
+@@ -1508,6 +1508,19 @@
                                                            kind_);
  
  #if BUILDFLAG(IS_OHOS)
@@ -315,8 +453,9 @@ diff --git a/content/browser/gpu/gpu_process_host.cc b/content/browser/gpu/gpu_p
 +    cmd_line->AppendSwitchPath(
 +        "user-data-dir",
 +        browser_command_line.GetSwitchValuePath("user-data-dir"));
-+  for (const char* name : {"ohos-vulkan-output", "ohos-hdr-white-millinits",
-+                           "ohos-hdr-peak-millinits"}) {
++  for (const char* name :
++       {"ohos-vulkan-output", "ohos-hdr-white-millinits",
++        "ohos-hdr-peak-millinits", "ohos-hdr-fixed-luminance"}) {
 +    if (browser_command_line.HasSwitch(name))
 +      cmd_line->AppendSwitchASCII(
 +          name, browser_command_line.GetSwitchValueASCII(name));
@@ -329,17 +468,48 @@ diff --git a/content/browser/gpu/gpu_process_host.cc b/content/browser/gpu/gpu_p
 diff --git a/gpu/vulkan/ohos/vulkan_implementation_ohos.cc b/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
 --- a/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
 +++ b/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
-@@ -36,7 +36,8 @@
+@@ -4,6 +4,7 @@
+ 
+ #include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
+ 
++#include <cstring>
+ #include "base/files/file_path.h"
+ #include "base/logging.h"
+ #include "base/notimplemented.h"
+@@ -35,8 +36,30 @@
+       VK_KHR_SURFACE_EXTENSION_NAME, "VK_OHOS_surface"};
    // Said at ERROR either way: when Vulkan was asked for and this fails,
    // Chromium falls back to GL quietly, and the reason is otherwise lost.
-   const bool initialized = vulkan_instance_.Initialize(
+-  const bool initialized = vulkan_instance_.Initialize(
 -      base::FilePath("libvulkan.so"), required_extensions, {});
-+      base::FilePath("libvulkan.so"), required_extensions,
-+      {VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME});
++  if (!vulkan_instance_.BindUnassignedFunctionPointers(
++          base::FilePath("libvulkan.so")))
++    return false;
++  uint32_t count = 0;
++  bool extended_colors = false;
++  if (vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr) ==
++      VK_SUCCESS) {
++    std::vector<VkExtensionProperties> extensions(count);
++    if (vkEnumerateInstanceExtensionProperties(
++            nullptr, &count, extensions.data()) == VK_SUCCESS) {
++      for (const auto& extension : extensions)
++        extended_colors |=
++            std::strcmp(extension.extensionName,
++                        VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME) == 0;
++    }
++  }
++  if (extended_colors)
++    required_extensions.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
++  LOG(WARNING) << "OHOS Vulkan: creating instance; requested_layers=0 "
++               << "swapchain_colorspace=" << extended_colors;
++  // Initialize's third argument is required LAYERS, not optional extensions.
++  // Enable colorspace only after enumeration, and request no validation layers.
++  const bool initialized =
++      vulkan_instance_.InitializeInstance(required_extensions, {});
    LOG(ERROR) << "OHOS Vulkan: instance "
                 << (initialized ? "initialized" : "failed to initialize");
    return initialized;
-@@ -136,6 +137,7 @@
+@@ -136,6 +159,7 @@
        VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,
        VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME,
        VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
@@ -405,20 +575,21 @@ diff --git a/gpu/vulkan/vulkan_surface.h b/gpu/vulkan/vulkan_surface.h
  
  #include "base/component_export.h"
  #include "base/functional/callback.h"
-@@ -56,7 +57,11 @@
+@@ -56,7 +57,12 @@
    virtual ~VulkanSurface();
  
    bool Initialize(VulkanDeviceQueue* device_queue,
 -                  VulkanSurface::Format format);
 +                  VulkanSurface::Format format,
 +                  std::optional<VkSurfaceFormatKHR> requested = std::nullopt);
-+  void SetHdrMetadata(const VkHdrMetadataEXT& metadata) {
++  bool SetHdrMetadata(const VkHdrMetadataEXT& metadata) {
 +    hdr_metadata_ = metadata;
++    return !swap_chain_ || swap_chain_->SetHdrMetadata(metadata);
 +  }
    // Destroy() should be called when all related GPU tasks have been finished.
    virtual void Destroy();
  
-@@ -109,6 +114,7 @@
+@@ -109,6 +115,7 @@
    const gfx::AcceleratedWidget accelerated_widget_;
    VkSurfaceKHR surface_ = VK_NULL_HANDLE;
    VkSurfaceFormatKHR surface_format_ = {};

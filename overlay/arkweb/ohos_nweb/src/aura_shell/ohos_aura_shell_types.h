@@ -89,7 +89,7 @@ struct AuraStartupConfig {
   // upstream does not run Skia on Vulkan with the GPU in the browser
   // process.
   std::string skia_backend;
-  std::string vulkan_output_mode = "sdr8";
+  std::string vulkan_output_mode = "auto";
   double vulkan_hdr_white_nits = 0;
   double vulkan_hdr_peak_nits = 0;
   bool jitless = false;

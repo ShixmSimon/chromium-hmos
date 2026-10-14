@@ -1,106 +1,65 @@
-# Skia Vulkan 10 位 / HDR 外壳测试
+# GL / Skia Vulkan 自动亮度与 10 位输出测试
 
-此轮实现输出目标与色彩合成。真机结果待验证，不能把编译通过、API 成功或
-`chrome://gpu` 的 Vulkan 标识当成实屏 HDR 通过。视频 Vulkan 零拷贝另开一轮。
-
-## 外壳启动配置
-
-使用本次构建的 engine HAR，替换依赖后清理外壳构建产物，完整退出应用再启动。
-所有选项在 `ensureStarted` / 启动配置中传入，运行中修改会返回失败，需要冷重启。
-默认仍是单进程和 SDR8；下面是手机实验配置：
+应用默认进程模式不变。GL 自动读取系统亮度，无需增加配置；手机版独立 Skia
+Vulkan 继续使用已有实验开关：
 
 ```ts
 config.experimentalPhoneFork = true;
 config.gpuProcess = 'separate';
 config.skiaBackend = 'vulkan';
 config.angleBackend = 'gles';
-config.vulkanOutputMode = 'sdr10';
+// vulkanOutputMode 默认 auto，无需填写两个亮度参数。
 ```
 
-先比较 `sdr8` 与 `sdr10`，通过后再尝试：
+外壳使用新 HAR 中的 WebWindow / NativeContext，即自动接入
+`display.getBrightnessInfo()` 和 `brightnessInfoChange`（API 22）。直接调用
+C++ NAPI 而绕过 NativeContext 的外壳，需要调用 `UpdateDisplayBrightness`，
+参数依次是 displayId、sdrNits、currentHeadroom、maxHeadroom，并转发变化事件。
+
+`auto` 默认尝试 10 位：屏幕支持 HDR10 且取得亮度时使用 HDR10/PQ；否则尝试
+SDR10。实际输出目标失败会记录原因并回退 SDR8。透明独立窗口仍为 SDR8。
+10 位描述缓冲区精度，Skia Vulkan 名称本身不能证明实际输出已是 10 位。
+
+## 怎么测
+
+安装新 HAR 打出的应用，冷启动后正常浏览、播放已有 HDR 内容，并调节系统亮度，
+观察白底、暗部、高光及前后台切换。无需手填 203/1000，也无需逐组切换参数。
+如果画面异常，保存当次日志后使用以下配置并完整重启：
 
 ```ts
-config.vulkanOutputMode = 'hdr10';
-config.vulkanHdrWhiteNits = 203;
-config.vulkanHdrPeakNits = 1000;
+config.vulkanOutputMode = 'sdr8';
 ```
 
-203/1000 只是可替换的实验参数示例，**不是 Mate 70 Pro+ 的实测数据**。
-参考白范围 80–500 nits，峰值大于参考白且不超过 10000 nits；需要按设备与测试
-条件校准。HDR10 缺少有效参数会回到 SDR8。不要用视频 MaxCLL 代替面板峰值。
-`auto` 有有效参数且显示器支持 HDR10 时尝试 HDR10，否则尝试 SDR10；实际分配或
-WSI 不支持时仍可能回到 SDR8。首轮用显式模式，便于对照。
+该开关只关闭 Vulkan 的 10 位/HDR 输出。若 Vulkan 初始化本身仍崩溃，可把
+`skiaBackend` 改回 `'gl'` 后重启；独立 GPU / renderer 配置不必改成单进程。
 
-平板/PC 保留官方子进程配置，使用相同色彩选项；不需要手机 fork 开关。
-其 HDR 路径另需真实 10 位/PQ swapchain 格式对及 `VK_EXT_hdr_metadata`，
-不支持时保持 SDR。手机成功不能代替平板/PC 验收。
+## 日志判断
 
-## 如何确认真的启用了
+- `OHOS brightness: display=... white_nits=... peak_nits=... max_headroom=...`：
+  已取得系统亮度。亮度事件合并到最多约 10 次/秒，不逐帧查询系统服务。
+- `OHOS Vulkan: creating instance; requested_layers=0 swapchain_colorspace=...`：
+  Skia Vulkan 正在初始化。后面的 instance initialized 才表示创建成功。
+- 手机 `OHOS phone Vulkan: negotiated output mode=... native_format=...`，以及
+  `OHOS phone Vulkan: active mode=...`：先协商，再确认实际提交。
+  mode 0/1/2 分别表示 SDR8/SDR10/HDR10；native_format 12/34 表示 RGBA8/RGB10A2。
+- `HDR luminance updated white_millinits=... peak_millinits=...`：Vulkan 已收到
+  与该帧色彩转换一致的更新。这里单位是毫尼特；除以 1000 得到 nits。
+- GL 保留原有 reshape / 色彩空间日志，亮度更新沿 DisplayColorSpaces 生效。
+- 平板/PC WSI 日志包含实际 swapchain format、color_space、output_mode。
 
-收集完整冷启动 hilog、`getAboutInfo` 内核版本、`chrome://gpu` 与复现步骤。
-过滤关键字 `OHOS phone Vulkan`、`OHOS Vulkan`、`OHOS output color`。
+外壳的 renderer JS 回应、配置开关为 true、屏幕支持 HDR，都不能单独证明 Vulkan
+已经工作。普通截图可以辅助发现偏色，通常经过 SDR 转换，不用于证明面板位深。
 
-手机必须同时出现协商日志与首帧提交日志：
+## 已知边界
 
-- `negotiated output mode=1 native_format=34`：SDR10。
-- `negotiated output mode=2 native_format=34`：HDR10/PQ。
-- 实际 `vk_format=64`（A2B10G10R10）或 `58`（A2R10G10B10），对应 Skia 的
-  RGBA1010102/BGRA1010102。模式 0 / native_format 12 是 SDR8。
-- `first shared NativeBuffer frame presented; active mode=...`，且
-  `color_generation` 对应协商结果。只有协商日志、没有首帧日志不算成功。
+Vulkan 输出模式在窗口初始化时选择，调亮度不会切换 SDR/HDR 格式或重启 GPU。
+动态参数使用系统当前 headroom，最大 headroom 只作为上限；headroom=1 是合法的
+临时状态。可选 `vulkanHdrWhiteNits` / `vulkanHdrPeakNits` 仅用于固定值调试，
+正常使用时应删除，避免覆盖自动更新。
 
-手机先对真实窗口队列 RequestBuffer，核对实际配置/Parcel，Vulkan 查询及导入、
-Skia wrap 成功后才向该输出的 Viz 发布 10 位/PQ 能力。首帧另行确认 draw/present。
-颜色与 HDR 元数据写在实际 leased NativeBuffer 上，读取颜色空间核对，
-不在仍可能消费旧帧时给整个窗口换 PQ 标签。
+目前 Vulkan HDR 限单显示器；外接屏变化可能触发 SDR 回退。Vulkan 每个输出单独
+协商色彩，浏览器全局 CSS HDR 声明仍保守。视频 Vulkan 零拷贝留到此轮输出完成后。
 
-平板/PC 日志的 `swapchain format` 必须是 58/64；HDR 的 `color_space` 必须是
-1000104008（HDR10 ST2084）。创建 swapchain 后才发布能力；元数据按 swapchain
-提交。Vulkan 元数据 API 无读回，不以调用完成代替系统合成器/实屏证据。
-
-系统 HDR 状态、实际亮度与色彩要单独验收。普通截图和录屏常转换为 SDR，
-不能据此确认面板 10 位或 HDR。不要只看“色带少了”：抖动也可能有类似效果。
-
-## 本轮行为和限制
-
-- 每个输出窗口固定色彩模式。HDR 模式下普通网页按参考白转换；播放/停止视频
-  不热切换整个窗口。改变启动模式需要重启应用。
-- 仅不透明输出开放 10 位；独立透明窗口保持 SDR8，页面内部透明元素正常合成。
-- 浏览器/renderer 的全局 ScreenInfo、CSS `dynamic-range` 仍保持保守 SDR 声明。
-  本轮发布的是每个 Viz 输出的已验证能力。因此网站自动选 HDR 素材不作为启用
-  依据；使用已知 HDR 测试素材直接播放，单独核对输入是否保留 10 位/HDR。
-- HDR 首版限单显示器。绘制期间每秒检查一次显示器身份与 HDR10 支持；发现
-  外接/切换或能力丢失会撤销 HDR 并触发输出恢复。不是无缝多显示器 HDR 支持。
-- 协商失败直接 SDR8；10 位运行中失败会锁定本会话为 SDR8，手机允许 GPU
-  重启后继续尝试 Vulkan SDR8。驱动故障/超时仍采用已有 GL 回退。
-  Chromium 自身恢复策略也可能选择 GL，日志必须记录实际结果。
-- `GpuOutputColorFailed` 是会话回退标记，GPU 重启不清除，应用冷启动清除。
-  显式 `--ohos-sdr-output` 保持强制 SDR。
-- 未改视频 Vulkan SharedImage。当前视频可能仍走 buffer/upload 路径，不能称
-  “HDR 视频端到端零拷贝”；最终输出 10 位也不能证明解码/上传没有降到 8 位。
-
-## 验收顺序
-
-| 组别 | 配置 | 必查 |
-|---|---|---|
-| A | 默认单进程 GL | 网页、键盘、视频、弹窗基线 |
-| B | 独立 Vulkan + SDR8 | 原有多进程体验与性能无回归 |
-| C | 独立 Vulkan + SDR10 | 实际 10 位分配、通道顺序、渐变有效位 |
-| D | 独立 Vulkan + HDR10 | PQ、参考白、近黑与高光、色域、系统实屏 HDR |
-| E | 故障/生命周期 | GPU 崩溃、旋转、前后台、关闭/重建窗口、外接显示器 |
-
-每组核对内核版本；至少 3 次冷启动、20 轮标签开关、5 次受控 GPU 崩溃恢复，
-网页滚动、GLES WebGL、输入框及独立透明弹窗均纳入。对 D 组反复切换 SDR 网页、
-已知 HDR 素材和黑屏测试图，确认网页白底没有变成峰值亮度，停止视频后没有偏色。
-
-精度测试使用 10/16 位源和超过 256 级的渐变/固定像素值，通过测试专用 GPU
-读回或帧捕获核对位序、有效位和裁剪；8 位 PNG/CSS 色块只用于色序与布局检查。
-HDR 素材需记录 P010/10 位解码、输入 primaries/transfer/range、上传格式和
-合成信息，任一环节降为 8 位不能计为“端到端 10 位”。
-
-性能按 120 Hz 的 **8.33 ms** 预算比较 B/C/D：帧间隔 P50/P95/P99、超预算比例、
-实际掉帧、GPU 时间、队列等待、FD/内存增长、温度与功耗。普通帧没有新增 CPU
-像素读回/整帧 blit；启动探测及原有 resize/清理可以同步等待，不计作稳态帧路径。
-
-不通过时保留首次失败前后的完整日志，注明请求模式、实际模式、native/Vk/Skia
-格式、color generation、是否出现首帧日志、是否回到可浏览的 SDR。
+68e8b50 真机报告已确认发生 Vulkan layer 加载阶段 SIGBUS，不能据此判断面板不支持
+10 位。本轮修正 Skia 的扩展误传 layer 参数，并通过构建机旧二进制核对崩溃地址；
+崩溃修复是否有效，以新包实测为准。

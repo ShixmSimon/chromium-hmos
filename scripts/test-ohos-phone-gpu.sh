@@ -15,3 +15,9 @@ timeout 15s "$gpu_tmp/transport-test"
   "$gpu_repo/scripts/tests/ohos-phone-gpu/shared_transport_test.cc" \
   -o "$gpu_tmp/shared-transport-test"
 timeout 15s "$gpu_tmp/shared-transport-test"
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+  -I "$gpu_repo/overlay" \
+  "$gpu_repo/scripts/tests/ohos-phone-gpu/brightness_test.cc" \
+  -o "$gpu_tmp/brightness-test"
+timeout 15s "$gpu_tmp/brightness-test"

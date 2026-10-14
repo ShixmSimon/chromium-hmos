@@ -28,8 +28,9 @@
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
-#include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
+#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
 
 extern "C" int ChromeMain(int argc, const char** argv);
 
@@ -621,18 +622,23 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
           config.vulkan_output_mode == "auto") {
         arguments.push_back("--ohos-vulkan-output=" +
                             config.vulkan_output_mode);
-        if (std::isfinite(config.vulkan_hdr_white_nits) &&
-            std::isfinite(config.vulkan_hdr_peak_nits) &&
-            config.vulkan_hdr_white_nits >= 80 &&
-            config.vulkan_hdr_white_nits <= 500 &&
-            config.vulkan_hdr_peak_nits > config.vulkan_hdr_white_nits &&
-            config.vulkan_hdr_peak_nits <= 10000) {
+        auto brightness = ui::GetOhosDisplayBrightness();
+        auto color = brightness ? brightness->hdr : ui::OhosOutputColor{};
+        const bool fixed = config.vulkan_hdr_white_nits != 0 ||
+                           config.vulkan_hdr_peak_nits != 0;
+        if (fixed) {
+          auto override = ui::MakeOhosDisplayBrightness(
+              0, config.vulkan_hdr_white_nits,
+              config.vulkan_hdr_peak_nits / config.vulkan_hdr_white_nits,
+              config.vulkan_hdr_peak_nits / config.vulkan_hdr_white_nits);
+          color = override ? override->hdr : ui::OhosOutputColor{};
+          arguments.push_back("--ohos-hdr-fixed-luminance");
+        }
+        if (color.mode == ui::OhosOutputMode::kHdr10) {
           arguments.push_back("--ohos-hdr-white-millinits=" +
-                              std::to_string(static_cast<uint32_t>(
-                                  config.vulkan_hdr_white_nits * 1000)));
+                              std::to_string(color.white_millinits));
           arguments.push_back("--ohos-hdr-peak-millinits=" +
-                              std::to_string(static_cast<uint32_t>(
-                                  config.vulkan_hdr_peak_nits * 1000)));
+                              std::to_string(color.peak_millinits));
         }
       }
     } else {

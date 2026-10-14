@@ -3,6 +3,7 @@
 
 #include "ohos_nweb/src/aura_shell/ohos_aura_shell_napi.h"
 
+#include <cmath>
 #include <limits>
 #include <map>
 #include <memory>
@@ -16,18 +17,19 @@
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/no_destructor.h"
-#include "base/strings/string_util.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "base/values.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
-#include "components/ohos_system_service/system_service_ohos.h"
 #include "components/ohos_accessibility/accessibility_provider_ohos.h"
+#include "components/ohos_system_service/system_service_ohos.h"
 #include "device/bluetooth/ohos/bluetooth_bridge_ohos.h"
 #include "ohos_nweb/src/aura_shell/ohos_aura_shell_host.h"
 #include "ohos_nweb/src/aura_shell/ohos_chrome_main_runner.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "services/device/usb/ohos/usb_bridge_ohos.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
+#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 
 namespace ohos_nweb {
 namespace {
@@ -1246,6 +1248,26 @@ HostPtr TakeHost(const std::string& component_id) {
   return node.empty() ? nullptr : std::move(node.mapped());
 }
 
+napi_value UpdateDisplayBrightness(napi_env env, napi_callback_info info) {
+  size_t argc = 4;
+  napi_value args[4] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  double values[4] = {};
+  if (argc != 4)
+    return MakeUndefined(env);
+  for (size_t i = 0; i < 4; ++i) {
+    if (napi_get_value_double(env, args[i], &values[i]) != napi_ok)
+      return MakeUndefined(env);
+  }
+  // Default display IDs from the JS API are exact nonnegative integers.
+  if (!std::isfinite(values[0]) || values[0] < 0 ||
+      values[0] > 9007199254740991.0)
+    return MakeUndefined(env);
+  ui::UpdateOhosDisplayBrightness(ui::MakeOhosDisplayBrightness(
+      static_cast<uint64_t>(values[0]), values[1], values[2], values[3]));
+  return MakeUndefined(env);
+}
+
 napi_value Initialize(napi_env env, napi_callback_info info) {
   size_t argc = 3;
   napi_value args[3] = {nullptr};
@@ -1633,6 +1655,8 @@ napi_value Shutdown(napi_env env, napi_callback_info info) {
 napi_value InitAuraShellNapi(napi_env env, napi_value exports) {
   RegisterNativeXComponentCallbacks(env, exports);
   napi_property_descriptor desc[] = {
+      {"UpdateDisplayBrightness", nullptr, UpdateDisplayBrightness, nullptr,
+       nullptr, nullptr, napi_default, nullptr},
       {"Initialize", nullptr, Initialize, nullptr, nullptr, nullptr,
        napi_default, nullptr},
       {"OnSurfaceCreated", nullptr, OnSurfaceCreated, nullptr, nullptr, nullptr,

@@ -25,9 +25,9 @@ constexpr bool ValidOhosOutputColor(const OhosOutputColor& color) {
   if (color.mode == OhosOutputMode::kSdr8 ||
       color.mode == OhosOutputMode::kSdr10)
     return color.white_millinits == 0 && color.peak_millinits == 0;
-  return color.mode == OhosOutputMode::kHdr10 &&
-         color.white_millinits >= 80000 && color.white_millinits <= 500000 &&
-         color.peak_millinits > color.white_millinits &&
+  return color.mode == OhosOutputMode::kHdr10 && color.white_millinits > 0 &&
+         color.white_millinits <= 10000000 &&
+         color.peak_millinits >= color.white_millinits &&
          color.peak_millinits <= 10000000;
 }
 constexpr uint32_t OhosOutputNativeFormat(const OhosOutputColor& color) {

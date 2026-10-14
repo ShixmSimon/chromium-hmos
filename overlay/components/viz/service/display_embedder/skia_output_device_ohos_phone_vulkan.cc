@@ -323,6 +323,9 @@ SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
   }
   capabilities_.ohos_output_color_spaces =
       ui::MakeOhosOutputColorSpaces(s.color);
+  capabilities_.ohos_dynamic_output_luminance =
+      s.color.mode == ui::OhosOutputMode::kHdr10 &&
+      ui::OhosDynamicOutputLuminance();
   capabilities_.uses_default_gl_framebuffer = false;
   capabilities_.pending_swap_params.max_pending_swaps = 1;
   capabilities_.output_surface_origin = gfx::SurfaceOrigin::kTopLeft;
@@ -364,12 +367,24 @@ SkiaOutputDeviceOhosPhoneVulkan::~SkiaOutputDeviceOhosPhoneVulkan() {
 bool SkiaOutputDeviceOhosPhoneVulkan::Reshape(const ReshapeParams& params) {
   auto& s = *state_;
   CHECK(!s.lease);
+  if (params.ohos_output_color && *params.ohos_output_color != s.color) {
+    const auto color = *params.ohos_output_color;
+    if (!ui::ValidOhosOutputColor(color) || color.mode != s.color.mode)
+      s.ColorFailure("output brightness contract changed");
+    s.color = color;
+    LOG(WARNING) << "OHOS phone Vulkan: HDR luminance updated white_millinits="
+                 << color.white_millinits
+                 << " peak_millinits=" << color.peak_millinits;
+  }
   if (params.image_info.colorType() != s.color_type() ||
       params.color_space.IsHDR() !=
           (s.color.mode == ui::OhosOutputMode::kHdr10)) {
     s.ColorFailure("output color contract changed");
   }
-  s.Clear();
+  // A brightness update changes color conversion/metadata, not the buffer's
+  // dimensions or VkFormat. Preserve imports and avoid a CPU/GPU wait.
+  if (s.info != params.image_info || s.samples != params.sample_count)
+    s.Clear();
   s.info = params.image_info;
   s.samples = params.sample_count;
   return !s.info.isEmpty();

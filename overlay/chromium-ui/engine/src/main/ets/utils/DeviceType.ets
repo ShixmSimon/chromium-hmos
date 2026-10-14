@@ -165,11 +165,12 @@ export interface AuraStartupConfig {
   // ignored otherwise. Phone fork uses shared NativeBuffers (ANGLE stays GLES).
   // Vulkan failure falls back to GL for this app session; cold restart retries.
   skiaBackend?: 'gl' | 'vulkan';
-  // Experimental output target; startup-only, defaults to SDR8. Requires
-  // separate Skia Vulkan. Actual capabilities may force SDR8 fallback.
+  // Startup-only, defaults to auto: separate Skia Vulkan attempts 10-bit,
+  // using HDR10 when the display and system brightness API support it.
+  // A failed high-color target falls back to SDR8 for this app session.
   vulkanOutputMode?: 'sdr8' | 'sdr10' | 'hdr10' | 'auto';
-  // Explicit lab calibration in nits, not detected panel specifications.
-  // HDR stays disabled without valid white (80..500) and peak (>white..10000).
+  // Optional fixed debug overrides. Normally omit both: the engine reads
+  // display.getBrightnessInfo() and follows brightnessInfoChange automatically.
   vulkanHdrWhiteNits?: number;
   vulkanHdrPeakNits?: number;
   // What the app menu's way back to this shell's UI is called. Not sending

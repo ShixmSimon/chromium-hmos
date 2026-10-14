@@ -177,7 +177,7 @@ int main() {
        {ui::OhosOutputColor{ui::OhosOutputMode::kSdr8, 203000, 1000000},
         ui::OhosOutputColor{ui::OhosOutputMode::kSdr10, 0, 1000000},
         ui::OhosOutputColor{ui::OhosOutputMode::kHdr10, 0, 1000000},
-        ui::OhosOutputColor{ui::OhosOutputMode::kHdr10, 203000, 203000},
+        ui::OhosOutputColor{ui::OhosOutputMode::kHdr10, 203000, 202999},
         ui::OhosOutputColor{ui::OhosOutputMode::kHdr10, 203000, UINT32_MAX}}) {
     malformed = ten;
     malformed.color = color;

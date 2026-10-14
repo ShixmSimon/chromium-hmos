@@ -9,11 +9,22 @@
 #include "base/command_line.h"
 #include "base/files/file_util.h"
 #include "base/logging.h"
+#include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/synchronization/lock.h"
 #include "components/viz/common/resources/shared_image_format.h"
 
 namespace ui {
 namespace {
+struct BrightnessState {
+  base::Lock lock;
+  std::optional<OhosDisplayBrightness> value GUARDED_BY(lock);
+  base::RepeatingClosure changed GUARDED_BY(lock);
+};
+BrightnessState& Brightness() {
+  static base::NoDestructor<BrightnessState> state;
+  return *state;
+}
 std::atomic<bool> failed{false};
 base::FilePath FailurePath() {
   auto directory = base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
@@ -23,7 +34,7 @@ base::FilePath FailurePath() {
              : directory.AppendASCII(kOhosOutputColorFailedMarker);
 }
 // Metadata describes the composited output envelope, not an arbitrary video's
-// mastering display. The peak and reference white are explicit lab settings.
+// mastering display. Brightness comes from the system or a debug override.
 OH_NativeBuffer_StaticMetadata OutputMetadata(const OhosOutputColor& color) {
   OH_NativeBuffer_StaticMetadata metadata{};
   metadata.smpte2086.displayPrimaryRed = {0.708f, 0.292f};
@@ -59,6 +70,44 @@ bool SetColor(Target* target,
                        reinterpret_cast<uint8_t*>(&metadata));
 }
 }  // namespace
+void UpdateOhosDisplayBrightness(std::optional<OhosDisplayBrightness> value) {
+  base::RepeatingClosure changed;
+  {
+    base::AutoLock lock(Brightness().lock);
+    if (Brightness().value == value)
+      return;
+    Brightness().value = value;
+    changed = Brightness().changed;
+  }
+  if (value) {
+    LOG(WARNING) << "OHOS brightness: display=" << value->display_id
+                 << " white_nits=" << value->hdr.white_millinits / 1000.0
+                 << " peak_nits=" << value->hdr.peak_millinits / 1000.0
+                 << " max_headroom=" << value->max_headroom;
+  }
+  if (changed)
+    changed.Run();
+}
+std::optional<OhosDisplayBrightness> GetOhosDisplayBrightness() {
+  base::AutoLock lock(Brightness().lock);
+  return Brightness().value;
+}
+void SetOhosDisplayBrightnessChangedCallback(base::RepeatingClosure callback) {
+  base::AutoLock lock(Brightness().lock);
+  Brightness().changed = std::move(callback);
+}
+void ApplyOhosDisplayBrightness(gfx::DisplayColorSpaces& spaces) {
+  if (auto value = GetOhosDisplayBrightness()) {
+    spaces.SetSDRMaxLuminanceNits(value->hdr.white_millinits / 1000.f);
+    spaces.SetHDRMaxLuminanceRelative(
+        static_cast<float>(value->hdr.peak_millinits) /
+        value->hdr.white_millinits);
+  }
+}
+bool OhosDynamicOutputLuminance() {
+  return !base::CommandLine::ForCurrentProcess()->HasSwitch(
+      "ohos-hdr-fixed-luminance");
+}
 bool OhosOutputColorFailed() {
   auto path = FailurePath();
   return failed.load() || (!path.empty() && base::PathExists(path));
@@ -89,8 +138,8 @@ OhosOutputColor GetOhosRequestedOutputColor() {
     return mode == "auto" && !OhosSingleDisplaySupportsHdr10()
                ? OhosOutputColor{OhosOutputMode::kSdr10}
                : hdr;
-  LOG(WARNING) << "OHOS output color: HDR requires explicit valid "
-                  "reference-white/peak lab settings";
+  LOG(WARNING) << "OHOS output color: system HDR brightness unavailable; "
+                  "using SDR output";
   return mode == "auto" ? OhosOutputColor{OhosOutputMode::kSdr10}
                         : OhosOutputColor{};
 }

@@ -33,6 +33,7 @@ source_set("native_window_registry") {
   ]
 
   sources = [
+    "ohos_display_brightness.h",
     "ohos_gpu_child_channel.cc",
     "ohos_gpu_child_channel.h",
     "ohos_native_window_registry.cc",

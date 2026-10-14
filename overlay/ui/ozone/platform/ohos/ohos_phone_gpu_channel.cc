@@ -125,18 +125,22 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
           if (surface && surface->window) {
             const bool probe = p.operation == Op::kColorProbe;
             auto active_color = colors.find(p.widget);
+            const bool no_pending = std::none_of(
+                leases.begin(), leases.end(), [&p](const auto& item) {
+                  return item.second.packet.widget == p.widget;
+                });
             const bool color_valid =
-                probe ? std::none_of(leases.begin(), leases.end(),
-                                     [&p](const auto& item) {
-                                       return item.second.packet.widget ==
-                                              p.widget;
-                                     })
+                probe ? no_pending
                       : (p.color_generation == 0
                              ? active_color == colors.end()
                              : active_color != colors.end() &&
                                    active_color->second.generation ==
                                        p.color_generation &&
-                                   active_color->second.color == p.color &&
+                                   (active_color->second.color == p.color ||
+                                    (no_pending &&
+                                     active_color->second.color.mode ==
+                                         OhosOutputMode::kHdr10 &&
+                                     p.color.mode == OhosOutputMode::kHdr10)) &&
                                    active_color->second.window ==
                                        surface->window);
             const bool hdr_valid =
@@ -165,7 +169,9 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
               reply.lease = p.sequence;
               auto buffer = std::make_unique<phone_gpu::SharedBufferLease>();
               if (buffer->Acquire(surface->window, &response)) {
-                if (probe)
+                // A same-format HDR luminance update is bound to this newly
+                // acquired lease. Prior queued buffers keep their own metadata.
+                if (probe || p.color_generation)
                   colors.insert_or_assign(
                       p.widget, ColorState{p.color, reply.color_generation,
                                            surface->window});
