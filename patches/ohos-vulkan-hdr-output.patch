@@ -1,7 +1,7 @@
 diff --git a/components/viz/service/display/direct_renderer.cc b/components/viz/service/display/direct_renderer.cc
 --- a/components/viz/service/display/direct_renderer.cc
 +++ b/components/viz/service/display/direct_renderer.cc
-@@ -364,6 +364,22 @@
+@@ -364,6 +364,27 @@
    reshape_params.device_scale_factor = device_scale_factor;
    reshape_params.color_space = frame_color_space;
    reshape_params.format = frame_si_format;
@@ -15,6 +15,11 @@ diff --git a/components/viz/service/display/direct_renderer.cc b/components/viz/
 +          display_color_spaces.GetHDRMaxLuminanceRelative());
 +      CHECK(brightness);
 +      color = brightness->hdr;
++      if (output_surface_->capabilities().ohos_content_output_luminance) {
++        color = ui::OhosOutputColorForContent(
++            color, root_render_pass->content_color_usage ==
++                       gfx::ContentColorUsage::kHDR);
++      }
 +    } else if (frame_si_format == SinglePlaneFormat::kRGBA_1010102) {
 +      color.mode = ui::OhosOutputMode::kSdr10;
 +    }
@@ -91,7 +96,7 @@ diff --git a/components/viz/service/display/output_surface.h b/components/viz/se
  #include "ui/gfx/overlay_transform.h"
  #include "ui/gfx/surface_origin.h"
  #include "ui/latency/latency_info.h"
-@@ -81,6 +86,11 @@
+@@ -81,6 +86,13 @@
  #endif
  
    struct Capabilities {
@@ -99,6 +104,8 @@ diff --git a/components/viz/service/display/output_surface.h b/components/viz/se
 +    // Verified for this output, never inferred globally from a panel HDR flag.
 +    std::optional<gfx::DisplayColorSpaces> ohos_output_color_spaces;
 +    bool ohos_dynamic_output_luminance = false;
++    // Phone shared NativeBuffer metadata follows the current frame's range.
++    bool ohos_content_output_luminance = false;
 +#endif
      Capabilities();
      ~Capabilities();

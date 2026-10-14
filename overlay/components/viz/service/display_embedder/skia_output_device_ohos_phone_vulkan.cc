@@ -323,6 +323,7 @@ SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
   }
   capabilities_.ohos_output_color_spaces =
       ui::MakeOhosOutputColorSpaces(s.color);
+  capabilities_.ohos_content_output_luminance = true;
   capabilities_.ohos_dynamic_output_luminance =
       s.color.mode == ui::OhosOutputMode::kHdr10 &&
       ui::OhosDynamicOutputLuminance();

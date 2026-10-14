@@ -21,6 +21,16 @@ struct OhosOutputColor {
     return !(*this == other);
   }
 };
+// The phone's HDR output also carries SDR/WCG frames. Their encoded pixels
+// cannot exceed SDR white: do not advertise unused display headroom as content
+// light levels to the system tone mapper. Keep the display capability snapshot
+// separate so an ensuing HDR frame can use the available range again.
+constexpr OhosOutputColor OhosOutputColorForContent(OhosOutputColor display,
+                                                    bool has_hdr_content) {
+  if (display.mode == OhosOutputMode::kHdr10 && !has_hdr_content)
+    display.peak_millinits = display.white_millinits;
+  return display;
+}
 constexpr bool ValidOhosOutputColor(const OhosOutputColor& color) {
   if (color.mode == OhosOutputMode::kSdr8 ||
       color.mode == OhosOutputMode::kSdr10)
