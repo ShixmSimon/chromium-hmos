@@ -180,6 +180,9 @@ else
   #
   # and retire_incremental_patch backs one out again.
 
+  apply_incremental_patch "${repo_root}/patches/ohos-dawn-instance-diagnostics.patch" \
+    "${src}/third_party/dawn"
+
   # A cached Skia shader that fails to compile clears the cache in place
   # rather than crashing the in-process GPU, and the browser with it.
   apply_incremental_patch "${repo_root}/patches/ohos-cached-shader-no-crash.patch"

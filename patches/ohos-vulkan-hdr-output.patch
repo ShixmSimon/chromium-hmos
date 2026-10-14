@@ -405,15 +405,15 @@ diff --git a/components/viz/service/display_embedder/skia_output_surface_impl.cc
 -      .sample_count = sample_count_,
 -      .device_scale_factor = params.device_scale_factor,
 -      .transform = GetDisplayTransform(),
-+#if BUILDFLAG(IS_OHOS)
-+    .ohos_output_color = params.ohos_output_color,
-+#endif
 +    .image_info = SkImageInfo::Make(size_.width(), size_.height(), color_type_,
 +                                    alpha_type_, sk_color_space_),
 +    .color_space = params.color_space,
 +    .sample_count = sample_count_,
 +    .device_scale_factor = params.device_scale_factor,
 +    .transform = GetDisplayTransform(),
++#if BUILDFLAG(IS_OHOS)
++    .ohos_output_color = params.ohos_output_color,
++#endif
    };
    // impl_on_gpu_ is released on the GPU thread by a posted task from
    // SkiaOutputSurfaceImpl::dtor. So it is safe to use base::Unretained.

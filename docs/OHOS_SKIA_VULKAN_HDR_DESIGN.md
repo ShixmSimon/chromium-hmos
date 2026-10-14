@@ -9,7 +9,7 @@
 SDK `@ohos.display.d.ts` 从 API 22 提供公开接口 `display.getBrightnessInfo(displayId)`
 以及 `display.on/off('brightnessInfoChange', callback)`，查询不要求额外亮度权限。
 引擎 NativeContext 在 Chromium 启动前读取一次，监听后续变化；显示器变化和返回
-前台时重新读取，销毁时注销监听。亮度事件合并约 100 ms 内的最新值。
+前台时重新读取，销毁时注销监听。事件直接更新公共状态，不人为延迟亮度响应。
 
 - `sdrNits` 是系统提供的 SDR 白亮度，作为 Chromium SDR reference white。
 - `currentHeadroom` 用于当前 HDR 输出峰值：`sdrNits × currentHeadroom`。
@@ -64,9 +64,10 @@ extensions，再把支持的 colorspace 扩展加入扩展列表；Skia 显式�
 Vulkan 设备/上下文失败采用既有 GL 回退。全局 SDR fallback 不代表退回单进程。
 新应用会话重新尝试，不在失败时反复升级色彩模式。
 
-68e8b50 真机还报告系统 loader 在加载 layer 的动态链接阶段 SIGBUS。修正 Skia 参数
-不等于已证明该 SIGBUS 根因；构建流程提供按 Build ID 校验的旧二进制符号化，避免
-把不同版本的地址混用。新包必须通过实际日志确认后端和首帧状态。
+68e8b50 真机还报告系统 loader 在加载 layer 的动态链接阶段 SIGBUS。匹配 Build ID 的旧二进制已确认
+崩溃地址是 Dawn VulkanInstance::CreateVkInstance；不是 Skia 的创建函数。具体 layer
+与系统动态链接 SIGBUS 根因仍需完整 maps / layer 日志核对，不能声称已修复。
+构建流程保留按 Build ID 校验的旧二进制符号化。新包通过实际日志确认后端和首帧状态。
 
 ## 范围与验证
 

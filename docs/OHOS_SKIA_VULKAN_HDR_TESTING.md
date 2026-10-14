@@ -36,9 +36,11 @@ config.vulkanOutputMode = 'sdr8';
 ## 日志判断
 
 - `OHOS brightness: display=... white_nits=... peak_nits=... max_headroom=...`：
-  已取得系统亮度。亮度事件合并到最多约 10 次/秒，不逐帧查询系统服务。
+  已取得系统亮度。由系统事件驱动更新，不逐帧查询系统服务。
 - `OHOS Vulkan: creating instance; requested_layers=0 swapchain_colorspace=...`：
   Skia Vulkan 正在初始化。后面的 instance initialized 才表示创建成功。
+- `OHOSVulkan` 标签下的 `Dawn vkCreateInstance begin`、`requested layer`、
+  `available layer`、`succeeded` 区分 WebGPU 创建阶段；可用于定位 layer 加载崩溃。
 - 手机 `OHOS phone Vulkan: negotiated output mode=... native_format=...`，以及
   `OHOS phone Vulkan: active mode=...`：先协商，再确认实际提交。
   mode 0/1/2 分别表示 SDR8/SDR10/HDR10；native_format 12/34 表示 RGBA8/RGB10A2。
@@ -61,5 +63,5 @@ Vulkan 输出模式在窗口初始化时选择，调亮度不会切换 SDR/HDR �
 协商色彩，浏览器全局 CSS HDR 声明仍保守。视频 Vulkan 零拷贝留到此轮输出完成后。
 
 68e8b50 真机报告已确认发生 Vulkan layer 加载阶段 SIGBUS，不能据此判断面板不支持
-10 位。本轮修正 Skia 的扩展误传 layer 参数，并通过构建机旧二进制核对崩溃地址；
+10 位。本轮修正 Skia 的扩展误传 layer 参数，崩溃地址已用匹配 Build ID 的旧二进制确认为 Dawn 的 CreateVkInstance；
 崩溃修复是否有效，以新包实测为准。

@@ -12,24 +12,12 @@ export class DisplayBrightnessBridge {
   private displayId: number = -1;
   private brightnessListening: boolean = false;
   private displayListening: boolean = false;
-  private pending: display.BrightnessInfo | null = null;
-  private timer: number = -1;
   private warned: boolean = false;
   private onBrightness = (id: number, info: display.BrightnessInfo): void => {
     if (id !== this.displayId) {
       return;
     }
-    this.pending = info;
-    if (this.timer < 0) {
-      this.timer = setTimeout(() => {
-        this.timer = -1;
-        const value = this.pending;
-        this.pending = null;
-        if (value) {
-          this.publish(value);
-        }
-      }, 100);
-    }
+    this.publish(info);
   };
   private onDisplay = (_id: number): void => { this.refresh(); };
 
@@ -57,7 +45,6 @@ export class DisplayBrightnessBridge {
   }
 
   refresh(): void {
-    this.cancelPending();
     try {
       this.displayId = display.getDefaultDisplaySync().id;
       this.publish(display.getBrightnessInfo(this.displayId));
@@ -69,7 +56,7 @@ export class DisplayBrightnessBridge {
   }
 
   destroy(): void {
-    this.cancelPending();
+    this.displayId = -1;
     if (this.brightnessListening) {
       try {
         display.off('brightnessInfoChange', this.onBrightness);
@@ -91,14 +78,6 @@ export class DisplayBrightnessBridge {
   private publish(info: display.BrightnessInfo): void {
     this.port.UpdateDisplayBrightness(this.displayId, info.sdrNits,
       info.currentHeadroom, info.maxHeadroom);
-  }
-
-  private cancelPending(): void {
-    if (this.timer >= 0) {
-      clearTimeout(this.timer);
-      this.timer = -1;
-    }
-    this.pending = null;
   }
 
   private warn(error: Object): void {
