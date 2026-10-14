@@ -14,6 +14,7 @@
 #include "base/synchronization/lock.h"
 #include "components/viz/common/resources/shared_image_format.h"
 #include "ui/ozone/platform/ohos/ohos_buffer_color_policy.h"
+#include "ui/ozone/platform/ohos/ohos_buffer_color_space.h"
 
 namespace ui {
 namespace {
@@ -218,7 +219,7 @@ bool SetOhosBufferOutputColor(OH_NativeBuffer* buffer,
                             : OH_COLORSPACE_SRGB_FULL;
   OH_NativeBuffer_ColorSpace actual = OH_COLORSPACE_NONE;
   const int result = OH_NativeBuffer_GetColorSpace(buffer, &actual);
-  if (result || actual != expected) {
+  if (!IsOhosBufferColorReadbackValid(result, expected, actual)) {
     LOG(ERROR) << "OHOS buffer color: step=color-space-readback mode="
                << static_cast<uint32_t>(color.mode)
                << " native_error=" << result << " expected=" << expected

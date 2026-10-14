@@ -103,3 +103,13 @@ FD 生命周期已确认 server cleanup 因 `fstat` 返回 EACCES 而关闭仍�
 只用于诊断。主机注入 EACCES 的真实 fork/dlopen 回归通过，真机修复待验收。
 颜色探测与 SDR8 acquire 的具体失败步骤尚待确认，新增 NativeWindow、parcel、
 颜色读回错误日志，继续保留格式/传输校验和原回退策略。
+
+
+### 2026-10-14：ce4ac7d 等价色彩空间读回
+
+真机 SDR10 / SDR8 失败点已确认为成功读回 DISPLAY_SRGB(25)，被预期
+SRGB_FULL(11) 的严格数值比较误拒绝。按 SDK `native_buffer/buffer_common.h`
+声明，比较前归一化 SRGB_FULL / DISPLAY_SRGB，以及 HDR10 对应的
+BT2020_PQ_FULL / DISPLAY_BT2020_PQ。继续检查 API 返回值，保留不同色域、
+传递函数、范围的拒绝；不跳过颜色校验，不改请求格式和亮度选择。
+此轮实际探测为 mode=1，不能称为 HDR10 已经通过；修复后实际输出由外壳验收。

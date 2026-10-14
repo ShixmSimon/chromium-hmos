@@ -112,3 +112,23 @@ HDR 队列转 SDR 或 GPU 重启时，先退出旧 lease，再通过 `OH_NativeW
 
 本轮 FD 修复仅影响手机实验 fork；新分配诊断只在失败时记录，probe 日志仅在协商时
 记录，不给成功绘制增加逐帧日志。若新包仍 SIGBUS，继续保存完整 native crash。
+
+
+## ce4ac7d 后的等价色彩空间修正
+
+ce4ac7d 真机请求的是 SDR10（mode=1）。NativeBuffer 设置和读取均成功，系统把
+`SRGB_FULL=11` 读回为 `DISPLAY_SRGB=25`；SDK 明确规定二者等价，但旧的数值比较
+使 SDR10 和后续 SDR8 都被拒绝。这不是系统 API 失败，也不是面板位深不支持。
+
+本轮先归一化 SDK 明确规定的输出别名再比较：sRGB 的 11/25，以及 HDR10 的
+`BT2020_PQ_FULL=5` / `DISPLAY_BT2020_PQ=31`。非零 API 返回、不同色域、
+传递函数和范围仍失败。成功路径不增加逐帧日志。
+
+替换新 HAR 后，保持原 separate GPU + Skia Vulkan 配置，正常冷启动一次即可。
+此轮重点检查 `negotiated output mode=1 native_format=34` 与后续 `active mode=1`
+及 Vulkan 首帧；若系统自动选择 mode=2，则按 HDR10 实际格式与首帧验证。
+不再出现 expected=11 / actual=25 的失败，单独这一点还不足以证明最终出帧成功。
+出现新的失败时保存首条 step 日志及相邻上下文；无需重复切换或连续重启旧包。
+
+ce4ac7d 的 FD 跟踪显示原缓存保留且 Dawn 到达 after-vkCreateInstance，未发现新
+SIGBUS。证据包里的 native-crash.log 是 1ef4721 / 12:48:26 的历史文件，不能算新崩溃。

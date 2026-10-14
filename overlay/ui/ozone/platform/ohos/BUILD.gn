@@ -34,6 +34,7 @@ source_set("native_window_registry") {
 
   sources = [
     "ohos_buffer_color_policy.h",
+    "ohos_buffer_color_space.h",
     "ohos_display_brightness.h",
     "ohos_gpu_child_channel.cc",
     "ohos_gpu_child_channel.h",

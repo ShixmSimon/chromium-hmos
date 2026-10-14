@@ -27,3 +27,9 @@ timeout 15s "$gpu_tmp/brightness-test"
   "$gpu_repo/scripts/tests/ohos-phone-gpu/color_policy_test.cc" \
   -o "$gpu_tmp/color-policy-test"
 timeout 15s "$gpu_tmp/color-policy-test"
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+  -I "$gpu_repo/overlay" -I "$gpu_repo/scripts/tests/ohos-phone-gpu/stubs" \
+  "$gpu_repo/scripts/tests/ohos-phone-gpu/color_space_test.cc" \
+  -o "$gpu_tmp/color-space-test"
+timeout 15s "$gpu_tmp/color-space-test"

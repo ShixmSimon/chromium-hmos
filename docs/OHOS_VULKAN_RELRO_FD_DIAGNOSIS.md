@@ -1,8 +1,14 @@
 # 68e8b50 Vulkan layer SIGBUS 与继承 FD
 
-当前状态：**1ef4721 的完整 FD 跟踪已确认：fork server 清理误关 RELRO 缓存。**
-本轮去掉保留规则对 `fstat` 成功的依赖；新回归在注入 EACCES 后通过，旧代码同一
-回归失败。真机是否消除 SIGBUS 仍待新 HAR 验证，不把主机测试等同于真机验收。
+当前状态：**ce4ac7d 真机保留 RELRO FD 成功，Dawn 已通过旧崩溃调用。**
+13:18:06 的应用启动中，FD 19 在清理后及 dawn-before/after-vkCreateInstance 均为
+`relro_cache`，`stat_errno=13`、`keep_relro=1`。未发现新的 SIGBUS；证据包里的完整
+native-crash.log 仍是 1ef4721 / 12:48:26 / PID 15845 的旧崩溃。本轮证据支持 FD
+修复有效，不扩展为长期稳定性结论。
+
+此轮 Vulkan 输出失败另已定位：SDR10 和 SDR8 设置 sRGB 后，系统成功读回 SDK
+定义为等价的 DISPLAY_SRGB（25），被内核预期 SRGB_FULL（11）的数值比较误拒绝。
+当前修正等价别名比较，详见 [测试说明](OHOS_SKIA_VULKAN_HDR_TESTING.md)。
 
 ## 1ef4721 新证据及本轮修正
 
