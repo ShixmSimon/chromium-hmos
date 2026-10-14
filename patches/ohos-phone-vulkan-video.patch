@@ -119,7 +119,16 @@ diff --git a/gpu/command_buffer/common/shared_image_capabilities.h b/gpu/command
 diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc b/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
 --- a/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
 +++ b/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
-@@ -50,6 +50,7 @@
+@@ -12,6 +12,8 @@
+ #include "base/containers/span.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/notimplemented.h"
++#include "base/task/single_thread_task_runner.h"
++#include "base/time/time.h"
+ #include "build/build_config.h"
+ #include "components/viz/common/resources/shared_image_format_utils.h"
+ #include "gpu/command_buffer/common/shared_image_info.h"
+@@ -50,6 +52,7 @@
  #include "third_party/skia/include/gpu/vk/VulkanMutableTextureState.h"
  #include "third_party/skia/include/private/chromium/GrPromiseImageTexture.h"
  #include "ui/gfx/buffer_types.h"
@@ -127,7 +136,76 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  #include "ui/gl/buildflags.h"
  #include "ui/gl/gl_context.h"
  #include "ui/gl/gl_utils.h"
-@@ -651,6 +652,18 @@
+@@ -85,6 +88,22 @@
+ namespace gpu {
+ 
+ namespace {
++
++#if BUILDFLAG(IS_OHOS)
++void PollOhosVideoCleanup(scoped_refptr<SharedContextState> context,
++                          VulkanFenceHelper::FenceHandle fence) {
++  if (context->context_lost())
++    return;
++  auto* helper =
++      context->vk_context_provider()->GetDeviceQueue()->GetFenceHelper();
++  if (helper->HasPassed(fence))
++    return;
++  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
++      FROM_HERE,
++      base::BindOnce(&PollOhosVideoCleanup, std::move(context), fence),
++      base::Milliseconds(4));
++}
++#endif
+ 
+ class ScopedDedicatedMemoryObject {
+  public:
+@@ -379,8 +398,15 @@
+       use_separate_gl_texture_(use_separate_gl_texture),
+       enable_webgpu_on_vk_via_gl_interop_(enable_webgpu_on_vk_via_gl_interop) {
+ #if BUILDFLAG(IS_OZONE)
+-  if (!handle.is_null()) {
+-    // Create a pixmap is there is a valid handle.
++#if BUILDFLAG(IS_OHOS)
++  if (format().PrefersExternalSampler() && image()->native_pixmap()) {
++    // VulkanImage already imported this parcel and owns the decoder lease.
++    // Reuse it instead of importing a second native wrapper for every frame.
++    pixmap_ = image()->native_pixmap();
++  } else
++#endif
++      if (!handle.is_null()) {
++    // Create a pixmap if there is a valid handle.
+     pixmap_ = ui::OzonePlatform::GetInstance()
+                   ->GetSurfaceFactoryOzone()
+                   ->CreateNativePixmapFromHandle(
+@@ -391,6 +417,10 @@
+ }
+ 
+ ExternalVkImageBacking::~ExternalVkImageBacking() {
++#if BUILDFLAG(IS_OHOS)
++  const bool release_decoder_buffer =
++      format().PrefersExternalSampler() && image()->native_pixmap();
++#endif
+   auto semaphores = std::move(read_semaphores_);
+   if (write_semaphore_) {
+     semaphores.emplace_back(std::move(write_semaphore_));
+@@ -406,6 +436,16 @@
+         std::move(vk_texture.vulkan_image));
+   }
+   vk_textures_.clear();
++#if BUILDFLAG(IS_OHOS)
++  if (release_decoder_buffer && !context_state_->context_lost()) {
++    // The decoder's finite queue cannot depend on another compositor frame
++    // to retire imports. Submit a cleanup fence and poll without blocking the
++    // GPU thread, including when every frame was dropped or playback paused.
++    auto fence = fence_helper()->GenerateCleanupFence();
++    if (fence.is_valid())
++      PollOhosVideoCleanup(context_state_, fence);
++  }
++#endif
+ 
+   if (!gl_textures_.empty()) {
+     // Ensure that a context is current before glDeleteTexture().
+@@ -651,6 +691,18 @@
  }
  
  void ExternalVkImageBacking::Update(std::unique_ptr<gfx::GpuFence> in_fence) {

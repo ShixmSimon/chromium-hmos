@@ -380,3 +380,27 @@ HAR 与签名 HAP 内的 `libweb_engine.so` SHA-256 一致：
 白色背景、六级灰阶正常，无 filter/opacity 遮暗；同一 GPU 31585 在
 23:48–23:57 的捕获日志中未重启，未发现 SIGTRAP、包验证失败或 GL/SDR8
 故障回退。手机保持亮屏并停留在该测试页，测试视频已暂停。
+
+
+## 浏览器解码 Surface → 手机 Skia Vulkan（开发中）
+
+`a358dbea` 引入了浏览器 AVCodecKit Surface 缓冲区的跨进程导入，尚未完成
+真机验收，不能把前文 `9418fe70` 的通过记录算作此实现的测试结果。
+
+- 浏览器保持解码器及 Surface 的所有权；GPU 只导入 NV12 / P010 原生缓冲区。
+- 通过 `NativePixmapHandle` 传送有界的 NativeBuffer parcel 和文件描述符。
+  parcel 使用系统内部布局，未知布局拒绝导入，不把内存当成线性像素读写。
+- 生产者 fence 通过 SharedImage 更新传入 Vulkan，P010 位深及 PQ / BT.2020
+  元数据继续保留；没有 GLES 使用权的外部采样纹理由 Raster 转换供 WebGL 使用。
+- 每帧独立的 socket 端点控制解码队列租约，最后一个 GPU 导入对象在 GPU
+  完成后销毁，浏览器才归还原生缓冲区。暂停、丢帧后也主动检查完成 fence。
+- 没有导入能力、功能关闭或 Surface 初始化失败时，初始化阶段仍使用原来的
+  CPU 共享内存路径。播放中导入失败的恢复行为尚待真机验证。
+- 导入代码使用 Khronos `vulkan_ohos.h` 的结构定义；相关契约见
+  [NativeBuffer 内存导入](https://docs.vulkan.org/refpages/latest/refpages/source/VkImportNativeBufferInfoOHOS.html)
+  和 [OHOS 外部格式](https://docs.vulkan.org/refpages/latest/refpages/source/VkExternalFormatOHOS.html)。
+
+已完成：新增解码、导入、共享图像和浏览器服务目标的定向编译；主机端 parcel
+边界、FD 最后持有者释放、手机 GPU 通道回归测试；补丁重复应用和公开树检查。
+完整内核构建及安装、HDR / SDR 像素对照、WebGL 视频纹理、暂停 / 跳转 /
+前后台恢复、长时间掉帧测量尚未完成。

@@ -962,6 +962,8 @@ scoped_refptr<gfx::NativePixmap> ImportOhosVideoNativePixmap(
     gfx::Size size,
     viz::SharedImageFormat format,
     gfx::NativePixmapHandle handle) {
+  if (!handle.ohos_video_release_fd.is_valid())
+    return nullptr;
   auto plain_format = format;
   plain_format.ClearPrefersExternalSampler();
   if (plain_format != viz::MultiPlaneFormat::kNV12 &&

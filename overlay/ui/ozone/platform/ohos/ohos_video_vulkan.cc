@@ -49,6 +49,10 @@ std::unique_ptr<gpu::VulkanImage> ImportOhosVideoVulkan(
     format = viz::MultiPlaneFormat::kNV12;
   else
     return nullptr;
+  const VkFormat expected_format =
+      prefix[8] == NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
+          ? VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16
+          : VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
   format.SetPrefersExternalSampler();
   auto pixmap = ImportOhosVideoNativePixmap(
       size, format, std::move(handle).native_pixmap_handle());
@@ -67,6 +71,13 @@ std::unique_ptr<gpu::VulkanImage> ImportOhosVideoVulkan(
       properties.allocationSize > 128 * 1024 * 1024 ||
       !(native_format.formatFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
     LOG(ERROR) << "OHOS video Vulkan: native properties rejected " << result;
+    return nullptr;
+  }
+  // Check the native allocation's actual precision before handing it to Skia.
+  if (native_format.format != VK_FORMAT_UNDEFINED &&
+      native_format.format != expected_format) {
+    LOG(ERROR) << "OHOS video Vulkan: unexpected native format "
+               << native_format.format << " expected " << expected_format;
     return nullptr;
   }
   // Prefer the concrete multiplanar format. External-only formats require

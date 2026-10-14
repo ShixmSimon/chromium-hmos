@@ -207,8 +207,9 @@ void OhosVideoDecoder::Initialize(const VideoDecoderConfig& config,
                         config_.profile() == VP9PROFILE_PROFILE0 ||
                         config_.profile() == VP9PROFILE_PROFILE2 ||
                         config_.profile() == AV1PROFILE_PROFILE_MAIN;
+  // Protected Vulkan memory/import is not enabled on the phone GPU device.
   if (get_browser_sii_ && base::FeatureList::IsEnabled(kOhosZeroCopyVideo) &&
-      eligible) {
+      eligible && !config_.is_encrypted()) {
     get_browser_sii_.Run(base::BindPostTask(
         task_runner_, base::BindOnce(&OhosVideoDecoder::OnBrowserGpuInitialized,
                                      weak_factory_.GetWeakPtr(), generation_,
