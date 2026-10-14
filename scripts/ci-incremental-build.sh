@@ -257,6 +257,7 @@ else
   rm -rf "$hdr_patch_backup"
   trap - EXIT
   apply_incremental_patch "${repo_root}/patches/ohos-tab-discarding.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-phone-vulkan-shared-images.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-camera-frame-layout.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-camera-lifecycle.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-camera-timeline.patch"

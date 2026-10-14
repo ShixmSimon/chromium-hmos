@@ -57,6 +57,8 @@ git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-vulkan-sdr-output.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-vulkan-hdr-output.patch"
+git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-phone-vulkan-shared-images.patch"
 while read -r deps_path deps_patch; do
   [[ -z "${deps_path}" || "${deps_path}" == \#* ]] && continue
   git -C "${chromium_src}/${deps_path}" apply --binary \

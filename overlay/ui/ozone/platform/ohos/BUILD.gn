@@ -30,6 +30,7 @@ source_set("native_window_registry") {
     # about it. Widened for that one call rather than for the header.
     "//components/viz/service:*",
     "//gpu/ipc/service:*",
+    "//gpu/command_buffer/service:*",
   ]
 
   sources = [
