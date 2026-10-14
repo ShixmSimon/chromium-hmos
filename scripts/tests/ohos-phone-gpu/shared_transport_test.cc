@@ -157,6 +157,26 @@ int main() {
   assert(!p::ValidSharedPacket(ten, 1));  // RGBA8 parcel, not a 10-bit image.
   ten.prefix[8] = 34;
   assert(p::ValidSharedPacket(ten, 1));
+  // Actual phone fullscreen-transition allocation: native optimal layout is
+  // smaller than stride * height, but covers the unpadded RGBA pixels.
+  auto tiled = ten;
+  tiled.width = tiled.prefix[4] = 1617;
+  tiled.height = tiled.prefix[6] = 175;
+  tiled.prefix[5] = 6656;
+  tiled.prefix[7] = 1163264;
+  assert(uint64_t{tiled.prefix[5]} * tiled.height > tiled.prefix[7]);
+  assert(p::ValidSharedPacket(tiled, 1));
+  {
+    RawSend(s[0], tiled, source, 1);
+    p::SharedMessage got;
+    assert(p::ReceiveSharedMessage(s[1], &got, 100));
+    assert(got.packet.prefix == tiled.prefix);
+  }
+  tiled.prefix[7] = tiled.width * tiled.height * 4 - 1;
+  reject(tiled);
+  tiled.prefix[7] = 1163264;
+  tiled.prefix[5] = UINT32_MAX;
+  reject(tiled);
   ten.color = {ui::OhosOutputMode::kHdr10, 203000, 1000000};
   {
     RawSend(s[0], ten, source, 1);

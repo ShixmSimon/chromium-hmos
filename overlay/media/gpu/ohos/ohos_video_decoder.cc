@@ -35,6 +35,7 @@
 #include "media/base/waiting.h"
 #include "media/gpu/ohos/ohos_cenc_info.h"
 #include "media/gpu/ohos/ohos_codec_util.h"
+#include "third_party/libyuv/include/libyuv/convert.h"
 #include "third_party/libyuv/include/libyuv/planar_functions.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/geometry/rect.h"
@@ -791,8 +792,7 @@ scoped_refptr<VideoFrame> OhosVideoDecoder::CopyOutput(
     return nullptr;
   }
 
-  // Copy both formats as bytes, preserving P010's high-bit-aligned samples.
-  // Validate row widths before libyuv (whose width/stride arguments are int).
+  // Validate source row widths before libyuv (whose strides are int).
   const int bytes_per_sample = pixel_format == PIXEL_FORMAT_P010LE ? 2 : 1;
   base::CheckedNumeric<int> y_row_bytes = layout.width;
   y_row_bytes *= bytes_per_sample;
@@ -834,14 +834,28 @@ scoped_refptr<VideoFrame> OhosVideoDecoder::CopyOutput(
     return nullptr;
   }
 
+  const bool is_p010 = pixel_format == PIXEL_FORMAT_P010LE;
+  if (is_p010 &&
+      (layout.stride % sizeof(uint16_t) != 0 ||
+       reinterpret_cast<uintptr_t>(data.data()) % alignof(uint16_t) != 0)) {
+    MEDIA_LOG(ERROR, media_log_) << "Unaligned P010 decoder buffer";
+    return nullptr;
+  }
+
   const gfx::Size visible_size(layout.width, layout.height);
   const gfx::Rect visible_rect = visible_size == config_.coded_size()
                                      ? config_.visible_rect()
                                      : gfx::Rect(visible_size);
-  // NV12/P010 chroma is subsampled 2x2, so the backing store must be even.
+  // CPU P010 is not supported by VideoResourceUpdater's software-frame
+  // upload path. Convert to planar, low-bit-aligned I010 while copying the
+  // decoder output. This preserves all ten bits and the original PQ/HLG
+  // metadata, unlike reducing the frame to NV12 or RGB8.
+  const VideoPixelFormat frame_format =
+      is_p010 ? PIXEL_FORMAT_YUV420P10 : pixel_format;
+  // Both output formats have 2x2 chroma subsampling.
   const gfx::Size coded_size((layout.width + 1) & ~1, (layout.height + 1) & ~1);
   scoped_refptr<VideoFrame> frame = VideoFrame::CreateFrame(
-      pixel_format, coded_size, visible_rect,
+      frame_format, coded_size, visible_rect,
       config_.aspect_ratio().GetNaturalSize(visible_rect),
       base::Microseconds(attr.pts));
   if (!frame) {
@@ -849,14 +863,29 @@ scoped_refptr<VideoFrame> OhosVideoDecoder::CopyOutput(
   }
 
   const auto uv_plane = data.subspan(uv_offset.ValueOrDie());
-  libyuv::CopyPlane(data.data(), layout.stride,
-                    frame->writable_data(VideoFrame::Plane::kY),
-                    static_cast<int>(frame->stride(VideoFrame::Plane::kY)),
-                    y_row_bytes.ValueOrDie(), layout.height);
-  libyuv::CopyPlane(uv_plane.data(), layout.stride,
-                    frame->writable_data(VideoFrame::Plane::kUV),
-                    static_cast<int>(frame->stride(VideoFrame::Plane::kUV)),
-                    uv_row_bytes.ValueOrDie(), static_cast<int>(uv_rows));
+  if (is_p010) {
+    if (libyuv::P010ToI010(
+            reinterpret_cast<const uint16_t*>(data.data()), layout.stride / 2,
+            reinterpret_cast<const uint16_t*>(uv_plane.data()),
+            layout.stride / 2,
+            reinterpret_cast<uint16_t*>(frame->writable_data(VideoFrame::kY)),
+            frame->stride(VideoFrame::kY) / 2,
+            reinterpret_cast<uint16_t*>(frame->writable_data(VideoFrame::kU)),
+            frame->stride(VideoFrame::kU) / 2,
+            reinterpret_cast<uint16_t*>(frame->writable_data(VideoFrame::kV)),
+            frame->stride(VideoFrame::kV) / 2, layout.width, layout.height)) {
+      return nullptr;
+    }
+  } else {
+    libyuv::CopyPlane(data.data(), layout.stride,
+                     frame->writable_data(VideoFrame::Plane::kY),
+                     static_cast<int>(frame->stride(VideoFrame::Plane::kY)),
+                     y_row_bytes.ValueOrDie(), layout.height);
+    libyuv::CopyPlane(uv_plane.data(), layout.stride,
+                     frame->writable_data(VideoFrame::Plane::kUV),
+                     static_cast<int>(frame->stride(VideoFrame::Plane::kUV)),
+                     uv_row_bytes.ValueOrDie(), static_cast<int>(uv_rows));
+  }
 
   const gfx::ColorSpace& color_space = layout.color_space;
   if (color_space.IsValid()) {
@@ -868,7 +897,7 @@ scoped_refptr<VideoFrame> OhosVideoDecoder::CopyOutput(
   if (!buffer_frame_logged_) {
     buffer_frame_logged_ = true;
     LOG(WARNING) << "OHOS video decoder: first buffer frame format="
-                 << VideoPixelFormatToString(pixel_format)
+                 << VideoPixelFormatToString(frame_format)
                  << " color_space=" << color_space.ToString();
   }
   // MojoVideoDecoderService DCHECKs this for every frame it ships.

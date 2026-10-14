@@ -30,6 +30,7 @@
 #include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_transport.h"
 
 namespace viz {
 namespace {
@@ -186,7 +187,9 @@ struct SkiaOutputDeviceOhosPhoneVulkan::State {
         (imported_format != VK_FORMAT_UNDEFINED &&
          imported_format != format.format) ||
         (format.formatFeatures & required) != required ||
-        !properties.allocationSize || !properties.memoryTypeBits)
+        !properties.allocationSize ||
+        properties.allocationSize > ui::phone_gpu::kMaxFrameBytes ||
+        !properties.memoryTypeBits)
       ColorFailure("matching renderable native format");
 
     imported_format = format.format;
