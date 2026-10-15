@@ -110,21 +110,7 @@ diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulka
 diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
 --- a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
 +++ b/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
-@@ -28,10 +28,13 @@
- #include "src/dawn/native/vulkan/SharedTextureMemoryVk.h"
- 
- #include <algorithm>
-+#include <atomic>
- #include <memory>
- #include <optional>
- #include <utility>
- #include <vector>
-+
-+#include "src/utils/log.h"
- 
- #include "dawn/native/wgpu_structs_autogen.h"
- #include "src/dawn/common/Enumerator.h"
-@@ -158,6 +161,49 @@
+@@ -158,6 +158,49 @@
      const void* pNext;
      OH_NativeBuffer* buffer;
  };
@@ -174,7 +160,7 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
  #endif  // defined(__OHOS__)
  
  template <typename... AdditionalChains>
-@@ -815,11 +861,11 @@
+@@ -815,11 +858,11 @@
      return sharedTextureMemory;
  #elif defined(__OHOS__)
      // HarmonyOS: the descriptor's handle is an OH_NativeBuffer, imported
@@ -189,7 +175,7 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
  
      OH_NativeBuffer_Config config = {};
      OH_NativeBuffer_GetConfig(nativeBuffer, &config);
-@@ -853,30 +899,86 @@
+@@ -853,30 +896,69 @@
      DAWN_TRY(CheckVkSuccess(
          device->fn.GetNativeBufferPropertiesOHOS(vkDevice, nativeBuffer, &bufferProperties),
          "vkGetNativeBufferPropertiesOHOS"));
@@ -213,23 +199,6 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
 +    YCbCrVkDescriptor yCbCrInfo{};
 +    uint64_t externalFormat = 0;
 +    if (nativeYuv) {
-+        static std::atomic<uint32_t> loggedFormats{0};
-+        const uint32_t logBit = config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_P010 ? 2u : 1u;
-+        if (!(loggedFormats.fetch_or(logBit, std::memory_order_relaxed) & logBit)) {
-+            const auto& components = formatProperties.samplerYcbcrConversionComponents;
-+            dawn::InfoLog() << "OHOS native YUV properties: native=" << config.format
-+                            << " vk=" << static_cast<int>(vkFormat)
-+                            << " external=" << formatProperties.externalFormat
-+                            << " model=" << static_cast<int>(formatProperties.suggestedYcbcrModel)
-+                            << " range=" << static_cast<int>(formatProperties.suggestedYcbcrRange)
-+                            << " chroma=" << static_cast<int>(formatProperties.suggestedXChromaOffset)
-+                            << "," << static_cast<int>(formatProperties.suggestedYChromaOffset)
-+                            << " components=" << static_cast<int>(components.r)
-+                            << "," << static_cast<int>(components.g)
-+                            << "," << static_cast<int>(components.b)
-+                            << "," << static_cast<int>(components.a)
-+                            << " features=" << formatProperties.formatFeatures;
-+        }
 +        DAWN_INVALID_IF(!device->HasFeature(Feature::OpaqueYCbCrAndroidForExternalTexture),
 +                        "Native YUV import requires opaque YCbCr external textures.");
 +        const VkFormat expected = config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
@@ -294,7 +263,7 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
      sharedTextureMemory->APIGetProperties(&properties);
  
      VkImageUsageFlags vkUsageFlags = VulkanImageUsage(device, properties.usage, *internalFormat);
-@@ -892,70 +994,84 @@
+@@ -892,70 +974,84 @@
          vkCreateFlags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
      }
  

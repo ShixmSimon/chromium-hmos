@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 #include "ui/ozone/platform/ohos/ohos_video_vulkan.h"
+#include <atomic>
 #include <native_buffer/native_buffer.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_ohos.h>
@@ -235,6 +236,24 @@ std::unique_ptr<gpu::VulkanImage> ImportOhosVideoVulkan(
       !(native_format.formatFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
     LOG(ERROR) << "OHOS video Vulkan: native properties rejected " << result;
     return nullptr;
+  }
+  // Dawn's standalone logging sink is not forwarded by the OHOS GPU process.
+  // Record the driver's native-buffer sampling contract through Chromium's
+  // existing process log, once per NV12/P010 format (never once per frame).
+  static std::atomic<uint32_t> logged_formats{0};
+  const uint32_t log_bit = p010 ? 2u : 1u;
+  if (!(logged_formats.fetch_or(log_bit, std::memory_order_relaxed) & log_bit)) {
+    const auto& components = native_format.samplerYcbcrConversionComponents;
+    LOG(WARNING) << "OHOS video Vulkan: YUV sampling properties native="
+                 << config.format << " vk=" << native_format.format
+                 << " external=" << native_format.externalFormat
+                 << " model=" << native_format.suggestedYcbcrModel
+                 << " range=" << native_format.suggestedYcbcrRange
+                 << " chroma=" << native_format.suggestedXChromaOffset << ","
+                 << native_format.suggestedYChromaOffset
+                 << " components=" << components.r << "," << components.g
+                 << "," << components.b << "," << components.a
+                 << " features=" << native_format.formatFeatures;
   }
   // Check the native allocation's actual precision before handing it to Skia.
   if (native_format.format != VK_FORMAT_UNDEFINED &&

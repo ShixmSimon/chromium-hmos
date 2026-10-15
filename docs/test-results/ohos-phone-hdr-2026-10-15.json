@@ -4780,5 +4780,40 @@
     "change": "Before editing a new native file, apply its complete existing patch stack. Added local --review-head to reconstruct HEAD source and print effective source delta instead of reviewing only nested patch text.",
     "evidence": "out/phone-validation-20261015/source-review-after-897.txt",
     "ci_code_changes": false
+  },
+  "runtime_b89346b0": {
+    "ci_run": 38806646311,
+    "installed": true,
+    "package": {
+      "run": "38806646311",
+      "source": "b89346b0",
+      "har_sha256": "df64eb2dbf0b0062bb49997c25732fc93fa10e1edcdcd1a42311a92ca628a2fb",
+      "engine_sha256": "8087a2d7fe797043142c9514d2a601974ca05b339cea2f614f66ec7808c34346",
+      "hap_sha256": "6dfae72eb92cd75db2eefd6c5ae45949f47e4fb7829ab85d89045c53d70eaf97",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-b89346b0/phone-b89346b0-signed.hap"
+    },
+    "coldstart_compute_render_buffer_stress": "PASS; also PASS after recovery",
+    "single_frame_color_gates": {
+      "passed": 0,
+      "total": 3,
+      "native_imports": "All NV12/P010 SDR/PQ fixtures imported natively; GPU stable for these three isolated captures",
+      "failure": "NV12/P010 fixed-Y varying-UV stripes collapse to identical green values; PQ gray is green. Color correctness NOT achieved.",
+      "evidence": "b893-native-color-gates.json"
+    },
+    "synchronization_stress": {
+      "result": "FAIL",
+      "imports": 788,
+      "zero_copy_imports": 788,
+      "samples": 2,
+      "finding": "Invalid texture errors during alternating HTMLVideoElement/VideoFrame imports; at cleanup EndAccess status=2 with layouts=0 and no fences, followed by context loss/GPU exit34",
+      "evidence": [
+        "b893-short-native-sync.json",
+        "device-b893.log"
+      ],
+      "limitation": "The single-frame release regression is no longer reproduced, but sustained shared-access lifetime is NOT fixed. Added post-cleanup GPU stability check to local harness."
+    },
+    "diagnostics": "Dawn InfoLog was absent from phone hilog; move bounded per-format native-buffer properties into Chromium GPU logging path",
+    "full_goal_complete": false,
+    "ci_code_modified": false
   }
 }
