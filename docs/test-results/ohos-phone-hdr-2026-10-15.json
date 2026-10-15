@@ -1444,5 +1444,143 @@
     "new_diagnostics_commit": "031913d",
     "mapped_memory_root_cause": "not yet proven; client mapping/allocation trace added",
     "acceptance": "FAILED"
+  },
+  "runtime_8d7f8877": {
+    "native_sha256": "e86d6e1c9ec41d569d0cf068700ce33213887134a386923614371b8790f22b4a",
+    "constraints": {
+      "ci_code_changes": "prohibited",
+      "native_build": "push-triggered existing CI only",
+      "phone_audio": "muted; media volume zero; generated soak fixture has no audio track"
+    },
+    "video_smoke": [
+      {
+        "clip": "bear-hdr10.mp4",
+        "state": {
+          "wall": 1792081373878,
+          "time": 2.219208,
+          "duration": 2.74,
+          "total": 235,
+          "dropped": 19,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        },
+        "unique_colors": 526,
+        "non_uniform": true
+      },
+      {
+        "clip": "sdr-1080p60.mp4",
+        "state": {
+          "wall": 1792081383995,
+          "time": 7.96662,
+          "duration": 20,
+          "total": 482,
+          "dropped": 22,
+          "width": 1920,
+          "height": 1080,
+          "ready": 4,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        },
+        "unique_colors": 66,
+        "non_uniform": true
+      },
+      {
+        "clip": "pq-1080p60.mp4",
+        "state": {
+          "wall": 1792081394103,
+          "time": 7.679491,
+          "duration": 20,
+          "total": 465,
+          "dropped": 52,
+          "width": 1920,
+          "height": 1080,
+          "ready": 4,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        },
+        "unique_colors": 59,
+        "non_uniform": true
+      },
+      {
+        "clip": "pq-1440p60.mp4",
+        "state": {
+          "wall": 1792081404304,
+          "time": 7.79137,
+          "duration": 20,
+          "total": 472,
+          "dropped": 44,
+          "width": 2560,
+          "height": 1440,
+          "ready": 4,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        },
+        "unique_colors": 42,
+        "non_uniform": true
+      },
+      {
+        "clip": "pq-2160p30.mp4",
+        "state": {
+          "wall": 1792081414724,
+          "time": 8.043456,
+          "duration": 20,
+          "total": 245,
+          "dropped": 1,
+          "width": 3840,
+          "height": 2160,
+          "ready": 4,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        },
+        "unique_colors": 36,
+        "non_uniform": true
+      },
+      {
+        "clip": "h264-sdr.mp4",
+        "state": {
+          "wall": 1792081424907,
+          "time": 8.075105,
+          "duration": 20,
+          "total": 247,
+          "dropped": 1,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        },
+        "unique_colors": 100,
+        "non_uniform": true
+      }
+    ],
+    "video_smoke_scope": "Six 8-second probes reject solid green/black output only. Not colorimetric correctness or sustained-playback acceptance. 10-minute Main10 PQ 1440p60 soak running; no result asserted yet.",
+    "mapped_memory": {
+      "allocation_bytes": 65536,
+      "failure": "gin ArrayBufferSharedMemoryMapper -> V8 sandbox AllocateSharedPages returns zero",
+      "errno_observed": 11,
+      "errno_caveat": "May be stale; not proof of OS mmap failure or memory exhaustion. Added follow-up tracing with cleared errno, sandbox geometry and immediate map/unmap of the same fd outside sandbox. Probe memory is never exposed to V8.",
+      "adapter_attempts": 4,
+      "adapter_successes": 0
+    },
+    "offscreen_sharing": {
+      "920e95f4": "RGBA WebGPU canvas access still fails: OzoneImageBackingFactory was not registered when phone supports_native_pixmaps=false.",
+      "e2e25d3": "Explicit factory registration pushed; runtime validation pending. Existing CI native compile succeeded but later benchmark license download timed out; rerun requested without editing CI."
+    },
+    "acceptance": "FAILED: WebGPU buffer mapping and native video external-texture path remain incomplete."
   }
 }

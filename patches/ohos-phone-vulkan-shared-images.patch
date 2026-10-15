@@ -357,24 +357,47 @@ diff --git a/gin/array_buffer.cc b/gin/array_buffer.cc
  #include <stddef.h>
  #include <stdlib.h>
  
-@@ -12,6 +13,7 @@
+@@ -11,6 +12,7 @@
+ #include "base/check_op.h"
  #include "base/compiler_specific.h"
  #include "base/no_destructor.h"
- #include "build/build_config.h"
 +#include "base/trace_event/trace_event.h"
+ #include "build/build_config.h"
  #include "gin/per_isolate_data.h"
  #include "partition_alloc/page_allocator.h"
- #include "partition_alloc/partition_alloc.h"
-@@ -205,8 +207,14 @@
+@@ -203,10 +205,37 @@
+     v8::PagePermissions permissions = write_allowed
+                                           ? v8::PagePermissions::kReadWrite
                                            : v8::PagePermissions::kRead;
++#if BUILDFLAG(IS_OHOS)
++    // Clear stale errno so allocator rejection is distinguishable from mmap.
++    errno = 0;
++#endif
      uintptr_t mapping = v8::V8::GetSandboxAddressSpace()->AllocateSharedPages(
          0, mapping_size, permissions, v8_handle, offset);
 -    if (!mapping)
 +    if (!mapping) {
 +#if BUILDFLAG(IS_OHOS)
++      const int sandbox_errno = errno;
++      // Diagnostic only: test this same fd outside the V8 reservation, then
++      // immediately unmap it. Never expose an out-of-sandbox ArrayBuffer.
++      errno = 0;
++      void* probe = mmap(nullptr, mapping_size,
++                         PROT_READ | (write_allowed ? PROT_WRITE : 0),
++                         MAP_SHARED, handle.fd, offset);
++      const int probe_errno = probe == MAP_FAILED ? errno : 0;
++      const bool probe_ok = probe != MAP_FAILED;
++      if (probe_ok) {
++        CHECK_EQ(0, munmap(probe, mapping_size));
++      }
 +      TRACE_EVENT_INSTANT("gpu", "OHOS.ArrayBufferSharedMemoryMapFailed",
 +                         "size", mapping_size, "offset", offset,
-+                         "write_allowed", write_allowed, "errno", errno);
++                         "write_allowed", write_allowed, "errno", sandbox_errno,
++                         "sandbox_base", address_space->base(),
++                         "sandbox_size", address_space->size(),
++                         "subspaces", address_space->CanAllocateSubspaces(),
++                         "plain_mmap_ok", probe_ok, "plain_mmap_errno", probe_errno);
++      errno = sandbox_errno;
 +#endif
        return std::nullopt;
 +    }
