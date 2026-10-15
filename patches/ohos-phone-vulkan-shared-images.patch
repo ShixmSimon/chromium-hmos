@@ -296,7 +296,38 @@ diff --git a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representa
    if (!ozone_backing()->BeginAccess(is_readonly_,
                                      OzoneImageBacking::AccessStream::kWebGPU,
                                      &fences, need_end_fence)) {
-@@ -125,9 +131,16 @@
+@@ -120,14 +126,47 @@
+   }
+   DCHECK(need_end_fence || is_readonly_);
+ 
++#if BUILDFLAG(IS_OHOS)
++  auto restore_begin_fences = [&]() {
++    gfx::GpuFenceHandle recovery_fence;
++    for (auto& pending : fences) {
++      if (pending.is_null())
++        continue;
++      if (recovery_fence.is_null()) {
++        recovery_fence = std::move(pending);
++        continue;
++      }
++      base::ScopedFD merged(
++          sync_merge("ohos-dawn-recover", recovery_fence.Peek(), pending.Peek()));
++      if (!merged.is_valid()) {
++        // Keep the backing locked rather than let a later access omit a
++        // producer dependency. Teardown can still reclaim the allocation.
++        LOG(ERROR) << "Failed to preserve OHOS shared image producer fences";
++        return;
++      }
++      recovery_fence.Adopt(std::move(merged));
++    }
++    ozone_backing()->EndAccess(is_readonly_,
++                              OzoneImageBacking::AccessStream::kWebGPU,
++                              std::move(recovery_fence));
++  };
++#endif
++
+   wgpu::SharedTextureMemoryBeginAccessDescriptor begin_access_desc = {};
+   begin_access_desc.initialized = IsCleared();
  
    wgpu::SharedTextureMemoryVkImageLayoutBeginState begin_layout{};
  
@@ -313,39 +344,31 @@ diff --git a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representa
    begin_access_desc.nextInChain = &begin_layout;
  
    // If the semaphore from BeginWrite is valid then pass it to
-@@ -184,9 +197,32 @@
+@@ -184,9 +223,7 @@
    native_buffer_desc.handle = ui::GetOhosNativeBuffer(*pixmap_);
    if (!native_buffer_desc.handle) {
      LOG(ERROR) << "No OH_NativeBuffer behind this pixmap.";
+-    ozone_backing()->EndAccess(
+-        is_readonly_, OzoneImageBacking::AccessStream::kWebGPU,
+-        fences.empty() ? gfx::GpuFenceHandle() : std::move(fences[0]));
++    restore_begin_fences();
+     return nullptr;
+   }
+   wgpu::SharedTextureMemoryDescriptor desc;
+@@ -234,9 +271,13 @@
+     LOG(ERROR) << "Failed to begin access for shared image.";
+     // End the access on the backing and restore its fence, as Dawn did not
+     // consume it.
 +#if BUILDFLAG(IS_OHOS)
-+    gfx::GpuFenceHandle recovery_fence;
-+    for (auto& pending : fences) {
-+      if (recovery_fence.is_null()) {
-+        recovery_fence = std::move(pending);
-+        continue;
-+      }
-+      base::ScopedFD merged(
-+          sync_merge("ohos-dawn-recover", recovery_fence.Peek(), pending.Peek()));
-+      if (!merged.is_valid()) {
-+        // Keep the backing locked rather than permit reuse before an omitted
-+        // producer fence completes. Device/backing teardown can reclaim it.
-+        LOG(ERROR) << "Failed to preserve OHOS shared image producer fences";
-+        texture_ = nullptr;
-+        return nullptr;
-+      }
-+      recovery_fence.Adopt(std::move(merged));
-+    }
-+    ozone_backing()->EndAccess(is_readonly_,
-+                              OzoneImageBacking::AccessStream::kWebGPU,
-+                              std::move(recovery_fence));
++    restore_begin_fences();
 +#else
      ozone_backing()->EndAccess(
          is_readonly_, OzoneImageBacking::AccessStream::kWebGPU,
          fences.empty() ? gfx::GpuFenceHandle() : std::move(fences[0]));
 +#endif
-     return nullptr;
-   }
-   wgpu::SharedTextureMemoryDescriptor desc;
+ 
+     // Set `texture_` to nullptr to signal failure to BeginScopedAccess(),
+     // which will itself then return nullptr to signal failure to the client.
 diff --git a/gin/array_buffer.cc b/gin/array_buffer.cc
 --- a/gin/array_buffer.cc
 +++ b/gin/array_buffer.cc
