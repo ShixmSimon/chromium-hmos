@@ -1,0 +1,853 @@
+{
+  "date_utc": "2026-10-15T14:31:14.929144+00:00",
+  "device": {
+    "target": "192.168.8.143:12345",
+    "model": "PLA-AL10",
+    "gpu": "Maleoon 920"
+  },
+  "build": {
+    "native_ci_commit": "4d7bb521",
+    "lumie_base": "11aae23",
+    "native_sha256": "b841209d216f7dca2b56581284113527d1780222caacaeecb449ee4e78325003",
+    "backend": "GaneshVulkan",
+    "phone_fork": true
+  },
+  "overall": "FAILED: native hardware video IPC disconnects; Main10 cannot play and cannot enter sustained-play acceptance",
+  "main10": {
+    "status": "failed",
+    "cases": [
+      {
+        "clip": "bear-hdr10.mp4",
+        "start": 1792074164609,
+        "init": {
+          "error": "The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22",
+          "state": {
+            "wall": 1792074164771,
+            "time": 0,
+            "duration": 2.74,
+            "total": 0,
+            "dropped": 0,
+            "width": 1280,
+            "height": 720,
+            "ready": 1,
+            "paused": true,
+            "visible": "visible",
+            "fullscreen": false,
+            "error": "PipelineStatus::PIPELINE_ERROR_DISCONNECTED"
+          }
+        },
+        "state": {
+          "wall": 1792074168786,
+          "time": 0,
+          "duration": 2.74,
+          "total": 0,
+          "dropped": 0,
+          "width": 1280,
+          "height": 720,
+          "ready": 1,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": "PipelineStatus::PIPELINE_ERROR_DISCONNECTED"
+        }
+      },
+      {
+        "clip": "sdr-1080p60.mp4",
+        "start": 1792074168901,
+        "init": {
+          "error": "The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22",
+          "state": {
+            "wall": 1792074169055,
+            "time": 0,
+            "duration": 20,
+            "total": 0,
+            "dropped": 0,
+            "width": 1920,
+            "height": 1080,
+            "ready": 1,
+            "paused": true,
+            "visible": "visible",
+            "fullscreen": false,
+            "error": "PipelineStatus::PIPELINE_ERROR_DISCONNECTED"
+          }
+        },
+        "state": {
+          "wall": 1792074173180,
+          "time": 0,
+          "duration": 20,
+          "total": 0,
+          "dropped": 0,
+          "width": 1920,
+          "height": 1080,
+          "ready": 1,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": "PipelineStatus::PIPELINE_ERROR_DISCONNECTED"
+        }
+      },
+      {
+        "clip": "pq-1080p60.mp4",
+        "start": 1792074173298,
+        "init": {
+          "error": "The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22",
+          "state": {
+            "wall": 1792074173389,
+            "time": 0,
+            "duration": 20,
+            "total": 0,
+            "dropped": 0,
+            "width": 1920,
+            "height": 1080,
+            "ready": 1,
+            "paused": true,
+            "visible": "visible",
+            "fullscreen": false,
+            "error": "PipelineStatus::PIPELINE_ERROR_DISCONNECTED"
+          }
+        },
+        "state": {
+          "wall": 1792074177407,
+          "time": 0,
+          "duration": 20,
+          "total": 0,
+          "dropped": 0,
+          "width": 1920,
+          "height": 1080,
+          "ready": 1,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": "PipelineStatus::PIPELINE_ERROR_DISCONNECTED"
+        }
+      },
+      {
+        "clip": "pq-1440p60.mp4",
+        "start": 1792074177525,
+        "init": {
+          "error": "The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22",
+          "state": {
+            "wall": 1792074177727,
+            "time": 0,
+            "duration": 20,
+            "total": 0,
+            "dropped": 0,
+            "width": 2560,
+            "height": 1440,
+            "ready": 1,
+            "paused": true,
+            "visible": "visible",
+            "fullscreen": false,
+            "error": "PipelineStatus::PIPELINE_ERROR_DISCONNECTED"
+          }
+        },
+        "state": {
+          "wall": 1792074181746,
+          "time": 0,
+          "duration": 20,
+          "total": 0,
+          "dropped": 0,
+          "width": 2560,
+          "height": 1440,
+          "ready": 1,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": "PipelineStatus::PIPELINE_ERROR_DISCONNECTED"
+        }
+      },
+      {
+        "clip": "pq-2160p30.mp4",
+        "start": 1792074181863,
+        "init": {
+          "error": "The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22",
+          "state": {
+            "wall": 1792074182178,
+            "time": 0,
+            "duration": 20,
+            "total": 0,
+            "dropped": 0,
+            "width": 3840,
+            "height": 2160,
+            "ready": 1,
+            "paused": true,
+            "visible": "visible",
+            "fullscreen": false,
+            "error": "PipelineStatus::PIPELINE_ERROR_DISCONNECTED"
+          }
+        },
+        "state": {
+          "wall": 1792074186300,
+          "time": 0,
+          "duration": 20,
+          "total": 0,
+          "dropped": 0,
+          "width": 3840,
+          "height": 2160,
+          "ready": 1,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": "PipelineStatus::PIPELINE_ERROR_DISCONNECTED"
+        }
+      }
+    ],
+    "decoder": "OMX.hisi.video.decoder.hevc",
+    "native_output": "Surface / PIXEL_FORMAT_P010LE",
+    "cpu_output_copies_log": 0,
+    "end_to_end_zero_copy_verified": false,
+    "failure": "PipelineStatus::PIPELINE_ERROR_DISCONNECTED before any displayed frame; initial hardware decode fallback is reported"
+  },
+  "h264": {
+    "status": "hardware path failed, software fallback playable",
+    "decoder_after_fallback": "FFmpegVideoDecoder",
+    "native_zero_copy_acceptance": false
+  },
+  "protocol_mismatch": {
+    "confidence": "source-confirmed mismatch consistent with all observed hardware failures; device confirmation of a fix still required",
+    "producer": "patches/ohos-phone-vulkan-video.patch: ComputeTextureTargetForSharedImage returns 0 for OHOS external-sampler images without GLES2 usage; constructor/import checks explicitly allow this",
+    "consumer": "gpu/ipc/common/exported_shared_image_mojom_traits.h: Read rejects texture_target_ == 0 for every non-Fuchsia platform",
+    "decoder_usage": "DISPLAY_READ | RASTER_READ, external-sampler NativePixmap",
+    "effect": "Valid OHOS Vulkan video SharedImage is rejected during IPC deserialization; H264 can fall back to software, HEVC Main10 cannot",
+    "next_fix": "Align the Mojo validation with the narrowly scoped OHOS Vulkan-only image contract, retain rejection of invalid GL images, add round-trip regression coverage, then push to CI and rerun device acceptance"
+  },
+  "hdr_sdr": {
+    "status": "output mode and SDR recovery checks passed via VP9 software HDR control; not HEVC HDR acceptance",
+    "vp9_hdr_native_mode": 2,
+    "hdr_native_format": 34,
+    "sdr_native_mode": 1,
+    "three_mode_switches": [
+      {
+        "cycle": 1,
+        "stage": "hdr",
+        "state": {
+          "wall": 1792074577183,
+          "time": 0.237564,
+          "duration": 2.736,
+          "total": 94,
+          "dropped": 3,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "cycle": 1,
+        "stage": "sdr",
+        "state": {
+          "wall": 1792074579231,
+          "time": 0,
+          "duration": null,
+          "total": 0,
+          "dropped": 0,
+          "width": 0,
+          "height": 0,
+          "ready": 0,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "cycle": 2,
+        "stage": "hdr",
+        "state": {
+          "wall": 1792074582381,
+          "time": 0.287381,
+          "duration": 2.736,
+          "total": 96,
+          "dropped": 1,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "cycle": 2,
+        "stage": "sdr",
+        "state": {
+          "wall": 1792074584424,
+          "time": 0,
+          "duration": null,
+          "total": 0,
+          "dropped": 0,
+          "width": 0,
+          "height": 0,
+          "ready": 0,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "cycle": 3,
+        "stage": "hdr",
+        "state": {
+          "wall": 1792074587596,
+          "time": 0.302857,
+          "duration": 2.736,
+          "total": 96,
+          "dropped": 0,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "cycle": 3,
+        "stage": "sdr",
+        "state": {
+          "wall": 1792074589675,
+          "time": 0,
+          "duration": null,
+          "total": 0,
+          "dropped": 0,
+          "width": 0,
+          "height": 0,
+          "ready": 0,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      }
+    ],
+    "three_background_cycles": [
+      {
+        "cycle": 1,
+        "wall": 1792074514981,
+        "backgroundOsState": "BACKGROUND",
+        "sample": {
+          "wall": 1792074514329,
+          "time": 0,
+          "duration": null,
+          "total": 0,
+          "dropped": 0,
+          "width": 0,
+          "height": 0,
+          "ready": 0,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        },
+        "background": "rgb(255, 255, 255)",
+        "filter": "none",
+        "opacity": "1",
+        "p3": {
+          "alpha": true,
+          "colorSpace": "display-p3",
+          "colorType": "unorm8",
+          "desynchronized": false,
+          "toneMapping": {
+            "mode": "standard"
+          },
+          "willReadFrequently": false
+        }
+      },
+      {
+        "cycle": 2,
+        "wall": 1792074524774,
+        "backgroundOsState": "BACKGROUND",
+        "sample": {
+          "wall": 1792074524055,
+          "time": 0,
+          "duration": null,
+          "total": 0,
+          "dropped": 0,
+          "width": 0,
+          "height": 0,
+          "ready": 0,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        },
+        "background": "rgb(255, 255, 255)",
+        "filter": "none",
+        "opacity": "1",
+        "p3": {
+          "alpha": true,
+          "colorSpace": "display-p3",
+          "colorType": "unorm8",
+          "desynchronized": false,
+          "toneMapping": {
+            "mode": "standard"
+          },
+          "willReadFrequently": false
+        }
+      },
+      {
+        "cycle": 3,
+        "wall": 1792074534647,
+        "backgroundOsState": "BACKGROUND",
+        "sample": {
+          "wall": 1792074533953,
+          "time": 0,
+          "duration": null,
+          "total": 0,
+          "dropped": 0,
+          "width": 0,
+          "height": 0,
+          "ready": 0,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        },
+        "background": "rgb(255, 255, 255)",
+        "filter": "none",
+        "opacity": "1",
+        "p3": {
+          "alpha": true,
+          "colorSpace": "display-p3",
+          "colorType": "unorm8",
+          "desynchronized": false,
+          "toneMapping": {
+            "mode": "standard"
+          },
+          "willReadFrequently": false
+        }
+      }
+    ],
+    "screenshot_gray_values": [
+      {
+        "file": "sdr-before-background.jpeg",
+        "y": 850,
+        "x": [
+          109,
+          329,
+          548,
+          767,
+          987,
+          1206
+        ],
+        "rgb": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            32,
+            32,
+            32
+          ],
+          [
+            64,
+            64,
+            64
+          ],
+          [
+            128,
+            128,
+            128
+          ],
+          [
+            192,
+            192,
+            192
+          ],
+          [
+            255,
+            255,
+            255
+          ]
+        ]
+      },
+      {
+        "file": "sdr-resume-1.jpeg",
+        "y": 850,
+        "x": [
+          109,
+          329,
+          548,
+          767,
+          987,
+          1206
+        ],
+        "rgb": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            32,
+            32,
+            32
+          ],
+          [
+            64,
+            64,
+            64
+          ],
+          [
+            128,
+            128,
+            128
+          ],
+          [
+            192,
+            192,
+            192
+          ],
+          [
+            255,
+            255,
+            255
+          ]
+        ]
+      },
+      {
+        "file": "sdr-resume-2.jpeg",
+        "y": 850,
+        "x": [
+          109,
+          329,
+          548,
+          767,
+          987,
+          1206
+        ],
+        "rgb": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            32,
+            32,
+            32
+          ],
+          [
+            64,
+            64,
+            64
+          ],
+          [
+            128,
+            128,
+            128
+          ],
+          [
+            192,
+            192,
+            192
+          ],
+          [
+            255,
+            255,
+            255
+          ]
+        ]
+      },
+      {
+        "file": "sdr-resume-3.jpeg",
+        "y": 850,
+        "x": [
+          109,
+          329,
+          548,
+          767,
+          987,
+          1206
+        ],
+        "rgb": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            32,
+            32,
+            32
+          ],
+          [
+            64,
+            64,
+            64
+          ],
+          [
+            128,
+            128,
+            128
+          ],
+          [
+            192,
+            192,
+            192
+          ],
+          [
+            255,
+            255,
+            255
+          ]
+        ]
+      }
+    ],
+    "graphics_readback": {
+      "wall": 1792074271972,
+      "sample": "VP9 Profile 2 PQ 720p",
+      "canvas": [
+        64,
+        128,
+        191,
+        255
+      ],
+      "webgl": [
+        64,
+        128,
+        191,
+        255
+      ],
+      "clearError": 0,
+      "uploadError": 0,
+      "framebufferStatus": 36053,
+      "videoPixel": [
+        127,
+        126,
+        104,
+        255
+      ],
+      "videoError": 0,
+      "contextLost": false
+    },
+    "lifecycle_control": [
+      {
+        "stage": "hdr-paused",
+        "wall": 1792074398287,
+        "state": {
+          "wall": 1792074398219,
+          "time": 1.709532,
+          "duration": 2.736,
+          "total": 6124,
+          "dropped": 151,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "stage": "hdr-resumed-after-11s",
+        "wall": 1792074412327,
+        "state": {
+          "wall": 1792074412273,
+          "time": 1.913649,
+          "duration": 2.736,
+          "total": 6213,
+          "dropped": 151,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "stage": "hdr-seek",
+        "wall": 1792074413362,
+        "state": {
+          "wall": 1792074413412,
+          "time": 2.161609,
+          "duration": 2.736,
+          "total": 6283,
+          "dropped": 152,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "stage": "hdr-fullscreen-request",
+        "wall": 1792074413547,
+        "state": {
+          "wall": 1792074413508,
+          "time": 2.257134,
+          "duration": 2.736,
+          "total": 6285,
+          "dropped": 153,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": true,
+          "error": null
+        }
+      },
+      {
+        "stage": "hdr-fullscreen-after-3s",
+        "wall": 1792074416590,
+        "state": {
+          "wall": 1792074416596,
+          "time": 2.580052,
+          "duration": 2.736,
+          "total": 6377,
+          "dropped": 156,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": true,
+          "error": null
+        }
+      },
+      {
+        "stage": "hdr-background",
+        "wall": 1792074420252,
+        "state": {
+          "wall": 1792074420287,
+          "time": 0.697018,
+          "duration": 2.736,
+          "total": 6485,
+          "dropped": 159,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "stage": "hdr-foreground",
+        "wall": 1792074423686,
+        "state": {
+          "wall": 1792074423654,
+          "time": 1.22933,
+          "duration": 2.736,
+          "total": 6582,
+          "dropped": 165,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "stage": "hdr-foreground-play",
+        "wall": 1792074425777,
+        "state": {
+          "wall": 1792074425803,
+          "time": 0.540662,
+          "duration": 2.736,
+          "total": 6644,
+          "dropped": 166,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "stage": "sdr-after-hdr",
+        "wall": 1792074428895,
+        "state": {
+          "wall": 1792074428869,
+          "time": 0,
+          "duration": null,
+          "total": 0,
+          "dropped": 0,
+          "width": 0,
+          "height": 0,
+          "ready": 0,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      }
+    ]
+  },
+  "performance": {
+    "h264-baseline": {
+      "decoder": "FFmpegVideoDecoder (software fallback)",
+      "wall_seconds": 180.955,
+      "frames": 5392,
+      "dropped": 6,
+      "drop_percent": 0.1113,
+      "gpu_pids": [
+        61124
+      ],
+      "looping_short_clip": true
+    },
+    "vp9-hdr-baseline": {
+      "decoder": "VpxVideoDecoder (software)",
+      "wall_seconds": 181.115,
+      "frames": 5231,
+      "dropped": 129,
+      "drop_percent": 2.4661,
+      "gpu_pids": [
+        61124
+      ],
+      "looping_short_clip": true
+    }
+  },
+  "memory": {
+    "60175": {
+      "rss_kib_min": 372372,
+      "rss_kib_max": 382444,
+      "rss_kib_start": 375272,
+      "rss_kib_end": 372372
+    },
+    "61124": {
+      "rss_kib_min": 209212,
+      "rss_kib_max": 221696,
+      "rss_kib_start": 218320,
+      "rss_kib_end": 220572
+    },
+    "35030": {
+      "rss_kib_min": 182812,
+      "rss_kib_max": 182812,
+      "rss_kib_start": 182812,
+      "rss_kib_end": 182812
+    }
+  },
+  "gpu_process_crash_count": 0,
+  "artifacts": "out/phone-validation-20261015/",
+  "limitations": [
+    "Main10 first-frame pixels, retained-frame lifetime, WebGL video texture, seek, pause/resume, fullscreen and sustained playback cannot be accepted because its first frame disconnects.",
+    "H264 and VP9 measurements are 3-minute short-clip loop tests, not hour-long stability validation. H264 interval includes a fullscreen transition; VP9 includes a WebGL upload/readback check.",
+    "HDR/SDR mode switching does not measure physical display luminance or color accuracy; no photometer was used.",
+    "Native Display-P3 SDR output remains unimplemented; P3 content is converted to sRGB.",
+    "FD enumeration was denied; no FD leak claim. RSS observations are short and include source/fullscreen changes.",
+    "Initial background CDP query timed out while the OS froze the page; repeated SDR tests use OS mission state before restoring and evaluating. HDR background transition was not independently certified.",
+    "Phone fork Vulkan only; Pad/non-fork path not tested in this run.",
+    "No kernel fix or build was performed; any follow-up native build must use push-triggered CI."
+  ]
+}

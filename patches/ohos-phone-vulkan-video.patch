@@ -652,3 +652,66 @@ diff --git a/gpu/ipc/service/gpu_channel_shared_image_interface.cc b/gpu/ipc/ser
  }
  #endif
  
+diff --git a/gpu/ipc/common/exported_shared_image_mojom_traits.h b/gpu/ipc/common/exported_shared_image_mojom_traits.h
+--- a/gpu/ipc/common/exported_shared_image_mojom_traits.h
++++ b/gpu/ipc/common/exported_shared_image_mojom_traits.h
+@@ -119,7 +119,19 @@
+     // does not support import of external images to GL for usage with external
+     // sampling. For other platforms, texture_target_ should always be non-zero.
+     if (out->texture_target_ == 0) {
++#if BUILDFLAG(IS_OHOS)
++      // Vulkan-only decoder images intentionally have no GL texture target.
++      // Keep this in sync with ClientSharedImage's external-sampler contract;
++      // rejecting these exports disconnects MojoVideoDecoder on its first frame.
++      if (!out->metadata_.format.PrefersExternalSampler() ||
++          out->metadata_.usage.HasAny(gpu::SHARED_IMAGE_USAGE_GLES2_READ |
++                                     gpu::SHARED_IMAGE_USAGE_GLES2_WRITE) ||
++          data.is_software()) {
++        return false;
++      }
++#else
+       return false;
++#endif
+     }
+ #endif
+     out->is_software_ = data.is_software();
+diff --git a/gpu/command_buffer/client/client_shared_image_unittest.cc b/gpu/command_buffer/client/client_shared_image_unittest.cc
+--- a/gpu/command_buffer/client/client_shared_image_unittest.cc
++++ b/gpu/command_buffer/client/client_shared_image_unittest.cc
+@@ -102,6 +102,36 @@
+ #else
+   EXPECT_FALSE(success);
+ #endif
++
++#if BUILDFLAG(IS_OHOS)
++  for (auto format : {viz::MultiPlaneFormat::kNV12,
++                      viz::MultiPlaneFormat::kP010}) {
++    format.SetPrefersExternalSampler();
++    metadata.format = format;
++    metadata.usage =
++        SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ;
++    auto round_trip = [&](bool software) {
++      ExportedSharedImage input(
++          mailbox, metadata, SyncToken(), /*managed_sync_tokens=*/{},
++          "OhosVulkanVideoTest", std::nullopt, std::nullopt,
++          /*texture_target=*/0, software);
++      ExportedSharedImage output;
++      return mojo::test::SerializeAndDeserialize<gpu::mojom::ExportedSharedImage>(
++          input, output);
++    };
++    // These are the metadata and target exported by the phone's decoder.
++    EXPECT_TRUE(round_trip(false));
++    EXPECT_FALSE(round_trip(true));
++    for (auto gl_usage : {SHARED_IMAGE_USAGE_GLES2_READ,
++                          SHARED_IMAGE_USAGE_GLES2_WRITE}) {
++      metadata.usage = SHARED_IMAGE_USAGE_DISPLAY_READ | gl_usage;
++      EXPECT_FALSE(round_trip(false));
++    }
++    metadata.usage = SHARED_IMAGE_USAGE_DISPLAY_READ;
++    metadata.format.ClearPrefersExternalSampler();
++    EXPECT_FALSE(round_trip(false));
++  }
++#endif
+ }
+ 
+ TEST(ClientSharedImageTest,
