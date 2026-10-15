@@ -4815,5 +4815,16 @@
     "diagnostics": "Dawn InfoLog was absent from phone hilog; move bounded per-format native-buffer properties into Chromium GPU logging path",
     "full_goal_complete": false,
     "ci_code_modified": false
+  },
+  "native_release_general_sampling_candidate": {
+    "finding": "On b893, cleanup EndAccess fails with status=2, layouts=0 after sustained import stress. Source shows sampling uses SHADER_READ_ONLY_OPTIMAL while EndAccess forces GENERAL, requiring a late extra queue submit. Device destruction can make that submit fail.",
+    "change": "For OHOS opaque native YUV, use GENERAL consistently in usage layout selection (barriers, descriptor writes, current-layout tracking), so eager release already matches consumers. Initialize caller end-state layouts to GENERAL for never-submitted textures; Dawn returns pending acquire fences without invoking its Vulkan EndAccessImpl in that case.",
+    "independent_unused_reproduction": {
+      "evidence": "b893-aliased-native-frames.json + device-b893.log at 05:16:18",
+      "result": "Two VideoFrame aliases cannot both be imported: second produces Invalid Texture. Unused first texture EndAccess succeeds (status=1) but leaves layouts=0, causing current caller to quarantine and lose context. Caller default-layout fix directly addresses that cleanup; alias overlap itself remains unresolved."
+    },
+    "host_validation": "12 Chromium and 8 Dawn source patch application/byte comparison PASS; reviewed effective source delta, diff check PASS",
+    "runtime_status": "Pending CI and phone validation; no claim of fixed lifecycle/color",
+    "ci_code_changes": false
   }
 }

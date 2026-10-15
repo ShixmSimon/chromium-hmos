@@ -72,7 +72,23 @@ diff --git a/src/dawn/native/vulkan/BackendVk.cpp b/src/dawn/native/vulkan/Backe
 diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/TextureVk.cpp
 --- a/src/dawn/native/vulkan/TextureVk.cpp
 +++ b/src/dawn/native/vulkan/TextureVk.cpp
-@@ -1802,11 +1802,18 @@
+@@ -747,6 +747,15 @@
+             // The layout returned here is the one that will be used at bindgroup creation time.
+         case wgpu::TextureUsage::TextureBinding:
+         case kResolveAttachmentLoadingUsage:
++#if defined(__OHOS__)
++            if (format.format == wgpu::TextureFormat::OpaqueYCbCrAndroid) {
++                // Native video is acquired/released in GENERAL. Use that same
++                // layout for sampling AND descriptor writes so the eager queue
++                // release already has the consumer's layout. EndAccess must not
++                // need an extra submit after the client destroys its device.
++                return VK_IMAGE_LAYOUT_GENERAL;
++            }
++#endif
+             // The sampled image can be used as a readonly depth/stencil attachment at the same
+             // time if it is a depth/stencil renderable format, so the image layout need to be
+             // VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL.
+@@ -1802,11 +1811,18 @@
      // promoting to GENERAL.
      VkImageLayout currentLayout = GetCurrentLayout(GetDisjointVulkanAspects());
      VkImageLayout targetLayout;

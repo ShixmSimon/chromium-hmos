@@ -176,7 +176,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  class ScopedDedicatedMemoryObject {
   public:
    explicit ScopedDedicatedMemoryObject(gl::GLApi* api) : api_(api) {
-@@ -103,6 +134,226 @@
+@@ -103,6 +134,231 @@
    GLuint id_;
  };
  
@@ -309,6 +309,11 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
 +    if (!texture_)
 +      return;
 +    wgpu::SharedTextureMemoryVkImageLayoutEndState layout{};
++    // If the texture was never submitted, Dawn returns the original acquire
++    // fences without calling its Vulkan EndAccessImpl or writing the layouts.
++    // The untouched allocation is still in the GENERAL layout we imported.
++    layout.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
++    layout.newLayout = VK_IMAGE_LAYOUT_GENERAL;
 +    wgpu::SharedTextureMemoryEndAccessState access{};
 +    access.nextInChain = &layout;
 +    const auto status = memory_.EndAccess(texture_, &access);
@@ -403,7 +408,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  }  // namespace
  
  bool ExternalVkImageBacking::UseSeparateGLTexture(
-@@ -145,7 +396,7 @@
+@@ -145,7 +401,7 @@
    return context_state->support_gl_external_object_flags();
  }
  
@@ -412,7 +417,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
                                 std::vector<ExternalSemaphore>* semaphores) {
    DCHECK(!gr_context->abandoned());
    std::vector<GrBackendSemaphore> backend_semaphores;
-@@ -154,8 +405,8 @@
+@@ -154,8 +410,8 @@
      backend_semaphores.emplace_back(
          GrBackendSemaphores::MakeVk(semaphore.GetVkSemaphore()));
    }
@@ -423,7 +428,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  }
  
  }  // namespace
-@@ -263,6 +514,46 @@
+@@ -263,6 +519,46 @@
  
    return backing;
  }
@@ -470,7 +475,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  
  // static
  std::unique_ptr<ExternalVkImageBacking> ExternalVkImageBacking::CreateFromGMB(
-@@ -379,8 +670,15 @@
+@@ -379,8 +675,15 @@
        use_separate_gl_texture_(use_separate_gl_texture),
        enable_webgpu_on_vk_via_gl_interop_(enable_webgpu_on_vk_via_gl_interop) {
  #if BUILDFLAG(IS_OZONE)
@@ -488,7 +493,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
      pixmap_ = ui::OzonePlatform::GetInstance()
                    ->GetSurfaceFactoryOzone()
                    ->CreateNativePixmapFromHandle(
-@@ -391,13 +689,34 @@
+@@ -391,13 +694,34 @@
  }
  
  ExternalVkImageBacking::~ExternalVkImageBacking() {
@@ -524,7 +529,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
      ReturnPendingSemaphoresWithFenceHelper(std::move(semaphores));
    }
  
-@@ -406,6 +725,16 @@
+@@ -406,6 +730,16 @@
          std::move(vk_texture.vulkan_image));
    }
    vk_textures_.clear();
@@ -541,7 +546,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  
    if (!gl_textures_.empty()) {
      // Ensure that a context is current before glDeleteTexture().
-@@ -619,6 +948,34 @@
+@@ -619,6 +953,34 @@
    }
  }
  
@@ -576,7 +581,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  bool ExternalVkImageBacking::CheckSupportForAccessStream(
      SharedImageAccessStream stream,
      viz::SharedImageFormat format,
-@@ -651,6 +1008,18 @@
+@@ -651,6 +1013,18 @@
  }
  
  void ExternalVkImageBacking::Update(std::unique_ptr<gfx::GpuFence> in_fence) {
@@ -595,7 +600,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
    DCHECK(!in_fence);
  }
  
-@@ -730,6 +1099,15 @@
+@@ -730,6 +1104,15 @@
      std::vector<ExternalSemaphore> semaphores) {
    std::move(semaphores.begin(), semaphores.end(),
              std::back_inserter(pending_semaphores_));
@@ -611,7 +616,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
    external_semaphore_pool()->ReturnSemaphoresWithFenceHelper(
        std::move(pending_semaphores_));
    pending_semaphores_.clear();
-@@ -742,7 +1120,14 @@
+@@ -742,7 +1125,14 @@
      wgpu::BackendType backend_type,
      std::vector<wgpu::TextureFormat> view_formats,
      scoped_refptr<SharedContextState> context_state) {
