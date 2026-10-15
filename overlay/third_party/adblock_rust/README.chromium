@@ -20,9 +20,12 @@ Chromium's independently built Rust dependencies. It is loaded only in the brows
 process using a C ABI. Immutable snapshots are matched on a sequenced worker.
 
 Features: embedded-domain-resolver, full-regex-handling, css-validation.
-The upstream single-thread feature is disabled. No resource-assembler, scriptlet
-or redirect resource pack is shipped. See docs/OHOS_ADBLOCK.md for integration
-boundaries and validation.
+The upstream single-thread feature is disabled. The offline resource bundle in
+resources/ supplies scriptlets and redirect responses, embedded into this DSO.
+It contains separately licensed MPL-2.0 and GPL-3.0-or-later material; the crate's
+MPL license above does not replace resource/list licenses. Exact source archives,
+versions, hashes and notices are in resources/SOURCES.json and resources/NOTICE.md.
+See docs/OHOS_ADBLOCK_BRAVE.md for execution boundaries and validation.
 
 Bundled filter lists are independent copyrighted data, with their original
 headers retained. lists/SOURCES.json records exact SHA256 snapshots and URLs.

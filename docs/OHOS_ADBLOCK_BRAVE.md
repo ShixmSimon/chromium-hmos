@@ -176,3 +176,11 @@ variables as the browser suite. It verifies the 20000-match cap with 25000
 elements, full retained-marker cleanup, and cancellation during a partially
 applied batch (257 elements had been marked in the recorded run; zero remained
 after stop). It does not establish a phone frame-time or scrolling budget.
+
+Resource exclusions follow the pinned upstream combination: Brave's packager
+`adBlockRustUtils.js` excludes `google-ima-dai.js`; adblock 0.13.3's
+`resource_assembler.rs` excludes resources with `params` (the pinned uBlock
+`click2load.html`). Neither is claimed as supported. These are upstream baseline
+boundaries, not resources silently lost from the selected Brave combination.
+Lumie's explicit trusted-resource permissions are intentionally stricter than
+Brave's fully trusted personal-filter provider, as required by the shell handoff.
