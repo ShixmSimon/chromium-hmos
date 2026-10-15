@@ -609,3 +609,228 @@ diff --git a/src/dawn/native/vulkan/SamplerVk.h b/src/dawn/native/vulkan/Sampler
                                                      uint64_t androidExternalFormat);
  
      wgpu::FilterMode minFilter;
+diff --git a/src/tint/lang/spirv/writer/raise/raise.cc b/src/tint/lang/spirv/writer/raise/raise.cc
+--- a/src/tint/lang/spirv/writer/raise/raise.cc
++++ b/src/tint/lang/spirv/writer/raise/raise.cc
+@@ -27,6 +27,9 @@
+ 
+ #include "src/tint/lang/spirv/writer/raise/raise.h"
+ 
++#include <variant>
++
++#include "src/tint/lang/core/ir/builder.h"
+ #include "src/tint/lang/core/ir/module.h"
+ #include "src/tint/lang/core/ir/transform/bgra8unorm_polyfill.h"
+ #include "src/tint/lang/core/ir/transform/binary_polyfill.h"
+@@ -54,6 +57,9 @@
+ #include "src/tint/lang/core/ir/transform/substitute_overrides.h"
+ #include "src/tint/lang/core/ir/transform/vectorize_scalar_matrix_constructors.h"
+ #include "src/tint/lang/core/ir/transform/zero_init_workgroup_memory.h"
++#include "src/tint/lang/core/type/sampler.h"
++#include "src/tint/lang/spirv/ir/builtin_call.h"
++#include "src/tint/lang/spirv/type/sampled_image.h"
+ #include "src/tint/lang/spirv/writer/common/option_helpers.h"
+ #include "src/tint/lang/spirv/writer/raise/builtin_polyfill.h"
+ #include "src/tint/lang/spirv/writer/raise/case_switch_to_if_else.h"
+@@ -71,6 +77,108 @@
+ #include "src/tint/lang/spirv/writer/raise/var_for_dynamic_index.h"
+ 
+ namespace tint::spirv::writer {
++
++namespace {
++
++// YCbCr conversion requires a combined sampled-image resource in SPIR-V.
++// Merely assigning separate image/sampler variables the same binding does not
++// satisfy VUID-RuntimeSpirv-OpTypeImage-12204 / OpTypeSampler-12203.
++Result<SuccessType> CombineYCbCrResources(core::ir::Module& module,
++                                        const Options& options) {
++    core::ir::Builder b{module};
++    auto& ty = module.Types();
++    auto loaded_var = [](core::ir::Value* value) -> core::ir::Var* {
++        auto* result = value->As<core::ir::InstructionResult>();
++        auto* load = result ? result->Instruction()->As<core::ir::Load>() : nullptr;
++        auto* pointer = load ? load->From()->As<core::ir::InstructionResult>() : nullptr;
++        return pointer ? pointer->Instruction()->As<core::ir::Var>() : nullptr;
++    };
++
++    for (const auto& entry : options.bindings.external_texture) {
++        const auto* binding = std::get_if<ExternalYCBCRTexture>(&entry.second);
++        if (!binding) {
++            continue;
++        }
++        if (binding->texture != binding->sampler) {
++            return Failure{"YCbCr image and sampler must share a combined binding"};
++        }
++        core::ir::Var* image = nullptr;
++        core::ir::Var* sampler = nullptr;
++        for (auto* inst : *module.root_block) {
++            auto* var = inst->As<core::ir::Var>();
++            if (!var || var->BindingPoint() != binding->texture) {
++                continue;
++            }
++            auto* store = var->Result()->Type()->As<core::type::Pointer>()->StoreType();
++            if (store->Is<spirv::type::Image>()) {
++                image = var;
++            } else if (store->Is<core::type::Sampler>()) {
++                sampler = var;
++            }
++        }
++        if (!image) {
++            continue;  // This entry point does not use the external texture.
++        }
++        auto* image_type = image->Result()->Type()->As<core::type::Pointer>()
++                               ->StoreType()->As<spirv::type::Image>();
++        auto* combined = b.Var(ty.ptr(core::AddressSpace::kHandle,
++                                     ty.Get<spirv::type::SampledImage>(image_type)));
++        combined->SetBindingPoint(binding->texture.group, binding->texture.binding);
++        combined->InsertBefore(image);
++
++        Vector<spirv::ir::BuiltinCall*, 8> pairs;
++        for (auto* inst : module.Instructions()) {
++            auto* call = inst->As<spirv::ir::BuiltinCall>();
++            if (call && call->Func() == spirv::BuiltinFn::kOpSampledImage &&
++                loaded_var(call->Args()[0]) == image) {
++                if (!sampler || loaded_var(call->Args()[1]) != sampler) {
++                    return Failure{"YCbCr sampling must use its paired immutable sampler"};
++                }
++                pairs.Push(call);
++            }
++        }
++        for (auto* call : pairs) {
++            auto* load = b.Load(combined);
++            load->SetResult(call->DetachResult());
++            load->InsertBefore(call);
++            call->Destroy();
++        }
++
++        // Retain image queries through OpImage, without a separate image
++        // resource declaration. All handles have been flattened by DVA.
++        for (auto use : image->Result()->UsagesSorted()) {
++            auto* load = use.instruction->As<core::ir::Load>();
++            if (!load) {
++                return Failure{"Unexpected indirect YCbCr image access after DVA"};
++            }
++            if (load->Result()->NumUsages() != 0) {
++                b.InsertBefore(load, [&] {
++                    auto* sampled = b.Load(combined);
++                    auto* extract = b.CallExplicit<spirv::ir::BuiltinCall>(
++                        image_type, spirv::BuiltinFn::kOpImage,
++                        Vector<core::ir::TemplateParameter, 1>{image_type},
++                        Vector<core::ir::Value*, 1>{sampled->Result()});
++                    load->Result()->ReplaceAllUsesWith(extract->Result());
++                });
++            }
++            load->Destroy();
++        }
++        image->Destroy();
++        if (sampler) {
++            for (auto use : sampler->Result()->UsagesSorted()) {
++                auto* load = use.instruction->As<core::ir::Load>();
++                if (!load || load->Result()->NumUsages() != 0) {
++                    return Failure{"Unexpected separate YCbCr sampler use after combining"};
++                }
++                load->Destroy();
++            }
++            sampler->Destroy();
++        }
++    }
++    return Success;
++}
++
++}  // namespace
+ 
+ Result<SuccessType> Raise(core::ir::Module& module, const Options& options) {
+     TINT_CHECK_RESULT(core::ir::transform::SingleEntryPoint(module, options.entry_point_name));
+@@ -168,10 +276,22 @@
+     // flattened.
+     TINT_CHECK_RESULT(core::ir::transform::MultiplanarExternalTexture(module, multiplanar_map));
+ 
++    // The YCbCr helpers introduce new handle parameters. Flatten those too,
++    // so the backend can emit one combined sampled-image resource instead of
++    // separate image and sampler declarations at the same binding.
++    bool has_ycbcr = false;
++    for (const auto& entry : options.bindings.external_texture) {
++        has_ycbcr |= std::holds_alternative<ExternalYCBCRTexture>(entry.second);
++    }
++    if (has_ycbcr) {
++        dva_options.transform_handle = core::ir::transform::HandleTransformLevel::kFull;
++        TINT_CHECK_RESULT(core::ir::transform::DirectVariableAccess(module, dva_options));
++    }
++
+     // Fixup loads of binding_arrays of handles that may have been introduced by
+     // DirectVariableAccess (DVA). Vulkan drivers that need DVA of handle expect binding_arrays to
+     // stay as pointer and many mishandle by-value binding_arrays.
+-    if (options.workarounds.dva_transform_handle) {
++    if (options.workarounds.dva_transform_handle || has_ycbcr) {
+         TINT_CHECK_RESULT(raise::KeepBindingArrayAsPointer(module));
+     }
+ 
+@@ -290,6 +410,10 @@
+ 
+     TINT_CHECK_RESULT(raise::VarForDynamicIndex(module));
+ 
++    if (has_ycbcr) {
++        TINT_CHECK_RESULT(CombineYCbCrResources(module, options));
++    }
++
+     return Success;
+ }
+ 
+diff --git a/src/tint/lang/core/ir/transform/multiplanar_external_texture.cc b/src/tint/lang/core/ir/transform/multiplanar_external_texture.cc
+--- a/src/tint/lang/core/ir/transform/multiplanar_external_texture.cc
++++ b/src/tint/lang/core/ir/transform/multiplanar_external_texture.cc
+@@ -312,7 +312,8 @@
+                         } else {
+                             Function* func = TextureLoadYCBCRExternal();
+                             helper =
+-                                b.CallWithResult(call->DetachResult(), func, first, params, coords);
++                                b.CallWithResult(call->DetachResult(), func, first, second,
++                                                 params, coords);
+                         }
+                         helper->InsertBefore(call);
+                         call->Destroy();
+@@ -831,12 +832,14 @@
+ 
+         // The helper function implements the following:
+         // fn tint_TextureLoadYcbcrExternal(texture: texture_2d<f32>,
++        //                                  sampler: sampler,
+         //                                  params: ExternalTextureParams,
+         //                                  coords: vec2<u32>) ->vec4f {
+         //   let clampedCoords = min(coords, params.apparentSize);
+         //   let loadCoords = vec2<u32>(
+         //       round(params.loadTransform * vec3<f32>(vec2<f32>(clampedCoords), 1)));
+-        //   var color = textureLoad(texture, loadCoords, 0).rgb, 1) *
++        //   let uv = (vec2f(loadCoords) + 0.5) / vec2f(textureDimensions(texture));
++        //   var color = vec4f(textureSampleLevel(texture, sampler, uv, 0).rgb, 1) *
+         //                   params.yuvToRgbConversionMatrix;
+         //
+         //   color = ApplyGammaCorrect(params, color)
+@@ -845,9 +848,10 @@
+         // }
+         texture_load_ycbcr_external = b.Function("tint_TextureLoadYcbcrExternal", ty.vec4f());
+         auto* texture = b.FunctionParam("texture", SampledTexture());
++        auto* sampler = b.FunctionParam("sampler", ty.sampler());
+         auto* params = b.FunctionParam("params", ExternalTextureParams());
+         auto* coords = b.FunctionParam("coords", ty.vec2u());
+-        texture_load_ycbcr_external->SetParams({texture, params, coords});
++        texture_load_ycbcr_external->SetParams({texture, sampler, params, coords});
+ 
+         b.Append(texture_load_ycbcr_external->Block(), [&] {
+             auto* yuv_to_rgb_conversion = b.Access(ty.mat3x4<f32>(), params, 2_u);
+@@ -862,8 +866,14 @@
+             auto* load_coords_f = b.Call(ty.vec2f(), core::BuiltinFn::kRound, modified_coords);
+             auto* load_coords = b.Convert(ty.vec2u(), load_coords_f);
+ 
+-            auto* load =
+-                b.Call(ty.vec4f(), core::BuiltinFn::kTextureLoad, texture, load_coords, 0_u);
++            // Vulkan forbids OpImageFetch for YCbCr conversion. Sample the
++            // exact texel center with the external texture's nearest sampler.
++            auto* size = b.Call(ty.vec2u(), core::BuiltinFn::kTextureDimensions, texture, 0_u);
++            auto* center = b.Add(b.Convert(ty.vec2f(), load_coords),
++                                 b.Splat(ty.vec2f(), b.Constant(0.5_f)));
++            auto* normalized = b.Divide(center, b.Convert(ty.vec2f(), size));
++            auto* load = b.Call(ty.vec4f(), core::BuiltinFn::kTextureSampleLevel,
++                                texture, sampler, normalized, 0_f);
+ 
+             auto* extract_rgb =
+                 b.Construct(ty.vec4f(), b.Swizzle(ty.vec3f(), load, {0u, 1u, 2u}), 1_f);

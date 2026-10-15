@@ -5166,5 +5166,52 @@
   "native_yuv_sampling_diagnostics": {
     "status": "SOURCE_READY_RUNTIME_PENDING",
     "change": "Only when an existing diagnostic toggle is enabled, report actual image-view and static-sampler external format, conversion model/range and filter through device EmitWarningOnce; forwarded to DevTools. No default page logging."
+  },
+  "runtime_f8577f65": {
+    "native_ci": 38813333597,
+    "adapter_ci": 38813333586,
+    "build": "SUCCESS",
+    "package": {
+      "run": "38813333597",
+      "source": "f8577f65",
+      "har_sha256": "6b2c508dff86815bc0448c35bf1d7d315f3e4c3b251e6002acaf4931ba07dcca",
+      "engine_sha256": "746bb0ff6800f882bef0fc9826adeda1abdd006b940b5618adf3b7a2ff3fc9b8",
+      "hap_sha256": "2f4481c8d5a2c9c3aa33e64d03b8f350fd27e35848c1c7fb81ba9d001183189b",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-f8577f65/phone-f8577f65-signed.hap"
+    },
+    "coldstart_compute_render_buffer_stress": "PASS",
+    "native_color": "FAIL",
+    "p010_matrix": "Runtime pixels changed consistently with depth-aware range; NV12 unchanged. Color acceptance still fails due to missing chroma.",
+    "sampling_probe_artifacts": [
+      "out/phone-validation-20261015/f857-standard-yuv-sampling.json",
+      "out/phone-validation-20261015/f857-hardware-log-yuv-sampling.json"
+    ],
+    "actual_configuration_logs": [
+      "OHOS YUV image view: external=1000156003 model=2 range=1 chromaFilter=2",
+      "OHOS YUV static sampler: external=1000156003 model=2 range=1 chromaFilter=2",
+      "OHOS YUV image view: external=1000156013 model=2 range=1 chromaFilter=2",
+      "OHOS YUV static sampler: external=1000156013 model=2 range=1 chromaFilter=2"
+    ],
+    "shader_evidence": {
+      "artifact": "out/phone-validation-20261015/f857-shader-13.txt",
+      "image_variable": "%8: UniformConstant pointer to OpTypeImage, set0 binding3",
+      "sampler_variable": "%12: UniformConstant pointer to OpTypeSampler, set0 binding3",
+      "sampling": "OpSampledImage constructed from separate resource loads; OpImageSampleExplicitLod",
+      "issue": "A YCbCr conversion resource must not be declared as separate OpTypeImage/OpTypeSampler variables. These are actual specialized shader dumps and conversion logs, not an inference from nonuniform pixels.",
+      "spec": "https://docs.vulkan.org/spec/latest/appendices/spirvenv.html#VUID-RuntimeSpirv-OpTypeImage-12204"
+    },
+    "gpu_stable": true,
+    "standard_hap_restored": true,
+    "audio": "SILENT, MUSIC=0, RING=0; every test media muted, volume0"
+  },
+  "native_yuv_combined_resource_candidate": {
+    "status": "SOURCE_READY_RUNTIME_PENDING",
+    "changes": [
+      "Flatten handle parameters introduced by the YCbCr external-texture helper.",
+      "Emit a single combined sampled-image resource at each YCbCr binding; replace OpSampledImage construction with a load. Image size queries extract OpImage from the combined resource.",
+      "Replace YCbCr textureLoad/OpImageFetch with a nearest sample at the exact texel center using the static sampler."
+    ],
+    "validation": "12 Chromium +13 Dawn/Tint source files apply in existing patch order and match edited sources. Effective HEAD source diff reviewed. Native compile and phone color/lifetime/compute tests pending.",
+    "scope": "Only YCbCr external-texture specializations; ordinary textures and planar external paths retain their existing behavior. No CI/workflow/build orchestration edits; native compilation via push only."
   }
 }
