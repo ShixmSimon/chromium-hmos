@@ -1254,6 +1254,195 @@
       "zeroCopyVerified": false,
       "pass": false,
       "reason": "requestAdapter returned null"
+    },
+    "native_ci_result": {
+      "run": 38765483599,
+      "commit": "920e95f4",
+      "result": "success",
+      "runtime_verified": false
     }
+  },
+  "ipc_fix_320f08c8": {
+    "installed_build": {
+      "run": "38753647316",
+      "source": "320f08c8",
+      "har_sha256": "503708cf9f62e5014591d2c7ed656baf391b018010179ecf57f6abc305df725e",
+      "engine_sha256": "614d95edd89b0f6c0df32ed74c15a18dc6ff0d05cc33a19658391a6085970dc6",
+      "hap_sha256": "6c60ae9ed3a977e0a9261ddcc949afd054d198e43e343d37a7b7022efe686eef",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-320f08c8/phone-320f08c8-signed.hap"
+    },
+    "native_ci_result": "success",
+    "backend": "GaneshVulkan",
+    "in_process_gpu": false,
+    "main10_ipc": "frame delivery works; no PIPELINE_ERROR_DISCONNECTED observed",
+    "hardware_decoder": true,
+    "native_output_format": "P010",
+    "cpu_output_copies": 0,
+    "visual_result": "FAILED: entire video is green; Canvas2D 8x8 readback is uniform RGBA(0,64,0,255)",
+    "probe": {
+      "state": {
+        "wall": 1792080240266,
+        "time": 2.368013,
+        "duration": 2.74,
+        "total": 1878,
+        "dropped": 23,
+        "width": 1280,
+        "height": 720,
+        "ready": 4,
+        "paused": true,
+        "visible": "visible",
+        "fullscreen": false,
+        "error": null
+      },
+      "pixel": [
+        0,
+        64,
+        0,
+        255
+      ],
+      "unique": 1
+    },
+    "test_stopped": "Stopped continuous-play test after visual failure; no sustained-play pass claimed",
+    "source_bug": {
+      "file": "patches/ohos-skia-native-ycbcr.patch",
+      "wrong_sType": 1000452004,
+      "sdk_external_format_sType": 1000452005,
+      "fix_commit": "b89f52e",
+      "fix_runtime_verified": false
+    },
+    "silence_verified": true,
+    "sdr_after_hdr": {
+      "points": [
+        [
+          109,
+          850
+        ],
+        [
+          329,
+          850
+        ],
+        [
+          548,
+          850
+        ],
+        [
+          767,
+          850
+        ],
+        [
+          987,
+          850
+        ],
+        [
+          1206,
+          850
+        ]
+      ],
+      "rgb": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ],
+        [
+          192,
+          192,
+          192
+        ],
+        [
+          255,
+          255,
+          255
+        ]
+      ]
+    }
+  },
+  "webgpu_bcf1a577_diagnosis": {
+    "installed_build": {
+      "run": "38755142433",
+      "source": "bcf1a577",
+      "har_sha256": "b49588ed9db556a8b052d8dbd8d224d49b2f37fa4fdd7d35acc9b91bb92aa3b5",
+      "engine_sha256": "b939d61e7038efd8bfe74d44b6c94a3aa2278e1732d2cf8830d248b3aa7f5d4c",
+      "hap_sha256": "9cc5470e697af5c75561b580bb2de4701671796317dd4f0e0879c086a6b6a583",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-bcf1a577/phone-bcf1a577-signed.hap"
+    },
+    "service_initialization": "success (GL implementation=9, decoder result=0)",
+    "adapter_request": "Intermittent context-provider failure remains: default request failed; subsequent high-performance and low-power requests succeeded. Root cause not yet proven.",
+    "canvas_failure": "SharedImageBackingFactory missing for RasterRead|WebgpuRead|RasterWrite|WebgpuWrite RGBA_8888; context lost; GPU process crash count remained 0",
+    "compute_readback": {
+      "url": "http://127.0.0.1:18080/",
+      "secure": true,
+      "api": true,
+      "tests": [
+        {
+          "name": "compute-storage-buffer-readback",
+          "pass": false,
+          "error": "OperationError: Failed to execute 'mapAsync' on 'GPUBuffer': [Invalid Buffer (unlabeled)] is invalid due to a previous error."
+        },
+        {
+          "name": "render-texture-readback",
+          "pass": false,
+          "error": "OperationError: Failed to execute 'mapAsync' on 'GPUBuffer': [Invalid Buffer (unlabeled)] is invalid due to a previous error."
+        }
+      ],
+      "adapter": true,
+      "features": [
+        "depth32float-stencil8",
+        "rg11b10ufloat-renderable",
+        "chromium-experimental-multi-draw-indirect",
+        "core-features-and-limits",
+        "chromium-experimental-sampling-resource-table",
+        "chromium-experimental-timestamp-query-inside-passes",
+        "float32-filterable",
+        "indirect-first-instance",
+        "texture-compression-astc-sliced-3d",
+        "float32-blendable",
+        "subgroup-size-control",
+        "texture-compression-unaligned",
+        "texture-compression-astc",
+        "texture-compression-etc2",
+        "depth-clip-control",
+        "clip-distances",
+        "timestamp-query",
+        "primitive-index",
+        "texture-component-swizzle",
+        "subgroups"
+      ],
+      "info": {
+        "vendor": "huawei",
+        "architecture": "maleoon",
+        "device": "",
+        "description": ""
+      },
+      "errors": [
+        "Failed to allocate memory for buffer mapping\n    at APICreateErrorBuffer (../../third_party/dawn/src/dawn/native/Device.cpp:1538)\n",
+        "[Invalid Buffer (unlabeled)] is invalid due to a previous error.\n - While encoding [CommandEncoder (unlabeled)].CopyBufferToBuffer([Buffer (unlabeled)], 0, [Invalid Buffer (unlabeled)], 0, 1024).\n - While finishing [CommandEncoder (unlabeled)].\n",
+        "[Invalid CommandBuffer] is invalid due to a previous error.\n - While calling [Queue].Submit([[Invalid CommandBuffer]])\n",
+        "[Invalid Buffer (unlabeled)] is invalid due to a previous error.\n - While calling [Invalid Buffer (unlabeled)].MapAsync(MapMode::Read, 0, 1024, ...).\n",
+        "Failed to allocate memory for buffer mapping\n    at APICreateErrorBuffer (../../third_party/dawn/src/dawn/native/Device.cpp:1538)\n",
+        "[Invalid Buffer (unlabeled)] is invalid due to a previous error.\n - While [Failed to format error message: \"encoding %s.CopyTextureToBuffer(%s, %s, %s).\"].\n - While finishing [CommandEncoder (unlabeled)].\n",
+        "[Invalid CommandBuffer] is invalid due to a previous error.\n - While calling [Queue].Submit([[Invalid CommandBuffer]])\n",
+        "[Invalid Buffer (unlabeled)] is invalid due to a previous error.\n - While calling [Invalid Buffer (unlabeled)].MapAsync(MapMode::Read, 0, 256, ...).\n"
+      ],
+      "pass": false
+    },
+    "new_diagnostics_commit": "031913d",
+    "mapped_memory_root_cause": "not yet proven; client mapping/allocation trace added",
+    "acceptance": "FAILED"
   }
 }
