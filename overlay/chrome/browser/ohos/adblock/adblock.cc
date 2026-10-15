@@ -1081,6 +1081,8 @@ void CheckRequest(Service* service,
               decision->redirect = Str(result, "redirect");
               decision->rewritten_url = GURL(Str(result, "rewrittenUrl"));
               decision->csp = Str(result, "csp");
+              if (result.FindBool("redirectMissing").value_or(false))
+                decision->reason = "missingRedirectResource";
             }
             std::move(callback).Run(std::move(decision));
           },
@@ -1205,16 +1207,32 @@ class FilterHost : public mojom::Filter {
     service->Query(
         base::DictValue().Set("op", "cosmetic").Set("url", url.spec()), *site,
         base::BindOnce(
-            [](base::WeakPtr<Service> owner, GURL site,
+            [](base::WeakPtr<FilterHost> self, blink::LocalFrameToken token,
+               GURL url, base::WeakPtr<Service> owner, GURL site,
                CosmeticsCallback callback, uint64_t revision,
                base::DictValue value) {
+              if (!self)
+                return;
+              if (!owner) {
+                std::move(callback).Run("", 0);
+                return;
+              }
+              // Initial compilation can change the revision while Query waits.
+              // Do not turn that into an empty answer followed by an indefinite
+              // long poll: re-query the current snapshot before document JS.
+              if (owner->revision() != revision) {
+                self->SendCosmetics(token, url, std::move(callback));
+                return;
+              }
               std::string payload;
-              if (owner && owner->Active(site) && owner->revision() == revision)
+              if (owner->Active(site))
                 base::JSONWriter::Write(value, &payload);
-              std::move(callback).Run(payload, owner ? owner->revision() : 0);
+              std::move(callback).Run(payload, revision);
             },
-            service->weak(), *site, std::move(callback), revision));
+            weak_.GetWeakPtr(), token, url, service->weak(), *site,
+            std::move(callback), revision));
   }
+
   int process_;
   blink::LocalFrameToken token_;
   GURL url_;

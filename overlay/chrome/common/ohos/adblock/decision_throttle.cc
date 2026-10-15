@@ -1,4 +1,6 @@
-// Copyright 2026 The Chromium Authors. BSD-style license in LICENSE.
+// Copyright 2026 The Chromium Authors.
+// Portions derived from Copyright 2019 The Brave Authors.
+// SPDX-License-Identifier: MPL-2.0
 // Local replacement responses follow Brave adblock_stub_response.cc (MPL-2.0)
 // semantics. This implementation preserves request origin/response tainting.
 #include "chrome/common/ohos/adblock/decision_throttle.h"
@@ -109,7 +111,10 @@ void DecisionThrottle::Resolve(mojom::DecisionPtr decision) {
         return;
       }
     }
-    delegate_->CancelWithError(net::ERR_BLOCKED_BY_CLIENT);
+    delegate_->CancelWithError(net::ERR_BLOCKED_BY_CLIENT,
+                               decision->reason == "missingRedirectResource"
+                                   ? "lumie-adblock-missing-resource"
+                                   : "lumie-adblock");
     return;
   }
   if (decision && !decision->rewritten_url.is_empty()) {

@@ -10,7 +10,7 @@ followed by removing exports and trailing whitespace reproduces the transformati
 controller.js adapts scheduling/action dispatch from Brave content_cosmetic.ts
 at that commit. Lumie supplies a separate isolated world, native user styles,
 DocumentToken ownership, stop/restart and BFCache/page visibility handling.
-The 4 ms time slice yields between rules (maximum 16 per task); an individual
+The 4 ms time slice yields between rules (maximum 256 element operations per task); an individual
 DOM selector/regexp is synchronous and cannot be preempted. At most 1024 rules
-and 20000 matches per rule are processed. Device high-mutation performance
+and 20000 retained matches per document are processed. Device high-mutation performance
 acceptance is still required. No errors include selectors or script arguments.

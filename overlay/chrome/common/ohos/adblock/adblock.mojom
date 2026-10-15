@@ -8,6 +8,7 @@ struct Decision {
   string redirect;
   url.mojom.Url rewritten_url;
   string csp;
+  string reason;
 };
 // Browser validates process/frame ownership. No arbitrary script or raw rule crosses IPC.
 interface Filter {

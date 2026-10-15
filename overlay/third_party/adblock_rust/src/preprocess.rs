@@ -129,6 +129,20 @@ fn condition(expr: &str) -> Option<bool> {
 mod tests {
     use super::*;
     #[test]
+    fn compound_conditions_are_bounded_and_unknowns_not_inverted() {
+        assert_eq!(
+            condition("env_chromium && (cap_user_stylesheet || env_firefox)"),
+            Some(true)
+        );
+        assert_eq!(
+            condition("!(env_chromium && cap_user_stylesheet)"),
+            Some(false)
+        );
+        assert_eq!(condition("!unknown || env_chromium"), None);
+        assert_eq!(condition(&format!("{}env_chromium", "!".repeat(64))), None);
+        assert_eq!(condition("env_chromium junk"), None);
+    }
+    #[test]
     fn capability_and_unknown_negation() {
         let mut p = Preprocessor::default();
         assert_eq!(p.line("!#if env_chromium"), Ok(None));

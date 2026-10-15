@@ -162,9 +162,10 @@ fn build(input: Input) -> Result<(Snapshot, Value), Value> {
                         } else {
                             format!("{name}.js")
                         };
-                        resource_permissions
-                            .get(&name)
-                            .is_some_and(|mask| *mask & !permissions == 0)
+                        c.mask.contains(CosmeticFilterMask::UNHIDE)
+                            || resource_permissions
+                                .get(&name)
+                                .is_some_and(|mask| *mask & !permissions == 0)
                     } else if let Some(selector) = c.plain_css_selector() {
                         // Defence in depth: this is concatenated into a stylesheet, never code.
                         let safe = !selector.contains(['{', '}']) && !selector.contains("/*");
@@ -641,5 +642,94 @@ mod tests {
                 .is_err()
             );
         }
+    }
+    #[test]
+    fn websocket_and_worker_resource_decisions() {
+        let s = snapshot(
+            "||ads.test^$websocket\n@@||ads.test/allow$websocket\n||ads.test^$xmlhttprequest",
+        );
+        assert!(blocked(
+            &s,
+            "wss://ads.test/socket",
+            "https://site.test",
+            "websocket"
+        ));
+        assert!(!blocked(
+            &s,
+            "wss://ads.test/allow",
+            "https://site.test",
+            "websocket"
+        ));
+        assert!(blocked(
+            &s,
+            "https://ads.test/data",
+            "https://worker.test",
+            "xmlhttprequest"
+        ));
+        assert!(!blocked(
+            &s,
+            "https://good.test/data",
+            "https://worker.test",
+            "xmlhttprequest"
+        ));
+    }
+    #[test]
+    fn trusted_pair_is_bound_to_offline_bytes() {
+        let (s, meta) = build(Input {
+            sources: vec![Source {
+                id: "brave-compat".into(),
+                text: String::new(),
+                strict: false,
+                bundled: true,
+            }],
+        })
+        .unwrap();
+        assert!(meta["counts"][0]["ruleCount"].as_u64().unwrap() > 20);
+        let r = query(&s, json!({"op":"cosmetic","url":"https://linkedin.com/"}));
+        assert!(
+            r["resources"]["injected_script"]
+                .as_str()
+                .unwrap()
+                .contains("blocking-upsell")
+        );
+        let input:Input=serde_json::from_value(json!({"sources":[{"id":"brave-compat","text":"site.test##+js(trusted-set-constant, x, true)","bundled":true,"strict":true,"permissions":255}]})).unwrap();
+        assert!(build(input).is_err());
+    }
+    #[test]
+    fn scriptlet_exception_removes_matching_injection() {
+        let s = snapshot(
+            "site.test,except.test##+js(set-constant, lumieExcept, true)\nexcept.test#@#+js(set-constant, lumieExcept, true)",
+        );
+        let r = query(&s, json!({"op":"cosmetic","url":"https://site.test/"}));
+        assert!(
+            r["resources"]["injected_script"]
+                .as_str()
+                .unwrap()
+                .contains("lumieExcept")
+        );
+        let r = query(&s, json!({"op":"cosmetic","url":"https://except.test/"}));
+        assert_eq!(r["resources"]["injected_script"], "");
+    }
+    #[test]
+    fn untrusted_scriptlet_exception_can_disable_trusted_injection() {
+        let (s, _) = build(Input {
+            sources: vec![
+                Source {
+                    id: "brave-compat".into(),
+                    text: String::new(),
+                    bundled: true,
+                    strict: false,
+                },
+                Source {
+                    id: "user".into(),
+                    text: "linkedin.com#@#+js()".into(),
+                    bundled: false,
+                    strict: true,
+                },
+            ],
+        })
+        .unwrap();
+        let r = query(&s, json!({"op":"cosmetic","url":"https://linkedin.com/"}));
+        assert_eq!(r["resources"]["injected_script"], "");
     }
 }
