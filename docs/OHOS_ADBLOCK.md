@@ -1,4 +1,7 @@
-# Lumie adblock-rust（协议 v1）
+# Lumie adblock-rust（协议 v1 与 55345175 基线）
+
+> 本文保留 55345175 首版的能力范围和测试记录。当前 Brave 执行路径、资源包与验收边界
+> 以 [OHOS_ADBLOCK_BRAVE.md](OHOS_ADBLOCK_BRAVE.md) 为准；外壳协议仍为 v1。
 
 内核接入 Brave adblock-rust 0.13.3，独立于网址防护。所有设备形态、单进程与多进程共用此实现。
 当前分支继续为 codex/phone-fork-renderers；不需要切分支或清理 Chromium 构建缓存。
@@ -56,5 +59,3 @@ iframe、fetch、重定向及 CSS。系统如询问局域网访问权限需正�
 
 尚需真机验证：设备加载新 DSO、首启/订阅性能、真实页面 CSS 效果和 IPC 开销。
 
-Brave execution integration and its explicit acceptance boundaries are tracked in
-[OHOS_ADBLOCK_BRAVE.md](OHOS_ADBLOCK_BRAVE.md).

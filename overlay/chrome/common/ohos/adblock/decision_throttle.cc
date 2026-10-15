@@ -5,6 +5,7 @@
 // semantics. This implementation preserves request origin/response tainting.
 #include "chrome/common/ohos/adblock/decision_throttle.h"
 #include <algorithm>
+#include "base/byte_size.h"
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -83,8 +84,8 @@ void Serve(std::string mime,
   producer.reset();
   client->OnReceiveResponse(std::move(head), std::move(consumer), std::nullopt);
   network::URLLoaderCompletionStatus status(net::OK);
-  status.decoded_body_length = body.size();
-  status.encoded_body_length = body.size();
+  status.decoded_body_length = base::ByteSize(body.size());
+  status.encoded_body_length = base::ByteSize(body.size());
   client->OnComplete(status);
 }
 }  // namespace
