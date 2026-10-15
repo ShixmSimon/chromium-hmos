@@ -119,16 +119,18 @@ index b7560b5..2088dc6 100644
  #endif
  
  #if BUILDFLAG(IS_ANDROID)
-@@ -350,6 +354,20 @@ SharedImageFactory::SharedImageFactory(
+@@ -350,6 +354,22 @@ SharedImageFactory::SharedImageFactory(
    }
  #endif  // BUILDFLAG(ENABLE_VULKAN) && (BUILDFLAG(IS_LINUX) ||
          // BUILDFLAG(IS_FUCHSIA))
 +#if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_OHOS)
 +  if (ui::IsOhosPhoneGpuChild() && gr_context_type_ == GrContextType::kVulkan) {
-+    // Phone GPU children cannot import generic NativePixmaps. ExternalVk uses
-+    // separate GL/Vulkan textures and copies on API transitions when the GL
-+    // external-memory/semaphore extensions are unavailable. The output surface
-+    // continues to use its dedicated shared NativeBuffer transport.
++    // The phone keeps the general native-pixmap capability off because its
++    // renderers cannot allocate/mmap video buffers. Register the GPU-only
++    // Ozone factory explicitly: it imports brokered RGBA/BGRA for Dawn/Skia.
++    factories_.push_back(std::make_unique<OzoneImageBackingFactory>(
++        context_state_, workarounds_));
++    // Other images keep their existing ExternalVk backing.
 +    factories_.push_back(std::make_unique<ExternalVkImageBackingFactory>(
 +        context_state_, /*enable_webgpu_on_vk_via_gl_interop=*/false));
 +    LOG(WARNING) << "OHOS phone Vulkan SharedImage bridge enabled; "
