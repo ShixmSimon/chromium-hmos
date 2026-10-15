@@ -344,3 +344,76 @@ diff --git a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representa
      return nullptr;
    }
    wgpu::SharedTextureMemoryDescriptor desc;
+diff --git a/gin/array_buffer.cc b/gin/array_buffer.cc
+--- a/gin/array_buffer.cc
++++ b/gin/array_buffer.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "gin/array_buffer.h"
+ 
++#include <errno.h>
+ #include <stddef.h>
+ #include <stdlib.h>
+ 
+@@ -12,6 +13,7 @@
+ #include "base/compiler_specific.h"
+ #include "base/no_destructor.h"
+ #include "build/build_config.h"
++#include "base/trace_event/trace_event.h"
+ #include "gin/per_isolate_data.h"
+ #include "partition_alloc/page_allocator.h"
+ #include "partition_alloc/partition_alloc.h"
+@@ -205,8 +207,14 @@
+                                           : v8::PagePermissions::kRead;
+     uintptr_t mapping = v8::V8::GetSandboxAddressSpace()->AllocateSharedPages(
+         0, mapping_size, permissions, v8_handle, offset);
+-    if (!mapping)
++    if (!mapping) {
++#if BUILDFLAG(IS_OHOS)
++      TRACE_EVENT_INSTANT("gpu", "OHOS.ArrayBufferSharedMemoryMapFailed",
++                         "size", mapping_size, "offset", offset,
++                         "write_allowed", write_allowed, "errno", errno);
++#endif
+       return std::nullopt;
++    }
+ 
+     return UNSAFE_TODO(base::span(reinterpret_cast<uint8_t*>(mapping), size));
+   }
+diff --git a/gpu/ipc/client/command_buffer_proxy_impl.cc b/gpu/ipc/client/command_buffer_proxy_impl.cc
+--- a/gpu/ipc/client/command_buffer_proxy_impl.cc
++++ b/gpu/ipc/client/command_buffer_proxy_impl.cc
+@@ -520,6 +520,11 @@
+   std::tie(shared_memory_region, shared_memory_mapping) =
+       AllocateAndMapSharedMemory(size, transfer_buffer_mapper_);
+   if (!shared_memory_mapping.IsValid()) {
++#if BUILDFLAG(IS_OHOS)
++    TRACE_EVENT_INSTANT("gpu", "OHOS.TransferBufferMapFailed", "size", size,
++                       "custom_mapper", transfer_buffer_mapper_ != nullptr,
++                       "region_valid", shared_memory_region.IsValid());
++#endif
+     if (last_state_.error == gpu::error::kNoError &&
+         option != TransferBufferAllocationOption::kReturnNullOnOOM)
+       OnClientError(gpu::error::kOutOfBounds);
+@@ -530,6 +535,9 @@
+   if (last_state_.error == gpu::error::kNoError) {
+     base::UnsafeSharedMemoryRegion region = shared_memory_region.Duplicate();
+     if (!region.IsValid()) {
++#if BUILDFLAG(IS_OHOS)
++      TRACE_EVENT_INSTANT("gpu", "OHOS.TransferBufferDuplicateFailed", "size", size);
++#endif
+       if (last_state_.error == gpu::error::kNoError)
+         OnClientError(gpu::error::kLostContext);
+       return nullptr;
+diff --git a/gpu/command_buffer/client/mapped_memory.cc b/gpu/command_buffer/client/mapped_memory.cc
+--- a/gpu/command_buffer/client/mapped_memory.cc
++++ b/gpu/command_buffer/client/mapped_memory.cc
+@@ -101,6 +101,9 @@
+ 
+   if (max_allocated_bytes_ != SharedMemoryLimits::kNoLimit &&
+       (allocated_memory_ + size) > max_allocated_bytes_) {
++    TRACE_EVENT_INSTANT("gpu", "MappedMemoryManager.AllocationLimitExceeded",
++                       "requested", size, "allocated", allocated_memory_,
++                       "limit", max_allocated_bytes_);
+     return {};
+   }
+ 
