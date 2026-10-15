@@ -94,15 +94,13 @@ diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/Textu
 diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
 --- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
 +++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
-@@ -647,6 +647,14 @@
+@@ -647,6 +647,12 @@
      // VK_OHOS_external_memory.
      if (mDeviceInfo.HasExt(DeviceExt::ExternalMemoryOHOSNativeBuffer)) {
          EnableFeature(Feature::SharedTextureMemoryAHardwareBuffer);
 +        if (mDeviceInfo.samplerYCbCrConversionFeatures.samplerYcbcrConversion == VK_TRUE &&
 +            CheckSemaphoreSupport(DeviceExt::ExternalSemaphoreFD,
-+                                  VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT_KHR) &&
-+            CheckSemaphoreSupport(DeviceExt::ExternalSemaphoreFD,
-+                                  VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT_KHR)) {
++                                  VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT_KHR)) {
 +            EnableFeature(Feature::YCbCrVulkanSamplers);
 +            EnableFeature(Feature::OpaqueYCbCrAndroidForExternalTexture);
 +        }

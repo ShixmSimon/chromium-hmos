@@ -143,7 +143,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  #include "ui/gl/gl_version_info.h"
  #include "ui/gl/scoped_binders.h"
 +
-+#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
++#if BUILDFLAG(IS_OHOS)
 +#include <unistd.h>
 +#include "base/no_destructor.h"
 +#include "base/synchronization/lock.h"
@@ -176,20 +176,22 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  class ScopedDedicatedMemoryObject {
   public:
    explicit ScopedDedicatedMemoryObject(gl::GLApi* api) : api_(api) {
-@@ -102,6 +133,224 @@
+@@ -102,6 +133,219 @@
    raw_ptr<gl::GLApi> const api_;
    GLuint id_;
  };
 +
-+#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
-+// A failed Dawn release must not return a decoder buffer while its queue can
-+// still read it. Keep the lease until GPU-process teardown if completion
++#if BUILDFLAG(IS_OHOS)
++// A failed release must not return a decoder buffer while a GPU queue can
++// still read it. Retain the lease until GPU-process teardown if completion
 +// cannot be proved; the lost context cannot accept more frames.
-+struct OhosDawnQuarantinedLeases {
++struct OhosVideoQuarantinedLeases {
 +  base::Lock lock;
 +  std::vector<scoped_refptr<gfx::NativePixmap>> pixmaps;
 +};
++#endif
 +
++#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
 +class OhosNativeBufferDawnRepresentation final : public DawnImageRepresentation {
 + public:
 +  static std::unique_ptr<OhosNativeBufferDawnRepresentation> Create(
@@ -198,7 +200,6 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
 +    if (!backing->usage().Has(SHARED_IMAGE_USAGE_WEBGPU_READ) ||
 +        !device.HasFeature(wgpu::FeatureName::SharedTextureMemoryAHardwareBuffer) ||
 +        !device.HasFeature(wgpu::FeatureName::SharedFenceSyncFD) ||
-+        !device.HasFeature(wgpu::FeatureName::SharedFenceVkSemaphoreOpaqueFD) ||
 +        !device.HasFeature(wgpu::FeatureName::OpaqueYCbCrAndroidForExternalTexture)) {
 +      return nullptr;
 +    }
@@ -377,13 +378,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
 +
 +  void FailRelease() {
 +    LOG(ERROR) << "OHOS Dawn native video release failed; retaining decoder lease";
-+    static base::NoDestructor<OhosDawnQuarantinedLeases> quarantine;
-+    {
-+      base::AutoLock lock(quarantine->lock);
-+      quarantine->pixmaps.push_back(pixmap_);
-+    }
-+    // Do not unlock backing ownership without completion dependencies.
-+    backing_->context_state()->MarkContextLost();
++    backing_->QuarantineOhosVideoAccess();
 +    texture_.Destroy();
 +    texture_ = nullptr;
 +    backing_->ReleaseSemaphoresWithFenceHelper(std::move(begin_semaphores_));
@@ -401,7 +396,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  
  }  // namespace
  
-@@ -263,6 +512,46 @@
+@@ -263,6 +507,46 @@
  
    return backing;
  }
@@ -448,7 +443,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  
  // static
  std::unique_ptr<ExternalVkImageBacking> ExternalVkImageBacking::CreateFromGMB(
-@@ -379,8 +668,15 @@
+@@ -379,8 +663,15 @@
        use_separate_gl_texture_(use_separate_gl_texture),
        enable_webgpu_on_vk_via_gl_interop_(enable_webgpu_on_vk_via_gl_interop) {
  #if BUILDFLAG(IS_OZONE)
@@ -466,7 +461,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
      pixmap_ = ui::OzonePlatform::GetInstance()
                    ->GetSurfaceFactoryOzone()
                    ->CreateNativePixmapFromHandle(
-@@ -391,6 +687,10 @@
+@@ -391,6 +682,10 @@
  }
  
  ExternalVkImageBacking::~ExternalVkImageBacking() {
@@ -477,7 +472,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
    auto semaphores = std::move(read_semaphores_);
    if (write_semaphore_) {
      semaphores.emplace_back(std::move(write_semaphore_));
-@@ -406,6 +706,16 @@
+@@ -406,6 +701,16 @@
          std::move(vk_texture.vulkan_image));
    }
    vk_textures_.clear();
@@ -494,10 +489,22 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  
    if (!gl_textures_.empty()) {
      // Ensure that a context is current before glDeleteTexture().
-@@ -619,6 +929,22 @@
+@@ -619,6 +924,34 @@
    }
  }
  
++#if BUILDFLAG(IS_OHOS)
++void ExternalVkImageBacking::QuarantineOhosVideoAccess() {
++  static base::NoDestructor<OhosVideoQuarantinedLeases> quarantine;
++  {
++    base::AutoLock lock(quarantine->lock);
++    quarantine->pixmaps.push_back(image()->native_pixmap());
++  }
++  // Leave access locked: completion is unknown, so no new reader is safe.
++  context_state_->MarkContextLost();
++}
++#endif
++
 +#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
 +void ExternalVkImageBacking::EndOhosDawnAccess(
 +    std::vector<ExternalSemaphore> semaphores) {
@@ -517,7 +524,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  bool ExternalVkImageBacking::CheckSupportForAccessStream(
      SharedImageAccessStream stream,
      viz::SharedImageFormat format,
-@@ -651,6 +977,18 @@
+@@ -651,6 +984,18 @@
  }
  
  void ExternalVkImageBacking::Update(std::unique_ptr<gfx::GpuFence> in_fence) {
@@ -536,7 +543,23 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
    DCHECK(!in_fence);
  }
  
-@@ -742,7 +1080,14 @@
+@@ -730,6 +1075,15 @@
+     std::vector<ExternalSemaphore> semaphores) {
+   std::move(semaphores.begin(), semaphores.end(),
+             std::back_inserter(pending_semaphores_));
++#if BUILDFLAG(IS_OHOS)
++  if (format().PrefersExternalSampler() && image()->native_pixmap()) {
++    // These semaphores have temporary SYNC_FD payloads. They are not opaque
++    // reusable signal semaphores and must never enter the external GL pool.
++    ReleaseSemaphoresWithFenceHelper(std::move(pending_semaphores_));
++    pending_semaphores_.clear();
++    return;
++  }
++#endif
+   external_semaphore_pool()->ReturnSemaphoresWithFenceHelper(
+       std::move(pending_semaphores_));
+   pending_semaphores_.clear();
+@@ -742,7 +1096,14 @@
      wgpu::BackendType backend_type,
      std::vector<wgpu::TextureFormat> view_formats,
      scoped_refptr<SharedContextState> context_state) {
@@ -608,19 +631,23 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing_f
 diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc b/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc
 --- a/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc
 +++ b/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc
-@@ -10,7 +10,11 @@
+@@ -9,8 +9,15 @@
+ #include "base/check.h"
  #include "base/check_op.h"
  #include "base/logging.h"
++#include "base/files/scoped_file.h"
++#include "base/trace_event/trace_event.h"
  #include "components/viz/common/resources/shared_image_format_utils.h"
 +#if BUILDFLAG(IS_OHOS)
 +#include "components/viz/common/gpu/vulkan_context_provider.h"
 +#endif
  #include "gpu/vulkan/vulkan_fence_helper.h"
++#include "gpu/vulkan/vulkan_function_pointers.h"
 +#include "gpu/vulkan/vulkan_image.h"
  #include "gpu/vulkan/vulkan_implementation.h"
  #include "gpu/vulkan/vulkan_util.h"
  #include "third_party/skia/include/core/SkCanvas.h"
-@@ -185,6 +189,14 @@
+@@ -185,6 +192,14 @@
                                                  VK_QUEUE_FAMILY_EXTERNAL));
    }
  
@@ -635,14 +662,27 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_skia_repr
    access_mode_ = AccessMode::kRead;
    return promise_textures;
  }
-@@ -205,8 +217,30 @@
+@@ -205,8 +220,49 @@
    DCHECK(!end_access_semaphore_);
  
    DCHECK(begin_access_semaphores_.empty());
 +#if BUILDFLAG(IS_OHOS)
++  DCHECK_EQ(ohos_end_access_semaphore_, VK_NULL_HANDLE);
++  if (format().PrefersExternalSampler() &&
++      backing_impl()->image()->native_pixmap() &&
++      backing_impl()->need_synchronization()) {
++    // Maleoon supports SYNC_FD, not OPAQUE_FD. Allocate before acquiring the
++    // backing so failure leaves all producer dependencies and access intact.
++    auto* queue = context_state_->vk_context_provider()->GetDeviceQueue();
++    ohos_end_access_semaphore_ = CreateExternalVkSemaphore(
++        queue->GetVulkanDevice(), VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT);
++    if (ohos_end_access_semaphore_ == VK_NULL_HANDLE)
++      return {};
++  }
 +  // Allocate the signal semaphore before taking backing access. A failed
 +  // allocation must not leave a reader registered or consume producer fences.
-+  if (backing_impl()->need_synchronization()) {
++  if (backing_impl()->need_synchronization() &&
++      ohos_end_access_semaphore_ == VK_NULL_HANDLE) {
 +    end_access_semaphore_ =
 +        backing_impl()->external_semaphore_pool()->GetOrCreateSemaphore();
 +    if (!end_access_semaphore_) {
@@ -656,6 +696,12 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_skia_repr
    if (!backing_impl()->BeginAccess(readonly, &begin_access_semaphores_,
                                     /*is_gl=*/false)) {
 +#if BUILDFLAG(IS_OHOS)
++    if (ohos_end_access_semaphore_ != VK_NULL_HANDLE) {
++      vkDestroySemaphore(
++          context_state_->vk_context_provider()->GetDeviceQueue()->GetVulkanDevice(),
++          ohos_end_access_semaphore_, nullptr);
++      ohos_end_access_semaphore_ = VK_NULL_HANDLE;
++    }
 +    if (end_access_semaphore_) {
 +      backing_impl()->external_semaphore_pool()->ReturnSemaphore(
 +          std::move(end_access_semaphore_));
@@ -666,7 +712,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_skia_repr
      return {};
    }
  
-@@ -221,10 +255,12 @@
+@@ -221,12 +277,22 @@
    if (backing_impl()->need_synchronization()) {
      DCHECK(end_semaphores);
      // Create an |end_access_semaphore_| which will be signalled by the caller.
@@ -675,11 +721,23 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_skia_repr
          backing_impl()->external_semaphore_pool()->GetOrCreateSemaphore();
      if (!end_access_semaphore_)
        return {};
+-    end_semaphores->emplace_back(
+-        GrBackendSemaphores::MakeVk(end_access_semaphore_.GetVkSemaphore()));
 +#endif
-     end_semaphores->emplace_back(
-         GrBackendSemaphores::MakeVk(end_access_semaphore_.GetVkSemaphore()));
++#if BUILDFLAG(IS_OHOS)
++    if (ohos_end_access_semaphore_ != VK_NULL_HANDLE) {
++      end_semaphores->emplace_back(
++          GrBackendSemaphores::MakeVk(ohos_end_access_semaphore_));
++    } else
++#endif
++    {
++      end_semaphores->emplace_back(
++          GrBackendSemaphores::MakeVk(end_access_semaphore_.GetVkSemaphore()));
++    }
    }
-@@ -244,8 +280,15 @@
+ 
+   return backing_impl()->GetPromiseTextures();
+@@ -244,8 +310,62 @@
    auto result = GrBackendTextures::GetVkImageInfo(
        backing_impl()->backend_texture(), &info);
    DCHECK(result);
@@ -693,6 +751,53 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_skia_repr
    DCHECK(!backing_impl()->need_synchronization() ||
 -         info.fCurrentQueueFamily == VK_QUEUE_FAMILY_EXTERNAL);
 +         info.fCurrentQueueFamily == external_queue);
++#endif
++
++#if BUILDFLAG(IS_OHOS)
++  if (ohos_end_access_semaphore_ != VK_NULL_HANDLE) {
++    auto* provider = context_state_->vk_context_provider();
++    auto* queue = provider->GetDeviceQueue();
++    const VkDevice device = queue->GetVulkanDevice();
++    // Export transfers the signal payload. Submit first without a CPU wait,
++    // then import a separate semaphore for the next Skia or Dawn consumer.
++    bool valid = context_state_->gr_context()->submit();
++    int fd = -2;
++    if (valid) {
++      VkSemaphoreGetFdInfoKHR info = {
++          .sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
++          .semaphore = ohos_end_access_semaphore_,
++          .handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
++      };
++      valid = vkGetSemaphoreFdKHR(device, &info, &fd) == VK_SUCCESS && fd >= -1;
++    }
++    base::ScopedFD owned_fd(fd >= 0 ? fd : -1);
++    ExternalSemaphore completion;
++    if (valid && owned_fd.is_valid()) {
++      completion = ExternalSemaphore::CreateFromHandle(
++          provider, SemaphoreHandle(VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
++                                    std::move(owned_fd)));
++      valid = static_cast<bool>(completion);
++    }
++    // fd == -1 is an already-signaled payload, not an export failure.
++    fence_helper()->EnqueueSemaphoresCleanupForSubmittedWork(
++        {ohos_end_access_semaphore_});
++    ohos_end_access_semaphore_ = VK_NULL_HANDLE;
++    if (!valid) {
++      LOG(ERROR) << "OHOS Skia video completion export failed; retaining lease";
++      backing_impl()->QuarantineOhosVideoAccess();
++      backing_impl()->ReleaseSemaphoresWithFenceHelper(
++          std::move(begin_access_semaphores_));
++      begin_access_semaphores_.clear();
++      return;
++    }
++    TRACE_EVENT_INSTANT("gpu", "OhosVideoSkiaSyncFD", "already_signaled",
++                        fd == -1);
++    backing_impl()->EndAccess(readonly, std::move(completion), /*is_gl=*/false);
++    backing_impl()->ReturnPendingSemaphoresWithFenceHelper(
++        std::move(begin_access_semaphores_));
++    begin_access_semaphores_.clear();
++    return;
++  }
  #endif
  
    backing_impl()->EndAccess(readonly, std::move(end_access_semaphore_),
@@ -969,11 +1074,14 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.h
    static std::unique_ptr<ExternalVkImageBacking> Create(
        scoped_refptr<SharedContextState> context_state,
        bool enable_webgpu_on_vk_via_gl_interop,
-@@ -148,6 +157,10 @@
+@@ -148,6 +157,13 @@
    void EndAccess(bool readonly,
                   ExternalSemaphore external_semaphore,
                   bool is_gl);
 +
++#if BUILDFLAG(IS_OHOS)
++  void QuarantineOhosVideoAccess();
++#endif
 +#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
 +  void EndOhosDawnAccess(std::vector<ExternalSemaphore> semaphores);
 +#endif
@@ -1207,4 +1315,18 @@ diff --git a/gpu/vulkan/vulkan_util_posix.cc b/gpu/vulkan/vulkan_util_posix.cc
 +#endif
      return SemaphoreHandle();
    }
+ 
+diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.h b/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.h
+--- a/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.h
++++ b/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.h
+@@ -61,6 +61,10 @@
+   int surface_msaa_count_ = 0;
+   std::vector<ExternalSemaphore> begin_access_semaphores_;
+   ExternalSemaphore end_access_semaphore_;
++#if BUILDFLAG(IS_OHOS)
++  // Native video hands off a one-shot sync-fd after Skia submits its signal.
++  VkSemaphore ohos_end_access_semaphore_ = VK_NULL_HANDLE;
++#endif
+   std::vector<sk_sp<SkSurface>> write_surfaces_;
+ };
  
