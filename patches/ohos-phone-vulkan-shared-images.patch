@@ -585,3 +585,35 @@ diff --git a/third_party/blink/renderer/modules/webgpu/external_texture_helper.c
  
      std::array<float, 12> yuvToRgbMatrix;
      auto set_matrix = [&]() {
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_buffer.cc b/third_party/blink/renderer/modules/webgpu/gpu_buffer.cc
+--- a/third_party/blink/renderer/modules/webgpu/gpu_buffer.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_buffer.cc
+@@ -9,6 +9,7 @@
+ 
+ #include "base/numerics/checked_math.h"
+ #include "base/numerics/safe_conversions.h"
++#include "build/build_config.h"
+ #include "gpu/command_buffer/client/webgpu_interface.h"
+ #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
+ #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_buffer_descriptor.h"
+@@ -387,6 +388,20 @@
+   auto* resolver = MakeGarbageCollected<ScriptPromiseResolver<IDLUndefined>>(
+       script_state, exception_state.GetContext());
+   auto promise = resolver->Promise();
++
++#if BUILDFLAG(IS_OHOS)
++  // The content-timeline check must reject before the next microtask. Dawn's
++  // wire implementation defers already-mapped errors to the GPU process and
++  // does not inject a validation error for an outstanding map request.
++  // Do not start a second request or disturb the original map's future.
++  if (GetHandle().GetMapState() != wgpu::BufferMapState::Unmapped) {
++    constexpr char kError[] = "The buffer is already mapped or mapping.";
++    device_->InjectError(wgpu::ErrorType::Validation, kError);
++    EnsureFlush(ToEventLoop(script_state));
++    resolver->RejectWithDOMException(DOMExceptionCode::kOperationError, kError);
++    return promise;
++  }
++#endif
+ 
+   // And send the command, leaving remaining validation to Dawn.
+   auto* callback = MakeWGPUOnceCallback(resolver->WrapCallbackInScriptScope(

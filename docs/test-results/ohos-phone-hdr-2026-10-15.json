@@ -2799,5 +2799,178 @@
       "Normal SDR page grayscale after HDR teardown"
     ],
     "constraints": "No CI code or orchestration changes. Native build only through existing push-triggered CI. Phone silent and kept awake."
+  },
+  "runtime_98bdb63a": {
+    "build": {
+      "run": "38771889764",
+      "source": "98bdb63a",
+      "har_sha256": "0a2d653a7840b4c3803702a10a0ad584af4be86072ef8c467bc1bf232d2845e0",
+      "engine_sha256": "12eadc981cbc47e222f422065c4eae11fba3559ea9bc4e912011c8b7b60fb00f",
+      "hap_sha256": "2bfabea2b6e003033c8941f933f6c12ad730205a4aa5b997c5ea1a406f953c27",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-98bdb63a/phone-98bdb63a-signed.hap"
+    },
+    "coldstarts": {
+      "cycles": 3,
+      "all_first_adapter_success": true,
+      "all_compute_render_success": true,
+      "buffer_cycles": 60,
+      "all_buffer_cycles_success": true
+    },
+    "workers": {
+      "counts": {
+        "pass": 3,
+        "fail": 0,
+        "skip": 0,
+        "warn": 0
+      },
+      "mapping_diagnostic_count": 0
+    },
+    "sharing": {
+      "pass": true,
+      "zeroCopyVerified": false
+    },
+    "cts_groups": {
+      "98b-cts-compute-basic": {
+        "query": "webgpu:api,operation,compute,basic:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792087751774,
+        "done": true,
+        "counts": {
+          "pass": 7,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 7,
+        "current": "webgpu:api,operation,compute,basic:large_dispatch:dispatchSize=\"maximum\"",
+        "stop": false,
+        "caseStart": 1792087753634,
+        "end": 1792087754199,
+        "pass": true
+      },
+      "98b-cts-buffer-copy": {
+        "query": "webgpu:api,operation,command_buffer,copyBufferToBuffer:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792087755838,
+        "done": true,
+        "counts": {
+          "pass": 4,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 4,
+        "current": "webgpu:api,operation,command_buffer,copyBufferToBuffer:copy_order:",
+        "stop": false,
+        "caseStart": 1792087756152,
+        "end": 1792087756158,
+        "pass": true
+      },
+      "98b-cts-buffer-mapping": {
+        "query": "webgpu:api,validation,buffer,mapping:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792087760104,
+        "done": true,
+        "counts": {
+          "pass": 27,
+          "fail": 8,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 35,
+        "current": "webgpu:api,validation,buffer,mapping:gc_behavior,mapAsync:",
+        "stop": false,
+        "caseStart": 1792087760691,
+        "end": 1792087760763,
+        "pass": false
+      },
+      "98b-cts-queue-write-buffer": {
+        "query": "webgpu:api,operation,queue,writeBuffer:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792087757996,
+        "done": true,
+        "counts": {
+          "pass": 17,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 17,
+        "current": "webgpu:api,operation,queue,writeBuffer:multiple_writes_at_different_offsets_and_sizes:",
+        "stop": false,
+        "caseStart": 1792087758288,
+        "end": 1792087758317,
+        "pass": true
+      },
+      "98b-cts-device-destroy": {
+        "query": "webgpu:api,validation,state,device_lost,destroy:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792087762210,
+        "done": true,
+        "counts": {
+          "pass": 2794,
+          "fail": 0,
+          "skip": 564,
+          "warn": 0
+        },
+        "completed": 3358,
+        "current": "webgpu:api,validation,state,device_lost,destroy:queue,copyExternalImageToTexture,imageBitmap:awaitLost=false",
+        "stop": false,
+        "caseStart": 1792087991777,
+        "end": 1792087991864,
+        "pass": true
+      }
+    },
+    "constraints": {
+      "ci_code_modified": false,
+      "local_native_compile": false,
+      "media_muted": true,
+      "media_volume": 0,
+      "ringer": "SILENT",
+      "keep_awake": "running"
+    },
+    "remaining": [
+      "Latest ccafdee7 native CI still running; native video Dawn import, PQ correction and RGBA16F/storage fixes not yet device-tested",
+      "Mapping CTS has 8 raw failures exactly matching pinned Dawn global known failures; not counted as passes",
+      "Main10 1440p60 drops still unresolved; trace correlates with decoder underflow",
+      "Native Display-P3 SDR and sustained latest native video/WebGPU validation outstanding"
+    ],
+    "mapping_early_rejection": {
+      "status": "SOURCE_FIX_RUNTIME_PENDING",
+      "raw_result": "27 passed, 8 failed; all 8 match pinned Dawn global known failures crbug.com/487349982",
+      "implementation": "OHOS Blink checks the wire buffer map state before dispatching a second map. It injects a device validation error, schedules a flush and immediately rejects with OperationError without replacing the original pending future.",
+      "spec": "https://gpuweb.github.io/gpuweb/#dom-gpubuffer-mapasync",
+      "validation": "Patch applies to pinned Chromium 154.0.8037.97 and resulting source matches expected edit; native CI and original unmodified CTS group must still pass.",
+      "artifacts": [
+        "out/phone-validation-20261015/98b-cts-buffer-mapping.json",
+        "out/phone-validation-20261015/98b-buffer-mapping-upstream-triage.json"
+      ]
+    },
+    "main10_underflow_analysis": {
+      "d7d-main10-clean": {
+        "frames": 877,
+        "decoder_underflows": 56,
+        "dropped_frames": 54,
+        "drops_with_underflow_last_100ms": 54,
+        "frame_arrival_interval_ms": {
+          "mean": 17.26395205479452,
+          "p95": 33.082,
+          "max": 61.734,
+          "over_33ms": 42
+        }
+      },
+      "d7d-main10-4k30": {
+        "frames": 436,
+        "decoder_underflows": 5,
+        "dropped_frames": 5,
+        "drops_with_underflow_last_100ms": 4,
+        "frame_arrival_interval_ms": {
+          "mean": 34.60219770114943,
+          "p95": 43.213,
+          "max": 607.054,
+          "over_33ms": 201
+        }
+      }
+    }
   }
 }
