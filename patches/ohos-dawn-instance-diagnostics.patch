@@ -91,3 +91,347 @@ diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/Textu
  
      // We have to manually trigger a transition if the texture hasn't been actually used or if we
      // need a layout transition.
+diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+--- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
++++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+@@ -647,6 +647,14 @@
+     // VK_OHOS_external_memory.
+     if (mDeviceInfo.HasExt(DeviceExt::ExternalMemoryOHOSNativeBuffer)) {
+         EnableFeature(Feature::SharedTextureMemoryAHardwareBuffer);
++        if (mDeviceInfo.samplerYCbCrConversionFeatures.samplerYcbcrConversion == VK_TRUE &&
++            CheckSemaphoreSupport(DeviceExt::ExternalSemaphoreFD,
++                                  VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT_KHR) &&
++            CheckSemaphoreSupport(DeviceExt::ExternalSemaphoreFD,
++                                  VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT_KHR)) {
++            EnableFeature(Feature::YCbCrVulkanSamplers);
++            EnableFeature(Feature::OpaqueYCbCrAndroidForExternalTexture);
++        }
+     }
+ #endif  // defined(__OHOS__)
+ 
+diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
+--- a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
++++ b/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
+@@ -158,6 +158,49 @@
+     const void* pNext;
+     OH_NativeBuffer* buffer;
+ };
++
++ResultOrError<VkImage> CreateOhosVkImage(
++    Device* device,
++    const SharedTextureMemoryProperties& properties,
++    const VkPhysicalDeviceImageFormatInfo2& imageFormatInfo,
++    uint64_t externalFormat) {
++    struct OhosExternalFormat {
++        VkStructureType sType;
++        const void* pNext;
++        uint64_t externalFormat;
++    } externalFormatInfo{static_cast<VkStructureType>(1000452005), nullptr,
++                         externalFormat};
++    VkExternalMemoryImageCreateInfo externalMemory = {};
++    externalMemory.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
++    externalMemory.pNext = externalFormat ? &externalFormatInfo : nullptr;
++    VkImageCreateInfo createInfo = {};
++    createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
++    createInfo.pNext = &externalMemory;
++    createInfo.flags = imageFormatInfo.flags;
++    createInfo.imageType = VK_IMAGE_TYPE_2D;
++    createInfo.format = imageFormatInfo.format;
++    createInfo.extent = {properties.size.width, properties.size.height, 1};
++    createInfo.mipLevels = createInfo.arrayLayers = 1;
++    createInfo.samples = VK_SAMPLE_COUNT_1_BIT;
++    createInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
++    createInfo.usage = imageFormatInfo.usage;
++    createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
++    createInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
++    VkImage image = VK_NULL_HANDLE;
++    VkResult result = VK_ERROR_FORMAT_NOT_SUPPORTED;
++    for (uint32_t handleType :
++         {kOhosNativeBufferHandleType, kOhosNativeBufferHandleTypeDeprecated}) {
++        externalMemory.handleTypes = handleType;
++        result = device->fn.CreateImage(device->GetVkDevice(), &createInfo, nullptr, &image);
++        if (result == VK_SUCCESS ||
++            (result != VK_ERROR_INVALID_EXTERNAL_HANDLE &&
++             result != VK_ERROR_FORMAT_NOT_SUPPORTED)) {
++            break;
++        }
++    }
++    DAWN_TRY(CheckVkSuccess(result, "vkCreateImage(OH_NativeBuffer)"));
++    return image;
++}
+ #endif  // defined(__OHOS__)
+ 
+ template <typename... AdditionalChains>
+@@ -815,11 +858,11 @@
+     return sharedTextureMemory;
+ #elif defined(__OHOS__)
+     // HarmonyOS: the descriptor's handle is an OH_NativeBuffer, imported
+-    // through VK_OHOS_external_memory -- Android's AHardwareBuffer import with
+-    // the names changed. Formats the driver names a VkFormat for, including
+-    // two-plane YUV; no opaque external (YCbCr) formats.
++    // through VK_OHOS_external_memory. Native decoder YUV stays a single
++    // opaque sampled image; never infer a linear plane layout from its format.
+     VkDevice vkDevice = device->GetVkDevice();
+     auto* nativeBuffer = static_cast<OH_NativeBuffer*>(descriptor->handle);
++    DAWN_INVALID_IF(nativeBuffer == nullptr, "Missing OH_NativeBuffer.");
+ 
+     OH_NativeBuffer_Config config = {};
+     OH_NativeBuffer_GetConfig(nativeBuffer, &config);
+@@ -853,30 +896,58 @@
+     DAWN_TRY(CheckVkSuccess(
+         device->fn.GetNativeBufferPropertiesOHOS(vkDevice, nativeBuffer, &bufferProperties),
+         "vkGetNativeBufferPropertiesOHOS"));
++    DAWN_INVALID_IF(bufferProperties.allocationSize == 0 ||
++                        bufferProperties.memoryTypeBits == 0,
++                    "Invalid OH_NativeBuffer memory properties.");
+     VkFormat vkFormat = formatProperties.format;
+-    if (vkFormat == VK_FORMAT_UNDEFINED &&
+-        config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP) {
+-        // The Maleoon driver names no VkFormat for NV12, only an opaque
+-        // external one. These buffers are allocated CPU-writable and so laid
+-        // out as plain NV12, which is what G8_B8R8_2PLANE_420 describes.
+-        vkFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+-    }
+-    DAWN_INVALID_IF(vkFormat == VK_FORMAT_UNDEFINED,
+-                    "OH_NativeBuffer with an external format (%x) is not supported.",
+-                    formatProperties.externalFormat);
+-    DAWN_TRY_ASSIGN(properties.format, FormatFromVkFormat(device, vkFormat));
++    const bool nativeYuv = config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP ||
++                           config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_P010;
++    YCbCrVkDescriptor yCbCrInfo{};
++    uint64_t externalFormat = 0;
++    if (nativeYuv) {
++        DAWN_INVALID_IF(!device->HasFeature(Feature::OpaqueYCbCrAndroidForExternalTexture),
++                        "Native YUV import requires opaque YCbCr external textures.");
++        const VkFormat expected = config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
++                                      ? VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16
++                                      : VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
++        DAWN_INVALID_IF(vkFormat != VK_FORMAT_UNDEFINED && vkFormat != expected,
++                        "OH_NativeBuffer YUV precision/format mismatch.");
++        if (vkFormat == VK_FORMAT_UNDEFINED) {
++            externalFormat = formatProperties.externalFormat;
++            DAWN_INVALID_IF(externalFormat == 0, "Missing OHOS external YUV format.");
++        }
++        DAWN_INVALID_IF(!(formatProperties.formatFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT),
++                        "OH_NativeBuffer does not support YUV sampling.");
++        properties.format = wgpu::TextureFormat::OpaqueYCbCrAndroid;
++        properties.usage = wgpu::TextureUsage::TextureBinding;
++        yCbCrInfo.vkFormat = vkFormat;
++        yCbCrInfo.externalFormat = externalFormat;
++        yCbCrInfo.vkYCbCrModel = formatProperties.suggestedYcbcrModel;
++        yCbCrInfo.vkYCbCrRange = formatProperties.suggestedYcbcrRange;
++        yCbCrInfo.vkComponentSwizzleRed = formatProperties.samplerYcbcrConversionComponents.r;
++        yCbCrInfo.vkComponentSwizzleGreen = formatProperties.samplerYcbcrConversionComponents.g;
++        yCbCrInfo.vkComponentSwizzleBlue = formatProperties.samplerYcbcrConversionComponents.b;
++        yCbCrInfo.vkComponentSwizzleAlpha = formatProperties.samplerYcbcrConversionComponents.a;
++        yCbCrInfo.vkXChromaOffset = formatProperties.suggestedXChromaOffset;
++        yCbCrInfo.vkYChromaOffset = formatProperties.suggestedYChromaOffset;
++        yCbCrInfo.vkChromaFilter =
++            (formatProperties.formatFeatures &
++             VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT)
++                ? wgpu::FilterMode::Linear : wgpu::FilterMode::Nearest;
++        yCbCrInfo.forceExplicitReconstruction =
++            formatProperties.formatFeatures &
++            VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_BIT;
++    } else {
++        DAWN_INVALID_IF(vkFormat == VK_FORMAT_UNDEFINED,
++                        "Unsupported OH_NativeBuffer external non-YUV format.");
++        DAWN_TRY_ASSIGN(properties.format, FormatFromVkFormat(device, vkFormat));
++    }
+ 
+     const Format* internalFormat = nullptr;
+     DAWN_TRY_ASSIGN(internalFormat, device->GetInternalFormat(properties.format));
+-    if (internalFormat->IsMultiPlanar()) {
+-        // A video frame (NV12) for importExternalTexture: sampled plane by
+-        // plane, through views that need the mutable-format bit. The image is
+-        // not disjoint -- one OH_NativeBuffer holds both planes.
+-        properties.usage = wgpu::TextureUsage::TextureBinding;
+-    }
+ 
+     Ref<SharedTextureMemory> sharedTextureMemory = SharedTextureMemory::Create(
+-        device, label, properties, VK_QUEUE_FAMILY_FOREIGN_EXT, YCbCrVkDescriptor{});
++        device, label, properties, VK_QUEUE_FAMILY_FOREIGN_EXT, yCbCrInfo);
+     sharedTextureMemory->APIGetProperties(&properties);
+ 
+     VkImageUsageFlags vkUsageFlags = VulkanImageUsage(device, properties.usage, *internalFormat);
+@@ -892,70 +963,84 @@
+         vkCreateFlags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+     }
+ 
+-    // Which handle type the driver takes the import as, and whether it can
+-    // make the image mutable-format: the SDK's current
+-    // VK_EXTERNAL_MEMORY_HANDLE_TYPE_OH_NATIVE_BUFFER_BIT_OHOS or the
+-    // deprecated value older drivers know, each first with and then without
+-    // VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT (without it, no -srgb views).
+-    VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {};
+-    imageFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+-    imageFormatInfo.format = vkFormat;
+-    imageFormatInfo.type = VK_IMAGE_TYPE_2D;
+-    imageFormatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+-    imageFormatInfo.usage = vkUsageFlags;
+-    VkExternalMemoryHandleTypeFlagBits handleType = {};
+-    bool importable = false;
+-    for (uint32_t candidateType :
+-         {kOhosNativeBufferHandleType, kOhosNativeBufferHandleTypeDeprecated}) {
+-        for (VkImageCreateFlags candidateFlags :
+-             {vkCreateFlags, vkCreateFlags & ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT}) {
+-            imageFormatInfo.pNext = nullptr;
+-            imageFormatInfo.flags = candidateFlags;
+-            handleType = static_cast<VkExternalMemoryHandleTypeFlagBits>(candidateType);
+-            MaybeError supported =
+-                CheckExternalImageFormatSupport(device, properties, &imageFormatInfo, handleType);
+-            imageFormatInfo.pNext = nullptr;
+-            if (!supported.IsError()) {
+-                importable = true;
++    if (nativeYuv) {
++        // Some Maleoon drivers reject the external-image support query while
++        // supporting native imports. Use the actual bounded import as the check;
++        // retain mutable-format flags required by the advertised view formats.
++        VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {};
++        imageFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
++        imageFormatInfo.format = vkFormat;
++        imageFormatInfo.flags = vkCreateFlags;
++        imageFormatInfo.usage = vkUsageFlags;
++        VkImage vkImage;
++        DAWN_TRY_ASSIGN(vkImage, CreateOhosVkImage(device, properties, imageFormatInfo, externalFormat));
++        sharedTextureMemory->mVkImage = AcquireRef(new RefCountedVkHandle<VkImage>(device, vkImage));
++    } else {
++        // Which handle type the driver takes the import as, and whether it can
++        // make the image mutable-format: the SDK's current
++        // VK_EXTERNAL_MEMORY_HANDLE_TYPE_OH_NATIVE_BUFFER_BIT_OHOS or the
++        // deprecated value older drivers know, each first with and then without
++        // VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT (without it, no -srgb views).
++        VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {};
++        imageFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
++        imageFormatInfo.format = vkFormat;
++        imageFormatInfo.type = VK_IMAGE_TYPE_2D;
++        imageFormatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
++        imageFormatInfo.usage = vkUsageFlags;
++        VkExternalMemoryHandleTypeFlagBits handleType = {};
++        bool importable = false;
++        for (uint32_t candidateType :
++             {kOhosNativeBufferHandleType, kOhosNativeBufferHandleTypeDeprecated}) {
++            for (VkImageCreateFlags candidateFlags :
++                 {vkCreateFlags, vkCreateFlags & ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT}) {
++                imageFormatInfo.pNext = nullptr;
++                imageFormatInfo.flags = candidateFlags;
++                handleType = static_cast<VkExternalMemoryHandleTypeFlagBits>(candidateType);
++                MaybeError supported =
++                    CheckExternalImageFormatSupport(device, properties, &imageFormatInfo, handleType);
++                imageFormatInfo.pNext = nullptr;
++                if (!supported.IsError()) {
++                    importable = true;
++                    break;
++                }
++                std::ignore = supported.AcquireError();
++            }
++            if (importable) {
+                 break;
+             }
+-            std::ignore = supported.AcquireError();
+-        }
+-        if (importable) {
+-            break;
+-        }
+-    }
+-    if (!importable) {
+-        // The Maleoon driver answers VK_ERROR_FORMAT_NOT_SUPPORTED to this
+-        // query for either handle type, whatever the flags, while importing
+-        // OH_NativeBuffers is what HarmonyOS's own graphics stack does. The
+-        // query is only a check before the import: go on with the current
+-        // handle type and the flags Dawn wants (mutable format for -srgb and
+-        // plane views), and let vkCreateImage and vkAllocateMemory decide.
+-        handleType =
+-            static_cast<VkExternalMemoryHandleTypeFlagBits>(kOhosNativeBufferHandleType);
+-        imageFormatInfo.flags = vkCreateFlags;
++        }
++        if (!importable) {
++            // The Maleoon driver answers VK_ERROR_FORMAT_NOT_SUPPORTED to this
++            // query for either handle type, whatever the flags, while importing
++            // OH_NativeBuffers is what HarmonyOS's own graphics stack does. The
++            // query is only a check before the import: go on with the current
++            // handle type and the flags Dawn wants (mutable format for -srgb and
++            // plane views), and let vkCreateImage and vkAllocateMemory decide.
++            handleType =
++                static_cast<VkExternalMemoryHandleTypeFlagBits>(kOhosNativeBufferHandleType);
++            imageFormatInfo.flags = vkCreateFlags;
++        }
++
++        {
++            ResultOrError<VkImage> created =
++                CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
++            if (created.IsError() && !internalFormat->IsMultiPlanar() &&
++                (imageFormatInfo.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)) {
++                // Last resort for a single-plane image: no view reinterpretation
++                // (-srgb views), but the texture itself still works.
++                std::ignore = created.AcquireError();
++                imageFormatInfo.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
++                created = CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
++            }
++            VkImage vkImage;
++            DAWN_TRY_ASSIGN(vkImage, std::move(created));
++            sharedTextureMemory->mVkImage =
++                AcquireRef(new RefCountedVkHandle<VkImage>(device, vkImage));
++        }
+     }
+ 
+     {
+-        ResultOrError<VkImage> created =
+-            CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
+-        if (created.IsError() && !internalFormat->IsMultiPlanar() &&
+-            (imageFormatInfo.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)) {
+-            // Last resort for a single-plane image: no view reinterpretation
+-            // (-srgb views), but the texture itself still works.
+-            std::ignore = created.AcquireError();
+-            imageFormatInfo.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+-            created = CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
+-        }
+-        VkImage vkImage;
+-        DAWN_TRY_ASSIGN(vkImage, std::move(created));
+-        sharedTextureMemory->mVkImage =
+-            AcquireRef(new RefCountedVkHandle<VkImage>(device, vkImage));
+-    }
+-
+-    {
+-        VkMemoryRequirements memoryRequirements;
++        VkMemoryRequirements memoryRequirements{};
+         memoryRequirements.memoryTypeBits = bufferProperties.memoryTypeBits;
+         auto maybeMemoryTypeIndex = device->GetResourceMemoryAllocator()->FindBestTypeIndex(
+             memoryRequirements, MemoryKind::DeviceLocal);
+diff --git a/src/dawn/native/vulkan/UtilsVulkan.cpp b/src/dawn/native/vulkan/UtilsVulkan.cpp
+--- a/src/dawn/native/vulkan/UtilsVulkan.cpp
++++ b/src/dawn/native/vulkan/UtilsVulkan.cpp
+@@ -476,6 +476,17 @@
+ 
+         vulkanYCbCrCreateInfo.pNext = &vulkanExternalFormat;
+     }
++#elif defined(__OHOS__)
++    // Same external-format payload, but HarmonyOS has its own structure type.
++    struct OhosExternalFormat {
++        VkStructureType sType;
++        const void* pNext;
++        uint64_t externalFormat;
++    } vulkanExternalFormat{static_cast<VkStructureType>(1000452005), nullptr,
++                           externalFormat};
++    if (externalFormat != 0) {
++        vulkanYCbCrCreateInfo.pNext = &vulkanExternalFormat;
++    }
+ #endif  // DAWN_PLATFORM_IS(ANDROID)
+ 
+     VkSamplerYcbcrConversion samplerYCbCrConversion = VK_NULL_HANDLE;
+diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/DeviceVk.cpp
+--- a/src/dawn/native/vulkan/DeviceVk.cpp
++++ b/src/dawn/native/vulkan/DeviceVk.cpp
+@@ -674,7 +674,11 @@
+ 
+     if ((HasFeature(Feature::YCbCrVulkanSamplers) ||
+          HasFeature(Feature::OpaqueYCbCrAndroidForExternalTexture)) &&
+-        mDeviceInfo.HasExt(DeviceExt::ExternalMemoryAndroidHardwareBuffer)) {
++        (mDeviceInfo.HasExt(DeviceExt::ExternalMemoryAndroidHardwareBuffer)
++#if defined(__OHOS__)
++         || mDeviceInfo.HasExt(DeviceExt::ExternalMemoryOHOSNativeBuffer)
++#endif
++         )) {
+         usedKnobs.samplerYCbCrConversionFeatures.samplerYcbcrConversion = VK_TRUE;
+         featuresChain.Add(&usedKnobs.samplerYCbCrConversionFeatures,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES);

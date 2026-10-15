@@ -2571,5 +2571,31 @@
       "fix": "Use the pinned Dawn PQ shader mode and ST2084 coefficients, with linear gamut scaling derived from Skia HDR transfer function to preserve SDR reference white. Source patch applied cleanly; runtime retest pending CI.",
       "limits": "Canvas2D may apply its own tone mapping and is not the expected value for direct WebGPU color-space conversion. Compare static stripes against PQ EOTF then sRGB at 203-nit reference. HLG not covered by this fix."
     }
+  },
+  "native_video_dawn_implementation": {
+    "status": "SOURCE_READY_RUNTIME_PENDING",
+    "changes": [
+      "Native NV12/P010 OH_NativeBuffer imported into Dawn as one opaque YCbCr image; no inferred linear plane layout or CPU conversion.",
+      "Enable Vulkan samplerYcbcrConversion on OHOS devices and require both SyncFD and opaque semaphore FD support.",
+      "ExternalVk Dawn representation retains every acquire/release fence; failed release retains the decoder lease until GPU-process teardown.",
+      "Blink selects opaque native video views and retains 10-bit YUV matrix/PQ transfer conversion.",
+      "Phone and same-process Vulkan hardware video advertise WEBGPU_READ; driver workarounds still disable this optional usage.",
+      "General CPU-backed video pool remains on Raster conversion; native hardware frames opt in individually. Existing RGBA/BGRA import implementation preserved."
+    ],
+    "checks": {
+      "source_patch_application": "PASS: 6 Chromium and 4 Dawn sources match edited pinned sources after applying existing patch sequence",
+      "native_compile": "PENDING existing push-triggered CI",
+      "device_native_external_texture": "NOT RUN on this change",
+      "physical_hdr_colorimetry": "NOT RUN"
+    },
+    "required_runtime_checks": [
+      "V8 map/readback stress and first adapter on three cold starts",
+      "RGBA/BGRA canvas sharing regression",
+      "Native H264/NV12, Main10 SDR and PQ/P010 external textures with trace proving zero_copy=true and OhosNativeBufferDawnImport",
+      "Static PQ gray stripe accuracy against analytic EOTF",
+      "Sustained native playback and WebGPU sampling, seek/fullscreen/background/video switching and memory monitoring",
+      "Normal SDR page grayscale after HDR teardown"
+    ],
+    "constraints": "No CI code or orchestration changes. Native build only through existing push-triggered CI. Phone silent and kept awake."
   }
 }

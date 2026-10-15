@@ -185,6 +185,7 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   const scoped_refptr<OhosVideoFrameConverter> frame_converter_;
 
   const OhosGetSharedImageInterfaceCB get_browser_sii_;
+  const bool allow_webgpu_native_video_;
   scoped_refptr<gpu::SharedImageInterface> browser_sii_;
   State state_ = State::kUninitialized;
   VideoDecoderConfig config_;

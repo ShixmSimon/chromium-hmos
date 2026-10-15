@@ -147,8 +147,8 @@ index b7560b5..2088dc6 100644
    shared_image_caps.disable_webgpu_shared_images =
        workarounds_.disable_webgpu_shared_images;
 +#if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_OHOS)
-+  // ExternalVk has no OHOS Dawn representation. Advertise that limit to video
-+  // producers instead of rejecting their otherwise supported shared images.
++  // CPU-backed ExternalVk images still require the Raster conversion path.
++  // Native decoder frames opt into WEBGPU_READ independently of this pool.
 +  if (ui::IsOhosPhoneGpuChild() && gr_context_type_ == GrContextType::kVulkan) {
 +    shared_image_caps.disable_webgpu_shared_images = true;
 +  }
@@ -519,55 +519,69 @@ diff --git a/gpu/command_buffer/client/mapped_memory.cc b/gpu/command_buffer/cli
 diff --git a/third_party/blink/renderer/modules/webgpu/external_texture_helper.cc b/third_party/blink/renderer/modules/webgpu/external_texture_helper.cc
 --- a/third_party/blink/renderer/modules/webgpu/external_texture_helper.cc
 +++ b/third_party/blink/renderer/modules/webgpu/external_texture_helper.cc
-@@ -3,6 +3,8 @@
- // found in the LICENSE file.
+@@ -237,6 +237,17 @@
+   bool device_support_zero_copy = device->GetHandle().GetAdapter().HasFeature(
+       wgpu::FeatureName::DawnMultiPlanarFormats);
  
- #include "third_party/blink/renderer/modules/webgpu/external_texture_helper.h"
++  bool opaque_native_yuv = false;
++#if BUILDFLAG(IS_OHOS)
++  opaque_native_yuv =
++      device->GetHandle().GetAdapter().HasFeature(
++          wgpu::FeatureName::OpaqueYCbCrAndroidForExternalTexture) &&
++      (media_video_frame->format() == media::PIXEL_FORMAT_NV12 ||
++       media_video_frame->format() == media::PIXEL_FORMAT_P010LE);
++  // OHOS YUV imports are opaque; planar views are not a fallback here.
++  device_support_zero_copy = false;
++#endif
 +
-+#include <cmath>
+   wgpu::ExternalTextureDescriptor external_texture_desc = {};
  
- #include "base/debug/crash_logging.h"
- #include "media/base/video_frame.h"
-@@ -22,6 +24,7 @@
- #include "third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h"
- #include "third_party/blink/renderer/platform/graphics/gpu/webgpu_shared_image_wrapper.h"
- #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
-+#include "third_party/skia/include/core/SkColorSpace.h"
- #include "third_party/skia/include/effects/SkColorMatrix.h"
- #include "third_party/skia/modules/skcms/skcms.h"
+   // Set the ExternalTexture cropSize/Origin and apparentSize. The 0-copy path
+@@ -274,8 +285,9 @@
  
-@@ -109,6 +112,34 @@
-                            src_transfer_fn.b, src_transfer_fn.c,
-                            src_transfer_fn.d, src_transfer_fn.e,
-                            src_transfer_fn.f};
-+
-+  // GetTransferFunction() does not represent PQ and leaves an identity
-+  // function on failure. Passing that identity to Dawn treats PQ code values
-+  // as linear light (e.g. 0.1 nit becomes sRGB 71/255 instead of about 2/255).
-+  if (src_color_space.GetTransferID() == gfx::ColorSpace::TransferID::PQ) {
-+    // Match the PQ mode and coefficients in the pinned Dawn revision's
-+    // common/ExternalTextureParams.cpp. Dawn performs the EOTF in the shader.
-+    color_space_conversion_constants.src_transfer_constants = {
-+        -2.f, 2610.f / 16384.f, 2523.f / 32.f, 3424.f / 4096.f,
-+        2413.f / 128.f, 2392.f / 128.f, 0.f};
-+
-+    // The PQ EOTF produces a fraction of 10000 nits. Scale linear RGB to the
-+    // source's SDR reference white, preserving an explicitly configured white
-+    // level through Skia's HDR transfer function rather than assuming 203 nits.
-+    float luminance_scale = 10000.f / gfx::ColorSpace::kDefaultSDRWhiteLevel;
-+    auto sk_color_space = src_color_space.GetAsFullRangeRGB().ToSkColorSpace();
-+    if (sk_color_space) {
-+      skcms_TransferFunction hdr_transfer;
-+      sk_color_space->isNumericalTransferFn(&hdr_transfer);
-+      const float peak = skcms_TransferFunction_eval(&hdr_transfer, 1.f);
-+      if (std::isfinite(peak) && peak > 0.f) {
-+        luminance_scale = peak;
-+      }
+   const bool zero_copy =
+       (media_video_frame->HasSharedImage() &&
+-       (media_video_frame->format() == media::PIXEL_FORMAT_NV12) &&
+-       device_support_zero_copy &&
++       (opaque_native_yuv ||
++        (media_video_frame->format() == media::PIXEL_FORMAT_NV12 &&
++         device_support_zero_copy)) &&
+        media_video_frame->metadata().is_webgpu_compatible &&
+        DstColorSpaceSupportedByZeroCopy(dst_predefined_color_space));
+ 
+@@ -291,19 +303,22 @@
+       return {};
+     }
+ 
+-    wgpu::TextureViewDescriptor view_desc = {
+-        .format = wgpu::TextureFormat::R8Unorm,
+-        .aspect = wgpu::TextureAspect::Plane0Only};
+-    wgpu::TextureView plane0 =
+-        mailbox_texture->GetTexture().CreateView(&view_desc);
+-    view_desc.format = wgpu::TextureFormat::RG8Unorm;
+-    view_desc.aspect = wgpu::TextureAspect::Plane1Only;
+-    wgpu::TextureView plane1 =
+-        mailbox_texture->GetTexture().CreateView(&view_desc);
+-
+-    // Set Planes for ExternalTexture
+-    external_texture_desc.plane0 = plane0;
+-    external_texture_desc.plane1 = plane1;
++    if (opaque_native_yuv) {
++      // One opaque view preserves NV12/P010 precision. Dawn's static sampler
++      // returns raw YUV; the matrix below performs range and RGB conversion.
++      external_texture_desc.plane0 =
++          mailbox_texture->GetTexture().CreateView();
++    } else {
++      wgpu::TextureViewDescriptor view_desc = {
++          .format = wgpu::TextureFormat::R8Unorm,
++          .aspect = wgpu::TextureAspect::Plane0Only};
++      external_texture_desc.plane0 =
++          mailbox_texture->GetTexture().CreateView(&view_desc);
++      view_desc.format = wgpu::TextureFormat::RG8Unorm;
++      view_desc.aspect = wgpu::TextureAspect::Plane1Only;
++      external_texture_desc.plane1 =
++          mailbox_texture->GetTexture().CreateView(&view_desc);
 +    }
-+    for (float& value : color_space_conversion_constants.gamut_conversion_matrix) {
-+      value *= luminance_scale;
-+    }
-+  }
  
-   // Set constants for destination transfer function.
-   skcms_TransferFunction dst_transfer_fn;
+     std::array<float, 12> yuvToRgbMatrix;
+     auto set_matrix = [&]() {

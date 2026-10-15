@@ -36,6 +36,7 @@
 #include "base/trace_event/trace_event.h"
 #include "gpu/command_buffer/client/client_shared_image.h"
 #include "gpu/command_buffer/client/shared_image_interface.h"
+#include "gpu/config/gpu_driver_bug_workarounds.h"
 #include "media/base/decrypt_config.h"
 #include "media/base/format_utils.h"
 #include "media/base/video_codecs.h"
@@ -131,7 +132,8 @@ OhosVideoDecoder::OhosVideoDecoder(
                                  std::move(get_stub_cb),
                                  workarounds)
                            : nullptr),
-      get_browser_sii_(std::move(get_browser_sii)) {
+      get_browser_sii_(std::move(get_browser_sii)),
+      allow_webgpu_native_video_(!workarounds.disable_webgpu_shared_images) {
   DETACH_FROM_SEQUENCE(sequence_checker_);
 }
 
@@ -1083,12 +1085,14 @@ void OhosVideoDecoder::ConvertBrowserFrame(
     return format;
   }());
   CHECK(pixel_format);
+  gpu::SharedImageUsageSet usage = gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
+                                   gpu::SHARED_IMAGE_USAGE_RASTER_READ;
+  if (allow_webgpu_native_video_)
+    usage |= gpu::SHARED_IMAGE_USAGE_WEBGPU_READ;
   const gpu::SharedImageInfo info(pixmap->GetSharedImageFormat(),
                                   pixmap->GetBufferSize(), output.color_space,
                                   kTopLeft_GrSurfaceOrigin, kOpaque_SkAlphaType,
-                                  gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
-                                      gpu::SHARED_IMAGE_USAGE_RASTER_READ,
-                                  "OhosPhoneVideo");
+                                  usage, "OhosPhoneVideo");
   auto image = browser_sii_->CreateSharedImage(
       info, gfx::GpuMemoryBufferHandle(std::move(handle)));
   // This independent lease survives VideoFrame release and decode reset. The
@@ -1132,6 +1136,7 @@ void OhosVideoDecoder::ConvertBrowserFrame(
     frame->set_hdr_metadata(output.hdr_metadata);
     frame->metadata().power_efficient = true;
     frame->metadata().read_lock_fences_enabled = true;
+    frame->metadata().is_webgpu_compatible = allow_webgpu_native_video_;
   }
   OnSurfaceFrameConverted(generation, std::move(frame));
 }

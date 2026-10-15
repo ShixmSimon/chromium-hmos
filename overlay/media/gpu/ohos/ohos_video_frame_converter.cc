@@ -194,10 +194,12 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
     fail("unsupported VideoFrame pixel format");
     return;
   }
-  // Read-only GPU uses. No scanout, CPU mapping, or direct WebGPU import.
+  // Read-only GPU uses. Native Vulkan YUV can also be sampled by Dawn.
   gpu::SharedImageUsageSet usage = gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
                                    gpu::SHARED_IMAGE_USAGE_RASTER_READ;
-  if (!use_vulkan_) {
+  if (use_vulkan_ && !workarounds_.disable_webgpu_shared_images) {
+    usage |= gpu::SHARED_IMAGE_USAGE_WEBGPU_READ;
+  } else if (!use_vulkan_) {
     usage |= gpu::SHARED_IMAGE_USAGE_GLES2_READ;
   }
   const gpu::SharedImageInfo info(pixmap->GetSharedImageFormat(),
@@ -290,6 +292,8 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
   }
   frame->metadata().read_lock_fences_enabled = true;
   frame->metadata().power_efficient = true;
+  frame->metadata().is_webgpu_compatible =
+      usage.Has(gpu::SHARED_IMAGE_USAGE_WEBGPU_READ);
   if ((images_created_ + images_reused_) % 300 == 0) {
     LogCacheStats();
   }

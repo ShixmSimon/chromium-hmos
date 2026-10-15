@@ -119,16 +119,17 @@ diff --git a/gpu/command_buffer/common/shared_image_capabilities.h b/gpu/command
 diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc b/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
 --- a/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
 +++ b/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
-@@ -12,6 +12,8 @@
+@@ -12,6 +12,9 @@
  #include "base/containers/span.h"
  #include "base/memory/raw_ptr.h"
  #include "base/notimplemented.h"
 +#include "base/task/single_thread_task_runner.h"
 +#include "base/time/time.h"
++#include "base/trace_event/trace_event.h"
  #include "build/build_config.h"
  #include "components/viz/common/resources/shared_image_format_utils.h"
  #include "gpu/command_buffer/common/shared_image_info.h"
-@@ -50,6 +52,10 @@
+@@ -50,11 +53,23 @@
  #include "third_party/skia/include/gpu/vk/VulkanMutableTextureState.h"
  #include "third_party/skia/include/private/chromium/GrPromiseImageTexture.h"
  #include "ui/gfx/buffer_types.h"
@@ -139,11 +140,23 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  #include "ui/gl/buildflags.h"
  #include "ui/gl/gl_context.h"
  #include "ui/gl/gl_utils.h"
-@@ -85,6 +91,22 @@
- namespace gpu {
+ #include "ui/gl/gl_version_info.h"
+ #include "ui/gl/scoped_binders.h"
++
++#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
++#include <unistd.h>
++#include "base/no_destructor.h"
++#include "base/synchronization/lock.h"
++#include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
++#include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
++#endif
+ 
+ #if BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DAWN)
+ #include "gpu/command_buffer/service/shared_image/external_vk_image_dawn_representation.h"
+@@ -86,6 +101,22 @@
  
  namespace {
-+
+ 
 +#if BUILDFLAG(IS_OHOS)
 +void PollOhosVideoCleanup(scoped_refptr<SharedContextState> context,
 +                          VulkanFenceHelper::FenceHandle fence) {
@@ -159,10 +172,236 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
 +      base::Milliseconds(4));
 +}
 +#endif
- 
++
  class ScopedDedicatedMemoryObject {
   public:
-@@ -263,6 +285,44 @@
+   explicit ScopedDedicatedMemoryObject(gl::GLApi* api) : api_(api) {
+@@ -102,6 +133,224 @@
+   raw_ptr<gl::GLApi> const api_;
+   GLuint id_;
+ };
++
++#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
++// A failed Dawn release must not return a decoder buffer while its queue can
++// still read it. Keep the lease until GPU-process teardown if completion
++// cannot be proved; the lost context cannot accept more frames.
++struct OhosDawnQuarantinedLeases {
++  base::Lock lock;
++  std::vector<scoped_refptr<gfx::NativePixmap>> pixmaps;
++};
++
++class OhosNativeBufferDawnRepresentation final : public DawnImageRepresentation {
++ public:
++  static std::unique_ptr<OhosNativeBufferDawnRepresentation> Create(
++      SharedImageManager* manager, ExternalVkImageBacking* backing,
++      MemoryTypeTracker* tracker, const wgpu::Device& device) {
++    if (!backing->usage().Has(SHARED_IMAGE_USAGE_WEBGPU_READ) ||
++        !device.HasFeature(wgpu::FeatureName::SharedTextureMemoryAHardwareBuffer) ||
++        !device.HasFeature(wgpu::FeatureName::SharedFenceSyncFD) ||
++        !device.HasFeature(wgpu::FeatureName::SharedFenceVkSemaphoreOpaqueFD) ||
++        !device.HasFeature(wgpu::FeatureName::OpaqueYCbCrAndroidForExternalTexture)) {
++      return nullptr;
++    }
++    auto pixmap = backing->image()->native_pixmap();
++    if (!pixmap)
++      return nullptr;
++    wgpu::SharedTextureMemoryAHardwareBufferDescriptor native;
++    native.handle = ui::GetOhosNativeBuffer(*pixmap);
++    if (!native.handle)
++      return nullptr;
++    wgpu::SharedTextureMemoryDescriptor descriptor;
++    descriptor.label = "OhosDecoderNativeBuffer";
++    descriptor.nextInChain = &native;
++    auto memory = device.ImportSharedTextureMemory(&descriptor);
++    wgpu::SharedTextureMemoryProperties properties{};
++    if (!memory || memory.GetProperties(&properties) != wgpu::Status::Success ||
++        properties.format != wgpu::TextureFormat::OpaqueYCbCrAndroid ||
++        properties.size.width != static_cast<uint32_t>(backing->size().width()) ||
++        properties.size.height != static_cast<uint32_t>(backing->size().height())) {
++      return nullptr;
++    }
++    TRACE_EVENT_INSTANT("gpu", "OhosNativeBufferDawnImport", "format",
++                        backing->format().ToString(), "width",
++                        backing->size().width(), "height", backing->size().height());
++    return std::make_unique<OhosNativeBufferDawnRepresentation>(
++        manager, backing, tracker, device, std::move(memory), std::move(pixmap));
++  }
++
++  OhosNativeBufferDawnRepresentation(
++      SharedImageManager* manager, ExternalVkImageBacking* backing,
++      MemoryTypeTracker* tracker, wgpu::Device device,
++      wgpu::SharedTextureMemory memory, scoped_refptr<gfx::NativePixmap> pixmap)
++      : DawnImageRepresentation(manager, backing, tracker),
++        backing_(backing), device_(std::move(device)), memory_(std::move(memory)),
++        pixmap_(std::move(pixmap)) {}
++
++  ~OhosNativeBufferDawnRepresentation() override { EndAccess(); }
++
++  wgpu::Texture BeginAccess(wgpu::TextureUsage usage,
++                            wgpu::TextureUsage internal_usage) override {
++    if (texture_ || !IsCleared() ||
++        (usage & ~wgpu::TextureUsage::TextureBinding) != wgpu::TextureUsage::None ||
++        (internal_usage & ~wgpu::TextureUsage::TextureBinding) !=
++            wgpu::TextureUsage::None) {
++      return nullptr;
++    }
++    // A Vulkan queue-family acquire is exclusive even for a logical read.
++    if (!backing_->BeginAccess(false, &begin_semaphores_, false))
++      return nullptr;
++
++    std::vector<wgpu::SharedFence> fences;
++    for (auto& semaphore : begin_semaphores_) {
++      auto handle = semaphore.handle();
++      const auto type = handle.vk_handle_type();
++      auto fd = handle.TakeHandle();
++      if (!fd.is_valid()) {
++        AbortBeginAccess();
++        return nullptr;
++      }
++      wgpu::SharedFenceDescriptor descriptor;
++      wgpu::SharedFenceSyncFDDescriptor sync;
++      wgpu::SharedFenceVkSemaphoreOpaqueFDDescriptor opaque;
++      if (type == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT) {
++        sync.handle = fd.get();
++        descriptor.nextInChain = &sync;
++      } else if (type == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT) {
++        opaque.handle = fd.get();
++        descriptor.nextInChain = &opaque;
++      } else {
++        AbortBeginAccess();
++        return nullptr;
++      }
++      // ImportSharedFence duplicates the handle; the original dependency
++      // remains in begin_semaphores_ until access succeeds or is rolled back.
++      fences.push_back(device_.ImportSharedFence(&descriptor));
++    }
++    std::vector<uint64_t> values(fences.size(), 1);
++    wgpu::SharedTextureMemoryVkImageLayoutBeginState layout{};
++    layout.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
++    layout.newLayout = VK_IMAGE_LAYOUT_GENERAL;
++    wgpu::SharedTextureMemoryBeginAccessDescriptor access{};
++    access.nextInChain = &layout;
++    access.initialized = true;
++    access.fenceCount = fences.size();
++    access.fences = fences.data();
++    access.signaledValueCount = values.size();
++    access.signaledValues = values.data();
++    wgpu::TextureDescriptor descriptor;
++    descriptor.label = "OhosDecoderExternalTexture";
++    descriptor.format = wgpu::TextureFormat::OpaqueYCbCrAndroid;
++    descriptor.usage = wgpu::TextureUsage::TextureBinding;
++    descriptor.dimension = wgpu::TextureDimension::e2D;
++    descriptor.mipLevelCount = 1;
++    descriptor.sampleCount = 1;
++    descriptor.size = {static_cast<uint32_t>(size().width()),
++                       static_cast<uint32_t>(size().height()), 1};
++    texture_ = memory_.CreateTexture(&descriptor);
++    if (memory_.BeginAccess(texture_, &access) != wgpu::Status::Success) {
++      texture_.Destroy();
++      texture_ = nullptr;
++      AbortBeginAccess();
++      return nullptr;
++    }
++    return texture_;
++  }
++
++  void EndAccess() override {
++    if (!texture_)
++      return;
++    wgpu::SharedTextureMemoryVkImageLayoutEndState layout{};
++    wgpu::SharedTextureMemoryEndAccessState access{};
++    access.nextInChain = &layout;
++    if (memory_.EndAccess(texture_, &access) != wgpu::Status::Success ||
++        layout.newLayout != VK_IMAGE_LAYOUT_GENERAL ||
++        access.fenceCount != access.signaledValueCount) {
++      FailRelease();
++      return;
++    }
++    std::vector<ExternalSemaphore> semaphores;
++    for (size_t i = 0; i < access.fenceCount; ++i) {
++      if (UNSAFE_TODO(access.signaledValues[i]) != 1) {
++        FailRelease();
++        return;
++      }
++      const auto& fence = UNSAFE_TODO(access.fences[i]);
++      wgpu::SharedFenceExportInfo info{};
++      fence.ExportInfo(&info);
++      int exported_fd = -2;
++      VkExternalSemaphoreHandleTypeFlagBits type;
++      if (info.type == wgpu::SharedFenceType::SyncFD) {
++        wgpu::SharedFenceSyncFDExportInfo sync{};
++        info.nextInChain = &sync;
++        fence.ExportInfo(&info);
++        if (sync.handle == -1)
++          continue;  // Already signaled, not a missing dependency.
++        exported_fd = sync.handle;
++        type = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT;
++      } else if (info.type == wgpu::SharedFenceType::VkSemaphoreOpaqueFD) {
++        wgpu::SharedFenceVkSemaphoreOpaqueFDExportInfo opaque{};
++        info.nextInChain = &opaque;
++        fence.ExportInfo(&info);
++        exported_fd = opaque.handle;
++        type = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
++      } else {
++        FailRelease();
++        return;
++      }
++      base::ScopedFD fd(exported_fd >= 0 ? dup(exported_fd) : -1);
++      if (!fd.is_valid()) {
++        FailRelease();
++        return;
++      }
++      auto semaphore = ExternalSemaphore::CreateFromHandle(
++          backing_->context_provider(), SemaphoreHandle(type, std::move(fd)));
++      if (!semaphore) {
++        FailRelease();
++        return;
++      }
++      semaphores.push_back(std::move(semaphore));
++    }
++    auto backend = backing_->backend_texture();
++    backend.setMutableState(skgpu::MutableTextureStates::MakeVulkan(
++        VK_IMAGE_LAYOUT_GENERAL, VK_QUEUE_FAMILY_FOREIGN_EXT));
++    backing_->EndOhosDawnAccess(std::move(semaphores));
++    texture_.Destroy();
++    texture_ = nullptr;
++    backing_->AddSemaphoresToPendingListOrRelease(std::move(begin_semaphores_));
++    begin_semaphores_.clear();
++  }
++
++ private:
++  void AbortBeginAccess() {
++    backing_->EndOhosDawnAccess(std::move(begin_semaphores_));
++    begin_semaphores_.clear();
++  }
++
++  void FailRelease() {
++    LOG(ERROR) << "OHOS Dawn native video release failed; retaining decoder lease";
++    static base::NoDestructor<OhosDawnQuarantinedLeases> quarantine;
++    {
++      base::AutoLock lock(quarantine->lock);
++      quarantine->pixmaps.push_back(pixmap_);
++    }
++    // Do not unlock backing ownership without completion dependencies.
++    backing_->context_state()->MarkContextLost();
++    texture_.Destroy();
++    texture_ = nullptr;
++    backing_->ReleaseSemaphoresWithFenceHelper(std::move(begin_semaphores_));
++    begin_semaphores_.clear();
++  }
++
++  raw_ptr<ExternalVkImageBacking> backing_;
++  wgpu::Device device_;
++  wgpu::SharedTextureMemory memory_;
++  wgpu::Texture texture_;
++  scoped_refptr<gfx::NativePixmap> pixmap_;
++  std::vector<ExternalSemaphore> begin_semaphores_;
++};
++#endif
+ 
+ }  // namespace
+ 
+@@ -263,6 +512,46 @@
  
    return backing;
  }
@@ -174,13 +413,15 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
 +    const Mailbox& mailbox,
 +    const SharedImageInfo& si_info,
 +    scoped_refptr<gfx::NativePixmap> pixmap) {
-+  // No GL/WebGPU/write access: this backing has no transfer command pool.
++  // Native YUV permits sampling by Skia and Dawn, but no writes or copies.
 +  // WebGL consumers must copy through the Raster video conversion path.
 +  if (!context_state || !context_state->GrContextIsVulkan() ||
 +      context_state->context_lost() || !context_state->vk_context_provider() ||
 +      !context_state->external_semaphore_pool() || !pixmap ||
-+      si_info.usage != (SHARED_IMAGE_USAGE_DISPLAY_READ |
-+                        SHARED_IMAGE_USAGE_RASTER_READ) ||
++      !si_info.usage.HasAll(SHARED_IMAGE_USAGE_DISPLAY_READ |
++                            SHARED_IMAGE_USAGE_RASTER_READ) ||
++      !(SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ |
++        SHARED_IMAGE_USAGE_WEBGPU_READ).HasAll(si_info.usage) ||
 +      si_info.size != pixmap->GetBufferSize() ||
 +      si_info.format != pixmap->GetSharedImageFormat()) {
 +    return nullptr;
@@ -207,7 +448,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  
  // static
  std::unique_ptr<ExternalVkImageBacking> ExternalVkImageBacking::CreateFromGMB(
-@@ -379,8 +439,15 @@
+@@ -379,8 +668,15 @@
        use_separate_gl_texture_(use_separate_gl_texture),
        enable_webgpu_on_vk_via_gl_interop_(enable_webgpu_on_vk_via_gl_interop) {
  #if BUILDFLAG(IS_OZONE)
@@ -225,7 +466,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
      pixmap_ = ui::OzonePlatform::GetInstance()
                    ->GetSurfaceFactoryOzone()
                    ->CreateNativePixmapFromHandle(
-@@ -391,6 +458,10 @@
+@@ -391,6 +687,10 @@
  }
  
  ExternalVkImageBacking::~ExternalVkImageBacking() {
@@ -236,7 +477,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
    auto semaphores = std::move(read_semaphores_);
    if (write_semaphore_) {
      semaphores.emplace_back(std::move(write_semaphore_));
-@@ -406,6 +477,16 @@
+@@ -406,6 +706,16 @@
          std::move(vk_texture.vulkan_image));
    }
    vk_textures_.clear();
@@ -253,7 +494,30 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  
    if (!gl_textures_.empty()) {
      // Ensure that a context is current before glDeleteTexture().
-@@ -651,6 +732,18 @@
+@@ -619,6 +929,22 @@
+   }
+ }
+ 
++#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
++void ExternalVkImageBacking::EndOhosDawnAccess(
++    std::vector<ExternalSemaphore> semaphores) {
++  // Both successful release and failed BeginAccess retain every dependency.
++  // The next Skia/Dawn reader (or destruction) consumes the complete set.
++  ExternalSemaphore last;
++  if (!semaphores.empty()) {
++    last = std::move(semaphores.back());
++    semaphores.pop_back();
++  }
++  EndAccess(/*readonly=*/false, std::move(last), /*is_gl=*/false);
++  std::move(semaphores.begin(), semaphores.end(),
++            std::back_inserter(read_semaphores_));
++}
++#endif
++
+ bool ExternalVkImageBacking::CheckSupportForAccessStream(
+     SharedImageAccessStream stream,
+     viz::SharedImageFormat format,
+@@ -651,6 +977,18 @@
  }
  
  void ExternalVkImageBacking::Update(std::unique_ptr<gfx::GpuFence> in_fence) {
@@ -272,6 +536,22 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
    DCHECK(!in_fence);
  }
  
+@@ -742,7 +1080,14 @@
+     wgpu::BackendType backend_type,
+     std::vector<wgpu::TextureFormat> view_formats,
+     scoped_refptr<SharedContextState> context_state) {
+-#if BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DAWN)
++#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
++  if (backend_type == wgpu::BackendType::Vulkan &&
++      format().PrefersExternalSampler() && image()->native_pixmap()) {
++    return OhosNativeBufferDawnRepresentation::Create(manager, this, tracker,
++                                                      wgpuDevice);
++  }
++  return nullptr;
++#elif BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DAWN)
+   auto wgpu_format = ToDawnFormat(format());
+ 
+   if (wgpu_format == wgpu::TextureFormat::Undefined) {
 diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc
 --- a/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc
 +++ b/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc
@@ -314,6 +594,23 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_skia_repr
    access_mode_ = AccessMode::kRead;
    return promise_textures;
  }
+@@ -244,8 +253,15 @@
+   auto result = GrBackendTextures::GetVkImageInfo(
+       backing_impl()->backend_texture(), &info);
+   DCHECK(result);
++  uint32_t external_queue = VK_QUEUE_FAMILY_EXTERNAL;
++#if BUILDFLAG(IS_OHOS)
++  if (format().PrefersExternalSampler() &&
++      backing_impl()->image()->native_pixmap()) {
++    external_queue = VK_QUEUE_FAMILY_FOREIGN_EXT;
++  }
++#endif
+   DCHECK(!backing_impl()->need_synchronization() ||
+-         info.fCurrentQueueFamily == VK_QUEUE_FAMILY_EXTERNAL);
++         info.fCurrentQueueFamily == external_queue);
+ #endif
+ 
+   backing_impl()->EndAccess(readonly, std::move(end_access_semaphore_),
 diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
 --- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
 +++ b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
@@ -587,6 +884,17 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.h
    static std::unique_ptr<ExternalVkImageBacking> Create(
        scoped_refptr<SharedContextState> context_state,
        bool enable_webgpu_on_vk_via_gl_interop,
+@@ -148,6 +157,10 @@
+   void EndAccess(bool readonly,
+                  ExternalSemaphore external_semaphore,
+                  bool is_gl);
++
++#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
++  void EndOhosDawnAccess(std::vector<ExternalSemaphore> semaphores);
++#endif
+ 
+   // SharedImageBacking implementation.
+   SharedImageBackingType GetType() const override;
 diff --git a/gpu/ipc/service/gpu_channel_shared_image_interface.cc b/gpu/ipc/service/gpu_channel_shared_image_interface.cc
 --- a/gpu/ipc/service/gpu_channel_shared_image_interface.cc
 +++ b/gpu/ipc/service/gpu_channel_shared_image_interface.cc
@@ -715,3 +1023,54 @@ diff --git a/gpu/command_buffer/client/client_shared_image_unittest.cc b/gpu/com
  }
  
  TEST(ClientSharedImageTest,
+diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buffer/service/webgpu_decoder_impl.cc
+--- a/gpu/command_buffer/service/webgpu_decoder_impl.cc
++++ b/gpu/command_buffer/service/webgpu_decoder_impl.cc
+@@ -1299,6 +1299,10 @@
+     case wgpu::FeatureName::DualSourceBlending:
+     case wgpu::FeatureName::Subgroups:
+     case wgpu::FeatureName::DawnMultiPlanarFormats:
++#if BUILDFLAG(IS_OHOS)
++    // Internal renderer capability; Blink does not expose this as a JS feature.
++    case wgpu::FeatureName::OpaqueYCbCrAndroidForExternalTexture:
++#endif
+     case wgpu::FeatureName::TextureFormatsTier1:
+     case wgpu::FeatureName::TextureFormatsTier2:
+     case wgpu::FeatureName::PrimitiveIndex:
+@@ -1505,6 +1509,11 @@
+       wgpu::FeatureName::SharedFenceSyncFD,
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++      wgpu::FeatureName::OpaqueYCbCrAndroidForExternalTexture,
++      wgpu::FeatureName::SharedFenceVkSemaphoreOpaqueFD,
++#endif
++
+       wgpu::FeatureName::SharedTextureMemoryD3D11Texture2D,
+       wgpu::FeatureName::SharedTextureMemoryDXGISharedHandle,
+       wgpu::FeatureName::SharedFenceDXGISharedHandle,
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+@@ -162,13 +162,15 @@
+ 
+ #if BUILDFLAG(USE_DAWN)
+ #if BUILDFLAG(IS_OHOS)
+-  // Video frames prefer the external sampler, which ToDawnFormat does not
+-  // know about; Dawn samples them plane by plane (importExternalTexture).
+-  viz::SharedImageFormat dawn_format = format();
+-  if (dawn_format.is_multi_plane() && dawn_format.PrefersExternalSampler()) {
++  // OH_NativeBuffer YUV images are imported whole, with hardware chroma
++  // sampling. The external-texture shader supplies range/matrix conversion.
++  auto dawn_format = format();
++  if (dawn_format.is_multi_plane())
+     dawn_format.ClearPrefersExternalSampler();
+-  }
+-  wgpu::TextureFormat webgpu_format = ToDawnFormat(dawn_format);
++  const bool native_yuv = dawn_format == viz::MultiPlaneFormat::kNV12 ||
++                          dawn_format == viz::MultiPlaneFormat::kP010;
++  wgpu::TextureFormat webgpu_format = native_yuv
++      ? wgpu::TextureFormat::OpaqueYCbCrAndroid : ToDawnFormat(dawn_format);
+ #else
+   wgpu::TextureFormat webgpu_format = ToDawnFormat(format());
+ #endif
