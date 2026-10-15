@@ -15,7 +15,7 @@ PAGE = r'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="w
 <style>body{font:16px system-ui;max-width:850px;margin:24px auto;padding:16px}button,textarea{font:inherit;padding:12px}textarea{width:95%;height:250px}.ok{color:#167a40}.bad{color:#a22}pre{white-space:pre-wrap}</style>
 <h1>Brave 广告过滤内核验收</h1>
 <p>先复制下列个人规则到 Lumie 广告拦截设置，保存后刷新本页。请在测试完成后删除这组规则。每种进程模式各跑一次；本页不修改应用配置。</p>
-<textarea readonly id="rules">RULES</textarea><p><button id="run">开始验证</button> <button id="export">导出结果</button></p>
+<textarea readonly id="rules">RULES</textarea><p><button id="run">开始验证</button> <button id="main">测试主文档替代（新标签）</button> <button id="export">导出结果</button></p>
 <p>单纯网络失败不算通过：测试结束会核对服务端是否实际收到被拦截请求。页面脚本未做模拟拦截。</p>
 <div class="lumie-static" id="static">静态隐藏目标</div><div class="lumie-procedural" id="proc">Sponsored</div><div id="keep">正文，应保持可见</div>
 <pre id="results"></pre>
@@ -35,6 +35,7 @@ async function serviceWorker(run){if(!('serviceWorker' in navigator))return {uns
 const r=await navigator.serviceWorker.register('/sw.js',{scope:'/sw-scope/'});let w=r.active||r.waiting||r.installing;
 if(w.state!=='activated')await withTimeout(new Promise(resolve=>w.addEventListener('statechange',()=>{if(w.state==='activated')resolve()})));
 const c=new MessageChannel();const result=await withTimeout(new Promise(resolve=>{c.port1.onmessage=e=>resolve(e.data);w.postMessage({run,kind:'service'},[c.port2])}));await r.unregister();return result}
+async function replacementFrame(path){return await withTimeout(new Promise(resolve=>{const f=document.createElement('iframe');f.onload=()=>{let ok=false;try{ok=f.contentWindow.location.pathname==='/lumie-replace-frame'&&f.contentDocument.body.textContent.trim()===''&&!f.contentWindow.originalFrameExecuted}catch{}f.remove();resolve(ok)};f.src=path;document.body.append(f)}))}
 async function frameProbe(path){return new Promise(resolve=>{const f=document.createElement('iframe');let timer;const done=value=>{clearTimeout(timer);removeEventListener('message',handler);f.remove();resolve(value)};const handler=e=>{if(e.source===f.contentWindow&&e.data?.probe==='frame')done(e.data)};addEventListener('message',handler);timer=setTimeout(()=>done(null),3000);f.src=path;document.body.append(f)})}
 async function csp(run){return await withTimeout(new Promise(resolve=>{const f=document.createElement('iframe');const handler=e=>{if(e.source===f.contentWindow&&e.data?.probe==='csp'){removeEventListener('message',handler);f.remove();resolve(e.data)}};addEventListener('message',handler);f.src='/csp-target?run='+run;document.body.append(f)}))}
 document.querySelector('#run').onclick=async()=>{
@@ -57,6 +58,7 @@ document.querySelector('#run').onclick=async()=>{
  record('redirect JS 可消费',await script('/lumie-replace.js'+q));
  record('redirect 原 JS 未执行',!window.originalReplacementExecuted);
  record('redirect image 1x1',(await image('/lumie-replace.gif'+q))===1);
+ record('redirect iframe 空文档',await replacementFrame('/lumie-replace-frame'+q));
  record('redirect-rule 单独不阻断',await script('/lumie-rule-only.js'+q));record('redirect-rule 原 JS 执行',window.ruleOnlyOriginal===true);
  const clean=await (await fetch('/lumie-clean'+q+'&adtrack=remove&keep=%2F&keep=two')).json();
  record('removeparam 服务端 URL',!clean.query.includes('adtrack=')&&clean.query.includes('keep=%2F&keep=two'),clean.query);
@@ -66,10 +68,18 @@ document.querySelector('#run').onclick=async()=>{
  const sw=await serviceWorker(run);if(sw.unsupported)record('service worker',false,'待安全上下文复测：'+sw.unsupported);else record('service worker 阻断/允许',!sw.blocked&&sw.allowed);
  record('WebSocket 阻断',!await socket('/lumie-block/socket'+q));record('WebSocket 允许',await socket('/lumie-allow/socket'+q));
  await delay(250);const server=await (await fetch('/report'+q)).json();report.server=server;
- const forbidden=Object.keys(server).filter(k=>k.startsWith('/lumie-block/')||k.startsWith('/lumie-important/')||k.startsWith('/lumie-replace.')||k==='/csp-image.gif');
+ const forbidden=Object.keys(server).filter(k=>k.startsWith('/lumie-block/')||k.startsWith('/lumie-important/')||k.startsWith('/lumie-replace')||k==='/csp-image.gif');
  record('服务端确认：阻断及替代请求均未抵达',forbidden.length===0,JSON.stringify(forbidden));
  record('服务端正例：允许请求确实抵达',server['/lumie-allow/script.js']>0&&server['/lumie-rule-only.js']>0&&server['/lumie-allow/socket']>0);
  }catch(e){record('测试异常',false,String(e))}finally{document.querySelector('#run').disabled=false;}
+};
+document.querySelector('#main').onclick=async()=>{
+ const run=Date.now().toString(36);const path='/lumie-replace-main?run='+run;
+ const win=window.open(path,'_blank');let replaced=false;
+ try{if(win)for(let i=0;i<20;i++){await delay(150);try{if(win.location.pathname==='/lumie-replace-main'&&win.document.readyState==='complete'){replaced=win.document.body?.textContent.trim()==='';break}}catch{}}
+ const server=await(await fetch('/report?run='+run)).json();report.mainDocument={run,server};
+ record('主文档替代及原请求未抵达',!!win&&replaced&&!server['/lumie-replace-main'],win?'':'新标签被阻止，需允许后重测');
+ }catch(e){record('主文档测试异常',false,String(e))}finally{win?.close()}
 };
 document.querySelector('#export').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));a.download='lumie-adblock-'+report.run+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
 </script>'''
@@ -86,6 +96,8 @@ def rules(host):
         '/lumie-important/$script,important', '@@/lumie-important/$script',
         '/lumie-replace.js$script,redirect=noopjs',
         '/lumie-replace.gif$image,redirect=1x1.gif',
+        '/lumie-replace-frame$subdocument,redirect=noopframe',
+        '/lumie-replace-main$document,redirect=noopframe',
         '/lumie-rule-only.js$script,redirect-rule=noopjs',
         '/lumie-clean$removeparam=adtrack',
         "/csp-target$csp=img-src 'none'",
@@ -123,6 +135,7 @@ class Handler(BaseHTTPRequestHandler):
         if p=='/worker.js':return self.send(WORKER+'onmessage=async e=>postMessage(await run(e.data));','application/javascript')
         if p=='/shared-worker.js':return self.send(WORKER+'onconnect=e=>{const p=e.ports[0];p.onmessage=async e=>p.postMessage(await run(e.data));p.start()};','application/javascript')
         if p=='/sw.js':return self.send(WORKER+"self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(clients.claim()));self.addEventListener('message',e=>e.waitUntil(run(e.data).then(r=>e.ports[0].postMessage(r))));",'application/javascript')
+        if p in ('/lumie-replace-frame','/lumie-replace-main'):return self.send('<!doctype html><body>Original frame<script>window.originalFrameExecuted=true</script>','text/html')
         if p in ('/lumie-allow/frame','/lumie-block/frame'):
             return self.send('''<!doctype html><script>parent.postMessage({probe:'frame',early:window.lumieAdblockEarly===true},location.origin);</script>''','text/html')
         if p=='/csp-target':

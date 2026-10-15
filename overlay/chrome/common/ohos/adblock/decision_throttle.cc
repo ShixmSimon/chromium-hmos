@@ -59,7 +59,12 @@ void Serve(std::string mime,
           "Cross-Origin-Resource-Policy: cross-origin\r\n"
           "X-Content-Type-Options: nosniff\r\nContent-Length: " +
           std::to_string(head->content_length) + "\r\n"));
-  head->response_type = same_origin ? network::mojom::FetchResponseType::kBasic
+  head->parsed_headers =
+      network::PopulateParsedHeaders(head->headers.get(), request.url);
+  const bool navigation =
+      request.mode == network::mojom::RequestMode::kNavigate;
+  head->response_type = (navigation || same_origin)
+                            ? network::mojom::FetchResponseType::kBasic
                         : request.mode == network::mojom::RequestMode::kNoCors
                             ? network::mojom::FetchResponseType::kOpaque
                             : network::mojom::FetchResponseType::kCors;
@@ -93,12 +98,10 @@ void DecisionThrottle::Resolve(mojom::DecisionPtr decision) {
   csp_ = decision ? decision->csp : "";
   if (decision && decision->blocked) {
     std::string mime, charset, body;
-    // Document substitution could grant a local script the blocked site's
-    // origin. Only inert/subresource replacement is supported.
-    if (request_.destination != network::mojom::RequestDestination::kDocument &&
-        request_.destination != network::mojom::RequestDestination::kIframe &&
-        request_.destination != network::mojom::RequestDestination::kFrame &&
-        !decision->redirect.empty() &&
+    // Only the fixed, validated resource bundle can produce replacement
+    // content. Keep the requested URL/origin, including navigation responses,
+    // rather than navigating to the resource data URL.
+    if (!decision->redirect.empty() &&
         decision->redirect.size() <= 2 * kMaxReplacement &&
         net::DataURL::Parse(GURL(decision->redirect), &mime, &charset, &body) &&
         body.size() <= kMaxReplacement) {

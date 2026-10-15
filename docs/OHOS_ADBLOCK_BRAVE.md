@@ -96,9 +96,11 @@ scrolling performance; those measurements remain pending.
 - The v1 capability array remains `network`, `cosmetic`. No new capability is
   advertised as accepted before native runtime validation. The new execution
   paths are compiled in and do not require an additional shell switch.
-- Redirect replacement supports GET/HEAD subresources. Blocked main documents
-  and frames remain blocked instead of receiving resource HTML/script under
-  the blocked site's origin. Document replacement is not implemented.
+- Redirect replacement supports GET/HEAD, including document/frame resources.
+  Navigation responses use basic response tainting and parsed response headers;
+  URLs/origins stay with the requested resource. Only the fixed resource bundle
+  supplies content (`noop.html` / `noopframe` is the bundled HTML replacement).
+  Native frame/main-document replacement and origin checks remain pending.
 - No arbitrary downloaded JavaScript is executed. Custom sources cannot invoke
   trusted resources. Only the pinned offline `brave-compat` pair has the
   reviewed trusted permission mask; its downloaded-text form cannot inherit it.
@@ -139,7 +141,8 @@ Worker；局域网 HTTP 地址只能覆盖其余用例，不能把 SW 未执行�
 
 1. 复制页面显示的规则到广告拦截的个人规则，开启总开关及本站过滤，保存并手动刷新。
 2. 点击“开始验证”，等结束后“导出结果”。检查页面结果和最后的服务端请求记录，
-   尤其是替代资源可消费、原请求未抵达、实际 URL 参数已移除。
+   尤其是替代资源可消费、原请求未抵达、实际 URL 参数已移除。另点击“测试主文档替代”，
+   页面会短暂打开测试标签并关闭；完成后再导出。若新标签被阻止，该项需重测。
 3. 关闭本站过滤、手动刷新再跑一次：过滤项应失败，允许请求及原站点 CSP 应继续通过。
    这轮是必要负例，并非修复回归。然后恢复本站过滤。
 4. 手机默认单进程、实验多进程各跑一次；平板原生多进程单独记录。切换模式按外壳
@@ -150,3 +153,20 @@ Worker；局域网 HTTP 地址只能覆盖其余用例，不能把 SW 未执行�
    播放/误伤表现；一次没有广告不能代替受控验收。
 
 上述流程由用户操作，本轮没有安装或启动手机应用。
+
+## Upstream comparison boundary
+
+The parser emits CSS selector, has-text, matches-attr, matches-css,
+matches-css-before/after, matches-path, min-text-length, upward and xpath
+operators, plus style/remove/remove-attr/remove-class actions. The host suite
+covers each of these classes. The imported Brave executor also contains helpers
+that adblock 0.13.3 does not emit (for example matches-property); their presence
+is not a claim that the corresponding rule syntax is supported.
+
+A local Brave 1.97.57 / Chromium 155.0.8059.80 reference run was attempted in
+fresh temporary profiles. Its custom-list UI reported download failure for the
+local list, and a direct temporary custom-filter preference fixture did not
+produce even the basic blocking positive control. It is therefore **not a valid
+Brave behavioral comparison**, and is not used to claim compatibility or
+upstream lack of support. A working matching Brave/resource reference run remains
+pending. No existing Brave user profile was changed.
