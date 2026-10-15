@@ -2971,6 +2971,62 @@
           "over_33ms": 201
         }
       }
+    },
+    "main10_1440p60": {
+      "status": "PLAYBACK_STABLE_DROPS_UNRESOLVED",
+      "media_seconds": 178.925658,
+      "total_frames": 10739,
+      "dropped_frames": 546,
+      "drop_percent": 5.084272278610672,
+      "process_ids_before": [
+        [
+          "browser",
+          30212
+        ],
+        [
+          "GPU",
+          30470
+        ]
+      ],
+      "process_ids_after": [
+        [
+          "browser",
+          30212
+        ],
+        [
+          "GPU",
+          30470
+        ]
+      ],
+      "artifact": "out/phone-validation-20261015/98b-main10-clean-samples.json",
+      "trace_lease_analysis": {
+        "delivered_frames": 882,
+        "released_frames": 883,
+        "matched_renderer_lease_ms": {
+          "count": 879,
+          "mean": 54.55648691695108,
+          "p50": 58.685,
+          "p95": 63.411,
+          "max": 94.08
+        },
+        "matched_renderer_leases_max_simultaneous": 4,
+        "matched_renderer_held_frames_at_underflow": {
+          "count": 45,
+          "mean": 2.111111111111111,
+          "p50": 2,
+          "p95": 3,
+          "max": 3
+        },
+        "next_native_import_after_browser_release_ms": {
+          "count": 882,
+          "mean": 8.325236961451248,
+          "p50": 5.6745,
+          "p95": 23.688,
+          "max": 42.319
+        },
+        "caveat": "Renderer references only; GPU fence-held NativePixmap leases may outlive these releases. Edge intervals without both trace endpoints omitted."
+      },
+      "next_diagnostic": "Add media trace scopes for decoder output arrival, Surface submission/backpressure, acquisition and final native lease release. Preserve four-buffer limit until measured. These scopes are recorded only when the media tracing category is enabled."
     }
   }
 }

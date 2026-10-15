@@ -454,6 +454,8 @@ void OhosVideoDecoder::OnNewOutputBuffer(uint32_t generation,
     return;
   }
 
+  TRACE_EVENT1("media", "OhosVideoDecoder::OnNewOutputBuffer", "pts_us",
+               attr.pts);
   if (attr.flags & AVCODEC_BUFFER_FLAGS_EOS) {
     OH_VideoDecoder_FreeOutputBuffer(codec_.get(), output.index);
     if (surface_enabled_) {
@@ -979,10 +981,18 @@ scoped_refptr<VideoFrame> OhosVideoDecoder::CopyOutput(
 
 void OhosVideoDecoder::RenderNextSurfaceOutput() {
   if (!surface_ || rendered_output_ || surface_outputs_.empty() ||
-      surface_frames_in_flight_ >= kMaxSurfaceFramesInFlight ||
       state_ == State::kError) {
     return;
   }
+  if (surface_frames_in_flight_ >= kMaxSurfaceFramesInFlight) {
+    TRACE_EVENT2("media", "OhosVideoDecoder::SurfaceBackpressure", "in_flight",
+                 surface_frames_in_flight_, "queued_output",
+                 surface_outputs_.size());
+    return;
+  }
+  TRACE_EVENT2("media", "OhosVideoDecoder::SubmitSurfaceOutput", "in_flight",
+               surface_frames_in_flight_, "queued_output",
+               surface_outputs_.size());
   rendered_output_ = std::move(surface_outputs_.front());
   surface_outputs_.pop_front();
   if (OH_VideoDecoder_RenderOutputBuffer(
@@ -1001,6 +1011,9 @@ void OhosVideoDecoder::OnSurfaceFrameAvailable(uint32_t generation) {
   if (generation != generation_ || !surface_ || !rendered_output_) {
     return;
   }
+  TRACE_EVENT2("media", "OhosVideoDecoder::AcquireSurfaceFrame", "pts_us",
+               rendered_output_->timestamp.InMicroseconds(), "in_flight",
+               surface_frames_in_flight_);
   OHNativeWindowBuffer* buffer = nullptr;
   base::ScopedFD acquire_fence;
   base::OnceClosure release;
@@ -1173,6 +1186,9 @@ void OhosVideoDecoder::OnSurfaceFrameReleased(uint32_t generation) {
   if (generation != generation_) {
     return;
   }
+  TRACE_EVENT2("media", "OhosVideoDecoder::SurfaceFrameReleased", "in_flight",
+               surface_frames_in_flight_, "queued_output",
+               surface_outputs_.size());
   DCHECK_GT(surface_frames_in_flight_, 0u);
   --surface_frames_in_flight_;
   RenderNextSurfaceOutput();
