@@ -516,3 +516,150 @@ diff --git a/gpu/command_buffer/client/mapped_memory.cc b/gpu/command_buffer/cli
      return {};
    }
  
+diff --git a/v8/src/base/platform/platform.h b/v8/src/base/platform/platform.h
+--- a/v8/src/base/platform/platform.h
++++ b/v8/src/base/platform/platform.h
+@@ -526,6 +526,12 @@
+ 
+  private:
+   friend class OS;
++#if defined(__OHOS__)
++  // The mapped portion of an emulated subspace is already reserved by its
++  // parent; shared pages may replace only suballocations it owns.
++  friend class EmulatedVirtualAddressSubspace;
++#endif
++
+ 
+ #if V8_OS_FUCHSIA
+   AddressSpaceReservation(void* base, size_t size, zx_handle_t vmar)
+diff --git a/v8/src/base/emulated-virtual-address-subspace.cc b/v8/src/base/emulated-virtual-address-subspace.cc
+--- a/v8/src/base/emulated-virtual-address-subspace.cc
++++ b/v8/src/base/emulated-virtual-address-subspace.cc
+@@ -107,7 +107,48 @@
+ Address EmulatedVirtualAddressSubspace::AllocateSharedPages(
+     Address hint, size_t size, PagePermissions permissions,
+     SharedMemoryHandle handle, uint64_t offset) {
+-  // Can only allocate shared pages in the unmapped region.
++#if defined(__OHOS__)
++  // A partial sandbox may extend past the kernel's mappable address range.
++  // Random mmap hints in its unreserved portion can therefore all be rejected
++  // even when a small shared buffer would fit in the existing reservation.
++  // Use the same region allocator as private pages so mappings cannot overlap.
++  if (hint == kNoHint || MappedRegionContains(hint, size)) {
++    MutexGuard guard(&mutex_);
++    Address address = region_allocator_.AllocateRegion(
++        hint, size, allocation_granularity());
++    if (address != RegionAllocator::kAllocationFailure) {
++      DCHECK(MappedRegionContains(address, size));
++      OS::MemoryPermission access;
++      switch (permissions) {
++        case PagePermissions::kNoAccess:
++          access = OS::MemoryPermission::kNoAccess;
++          break;
++        case PagePermissions::kRead:
++          access = OS::MemoryPermission::kRead;
++          break;
++        case PagePermissions::kReadWrite:
++          access = OS::MemoryPermission::kReadWrite;
++          break;
++        case PagePermissions::kReadWriteExecute:
++          access = OS::MemoryPermission::kReadWriteExecute;
++          break;
++        case PagePermissions::kReadExecute:
++          access = OS::MemoryPermission::kReadExecute;
++          break;
++        default:
++          UNREACHABLE();
++      }
++      AddressSpaceReservation reservation(reinterpret_cast<void*>(base()),
++                                          mapped_size());
++      if (reservation.AllocateShared(reinterpret_cast<void*>(address), size,
++                                     access, handle, offset)) {
++        return address;
++      }
++      CHECK_EQ(size, region_allocator_.FreeRegion(address));
++    }
++  }
++#endif
++  // Fall back to the unreserved region when the mapped region is full.
+   if (!IsUsableSizeForUnmappedRegion(size)) return kNullAddress;
+ 
+   static constexpr int kMaxAttempts = 10;
+@@ -134,6 +175,18 @@
+ 
+ void EmulatedVirtualAddressSubspace::FreeSharedPages(Address address,
+                                                      size_t size) {
++#if defined(__OHOS__)
++  if (MappedRegionContains(address, size)) {
++    MutexGuard guard(&mutex_);
++    AddressSpaceReservation reservation(reinterpret_cast<void*>(base()),
++                                        mapped_size());
++    // Restore a PROT_NONE placeholder before making this region available to
++    // the allocator. munmap alone would leave a hole in the owned reservation.
++    CHECK(reservation.FreeShared(reinterpret_cast<void*>(address), size));
++    CHECK_EQ(size, region_allocator_.FreeRegion(address));
++    return;
++  }
++#endif
+   DCHECK(UnmappedRegionContains(address, size));
+   parent_space_->FreeSharedPages(address, size);
+ }
+diff --git a/v8/test/unittests/base/virtual-address-space-unittest.cc b/v8/test/unittests/base/virtual-address-space-unittest.cc
+--- a/v8/test/unittests/base/virtual-address-space-unittest.cc
++++ b/v8/test/unittests/base/virtual-address-space-unittest.cc
+@@ -217,6 +217,55 @@
+   TestParentSpaceCannotAllocateInChildSpace(subspace.get(), subsubspace.get());
+   TestSharedPageAllocation(subsubspace.get());
+ }
++
++#if defined(__OHOS__)
++TEST(VirtualAddressSpaceTest, EmulatedSharedPagesWithUnavailableUnmappedRegion) {
++  VirtualAddressSpace rootspace;
++  constexpr size_t kMappedSize = 4 * MB;
++  constexpr size_t kLogicalSize = 2 * kMappedSize;
++  const size_t page_size = rootspace.allocation_granularity();
++  // Keep the logical-but-unreserved half occupied too: the old random-hint
++  // implementation cannot place a shared mapping there. No enormous actual
++  // address-space reservation is needed to reproduce the phone's failure.
++  Address reservation = rootspace.AllocatePages(
++      VirtualAddressSpace::kNoHint, kLogicalSize, page_size,
++      PagePermissions::kNoAccess);
++  ASSERT_NE(kNullAddress, reservation);
++  {
++    EmulatedVirtualAddressSubspace subspace(&rootspace, reservation, kMappedSize,
++                                           kLogicalSize);
++    TestSharedPageAllocation(&subspace);
++    auto handle = OS::CreateSharedMemoryHandleForTesting(2 * page_size);
++    ASSERT_TRUE(handle.has_value());
++    for (int i = 0; i < 32; ++i) {
++      Address shared = subspace.AllocateSharedPages(
++          VirtualAddressSpace::kNoHint, page_size, PagePermissions::kReadWrite,
++          *handle, page_size);
++      ASSERT_GE(shared, reservation);
++      ASSERT_LE(shared + page_size, reservation + kMappedSize);
++      *reinterpret_cast<int*>(shared) = 42;
++      Address alias = subspace.AllocateSharedPages(
++          VirtualAddressSpace::kNoHint, page_size, PagePermissions::kRead,
++          *handle, page_size);
++      ASSERT_NE(kNullAddress, alias);
++      ASSERT_NE(alias, shared);
++      EXPECT_EQ(42, *reinterpret_cast<int*>(alias));
++      subspace.FreeSharedPages(alias, page_size);
++      subspace.FreeSharedPages(shared, page_size);
++      // Freeing a shared mapping must preserve its reservation and allow the
++      // same address to be reused as zero-initialized private memory.
++      Address private_page = subspace.AllocatePages(
++          shared, page_size, page_size, PagePermissions::kReadWrite);
++      ASSERT_EQ(shared, private_page);
++      EXPECT_EQ(0, *reinterpret_cast<int*>(private_page));
++      subspace.FreePages(private_page, page_size);
++    }
++    OS::DestroySharedMemoryHandle(*handle);
++    TestParentSpaceCannotAllocateInChildSpace(&rootspace, &subspace);
++  }
++  rootspace.FreePages(reservation + kMappedSize, kMappedSize);
++}
++#endif
+ 
+ TEST(VirtualAddressSpaceTest, TestEmulatedSubspace) {
+   constexpr size_t kSubspaceSize = 32 * MB;

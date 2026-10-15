@@ -1581,6 +1581,485 @@
       "920e95f4": "RGBA WebGPU canvas access still fails: OzoneImageBackingFactory was not registered when phone supports_native_pixmaps=false.",
       "e2e25d3": "Explicit factory registration pushed; runtime validation pending. Existing CI native compile succeeded but later benchmark license download timed out; rerun requested without editing CI."
     },
-    "acceptance": "FAILED: WebGPU buffer mapping and native video external-texture path remain incomplete."
+    "acceptance": "FAILED: WebGPU buffer mapping and native video external-texture path remain incomplete.",
+    "main10_soak": {
+      "fixture": "main10-pq-1440p60-10min.mp4; HEVC Main10, BT2020 PQ, 2560x1440 @ 60 fps; remuxed video only; no audio track",
+      "complete": true,
+      "total_frames": 36000,
+      "dropped_frames": 2385,
+      "drop_percent": 6.625,
+      "gpu_pids": [
+        46220
+      ],
+      "lifecycle": [
+        {
+          "stage": "seek-resumed",
+          "sample": {
+            "wall": 1792082495366,
+            "time": 33.054826,
+            "duration": 600,
+            "total": 36186,
+            "dropped": 2389,
+            "width": 2560,
+            "height": 1440,
+            "ready": 4,
+            "paused": false,
+            "visible": "visible",
+            "fullscreen": false,
+            "error": null,
+            "muted": true,
+            "volume": 0
+          }
+        },
+        {
+          "stage": "fullscreen",
+          "sample": {
+            "wall": 1792082500714,
+            "time": 37.921856,
+            "duration": 600,
+            "total": 36478,
+            "dropped": 2399,
+            "width": 2560,
+            "height": 1440,
+            "ready": 4,
+            "paused": false,
+            "visible": "visible",
+            "fullscreen": true,
+            "error": null,
+            "muted": true,
+            "volume": 0
+          }
+        },
+        {
+          "stage": "background-restored",
+          "sample": {
+            "wall": 1792082515326,
+            "time": 46.098536,
+            "duration": 600,
+            "total": 36969,
+            "dropped": 2462,
+            "width": 2560,
+            "height": 1440,
+            "ready": 4,
+            "paused": false,
+            "visible": "visible",
+            "fullscreen": false,
+            "error": null,
+            "muted": true,
+            "volume": 0
+          }
+        },
+        {
+          "stage": "sdr-restored",
+          "sample": {
+            "wall": 1792082518675,
+            "time": 0,
+            "duration": null,
+            "total": 0,
+            "dropped": 0,
+            "width": 0,
+            "height": 0,
+            "ready": 0,
+            "paused": true,
+            "visible": "visible",
+            "fullscreen": false,
+            "error": null,
+            "muted": true,
+            "volume": 0
+          }
+        }
+      ],
+      "sdr_after_hdr": {
+        "size": [
+          1316,
+          2832
+        ],
+        "ramp": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            32,
+            32,
+            32
+          ],
+          [
+            64,
+            64,
+            64
+          ],
+          [
+            128,
+            128,
+            128
+          ],
+          [
+            192,
+            192,
+            192
+          ],
+          [
+            255,
+            255,
+            255
+          ]
+        ]
+      },
+      "memory_pss_kib": {
+        "46220": [
+          {
+            "sample_label_seconds": 0,
+            "pss_kib": 311567,
+            "dma_kib": 120172
+          },
+          {
+            "sample_label_seconds": 60,
+            "pss_kib": 311529,
+            "dma_kib": 120172
+          },
+          {
+            "sample_label_seconds": 120,
+            "pss_kib": 310771,
+            "dma_kib": 120172
+          },
+          {
+            "sample_label_seconds": 180,
+            "pss_kib": 311174,
+            "dma_kib": 120172
+          },
+          {
+            "sample_label_seconds": 240,
+            "pss_kib": 311140,
+            "dma_kib": 120172
+          },
+          {
+            "sample_label_seconds": 300,
+            "pss_kib": 299746,
+            "dma_kib": 108884
+          },
+          {
+            "sample_label_seconds": 360,
+            "pss_kib": 299866,
+            "dma_kib": 108884
+          },
+          {
+            "sample_label_seconds": 420,
+            "pss_kib": 311029,
+            "dma_kib": 120172
+          },
+          {
+            "sample_label_seconds": 480,
+            "pss_kib": 311042,
+            "dma_kib": 120172
+          },
+          {
+            "sample_label_seconds": 540,
+            "pss_kib": 204244,
+            "dma_kib": 86308
+          }
+        ],
+        "46397": [
+          {
+            "sample_label_seconds": 0,
+            "pss_kib": 132651,
+            "dma_kib": 0
+          },
+          {
+            "sample_label_seconds": 60,
+            "pss_kib": 152883,
+            "dma_kib": 0
+          },
+          {
+            "sample_label_seconds": 120,
+            "pss_kib": 162155,
+            "dma_kib": 0
+          },
+          {
+            "sample_label_seconds": 180,
+            "pss_kib": 165062,
+            "dma_kib": 0
+          },
+          {
+            "sample_label_seconds": 240,
+            "pss_kib": 166078,
+            "dma_kib": 0
+          },
+          {
+            "sample_label_seconds": 300,
+            "pss_kib": 168438,
+            "dma_kib": 0
+          },
+          {
+            "sample_label_seconds": 360,
+            "pss_kib": 174686,
+            "dma_kib": 0
+          },
+          {
+            "sample_label_seconds": 420,
+            "pss_kib": 174506,
+            "dma_kib": 0
+          },
+          {
+            "sample_label_seconds": 480,
+            "pss_kib": 175010,
+            "dma_kib": 0
+          },
+          {
+            "sample_label_seconds": 540,
+            "pss_kib": 170135,
+            "dma_kib": 0
+          }
+        ]
+      },
+      "caveats": [
+        "6.625% dropped frames: smoothness acceptance FAILED.",
+        "Memory is hidumper PSS, not RSS. Periodic diagnostic dumps may perturb timing.",
+        "Digital screenshot gray ramp matches 0/32/64/128/192/255 after stop; physical luminance and HDR colorimetry remain unmeasured.",
+        "10-minute playback plus one fullscreen/background cycle is not an exhaustive lifecycle or leak test."
+      ]
+    }
+  },
+  "runtime_d7d474ed": {
+    "package": {
+      "run": "38769628341",
+      "source": "d7d474ed",
+      "har_sha256": "98abcf1b374bd4fbf5218ec193b54d06588aab0f778196913534d433a7095bae",
+      "engine_sha256": "fe2c993d6051f06d2b400bb8ef2b1598fd88978acfce49c189f9bc03727eee87",
+      "hap_sha256": "e62feb82dcdd8a32fa84ff2365e8f38bbe85c4313d7f979ad902265d8885d587",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-d7d474ed/phone-d7d474ed-signed.hap"
+    },
+    "mapping_trace": {
+      "result": {
+        "adapters": [
+          {
+            "attempt": 0,
+            "adapter": false
+          },
+          {
+            "attempt": 1,
+            "adapter": false
+          },
+          {
+            "attempt": 2,
+            "adapter": true
+          }
+        ],
+        "compute": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "api": true,
+          "tests": [
+            {
+              "name": "compute-storage-buffer-readback",
+              "pass": false,
+              "error": "OperationError: Failed to execute 'mapAsync' on 'GPUBuffer': [Invalid Buffer (unlabeled)] is invalid due to a previous error."
+            },
+            {
+              "name": "render-texture-readback",
+              "pass": true,
+              "data": [
+                64,
+                128,
+                191,
+                255
+              ]
+            }
+          ],
+          "adapter": true,
+          "features": [
+            "depth32float-stencil8",
+            "rg11b10ufloat-renderable",
+            "chromium-experimental-multi-draw-indirect",
+            "core-features-and-limits",
+            "chromium-experimental-sampling-resource-table",
+            "chromium-experimental-timestamp-query-inside-passes",
+            "float32-filterable",
+            "indirect-first-instance",
+            "texture-compression-astc-sliced-3d",
+            "float32-blendable",
+            "subgroup-size-control",
+            "texture-compression-unaligned",
+            "texture-compression-astc",
+            "texture-compression-etc2",
+            "depth-clip-control",
+            "timestamp-query",
+            "clip-distances",
+            "primitive-index",
+            "texture-component-swizzle",
+            "subgroups"
+          ],
+          "info": {
+            "vendor": "huawei",
+            "architecture": "maleoon",
+            "device": "",
+            "description": ""
+          },
+          "errors": [
+            "Failed to allocate memory for buffer mapping\n    at APICreateErrorBuffer (../../third_party/dawn/src/dawn/native/Device.cpp:1538)\n",
+            "[Invalid Buffer (unlabeled)] is invalid due to a previous error.\n - While encoding [CommandEncoder (unlabeled)].CopyBufferToBuffer([Buffer (unlabeled)], 0, [Invalid Buffer (unlabeled)], 0, 1024).\n - While finishing [CommandEncoder (unlabeled)].\n",
+            "[Invalid CommandBuffer] is invalid due to a previous error.\n - While calling [Queue].Submit([[Invalid CommandBuffer]])\n",
+            "[Invalid Buffer (unlabeled)] is invalid due to a previous error.\n - While calling [Invalid Buffer (unlabeled)].MapAsync(MapMode::Read, 0, 1024, ...).\n"
+          ],
+          "pass": false
+        }
+      },
+      "failures": [
+        {
+          "args": {
+            "errno": 0,
+            "offset": 0,
+            "plain_mmap_errno": 0,
+            "plain_mmap_ok": true,
+            "sandbox_base": 408021893120,
+            "sandbox_size": 1099511627776,
+            "size": 65536,
+            "subspaces": false,
+            "write_allowed": true
+          },
+          "cat": "gpu",
+          "name": "OHOS.ArrayBufferSharedMemoryMapFailed",
+          "ph": "I",
+          "pid": 57497,
+          "s": "t",
+          "tid": 57497,
+          "ts": 29942677537,
+          "tts": 555101
+        },
+        {
+          "args": {
+            "custom_mapper": true,
+            "region_valid": false,
+            "size": 65536
+          },
+          "cat": "gpu",
+          "name": "OHOS.TransferBufferMapFailed",
+          "ph": "I",
+          "pid": 57497,
+          "s": "t",
+          "tid": 57497,
+          "ts": 29942677577,
+          "tts": 555141
+        },
+        {
+          "args": {
+            "errno": 0,
+            "offset": 0,
+            "plain_mmap_errno": 0,
+            "plain_mmap_ok": true,
+            "sandbox_base": 408021893120,
+            "sandbox_size": 1099511627776,
+            "size": 65536,
+            "subspaces": false,
+            "write_allowed": true
+          },
+          "cat": "gpu",
+          "name": "OHOS.ArrayBufferSharedMemoryMapFailed",
+          "ph": "I",
+          "pid": 57497,
+          "s": "t",
+          "tid": 57497,
+          "ts": 29942696850,
+          "tts": 556951
+        },
+        {
+          "args": {
+            "custom_mapper": true,
+            "region_valid": false,
+            "size": 65536
+          },
+          "cat": "gpu",
+          "name": "OHOS.TransferBufferMapFailed",
+          "ph": "I",
+          "pid": 57497,
+          "s": "t",
+          "tid": 57497,
+          "ts": 29942696881,
+          "tts": 556980
+        },
+        {
+          "args": {
+            "errno": 0,
+            "offset": 0,
+            "plain_mmap_errno": 0,
+            "plain_mmap_ok": true,
+            "sandbox_base": 408021893120,
+            "sandbox_size": 1099511627776,
+            "size": 2097152,
+            "subspaces": false,
+            "write_allowed": true
+          },
+          "cat": "gpu",
+          "name": "OHOS.ArrayBufferSharedMemoryMapFailed",
+          "ph": "I",
+          "pid": 57497,
+          "s": "t",
+          "tid": 57497,
+          "ts": 29942904708,
+          "tts": 571259
+        },
+        {
+          "args": {
+            "custom_mapper": true,
+            "region_valid": false,
+            "size": 2097152
+          },
+          "cat": "gpu",
+          "name": "OHOS.TransferBufferMapFailed",
+          "ph": "I",
+          "pid": 57497,
+          "s": "t",
+          "tid": 57497,
+          "ts": 29942904738,
+          "tts": 571286
+        }
+      ]
+    },
+    "sharing_probe": {
+      "at": "2026-10-15T16:43:49.548Z",
+      "secure": true,
+      "api": true,
+      "adapter": true,
+      "tests": [
+        {
+          "name": "canvas-rgba8-copy-full-pattern",
+          "pass": true,
+          "data": {
+            "pixels": 64,
+            "maxError": 0
+          }
+        },
+        {
+          "name": "canvas-bgra8-copy-full-pattern",
+          "pass": true,
+          "data": {
+            "pixels": 64,
+            "maxError": 0
+          }
+        },
+        {
+          "name": "videoframe-external-texture-full-pattern",
+          "pass": true,
+          "data": {
+            "pixels": 64,
+            "maxError": 0
+          }
+        },
+        {
+          "name": "webgpu-canvas-to-skia-roundtrip-resize",
+          "pass": true,
+          "data": {
+            "cycles": 20
+          }
+        }
+      ],
+      "zeroCopyVerified": false,
+      "errors": [],
+      "pass": true
+    },
+    "conclusion": "Ozone offscreen factory registration fixed tested Canvas/Skia sharing. WebGPU remains intermittently unusable because V8 partial-sandbox shared mappings reject addresses while plain mmap of the same fd succeeds. Native HEVC-to-WebGPU zero-copy remains incomplete.",
+    "proposed_fix": "On OHOS, EmulatedVirtualAddressSubspace allocates shared pages from its already reserved region first. A single region allocator prevents overlap with private mappings. Free restores PROT_NONE before releasing bookkeeping. No out-of-sandbox ArrayBuffer fallback.",
+    "regression_test": "Added V8 unit test with occupied unreserved half, shared aliases/offset/read-only access, repeated reuse and reservation preservation. Source patch apply/reverse checked; unit test not executed locally; native compilation only through push CI."
   }
 }
