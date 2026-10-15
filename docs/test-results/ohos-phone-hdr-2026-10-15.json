@@ -12,7 +12,7 @@
     "backend": "GaneshVulkan",
     "phone_fork": true
   },
-  "overall": "FAILED: native hardware video IPC disconnects; Main10 cannot play and cannot enter sustained-play acceptance",
+  "overall": "INCOMPLETE: 218e7694 passes native NV12/P010 SDR and PQ numeric color gates. Long lifecycle acceptance is next; complete WebGPU conformance, native P3 SDR and performance remain unaccepted.",
   "main10": {
     "status": "failed",
     "cases": [
@@ -16267,13 +16267,1751 @@
       "errors": [],
       "pass": true
     },
-    "overall": "SDR NV12/P010 colors pass all three sampling modes; PQ white scaling fails; full HDR and lifecycle acceptance pending."
+    "overall": "SDR NV12/P010 colors pass all three sampling modes; PQ white scaling fails; full HDR and lifecycle acceptance pending.",
+    "short_concurrent_sync": {
+      "pass": true,
+      "native_imports": 1261,
+      "zero_copy_imports": 1261,
+      "sampled_frames": 1252,
+      "gpu_stable_after_cleanup": true,
+      "errors": [],
+      "video_total": 1632,
+      "video_dropped": 266,
+      "scope": "30 seconds with concurrent Skia/WebGPU rendering and trace; not performance acceptance."
+    },
+    "cts_regressions": {
+      "video-sample": {
+        "query": "webgpu:web_platform,external_texture,video:importExternalTexture,sample:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792103106435,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 56,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 56,
+        "current": "webgpu:web_platform,external_texture,video:importExternalTexture,sample:videoName=\"four-colors-vp9-bt601-vflip.mp4\";sourceType=\"VideoFrame\";dstColorSpace=\"srgb\"",
+        "stop": false,
+        "caseStart": 1792103110763,
+        "end": 1792103110822,
+        "pass": true
+      },
+      "video-compute": {
+        "query": "webgpu:web_platform,external_texture,video:importExternalTexture,compute:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792103124100,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 56,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 56,
+        "current": "webgpu:web_platform,external_texture,video:importExternalTexture,compute:videoName=\"four-colors-vp9-bt601-vflip.mp4\";sourceType=\"VideoFrame\";dstColorSpace=\"srgb\"",
+        "stop": false,
+        "caseStart": 1792103128000,
+        "end": 1792103128058,
+        "pass": true
+      },
+      "external-expiration": {
+        "query": "webgpu:api,validation,gpu_external_texture_expiration:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792103144275,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 9,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 9,
+        "current": "webgpu:api,validation,gpu_external_texture_expiration:import_from_different_video_frame:",
+        "stop": false,
+        "caseStart": 1792103144761,
+        "end": 1792103144843,
+        "pass": true
+      },
+      "video-crop": {
+        "query": "webgpu:web_platform,external_texture,video:importExternalTexture,sampleWithVideoFrameWithVisibleRectParam:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792103164651,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 28,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 28,
+        "current": "webgpu:web_platform,external_texture,video:importExternalTexture,sampleWithVideoFrameWithVisibleRectParam:videoName=\"four-colors-vp9-bt601-vflip.mp4\";dstColorSpace=\"srgb\"",
+        "stop": false,
+        "caseStart": 1792103168812,
+        "end": 1792103168927,
+        "pass": true
+      },
+      "video-dimensions": {
+        "query": "webgpu:web_platform,external_texture,video:importExternalTexture,video_frame_display_size_from_textureDimensions:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792103188060,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 3,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 3,
+        "current": "webgpu:web_platform,external_texture,video:importExternalTexture,video_frame_display_size_from_textureDimensions:displayScale=\"larger\"",
+        "stop": false,
+        "caseStart": 1792103188394,
+        "end": 1792103188440,
+        "pass": true
+      }
+    },
+    "sdr_background_resume": {
+      "scope": "SDR-only background resume; does not validate HDR-to-SDR transition or physical brightness",
+      "rows": [
+        {
+          "cycle": 0,
+          "state": {
+            "url": "http://127.0.0.1:18080/",
+            "visible": "visible",
+            "muted": true,
+            "volume": 0,
+            "paused": true
+          },
+          "pixels": {
+            "image": "/data/dev/chromium-hmos-sdr-web/out/phone-validation-20261015/19a-sdr-resume-0.jpeg",
+            "width": 1316,
+            "height": 2832,
+            "expected": [
+              0,
+              32,
+              64,
+              128,
+              192,
+              255
+            ],
+            "tolerance": 3,
+            "sample_columns": [
+              109,
+              329,
+              548,
+              767,
+              987,
+              1206
+            ],
+            "best_row": {
+              "row": 552,
+              "rgb": [
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  32,
+                  32,
+                  32
+                ],
+                [
+                  64,
+                  64,
+                  64
+                ],
+                [
+                  128,
+                  128,
+                  128
+                ],
+                [
+                  192,
+                  192,
+                  192
+                ],
+                [
+                  255,
+                  255,
+                  255
+                ]
+              ],
+              "max_error": 0
+            },
+            "matching_contiguous_rows": [
+              550,
+              1170
+            ],
+            "minimum_matching_rows": 40,
+            "pass": true,
+            "scope": "Native display screenshot SDR ramp only; not a physical luminance/colorimeter measurement."
+          }
+        },
+        {
+          "cycle": 1,
+          "state": {
+            "url": "http://127.0.0.1:18080/",
+            "visible": "visible",
+            "muted": true,
+            "volume": 0,
+            "paused": true
+          },
+          "pixels": {
+            "image": "/data/dev/chromium-hmos-sdr-web/out/phone-validation-20261015/19a-sdr-resume-1.jpeg",
+            "width": 1316,
+            "height": 2832,
+            "expected": [
+              0,
+              32,
+              64,
+              128,
+              192,
+              255
+            ],
+            "tolerance": 3,
+            "sample_columns": [
+              109,
+              329,
+              548,
+              767,
+              987,
+              1206
+            ],
+            "best_row": {
+              "row": 552,
+              "rgb": [
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  32,
+                  32,
+                  32
+                ],
+                [
+                  64,
+                  64,
+                  64
+                ],
+                [
+                  128,
+                  128,
+                  128
+                ],
+                [
+                  192,
+                  192,
+                  192
+                ],
+                [
+                  255,
+                  255,
+                  255
+                ]
+              ],
+              "max_error": 0
+            },
+            "matching_contiguous_rows": [
+              550,
+              1170
+            ],
+            "minimum_matching_rows": 40,
+            "pass": true,
+            "scope": "Native display screenshot SDR ramp only; not a physical luminance/colorimeter measurement."
+          }
+        },
+        {
+          "cycle": 2,
+          "state": {
+            "url": "http://127.0.0.1:18080/",
+            "visible": "visible",
+            "muted": true,
+            "volume": 0,
+            "paused": true
+          },
+          "pixels": {
+            "image": "/data/dev/chromium-hmos-sdr-web/out/phone-validation-20261015/19a-sdr-resume-2.jpeg",
+            "width": 1316,
+            "height": 2832,
+            "expected": [
+              0,
+              32,
+              64,
+              128,
+              192,
+              255
+            ],
+            "tolerance": 3,
+            "sample_columns": [
+              109,
+              329,
+              548,
+              767,
+              987,
+              1206
+            ],
+            "best_row": {
+              "row": 552,
+              "rgb": [
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  32,
+                  32,
+                  32
+                ],
+                [
+                  64,
+                  64,
+                  64
+                ],
+                [
+                  128,
+                  128,
+                  128
+                ],
+                [
+                  192,
+                  192,
+                  192
+                ],
+                [
+                  255,
+                  255,
+                  255
+                ]
+              ],
+              "max_error": 0
+            },
+            "matching_contiguous_rows": [
+              550,
+              1170
+            ],
+            "minimum_matching_rows": 40,
+            "pass": true,
+            "scope": "Native display screenshot SDR ramp only; not a physical luminance/colorimeter measurement."
+          }
+        },
+        {
+          "cycle": 3,
+          "state": {
+            "url": "http://127.0.0.1:18080/",
+            "visible": "visible",
+            "muted": true,
+            "volume": 0,
+            "paused": true
+          },
+          "pixels": {
+            "image": "/data/dev/chromium-hmos-sdr-web/out/phone-validation-20261015/19a-sdr-resume-3.jpeg",
+            "width": 1316,
+            "height": 2832,
+            "expected": [
+              0,
+              32,
+              64,
+              128,
+              192,
+              255
+            ],
+            "tolerance": 3,
+            "sample_columns": [
+              109,
+              329,
+              548,
+              767,
+              987,
+              1206
+            ],
+            "best_row": {
+              "row": 552,
+              "rgb": [
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  32,
+                  32,
+                  32
+                ],
+                [
+                  64,
+                  64,
+                  64
+                ],
+                [
+                  128,
+                  128,
+                  128
+                ],
+                [
+                  192,
+                  192,
+                  192
+                ],
+                [
+                  255,
+                  255,
+                  255
+                ]
+              ],
+              "max_error": 0
+            },
+            "matching_contiguous_rows": [
+              550,
+              1170
+            ],
+            "minimum_matching_rows": 40,
+            "pass": true,
+            "scope": "Native display screenshot SDR ramp only; not a physical luminance/colorimeter measurement."
+          }
+        }
+      ],
+      "before": [
+        {
+          "type": "browser",
+          "id": 13614,
+          "cpuTime": 56.29
+        },
+        {
+          "type": "renderer",
+          "id": 14137,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 14004,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 14144,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 14029,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 14261,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 13918,
+          "cpuTime": 0
+        },
+        {
+          "type": "GPU",
+          "id": 13828,
+          "cpuTime": 0
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 13847,
+          "cpuTime": 0
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "id": 13870,
+          "cpuTime": 0
+        },
+        {
+          "type": "tracing.mojom.TracingService",
+          "id": 14299,
+          "cpuTime": 0
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 13614,
+          "cpuTime": 59.38
+        },
+        {
+          "type": "renderer",
+          "id": 18018,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 14137,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 14004,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 14144,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 14029,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 14261,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 13918,
+          "cpuTime": 0
+        },
+        {
+          "type": "GPU",
+          "id": 13828,
+          "cpuTime": 0
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 13847,
+          "cpuTime": 0
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "id": 13870,
+          "cpuTime": 0
+        },
+        {
+          "type": "tracing.mojom.TracingService",
+          "id": 14299,
+          "cpuTime": 0
+        }
+      ],
+      "stableGpu": true,
+      "pass": true
+    }
   },
   "pending_pq_white_fix": {
     "reason": "Pinned skcms_TransferFunction_eval for modern PQ returns normalized EOTF and ignores reference white stored in A. Evaluating 1 yields 1, incorrectly replacing 10000/203 scale. Device 203-nit stripe is RGB8 39, matching normalized 0.0203 linear.",
     "change": "Use 10000/A for modern PQ; retain coefficient evaluation for legacy PQish; preserve invalid-value fallback.",
-    "status": "Source apply/byte comparison passed; CI compilation and phone validation pending.",
+    "status": "CI 38816690991 succeeded. Standard phone package installed; NV12/P010/PQ gates pass with stable GPU and native zero-copy trace. PQ RGB8 gray ramp exactly matches all 10 analytic expectations.",
     "other_changes": "Update two existing Tint YCbCr textureLoad golden IR expectations for combined sampler lowering. Native unit tests not run locally.",
     "constraints": "No CI code modified; native compilation only via push-triggered CI."
+  },
+  "historical_initial_overall": "FAILED: native hardware video IPC disconnects; Main10 cannot play and cannot enter sustained-play acceptance",
+  "latest_pq_white_validation": {
+    "at_utc": "2026-10-15T22:31:36.483048+00:00",
+    "commit": "218e7694f27a2372687ff24b6d0b679554c949d9",
+    "package": {
+      "run": "38816690991",
+      "source": "218e7694",
+      "har_sha256": "e173de3ecf4ff4775880787a52b7441eff2aa249aa09524446c2e037722ca71f",
+      "engine_sha256": "3423fc49211d69407be7c79c0f3b3b34afc3ae9e3348ef26c4490b9d73e4876f",
+      "hap_sha256": "80ba467f6dbd8228be4a3803e532abf8efcb4a39498110a566bd1a7d7a2e6764",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-218e7694/phone-218e7694-signed.hap"
+    },
+    "coldstart": [
+      {
+        "cycle": 1,
+        "firstAdapter": true,
+        "compute": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "api": true,
+          "tests": [
+            {
+              "name": "compute-storage-buffer-readback",
+              "pass": true,
+              "data": {
+                "count": 256,
+                "first": 7,
+                "last": 772
+              }
+            },
+            {
+              "name": "render-texture-readback",
+              "pass": true,
+              "data": [
+                64,
+                128,
+                191,
+                255
+              ]
+            }
+          ],
+          "adapter": true,
+          "features": [
+            "depth32float-stencil8",
+            "rg11b10ufloat-renderable",
+            "chromium-experimental-multi-draw-indirect",
+            "core-features-and-limits",
+            "chromium-experimental-sampling-resource-table",
+            "chromium-experimental-timestamp-query-inside-passes",
+            "float32-filterable",
+            "indirect-first-instance",
+            "texture-compression-astc-sliced-3d",
+            "float32-blendable",
+            "subgroup-size-control",
+            "texture-compression-unaligned",
+            "texture-compression-astc",
+            "texture-compression-etc2",
+            "depth-clip-control",
+            "clip-distances",
+            "timestamp-query",
+            "primitive-index",
+            "texture-component-swizzle",
+            "subgroups"
+          ],
+          "info": {
+            "vendor": "huawei",
+            "architecture": "maleoon",
+            "device": "",
+            "description": ""
+          },
+          "errors": [],
+          "pass": true
+        },
+        "bufferStress": {
+          "adapter": true,
+          "cycles": [
+            {
+              "round": 0,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 8388608,
+              "pass": true
+            }
+          ],
+          "errors": [],
+          "pass": true
+        }
+      }
+    ],
+    "color_gates": [
+      {
+        "name": "nv12-chroma",
+        "clip": "yuv-chroma-8bit.mp4",
+        "pass": true,
+        "gpuStable": true,
+        "nativeImports": 1,
+        "zeroCopyImports": 1,
+        "stripes": [
+          {
+            "codes": [
+              112,
+              128,
+              128
+            ],
+            "actual": [
+              0.4384765625,
+              0.4384765625,
+              0.4384765625,
+              1
+            ],
+            "expected": [
+              0.4383561643835616,
+              0.4383561643835616,
+              0.4383561643835616,
+              1
+            ],
+            "maxError": 0.0001203981164383805,
+            "pass": true
+          },
+          {
+            "codes": [
+              112,
+              16,
+              128
+            ],
+            "actual": [
+              0.4384765625,
+              0.5322265625,
+              -0.489501953125,
+              1
+            ],
+            "expected": [
+              0.4383561643835616,
+              0.532018300848886,
+              -0.48944383561643834,
+              1
+            ],
+            "maxError": 0.00020826165111398343,
+            "pass": true
+          },
+          {
+            "codes": [
+              112,
+              240,
+              128
+            ],
+            "actual": [
+              0.4384765625,
+              0.3447265625,
+              1.3662109375,
+              1
+            ],
+            "expected": [
+              0.4383561643835616,
+              0.3446940279182372,
+              1.3661561643835616,
+              1
+            ],
+            "maxError": 0.0001203981164383805,
+            "pass": true
+          },
+          {
+            "codes": [
+              112,
+              128,
+              16
+            ],
+            "actual": [
+              -0.34912109375,
+              0.67236328125,
+              0.4384765625,
+              1
+            ],
+            "expected": [
+              -0.34904383561643837,
+              0.672418300848886,
+              0.4383561643835616,
+              1
+            ],
+            "maxError": 0.0001203981164383805,
+            "pass": true
+          },
+          {
+            "codes": [
+              112,
+              128,
+              240
+            ],
+            "actual": [
+              1.2255859375,
+              0.204345703125,
+              0.4384765625,
+              1
+            ],
+            "expected": [
+              1.2257561643835615,
+              0.2042940279182372,
+              0.4383561643835616,
+              1
+            ],
+            "maxError": 0.0001702268835614973,
+            "pass": true
+          },
+          {
+            "codes": [
+              112,
+              16,
+              16
+            ],
+            "actual": [
+              -0.34912109375,
+              0.76611328125,
+              -0.489501953125,
+              1
+            ],
+            "expected": [
+              -0.34904383561643837,
+              0.7660804373142104,
+              -0.48944383561643834,
+              1
+            ],
+            "maxError": 7.725813356163069e-05,
+            "pass": true
+          },
+          {
+            "codes": [
+              112,
+              240,
+              240
+            ],
+            "actual": [
+              1.2255859375,
+              0.11065673828125,
+              1.3662109375,
+              1
+            ],
+            "expected": [
+              1.2257561643835615,
+              0.11063189145291286,
+              1.3661561643835616,
+              1
+            ],
+            "maxError": 0.0001702268835614973,
+            "pass": true
+          },
+          {
+            "codes": [
+              112,
+              64,
+              192
+            ],
+            "actual": [
+              0.88818359375,
+              0.358154296875,
+              -0.091796875,
+              1
+            ],
+            "expected": [
+              0.8882990215264187,
+              0.3581275929549902,
+              -0.0918152641878669,
+              1
+            ],
+            "maxError": 0.00011542777641870838,
+            "pass": true
+          }
+        ],
+        "colorPass": true
+      },
+      {
+        "name": "p010-chroma",
+        "clip": "yuv-chroma-10bit.mp4",
+        "pass": true,
+        "gpuStable": true,
+        "nativeImports": 1,
+        "zeroCopyImports": 1,
+        "stripes": [
+          {
+            "codes": [
+              450,
+              512,
+              512
+            ],
+            "actual": [
+              0.440673828125,
+              0.440673828125,
+              0.440673828125,
+              1
+            ],
+            "expected": [
+              0.4406392694063927,
+              0.4406392694063927,
+              0.4406392694063927,
+              1
+            ],
+            "maxError": 3.455871860730264e-05,
+            "pass": true
+          },
+          {
+            "codes": [
+              450,
+              64,
+              512
+            ],
+            "actual": [
+              0.440673828125,
+              0.5341796875,
+              -0.487060546875,
+              1
+            ],
+            "expected": [
+              0.4406392694063927,
+              0.534301405871717,
+              -0.48716073059360726,
+              1
+            ],
+            "maxError": 0.00012171837171703892,
+            "pass": true
+          },
+          {
+            "codes": [
+              450,
+              960,
+              512
+            ],
+            "actual": [
+              0.440673828125,
+              0.346923828125,
+              1.3681640625,
+              1
+            ],
+            "expected": [
+              0.4406392694063927,
+              0.3469771329410683,
+              1.3684392694063927,
+              1
+            ],
+            "maxError": 0.00027520690639271095,
+            "pass": true
+          },
+          {
+            "codes": [
+              450,
+              512,
+              64
+            ],
+            "actual": [
+              -0.3466796875,
+              0.6748046875,
+              0.440673828125,
+              1
+            ],
+            "expected": [
+              -0.3467607305936073,
+              0.6747014058717171,
+              0.4406392694063927,
+              1
+            ],
+            "maxError": 0.00010328162828288079,
+            "pass": true
+          },
+          {
+            "codes": [
+              450,
+              512,
+              960
+            ],
+            "actual": [
+              1.228515625,
+              0.20654296875,
+              0.440673828125,
+              1
+            ],
+            "expected": [
+              1.2280392694063926,
+              0.20657713294106828,
+              0.4406392694063927,
+              1
+            ],
+            "maxError": 0.00047635559360736934,
+            "pass": true
+          },
+          {
+            "codes": [
+              450,
+              64,
+              64
+            ],
+            "actual": [
+              -0.3466796875,
+              0.7685546875,
+              -0.487060546875,
+              1
+            ],
+            "expected": [
+              -0.3467607305936073,
+              0.7683635423370414,
+              -0.48716073059360726,
+              1
+            ],
+            "maxError": 0.00019114516295859474,
+            "pass": true
+          },
+          {
+            "codes": [
+              450,
+              960,
+              960
+            ],
+            "actual": [
+              1.228515625,
+              0.1129150390625,
+              1.3681640625,
+              1
+            ],
+            "expected": [
+              1.2280392694063926,
+              0.11291499647574393,
+              1.3684392694063927,
+              1
+            ],
+            "maxError": 0.00047635559360736934,
+            "pass": true
+          },
+          {
+            "codes": [
+              450,
+              256,
+              768
+            ],
+            "actual": [
+              0.890625,
+              0.3603515625,
+              -0.08953857421875,
+              1
+            ],
+            "expected": [
+              0.8905821265492497,
+              0.36041069797782127,
+              -0.08953215916503582,
+              1
+            ],
+            "maxError": 5.913547782127049e-05,
+            "pass": true
+          }
+        ],
+        "colorPass": true
+      },
+      {
+        "name": "pq-gray",
+        "clip": "pq-gray-203nits.mp4",
+        "pass": true,
+        "gpuStable": true,
+        "nativeImports": 1,
+        "zeroCopyImports": 1,
+        "analytic": {
+          "source": "/data/dev/chromium-hmos-sdr-web/out/phone-validation-20261015/218-gray-webgpu.json",
+          "sdr_reference_white_nits": 203,
+          "tolerance_rgb8": 3,
+          "golden": "Analytic ST2084 EOTF of quantized limited-range Main10 Y, neutral UV, then IEC sRGB transfer; not Canvas2D tone mapping",
+          "stripes": [
+            {
+              "nominal_nits": 0,
+              "encoded_y10": 64,
+              "quantized_nits": 0,
+              "expected_srgb8": 0,
+              "actual_rgba8": [
+                0,
+                0,
+                0,
+                255
+              ],
+              "max_rgb_error": 0,
+              "pass": true
+            },
+            {
+              "nominal_nits": 0.1,
+              "encoded_y10": 119,
+              "quantized_nits": 0.1017120776725406,
+              "expected_srgb8": 2,
+              "actual_rgba8": [
+                2,
+                2,
+                2,
+                255
+              ],
+              "max_rgb_error": 0,
+              "pass": true
+            },
+            {
+              "nominal_nits": 1,
+              "encoded_y10": 195,
+              "quantized_nits": 0.9921312639972388,
+              "expected_srgb8": 15,
+              "actual_rgba8": [
+                15,
+                15,
+                15,
+                255
+              ],
+              "max_rgb_error": 0,
+              "pass": true
+            },
+            {
+              "nominal_nits": 5,
+              "encoded_y10": 281,
+              "quantized_nits": 4.990754950169794,
+              "expected_srgb8": 43,
+              "actual_rgba8": [
+                43,
+                43,
+                43,
+                255
+              ],
+              "max_rgb_error": 0,
+              "pass": true
+            },
+            {
+              "nominal_nits": 18,
+              "encoded_y10": 369,
+              "quantized_nits": 18.04369490244152,
+              "expected_srgb8": 84,
+              "actual_rgba8": [
+                84,
+                84,
+                84,
+                255
+              ],
+              "max_rgb_error": 0,
+              "pass": true
+            },
+            {
+              "nominal_nits": 50,
+              "encoded_y10": 450,
+              "quantized_nits": 50.18845982945656,
+              "expected_srgb8": 136,
+              "actual_rgba8": [
+                136,
+                136,
+                136,
+                255
+              ],
+              "max_rgb_error": 0,
+              "pass": true
+            },
+            {
+              "nominal_nits": 100,
+              "encoded_y10": 509,
+              "quantized_nits": 99.91279848944153,
+              "expected_srgb8": 186,
+              "actual_rgba8": [
+                186,
+                186,
+                186,
+                255
+              ],
+              "max_rgb_error": 0,
+              "pass": true
+            },
+            {
+              "nominal_nits": 203,
+              "encoded_y10": 573,
+              "quantized_nits": 203.70295787737396,
+              "expected_srgb8": 255,
+              "actual_rgba8": [
+                255,
+                255,
+                255,
+                255
+              ],
+              "max_rgb_error": 0,
+              "pass": true
+            },
+            {
+              "nominal_nits": 400,
+              "encoded_y10": 636,
+              "quantized_nits": 401.45493782263355,
+              "expected_srgb8": 255,
+              "actual_rgba8": [
+                255,
+                255,
+                255,
+                255
+              ],
+              "max_rgb_error": 0,
+              "pass": true
+            },
+            {
+              "nominal_nits": 1000,
+              "encoded_y10": 723,
+              "quantized_nits": 1004.1919039801087,
+              "expected_srgb8": 255,
+              "actual_rgba8": [
+                255,
+                255,
+                255,
+                255
+              ],
+              "max_rgb_error": 0,
+              "pass": true
+            }
+          ],
+          "pass": true
+        },
+        "colorPass": true
+      }
+    ],
+    "scope": "Native P010 PQ-to-sRGB numeric colors; does not certify physical display luminance or all WebGPU conformance.",
+    "float_gates": {
+      "label": "218",
+      "scope": "Unclipped PQ-to-sRGB numeric conversion through native P010; not physical display luminance.",
+      "referenceWhiteNits": 203,
+      "tolerance": 0.005,
+      "errors": [],
+      "pass": true,
+      "tests": [
+        {
+          "mode": "fragment-sample",
+          "pass": true,
+          "gpuStable": true,
+          "nativeImports": 1,
+          "zeroCopyImports": 1,
+          "stripes": [
+            {
+              "code": 64,
+              "nits": 0,
+              "expected": 0,
+              "actual": [
+                0,
+                0,
+                0,
+                1
+              ],
+              "maxError": 0,
+              "pass": true
+            },
+            {
+              "code": 119,
+              "nits": 0.1017120776725406,
+              "expected": 0.00647349775137549,
+              "actual": [
+                0.006473541259765625,
+                0.006473541259765625,
+                0.006473541259765625,
+                1
+              ],
+              "maxError": 4.35083901345959e-08,
+              "pass": true
+            },
+            {
+              "code": 195,
+              "nits": 0.9921312639972389,
+              "expected": 0.05991222934373088,
+              "actual": [
+                0.059906005859375,
+                0.059906005859375,
+                0.059906005859375,
+                1
+              ],
+              "maxError": 6.223484355881437e-06,
+              "pass": true
+            },
+            {
+              "code": 281,
+              "nits": 4.990754950169794,
+              "expected": 0.17026741723886757,
+              "actual": [
+                0.1702880859375,
+                0.1702880859375,
+                0.1702880859375,
+                1
+              ],
+              "maxError": 2.066869863243115e-05,
+              "pass": true
+            },
+            {
+              "code": 369,
+              "nits": 18.043694902441523,
+              "expected": 0.32982628224267413,
+              "actual": [
+                0.329833984375,
+                0.329833984375,
+                0.329833984375,
+                1
+              ],
+              "maxError": 7.702132325870803e-06,
+              "pass": true
+            },
+            {
+              "code": 450,
+              "nits": 50.18845982945656,
+              "expected": 0.5343600888555157,
+              "actual": [
+                0.5341796875,
+                0.5341796875,
+                0.5341796875,
+                1
+              ],
+              "maxError": 0.00018040135551566916,
+              "pass": true
+            },
+            {
+              "code": 509,
+              "nits": 99.91279848944153,
+              "expected": 0.7301836457084253,
+              "actual": [
+                0.72998046875,
+                0.72998046875,
+                0.72998046875,
+                1
+              ],
+              "maxError": 0.0002031769584253107,
+              "pass": true
+            },
+            {
+              "code": 573,
+              "nits": 203.70295787737396,
+              "expected": 1.0015206750657155,
+              "actual": [
+                1.001953125,
+                1.001953125,
+                1.001953125,
+                1
+              ],
+              "maxError": 0.00043244993428448453,
+              "pass": true
+            },
+            {
+              "code": 636,
+              "nits": 401.45493782263355,
+              "expected": 1.346665698753913,
+              "actual": [
+                1.3466796875,
+                1.3466796875,
+                1.3466796875,
+                1
+              ],
+              "maxError": 1.3988746087045811e-05,
+              "pass": true
+            },
+            {
+              "code": 723,
+              "nits": 1004.1919039801087,
+              "expected": 1.9987744278827833,
+              "actual": [
+                1.9990234375,
+                1.9990234375,
+                1.9990234375,
+                1
+              ],
+              "maxError": 0.0002490096172167444,
+              "pass": true
+            }
+          ],
+          "colorPass": true
+        },
+        {
+          "mode": "fragment-load",
+          "pass": true,
+          "gpuStable": true,
+          "nativeImports": 1,
+          "zeroCopyImports": 1,
+          "stripes": [
+            {
+              "code": 64,
+              "nits": 0,
+              "expected": 0,
+              "actual": [
+                0,
+                0,
+                0,
+                1
+              ],
+              "maxError": 0,
+              "pass": true
+            },
+            {
+              "code": 119,
+              "nits": 0.1017120776725406,
+              "expected": 0.00647349775137549,
+              "actual": [
+                0.006473541259765625,
+                0.006473541259765625,
+                0.006473541259765625,
+                1
+              ],
+              "maxError": 4.35083901345959e-08,
+              "pass": true
+            },
+            {
+              "code": 195,
+              "nits": 0.9921312639972389,
+              "expected": 0.05991222934373088,
+              "actual": [
+                0.059906005859375,
+                0.059906005859375,
+                0.059906005859375,
+                1
+              ],
+              "maxError": 6.223484355881437e-06,
+              "pass": true
+            },
+            {
+              "code": 281,
+              "nits": 4.990754950169794,
+              "expected": 0.17026741723886757,
+              "actual": [
+                0.1702880859375,
+                0.1702880859375,
+                0.1702880859375,
+                1
+              ],
+              "maxError": 2.066869863243115e-05,
+              "pass": true
+            },
+            {
+              "code": 369,
+              "nits": 18.043694902441523,
+              "expected": 0.32982628224267413,
+              "actual": [
+                0.329833984375,
+                0.329833984375,
+                0.329833984375,
+                1
+              ],
+              "maxError": 7.702132325870803e-06,
+              "pass": true
+            },
+            {
+              "code": 450,
+              "nits": 50.18845982945656,
+              "expected": 0.5343600888555157,
+              "actual": [
+                0.5341796875,
+                0.5341796875,
+                0.5341796875,
+                1
+              ],
+              "maxError": 0.00018040135551566916,
+              "pass": true
+            },
+            {
+              "code": 509,
+              "nits": 99.91279848944153,
+              "expected": 0.7301836457084253,
+              "actual": [
+                0.72998046875,
+                0.72998046875,
+                0.72998046875,
+                1
+              ],
+              "maxError": 0.0002031769584253107,
+              "pass": true
+            },
+            {
+              "code": 573,
+              "nits": 203.70295787737396,
+              "expected": 1.0015206750657155,
+              "actual": [
+                1.001953125,
+                1.001953125,
+                1.001953125,
+                1
+              ],
+              "maxError": 0.00043244993428448453,
+              "pass": true
+            },
+            {
+              "code": 636,
+              "nits": 401.45493782263355,
+              "expected": 1.346665698753913,
+              "actual": [
+                1.3466796875,
+                1.3466796875,
+                1.3466796875,
+                1
+              ],
+              "maxError": 1.3988746087045811e-05,
+              "pass": true
+            },
+            {
+              "code": 723,
+              "nits": 1004.1919039801087,
+              "expected": 1.9987744278827833,
+              "actual": [
+                1.9990234375,
+                1.9990234375,
+                1.9990234375,
+                1
+              ],
+              "maxError": 0.0002490096172167444,
+              "pass": true
+            }
+          ],
+          "colorPass": true
+        },
+        {
+          "mode": "compute-load",
+          "pass": true,
+          "gpuStable": true,
+          "nativeImports": 1,
+          "zeroCopyImports": 1,
+          "stripes": [
+            {
+              "code": 64,
+              "nits": 0,
+              "expected": 0,
+              "actual": [
+                0,
+                0,
+                0,
+                1
+              ],
+              "maxError": 0,
+              "pass": true
+            },
+            {
+              "code": 119,
+              "nits": 0.1017120776725406,
+              "expected": 0.00647349775137549,
+              "actual": [
+                0.006473553832620382,
+                0.00647355429828167,
+                0.0064735752530395985,
+                1
+              ],
+              "maxError": 7.750166410806086e-08,
+              "pass": true
+            },
+            {
+              "code": 195,
+              "nits": 0.9921312639972389,
+              "expected": 0.05991222934373088,
+              "actual": [
+                0.05991286784410477,
+                0.05991285294294357,
+                0.05991289019584656,
+                1
+              ],
+              "maxError": 6.608521156761804e-07,
+              "pass": true
+            },
+            {
+              "code": 281,
+              "nits": 4.990754950169794,
+              "expected": 0.17026741723886757,
+              "actual": [
+                0.1702653467655182,
+                0.17026552557945251,
+                0.17026862502098083,
+                1
+              ],
+              "maxError": 2.070473349380375e-06,
+              "pass": true
+            },
+            {
+              "code": 369,
+              "nits": 18.043694902441523,
+              "expected": 0.32982628224267413,
+              "actual": [
+                0.3298289477825165,
+                0.3298289477825165,
+                0.32982900738716125,
+                1
+              ],
+              "maxError": 2.725144487125686e-06,
+              "pass": true
+            },
+            {
+              "code": 450,
+              "nits": 50.18845982945656,
+              "expected": 0.5343600888555157,
+              "actual": [
+                0.5343558192253113,
+                0.5343557596206665,
+                0.5343558192253113,
+                1
+              ],
+              "maxError": 4.329234849165253e-06,
+              "pass": true
+            },
+            {
+              "code": 509,
+              "nits": 99.91279848944153,
+              "expected": 0.7301836457084253,
+              "actual": [
+                0.7301868200302124,
+                0.7301867604255676,
+                0.7301868796348572,
+                1
+              ],
+              "maxError": 3.23392643186704e-06,
+              "pass": true
+            },
+            {
+              "code": 573,
+              "nits": 203.70295787737396,
+              "expected": 1.0015206750657155,
+              "actual": [
+                1.0015361309051514,
+                1.0015361309051514,
+                1.001536250114441,
+                1
+              ],
+              "maxError": 1.5575048725402496e-05,
+              "pass": true
+            },
+            {
+              "code": 636,
+              "nits": 401.45493782263355,
+              "expected": 1.346665698753913,
+              "actual": [
+                1.346689224243164,
+                1.3466891050338745,
+                1.3466893434524536,
+                1
+              ],
+              "maxError": 2.3644698540659093e-05,
+              "pass": true
+            },
+            {
+              "code": 723,
+              "nits": 1004.1919039801087,
+              "expected": 1.9987744278827833,
+              "actual": [
+                1.9988116025924683,
+                1.9988113641738892,
+                1.9988116025924683,
+                1
+              ],
+              "maxError": 3.7174709685006135e-05,
+              "pass": true
+            }
+          ],
+          "colorPass": true
+        }
+      ]
+    },
+    "transport": {
+      "pass": true,
+      "clips": [
+        "h264-sdr.mp4",
+        "sdr-1080p60.mp4",
+        "bear-hdr10.mp4"
+      ]
+    },
+    "soak_harness_correction": {
+      "evidence": {
+        "lateTask": {
+          "unique": 1,
+          "first": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "opaque": false
+        },
+        "sameTask": {
+          "unique": 40,
+          "opaque": true,
+          "rendered": 141,
+          "mediaTime": 2.5,
+          "sameRenderTask": true
+        },
+        "stop": {
+          "start": 1792103597858,
+          "rendered": 148,
+          "htmlImports": 148,
+          "videoFrameImports": 0,
+          "errors": [],
+          "stopped": true,
+          "lastMediaTime": 2.65,
+          "sourceMode": "alternating every 300 frames",
+          "lastWall": 1792103600975,
+          "end": 1792103601010
+        }
+      },
+      "change": "Capture canvas pixels in the same video frame callback as rendering, before canvas texture expiry. Original failed run preserved and not counted as acceptance.",
+      "long_run_status": "Restarted; not complete."
+    }
+  },
+  "pending_atc_optimization_probe": {
+    "purpose": "Investigate remaining 32 occlusion-query failures with alpha-to-coverage and zero color writes.",
+    "toggle": "ohos_atc_no_write_disable_optimization_probe",
+    "default_enabled": false,
+    "scope": "OHOS Huawei Maleoon; alpha-to-coverage enabled; all effective color masks zero; no depth writes.",
+    "change": "Add VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT before cache-key serialization; log once when exercised.",
+    "status": "Source apply and byte comparison pass; native CI and A/B device result pending. Not a production fix.",
+    "validation_plan": "After 218 long lifecycle run ends, compare existing occlusion CTS and endpoint diagnostic with probe enabled; verify actual toggle/use logging; restore standard HAP afterward."
   }
 }

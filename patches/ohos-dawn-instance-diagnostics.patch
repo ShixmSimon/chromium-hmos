@@ -565,12 +565,13 @@ diff --git a/src/dawn/native/vulkan/SamplerVk.cpp b/src/dawn/native/vulkan/Sampl
 diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
 --- a/src/dawn/native/Toggles.h
 +++ b/src/dawn/native/Toggles.h
-@@ -231,6 +231,9 @@
+@@ -231,6 +231,10 @@
      AutoMapBackendBuffer,
      MetalPolyfillBoolVecDynamicStore,
  
 +    OhosNativeYuvHardwareProbe,
 +    OhosNativeYuvLinearChromaProbe,
++    OhosAtcNoWriteDisableOptimizationProbe,
 +
      EnumCount,
      InvalidEnum = EnumCount,
@@ -578,7 +579,7 @@ diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
 diff --git a/src/dawn/native/Toggles.cpp b/src/dawn/native/Toggles.cpp
 --- a/src/dawn/native/Toggles.cpp
 +++ b/src/dawn/native/Toggles.cpp
-@@ -948,6 +948,17 @@
+@@ -948,6 +948,23 @@
        "boolean vectors fail.",
        "https://crbug.com/540789158", ToggleStage::Device}},
  
@@ -591,6 +592,12 @@ diff --git a/src/dawn/native/Toggles.cpp b/src/dawn/native/Toggles.cpp
 +     {"ohos_native_yuv_linear_chroma_probe",
 +      "Diagnostic only: use matching linear luma/chroma filtering for OHOS external YUV. "
 +      "Overrides the application's sampler to isolate native chroma reconstruction.",
++      "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
++
++    {Toggle::OhosAtcNoWriteDisableOptimizationProbe,
++     {"ohos_atc_no_write_disable_optimization_probe",
++      "Diagnostic only: disable Vulkan pipeline optimization for OHOS Maleoon "
++      "alpha-to-coverage pipelines with no color or depth writes.",
 +      "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
 +
      // Comment to separate the }} so it is clearer what to copy-paste to add a toggle.
@@ -1381,3 +1388,39 @@ diff --git a/src/tint/lang/core/ir/transform/multiplanar_external_texture_test.c
    }
  }
  )";
+diff --git a/src/dawn/native/vulkan/RenderPipelineVk.cpp b/src/dawn/native/vulkan/RenderPipelineVk.cpp
+--- a/src/dawn/native/vulkan/RenderPipelineVk.cpp
++++ b/src/dawn/native/vulkan/RenderPipelineVk.cpp
+@@ -31,6 +31,7 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "src/dawn/common/GPUInfo.h"
+ #include "src/dawn/native/CreatePipelineAsyncEvent.h"
+ #include "src/dawn/native/vulkan/DeviceVk.h"
+ #include "src/dawn/native/vulkan/FencedDeleter.h"
+@@ -754,6 +755,24 @@
+     createInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+     createInfo.pNext = nullptr;
+     createInfo.flags = 0;
++#if defined(__OHOS__)
++    if (device->IsToggleEnabled(Toggle::OhosAtcNoWriteDisableOptimizationProbe) &&
++        gpu_info::IsHuaweiMaleoon(device->GetDeviceInfo().properties.vendorID,
++                                 device->GetDeviceInfo().properties.deviceID) &&
++        IsAlphaToCoverageEnabled() &&
++        GetDepthStencilState()->depthWriteEnabled != wgpu::OptionalBool::True) {
++        bool noColorWrites = true;
++        for (auto i : GetColorAttachmentsMask()) {
++            noColorWrites &= colorBlendAttachments[i].colorWriteMask == 0;
++        }
++        if (noColorWrites) {
++            // Diagnostic only: isolate driver optimization of an alpha-to-coverage
++            // fragment stage whose only observable result is sample coverage.
++            createInfo.flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
++            device->EmitWarningOnce("OHOS ATC no-write pipeline optimization probe enabled");
++        }
++    }
++#endif
+     createInfo.stageCount = stageCount;
+     createInfo.pStages = shaderStages.data();
+     createInfo.pVertexInputState = &vertexInputCreateInfo;
