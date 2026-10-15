@@ -2060,6 +2060,7 @@
     },
     "conclusion": "Ozone offscreen factory registration fixed tested Canvas/Skia sharing. WebGPU remains intermittently unusable because V8 partial-sandbox shared mappings reject addresses while plain mmap of the same fd succeeds. Native HEVC-to-WebGPU zero-copy remains incomplete.",
     "proposed_fix": "On OHOS, EmulatedVirtualAddressSubspace allocates shared pages from its already reserved region first. A single region allocator prevents overlap with private mappings. Free restores PROT_NONE before releasing bookkeeping. No out-of-sandbox ArrayBuffer fallback.",
-    "regression_test": "Added V8 unit test with occupied unreserved half, shared aliases/offset/read-only access, repeated reuse and reservation preservation. Source patch apply/reverse checked; unit test not executed locally; native compilation only through push CI."
+    "regression_test": "Added V8 unit test with occupied unreserved half, shared aliases/offset/read-only access, repeated reuse and reservation preservation. Source patch apply/reverse checked; unit test not executed locally; native compilation only through push CI.",
+    "source_delivery": "V8 files are delivered through the existing source overlay. Chromium-only adapter compatibility checkout has no V8 DEPS sources; applying root-level V8 hunks failed on 98bdb63. No CI script/workflow or patch-registration changes."
   }
 }
