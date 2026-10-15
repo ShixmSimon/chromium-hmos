@@ -26,6 +26,7 @@
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/public/web/web_document.h"
 #include "third_party/blink/public/web/web_local_frame.h"
+#include "third_party/blink/public/web/web_local_frame_client.h"
 #include "third_party/blink/public/web/web_script_source.h"
 #include "v8/include/v8.h"
 namespace chrome::ohos::adblock {
@@ -143,8 +144,16 @@ class CosmeticObserver
     css_.clear();
     scriptlets_injected_ = false;
   }
-  void DidSetPageLifecycleState(blink::BFCacheStateChange) override {
-    Start(false);
+  void DidSetPageLifecycleState(blink::BFCacheStateChange change) override {
+    if (change == blink::BFCacheStateChange::kStoredToBFCache) {
+      // pagehide suspends the JS observer. Drop native callbacks too: executing
+      // a new payload while cached can evict the page or mutate frozen state.
+      weak_.InvalidateWeakPtrs();
+      remote_.reset();
+      retry_.Stop();
+    } else if (change == blink::BFCacheStateChange::kRestoredFromBFCache) {
+      Start(false);
+    }
   }
 
  private:

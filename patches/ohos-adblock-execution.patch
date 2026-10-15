@@ -121,13 +121,16 @@ diff --git a/third_party/blink/common/loader/throttling_url_loader.cc b/third_pa
    void UpdateDeferredResponseHead(
        network::mojom::URLResponseHeadPtr new_response_head,
        mojo::ScopedDataPipeConsumerHandle body) override {
-@@ -322,6 +354,18 @@
+@@ -322,6 +354,21 @@
  void ThrottlingURLLoader::FollowRedirect(
      network::HttpRequestHeadersUpdateParams headers_update_params) {
    MergeRequestHeaders(std::move(headers_update_params));
 +#if BUILDFLAG(IS_OHOS)
 +  if (ohos_restart_on_follow_) {
 +    ohos_restart_on_follow_ = false;
++    // This may follow our synthesized removeparam redirect. Do not synthesize
++    // it again when restarting on the replacement factory.
++    throttle_will_start_redirect_url_ = GURL();
 +    start_info_->url_request.UpdateOnRedirect(redirect_info_->redirect_info);
 +    if (!throttle_will_redirect_redirect_url_.is_empty()) {
 +      start_info_->url_request.url = throttle_will_redirect_redirect_url_;
@@ -140,7 +143,7 @@ diff --git a/third_party/blink/common/loader/throttling_url_loader.cc b/third_pa
  
    if (!throttle_will_start_redirect_url_.is_empty()) {
      throttle_will_start_redirect_url_ = GURL();
-@@ -520,7 +564,12 @@
+@@ -520,7 +567,12 @@
      base::UmaHistogramBoolean("FetchKeepAlive.Renderer.Total.Started", true);
    }
    DCHECK(start_info_->url_loader_factory);

@@ -35,6 +35,7 @@ async function serviceWorker(run){if(!('serviceWorker' in navigator))return {uns
 const r=await navigator.serviceWorker.register('/sw.js',{scope:'/sw-scope/'});let w=r.active||r.waiting||r.installing;
 if(w.state!=='activated')await withTimeout(new Promise(resolve=>w.addEventListener('statechange',()=>{if(w.state==='activated')resolve()})));
 const c=new MessageChannel();const result=await withTimeout(new Promise(resolve=>{c.port1.onmessage=e=>resolve(e.data);w.postMessage({run,kind:'service'},[c.port2])}));await r.unregister();return result}
+async function frameProbe(path){return new Promise(resolve=>{const f=document.createElement('iframe');let timer;const done=value=>{clearTimeout(timer);removeEventListener('message',handler);f.remove();resolve(value)};const handler=e=>{if(e.source===f.contentWindow&&e.data?.probe==='frame')done(e.data)};addEventListener('message',handler);timer=setTimeout(()=>done(null),3000);f.src=path;document.body.append(f)})}
 async function csp(run){return await withTimeout(new Promise(resolve=>{const f=document.createElement('iframe');const handler=e=>{if(e.source===f.contentWindow&&e.data?.probe==='csp'){removeEventListener('message',handler);f.remove();resolve(e.data)}};addEventListener('message',handler);f.src='/csp-target?run='+run;document.body.append(f)}))}
 document.querySelector('#run').onclick=async()=>{
  document.querySelector('#run').disabled=true;output.textContent='';report.results=[];
@@ -50,6 +51,9 @@ document.querySelector('#run').onclick=async()=>{
  record('important 优先',!await script('/lumie-important/script.js'+q));
  record('fetch 阻断',!await fetchable('/lumie-block/fetch'+q));record('fetch 允许',await fetchable('/lumie-allow/fetch'+q));
  record('image 阻断',(await image('/lumie-block/pixel.gif'+q))===0);
+ record('image 允许',(await image('/lumie-allow/pixel.gif'+q))===1);
+ record('iframe 阻断',(await frameProbe('/lumie-block/frame'+q))===null);
+ const frame=await frameProbe('/lumie-allow/frame'+q);record('iframe 允许',!!frame);record('iframe 首段 scriptlet',frame?.early===true);
  record('redirect JS 可消费',await script('/lumie-replace.js'+q));
  record('redirect 原 JS 未执行',!window.originalReplacementExecuted);
  record('redirect image 1x1',(await image('/lumie-replace.gif'+q))===1);
@@ -119,6 +123,8 @@ class Handler(BaseHTTPRequestHandler):
         if p=='/worker.js':return self.send(WORKER+'onmessage=async e=>postMessage(await run(e.data));','application/javascript')
         if p=='/shared-worker.js':return self.send(WORKER+'onconnect=e=>{const p=e.ports[0];p.onmessage=async e=>p.postMessage(await run(e.data));p.start()};','application/javascript')
         if p=='/sw.js':return self.send(WORKER+"self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(clients.claim()));self.addEventListener('message',e=>e.waitUntil(run(e.data).then(r=>e.ports[0].postMessage(r))));",'application/javascript')
+        if p in ('/lumie-allow/frame','/lumie-block/frame'):
+            return self.send('''<!doctype html><script>parent.postMessage({probe:'frame',early:window.lumieAdblockEarly===true},location.origin);</script>''','text/html')
         if p=='/csp-target':
             body='''<!doctype html><script>window.badInline=true;</script><script nonce="probe">let i=new Image();i.onload=()=>parent.postMessage({probe:'csp',imageBlocked:false,originalPreserved:!window.badInline},location.origin);i.onerror=()=>parent.postMessage({probe:'csp',imageBlocked:true,originalPreserved:!window.badInline},location.origin);i.src='/csp-image.gif?run='''+run+"';</script>"
             return self.send(body,'text/html',headers={'Content-Security-Policy':"script-src 'nonce-probe'; img-src 'self'"})
