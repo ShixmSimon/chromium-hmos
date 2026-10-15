@@ -369,6 +369,57 @@ diff --git a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representa
  
      // Set `texture_` to nullptr to signal failure to BeginScopedAccess(),
      // which will itself then return nullptr to signal failure to the client.
+@@ -274,6 +315,41 @@
+   // signaled after the WGPUTexture's last use, or it should re-export
+   // the begin fences if the WGPUTexture was unused.
+   gfx::GpuFenceHandle fence;
++#if BUILDFLAG(IS_OHOS)
++  bool fences_valid = true;
++  for (size_t i = 0; i < end_access_desc.fenceCount; ++i) {
++    wgpu::SharedFenceExportInfo export_info{};
++    wgpu::SharedFenceSyncFDExportInfo sync_info{};
++    export_info.nextInChain = &sync_info;
++    UNSAFE_TODO(end_access_desc.fences[i]).ExportInfo(&export_info);
++    if (export_info.type != wgpu::SharedFenceType::SyncFD ||
++        sync_info.handle < -1) {
++      fences_valid = false;
++      break;
++    }
++    // Vulkan sync-fd -1 denotes an already-signaled payload. It must not
++    // replace another, still-pending fence or be passed to dup/sync_merge.
++    if (sync_info.handle == -1)
++      continue;
++    base::ScopedFD merged(
++        fence.is_null()
++            ? dup(sync_info.handle)
++            : sync_merge("ohos-dawn-release", fence.Peek(), sync_info.handle));
++    if (!merged.is_valid()) {
++      fences_valid = false;
++      break;
++    }
++    fence.Adopt(std::move(merged));
++  }
++  if (!fences_valid) {
++    LOG(ERROR) << "Failed to preserve OHOS Dawn completion fences";
++    // Keep backing access locked: an empty fence would falsely advertise
++    // completion and allow Skia to acquire memory still in use by Dawn.
++    texture_.Destroy();
++    texture_ = nullptr;
++    return;
++  }
++#else
+   if (end_access_desc.fenceCount) {
+     wgpu::SharedFenceExportInfo export_info;
+     wgpu::SharedFenceSyncFDExportInfo sync_fd_export_info;
+@@ -295,6 +371,8 @@
+     fence.Adopt(std::move(fd_handle_merged));
+   }
+ 
++#endif
++
+   ozone_backing()->EndAccess(
+       is_readonly_, OzoneImageBacking::AccessStream::kWebGPU, std::move(fence));
+ 
 diff --git a/gin/array_buffer.cc b/gin/array_buffer.cc
 --- a/gin/array_buffer.cc
 +++ b/gin/array_buffer.cc
