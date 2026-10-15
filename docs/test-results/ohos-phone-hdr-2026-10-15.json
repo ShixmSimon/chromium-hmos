@@ -4523,8 +4523,8 @@
       "pass": false,
       "clips": [
         "h264-sdr.mp4",
-        "hevc-main10-sdr.mp4",
-        "hevc-main10-pq.mp4"
+        "sdr-1080p60.mp4",
+        "bear-hdr10.mp4"
       ],
       "result": "All three produced black Canvas2D and WebGPU readbacks; no native Dawn import trace. Image factory now accepts native YUV WEBGPU_READ, but Skia BeginAccess fails.",
       "evidence": "out/phone-validation-20261015/8a2-native-webgpu-results.json"
@@ -4565,5 +4565,55 @@
       "System SILENT, MUSIC and RING volume zero and muted; all test media muted and volume zero",
       "Phone kept awake"
     ]
+  },
+  "runtime_3c7349fc": {
+    "source": "3c7349fc",
+    "package": {
+      "run": "38796766039",
+      "source": "3c7349fc",
+      "har_sha256": "ceb9ebe6a426b68e0e752b5b394428d0c5d7574eccc44c38a6b56695395e4640",
+      "engine_sha256": "fa727a5df5261edfb671a1cdf1343490c733f4706351da4aa53c554fd4a4f7ed",
+      "hap_sha256": "69162e6b95374e87ec8df897f57238df5cee6824b20597b5af2d885b1af16ec5",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-3c7349fc/phone-3c7349fc-signed.hap"
+    },
+    "coldstarts": 3,
+    "compute_render": "PASS each coldstart",
+    "buffer_stress": "PASS each coldstart",
+    "native_video": "FAIL all three",
+    "confirmed_failure": {
+      "vkCreateSemaphore_result": -1,
+      "handle_types": 1,
+      "opaque_fd_supported": false,
+      "log": "3c-native-semaphore-errors.log"
+    },
+    "next_candidate": "153df7c8 SyncFD native handoff, CI in progress, not yet runtime verified"
+  },
+  "runtime_153df7c8": {
+    "source": "153df7c8",
+    "package": {
+      "run": "38797361932",
+      "source": "153df7c8",
+      "har_sha256": "983f750a9141e89bd2814f3022359478446d6c0d2419c010c18664b169e82a49",
+      "engine_sha256": "c6b0851425ba8271c5b7709ab12e8753415acfefd5178c90c08afbb759ff0849",
+      "hap_sha256": "a064798596127fda40842abd01ff192e9343a2b6131180807d190618de320dc1",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-153df7c8/phone-153df7c8-signed.hap"
+    },
+    "coldstart_smoke": "PASS first adapter, compute, render, buffer stress; repeated once for isolated playback",
+    "native_preflight": {
+      "pass": false,
+      "successful_skia_syncfd_exports": 2,
+      "native_dawn_imports": 0,
+      "failure": "GPU thread stalled in VulkanQueueSubmitHook; trace OnWatchdogTimeout 15000 ms; exit code 2; later clips ran on fallback and are not valid native import observations."
+    },
+    "isolated_playback": {
+      "source": "153-solo-play-samples.json",
+      "first_sample_frames": 3,
+      "last_sample_frames": 9,
+      "media_error": "surface SharedImage conversion failed",
+      "gpu_error": "OHOS Skia video completion export failed; retaining lease",
+      "gpu_exit": "context lost, exit code 34"
+    },
+    "candidate": "Submit Skia retirement waits before VulkanFenceHelper cleanup; log submit/export result/fd on failure. Source only, pending CI/runtime.",
+    "full_goal_complete": false
   }
 }
