@@ -4969,5 +4969,202 @@
     "purpose": "Compare raw identity/nearest, raw identity/linear, and hardware BT709 narrow conversion to isolate missing chroma; shader matrix remains unchanged so hardware mode is explicitly not color-correct output.",
     "constraints": "Sampler and image-view conversions match; linear diagnostic forces both sampler filters to linear because device lacks separate reconstruction filtering. Standard behavior unchanged with both toggles off; restore standard HAP after testing.",
     "host_validation": "12 Chromium +11 Dawn sources apply and byte-match; new baselines verified against pinned Dawn; effective source delta reviewed; no CI code edits."
+  },
+  "runtime_a29c8b62": {
+    "native_ci_run": 38811023261,
+    "adapter_ci_run": 38811023119,
+    "native_ci": "SUCCESS",
+    "package": {
+      "run": "38811023261",
+      "source": "a29c8b62",
+      "har_sha256": "8e8cf0bce2ec875b60569b233a34a54c612dae1a3e069708f11c643ebbeac7dd",
+      "engine_sha256": "319f692d8ca8a5577f20c168a480763a1e0067ee77a37ffc3fd8112a0d0c8410",
+      "hap_sha256": "9fa3c03341aeadea5f6994be0f3c360da035eeb7dc4ea881428c6b3a53bb6333",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-a29c8b62/phone-a29c8b62-signed.hap"
+    },
+    "sampling_probes": [
+      {
+        "label": "a29-standard",
+        "capture_valid": true,
+        "cases": [
+          {
+            "format": "nv12",
+            "native_imports": 1,
+            "zero_copy_imports": 1,
+            "gpu_stable_after_cleanup": true,
+            "reconstructed_sampler_rgb": [
+              1.3003518654052053e-05,
+              0.43928478439031865,
+              -7.767293703440658e-05
+            ]
+          },
+          {
+            "format": "p010",
+            "native_imports": 1,
+            "zero_copy_imports": 1,
+            "gpu_stable_after_cleanup": true,
+            "reconstructed_sampler_rgb": [
+              0.00010056910432445411,
+              0.43977898533241416,
+              0.00011221662355389268
+            ]
+          }
+        ],
+        "artifact": "out/phone-validation-20261015/a29-standard-yuv-sampling.json"
+      },
+      {
+        "label": "a29-linear",
+        "capture_valid": true,
+        "cases": [
+          {
+            "format": "nv12",
+            "native_imports": 1,
+            "zero_copy_imports": 1,
+            "gpu_stable_after_cleanup": true,
+            "reconstructed_sampler_rgb": [
+              1.3003518654052053e-05,
+              0.43928478439031865,
+              -7.767293703440658e-05
+            ]
+          },
+          {
+            "format": "p010",
+            "native_imports": 1,
+            "zero_copy_imports": 1,
+            "gpu_stable_after_cleanup": true,
+            "reconstructed_sampler_rgb": [
+              0.00010056910432445411,
+              0.43977898533241416,
+              0.00011221662355389268
+            ]
+          }
+        ],
+        "artifact": "out/phone-validation-20261015/a29-linear-yuv-sampling.json"
+      },
+      {
+        "label": "a29-hardware-linear",
+        "capture_valid": true,
+        "cases": [
+          {
+            "format": "nv12",
+            "native_imports": 1,
+            "zero_copy_imports": 1,
+            "gpu_stable_after_cleanup": true,
+            "reconstructed_sampler_rgb": [
+              1.3003518654052053e-05,
+              0.43928478439031865,
+              -7.767293703440658e-05
+            ]
+          },
+          {
+            "format": "p010",
+            "native_imports": 1,
+            "zero_copy_imports": 1,
+            "gpu_stable_after_cleanup": true,
+            "reconstructed_sampler_rgb": [
+              0.00010056910432445411,
+              0.43977898533241416,
+              0.00011221662355389268
+            ]
+          }
+        ],
+        "artifact": "out/phone-validation-20261015/a29-hardware-linear-yuv-sampling.json"
+      },
+      {
+        "label": "a29-hardware-uncached",
+        "capture_valid": true,
+        "cases": [
+          {
+            "format": "nv12",
+            "native_imports": 1,
+            "zero_copy_imports": 1,
+            "gpu_stable_after_cleanup": true,
+            "reconstructed_sampler_rgb": [
+              1.3003518654052053e-05,
+              0.43928478439031865,
+              -7.767293703440658e-05
+            ]
+          },
+          {
+            "format": "p010",
+            "native_imports": 1,
+            "zero_copy_imports": 1,
+            "gpu_stable_after_cleanup": true,
+            "reconstructed_sampler_rgb": [
+              0.00010056910432445411,
+              0.43977898533241416,
+              0.00011221662355389268
+            ]
+          }
+        ],
+        "artifact": "out/phone-validation-20261015/a29-hardware-uncached-yuv-sampling.json"
+      }
+    ],
+    "conclusion": "FAIL: native NV12/P010 color. Raw, linear, hardware709+linear and hardware with blob cache disabled/forced static samplers produce identical missing-chroma pixels. GPU remained stable. Runtime toggles confirmed in chrome://gpu; actual Vk sampler use still needs instrumentation. Not proof of a driver defect.",
+    "standard_hap_restored": true
+  },
+  "bt709_high_bit_depth_matrix": {
+    "status": "SOURCE_READY_RUNTIME_PENDING",
+    "problem": "ToSkYUVColorSpace selects 8-bit Rec709 constants regardless of bit depth. P010 normalized code values need depth-aware range scales and chroma midpoint.",
+    "change": "For BT709 depths 9-16, compose inverse gfx::ColorSpace::GetTransferMatrix(depth) with GetRangeAdjustMatrix(depth). Preserve all other cases including BT2020/PQ.",
+    "numerical_derivation": {
+      "scope": "Float32 numerical model of pinned gfx transfer/range matrices vs independent BT709 equations. Not a native C++ or phone test.",
+      "pass": true,
+      "tests": [
+        {
+          "depth": 9,
+          "range": "full",
+          "samples": 125,
+          "maxAbsError": 7.581990768557034e-08
+        },
+        {
+          "depth": 9,
+          "range": "limited",
+          "samples": 125,
+          "maxAbsError": 1.290525861730174e-07
+        },
+        {
+          "depth": 10,
+          "range": "full",
+          "samples": 125,
+          "maxAbsError": 8.904428194789205e-08
+        },
+        {
+          "depth": 10,
+          "range": "limited",
+          "samples": 125,
+          "maxAbsError": 1.5549905452161283e-07
+        },
+        {
+          "depth": 12,
+          "range": "full",
+          "samples": 125,
+          "maxAbsError": 1.1327312687825497e-07
+        },
+        {
+          "depth": 12,
+          "range": "limited",
+          "samples": 125,
+          "maxAbsError": 1.9424174713122966e-07
+        },
+        {
+          "depth": 16,
+          "range": "full",
+          "samples": 125,
+          "maxAbsError": 7.775485766359225e-08
+        },
+        {
+          "depth": 16,
+          "range": "limited",
+          "samples": 125,
+          "maxAbsError": 1.7055006340527257e-07
+        }
+      ]
+    },
+    "caveat": "Numerical derivation is not a native unit test or phone acceptance. Missing native chroma remains unresolved."
+  },
+  "native_yuv_sampling_diagnostics": {
+    "status": "SOURCE_READY_RUNTIME_PENDING",
+    "change": "Only when an existing diagnostic toggle is enabled, report actual image-view and static-sampler external format, conversion model/range and filter through device EmitWarningOnce; forwarded to DevTools. No default page logging."
   }
 }

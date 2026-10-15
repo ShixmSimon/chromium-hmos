@@ -528,15 +528,42 @@ diff --git a/third_party/blink/renderer/modules/webgpu/external_texture_helper.c
  
  #include "base/debug/crash_logging.h"
  #include "media/base/video_frame.h"
-@@ -22,6 +24,7 @@
+@@ -22,6 +24,8 @@
  #include "third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h"
  #include "third_party/blink/renderer/platform/graphics/gpu/webgpu_shared_image_wrapper.h"
  #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
 +#include "third_party/skia/include/core/SkColorSpace.h"
++#include "third_party/skia/include/core/SkM44.h"
  #include "third_party/skia/include/effects/SkColorMatrix.h"
  #include "third_party/skia/modules/skcms/skcms.h"
  
-@@ -110,6 +113,34 @@
+@@ -58,7 +62,24 @@
+ }  // namespace
+ 
+ std::array<float, 12> GetYUVToRGBMatrix(gfx::ColorSpace color_space,
+-                                        size_t bit_depth) {
++                                     size_t bit_depth) {
++  // Skia's Rec709 YUV enum describes 8-bit samples even when the source is
++  // P010. Use gfx's depth-aware range and transfer matrices for higher bit
++  // depths, including the exact chroma midpoint for full-range video.
++  if (color_space.GetMatrixID() == gfx::ColorSpace::MatrixID::BT709 &&
++      bit_depth > 8 && bit_depth <= 16) {
++    SkM44 yuv_to_rgb;
++    if (color_space.GetTransferMatrix(static_cast<int>(bit_depth))
++            .invert(&yuv_to_rgb)) {
++      yuv_to_rgb.preConcat(
++          color_space.GetRangeAdjustMatrix(static_cast<int>(bit_depth)));
++      float matrix[16];
++      yuv_to_rgb.getRowMajor(matrix);
++      return {matrix[0], matrix[1], matrix[2], matrix[3],
++              matrix[4], matrix[5], matrix[6], matrix[7],
++              matrix[8], matrix[9], matrix[10], matrix[11]};
++    }
++  }
+   // Get the appropriate YUV to RGB conversion matrix.
+   SkYUVColorSpace src_sk_color_space;
+   color_space.ToSkYUVColorSpace(static_cast<int>(bit_depth),
+@@ -110,6 +131,34 @@
                             src_transfer_fn.d, src_transfer_fn.e,
                             src_transfer_fn.f};
  
@@ -571,7 +598,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/external_texture_helper.c
    // Set constants for destination transfer function.
    skcms_TransferFunction dst_transfer_fn;
    dst_color_space.GetInverseTransferFunction(&dst_transfer_fn);
-@@ -237,6 +268,17 @@
+@@ -237,6 +286,17 @@
    bool device_support_zero_copy = device->GetHandle().GetAdapter().HasFeature(
        wgpu::FeatureName::DawnMultiPlanarFormats);
  
@@ -589,7 +616,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/external_texture_helper.c
    wgpu::ExternalTextureDescriptor external_texture_desc = {};
  
    // Set the ExternalTexture cropSize/Origin and apparentSize. The 0-copy path
-@@ -274,8 +316,9 @@
+@@ -274,8 +334,9 @@
  
    const bool zero_copy =
        (media_video_frame->HasSharedImage() &&
@@ -601,7 +628,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/external_texture_helper.c
         media_video_frame->metadata().is_webgpu_compatible &&
         DstColorSpaceSupportedByZeroCopy(dst_predefined_color_space));
  
-@@ -291,19 +334,22 @@
+@@ -291,19 +352,22 @@
        return {};
      }
  

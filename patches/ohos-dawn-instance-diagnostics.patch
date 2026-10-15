@@ -72,7 +72,15 @@ diff --git a/src/dawn/native/vulkan/BackendVk.cpp b/src/dawn/native/vulkan/Backe
 diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/TextureVk.cpp
 --- a/src/dawn/native/vulkan/TextureVk.cpp
 +++ b/src/dawn/native/vulkan/TextureVk.cpp
-@@ -747,6 +747,15 @@
+@@ -28,6 +28,7 @@
+ #include "src/dawn/native/vulkan/TextureVk.h"
+ 
+ #include <iostream>
++#include <string>
+ #include <utility>
+ 
+ #include "dawn/native/VulkanBackend.h"
+@@ -747,6 +748,15 @@
              // The layout returned here is the one that will be used at bindgroup creation time.
          case wgpu::TextureUsage::TextureBinding:
          case kResolveAttachmentLoadingUsage:
@@ -88,7 +96,7 @@ diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/Textu
              // The sampled image can be used as a readonly depth/stencil attachment at the same
              // time if it is a depth/stencil renderable format, so the image layout need to be
              // VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL.
-@@ -1802,11 +1811,18 @@
+@@ -1802,11 +1812,18 @@
      // promoting to GENERAL.
      VkImageLayout currentLayout = GetCurrentLayout(GetDisjointVulkanAspects());
      VkImageLayout targetLayout;
@@ -107,7 +115,7 @@ diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/Textu
  
      // We have to manually trigger a transition if the texture hasn't been actually used or if we
      // need a layout transition.
-@@ -2139,7 +2155,7 @@
+@@ -2139,10 +2156,23 @@
              DAWN_ASSERT(device->HasFeature(Feature::OpaqueYCbCrAndroidForExternalTexture));
  
              yCbCr = StaticSamplerSpecialization::GetYCbCrForTextureView(
@@ -115,6 +123,22 @@ diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/Textu
 +                device, static_cast<VkFormat>(stmContents->GetYCbCrVkDesc().vkFormat),
                  stmContents->GetYCbCrVkDesc().externalFormat);
          }
+ 
++#if defined(__OHOS__)
++        if (yCbCr.externalFormat != 0 &&
++            (device->IsToggleEnabled(Toggle::OhosNativeYuvHardwareProbe) ||
++             device->IsToggleEnabled(Toggle::OhosNativeYuvLinearChromaProbe))) {
++            // Use the device callback: Chromium forwards this to DevTools,
++            // whereas Dawn's standalone log sink is not routed on OHOS.
++            device->EmitWarningOnce(
++                "OHOS YUV image view: external=" + std::to_string(yCbCr.externalFormat) +
++                " model=" + std::to_string(yCbCr.vkYCbCrModel) +
++                " range=" + std::to_string(yCbCr.vkYCbCrRange) +
++                " chromaFilter=" + std::to_string(static_cast<uint32_t>(yCbCr.vkChromaFilter)));
++        }
++#endif
+         // Create the VkSamplerYCbCrConversion and link it in the createInfo.
+         DAWN_TRY_ASSIGN(mSamplerYCbCrConversion, CreateSamplerYCbCrConversion(device, yCbCr));
  
 diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
 --- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
@@ -472,7 +496,15 @@ diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/Device
 diff --git a/src/dawn/native/vulkan/SamplerVk.cpp b/src/dawn/native/vulkan/SamplerVk.cpp
 --- a/src/dawn/native/vulkan/SamplerVk.cpp
 +++ b/src/dawn/native/vulkan/SamplerVk.cpp
-@@ -82,8 +82,16 @@
+@@ -28,6 +28,7 @@
+ #include "src/dawn/native/vulkan/SamplerVk.h"
+ 
+ #include <algorithm>
++#include <string>
+ 
+ #include "src/dawn/native/ChainUtils.h"
+ #include "src/dawn/native/vulkan/DeviceVk.h"
+@@ -82,8 +83,27 @@
  
      YCbCrVkDescriptor yCbCrDesc;
      if (s.isYCbCr) {
@@ -486,11 +518,22 @@ diff --git a/src/dawn/native/vulkan/SamplerVk.cpp b/src/dawn/native/vulkan/Sampl
 +            // sampler and conversion filters equal for a valid diagnostic.
 +            samplerDesc.minFilter = samplerDesc.magFilter = wgpu::FilterMode::Linear;
 +        }
++        if (yCbCrDesc.externalFormat != 0 &&
++            (device->IsToggleEnabled(Toggle::OhosNativeYuvHardwareProbe) ||
++             device->IsToggleEnabled(Toggle::OhosNativeYuvLinearChromaProbe))) {
++            // Use the device callback: Chromium forwards this to DevTools,
++            // whereas Dawn's standalone log sink is not routed on OHOS.
++            device->EmitWarningOnce(
++                "OHOS YUV static sampler: external=" + std::to_string(yCbCrDesc.externalFormat) +
++                " model=" + std::to_string(yCbCrDesc.vkYCbCrModel) +
++                " range=" + std::to_string(yCbCrDesc.vkYCbCrRange) +
++                " chromaFilter=" + std::to_string(static_cast<uint32_t>(yCbCrDesc.vkChromaFilter)));
++        }
 +#endif
          samplerDesc.nextInChain = &yCbCrDesc;
      }
  
-@@ -217,6 +225,7 @@
+@@ -217,6 +237,7 @@
  
  // static
  YCbCrVkDescriptor StaticSamplerSpecialization::GetYCbCrForTextureView(
@@ -498,7 +541,7 @@ diff --git a/src/dawn/native/vulkan/SamplerVk.cpp b/src/dawn/native/vulkan/Sampl
      VkFormat vkFormat,
      uint64_t androidExternalFormat) {
      YCbCrVkDescriptor yCbCrDesc;
-@@ -232,6 +241,20 @@
+@@ -232,6 +253,20 @@
      yCbCrDesc.vkYChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
      yCbCrDesc.vkChromaFilter = wgpu::FilterMode::Nearest;
      yCbCrDesc.forceExplicitReconstruction = false;
