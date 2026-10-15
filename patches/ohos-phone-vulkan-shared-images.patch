@@ -173,3 +173,76 @@ index b99d14b..127786b 100644
      // This SharedImage may be used for zero-copy import into WebGPU.
      // OHOS: an OH_NativeBuffer that Dawn imports with VK_OHOS_external_memory.
      si_usage |= gpu::SHARED_IMAGE_USAGE_WEBGPU_READ;
+diff --git a/gpu/ipc/service/webgpu_command_buffer_stub.cc b/gpu/ipc/service/webgpu_command_buffer_stub.cc
+--- a/gpu/ipc/service/webgpu_command_buffer_stub.cc
++++ b/gpu/ipc/service/webgpu_command_buffer_stub.cc
+@@ -77,6 +77,11 @@
+   GpuChannelManager* manager = channel_->gpu_channel_manager();
+   DCHECK(manager);
+ 
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS WebGPU context: starting, GL implementation="
++               << static_cast<int>(gl::GetGLImplementation());
++#endif
++
+   ContextResult result;
+   scoped_refptr<SharedContextState> shared_context_state =
+       manager->GetSharedContextState(&result);
+@@ -108,6 +113,10 @@
+           sequence_id_, CommandBufferNamespace::GPU_IO, command_buffer_id_);
+ 
+   result = decoder->Initialize(manager->gpu_feature_info());
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS WebGPU context: decoder result="
++               << static_cast<int>(result);
++#endif
+   if (result != gpu::ContextResult::kSuccess) {
+     DLOG(ERROR) << "Failed to initialize decoder.";
+     return result;
+@@ -133,6 +142,9 @@
+     manager->delegate()->DidCreateOffscreenContext(active_url_.url());
+ 
+   manager->delegate()->DidCreateContextSuccessfully();
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS WebGPU context: service initialized";
++#endif
+   initialized_ = true;
+   return gpu::ContextResult::kSuccess;
+ #endif  // BUILDFLAG(IS_FUCHSIA)
+diff --git a/services/viz/public/cpp/gpu/context_provider_command_buffer.cc b/services/viz/public/cpp/gpu/context_provider_command_buffer.cc
+--- a/services/viz/public/cpp/gpu/context_provider_command_buffer.cc
++++ b/services/viz/public/cpp/gpu/context_provider_command_buffer.cc
+@@ -261,6 +261,11 @@
+       stream_priority_, attributes_.Clone(), active_url_,
+       command_buffer_metrics::ContextTypeToString(context_type_));
+   if (bind_result_ != gpu::ContextResult::kSuccess) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS context: command buffer creation failed, type="
++               << static_cast<int>(attributes_->which())
++               << " result=" << static_cast<int>(bind_result_);
++#endif
+     DLOG(ERROR) << "GpuChannelHost failed to create command buffer.";
+     command_buffer_metrics::UmaRecordContextInitFailed(context_type_);
+     return bind_result_;
+@@ -274,6 +279,10 @@
+       bind_result_ =
+           webgpu_helper->Initialize(memory_limits_.command_buffer_size);
+       if (bind_result_ != gpu::ContextResult::kSuccess) {
++#if BUILDFLAG(IS_OHOS)
++        LOG(ERROR) << "OHOS WebGPU context: helper initialization failed, result="
++                   << static_cast<int>(bind_result_);
++#endif
+         DLOG(ERROR) << "Failed to initialize WebGPUCmdHelper.";
+         return bind_result_;
+       }
+@@ -289,6 +298,10 @@
+           default_task_runner_ != reply_task_runner_);
+       bind_result_ = webgpu_impl->Initialize(memory_limits_);
+       if (bind_result_ != gpu::ContextResult::kSuccess) {
++#if BUILDFLAG(IS_OHOS)
++        LOG(ERROR) << "OHOS WebGPU context: client initialization failed, result="
++                   << static_cast<int>(bind_result_);
++#endif
+         DLOG(ERROR) << "Failed to initialize WebGPUImplementation.";
+         return bind_result_;
+       }
