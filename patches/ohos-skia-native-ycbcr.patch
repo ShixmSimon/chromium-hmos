@@ -12,7 +12,7 @@ diff --git a/src/gpu/ganesh/vk/GrVkSamplerYcbcrConversion.cpp b/src/gpu/ganesh/v
 +        VkStructureType sType;
 +        const void* pNext;
 +        uint64_t externalFormat;
-+    } externalFormat{static_cast<VkStructureType>(1000452004), nullptr, info.externalFormat()};
++    } externalFormat{static_cast<VkStructureType>(1000452005), nullptr, info.externalFormat()};
 +    if (info.hasExternalFormat()) {
          ycbcrCreateInfo.pNext = &externalFormat;
      }
