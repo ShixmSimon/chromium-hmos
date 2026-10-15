@@ -120,7 +120,7 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
  #include <utility>
  #include <vector>
 +
-+#include "src/dawn/common/Log.h"
++#include "src/utils/log.h"
  
  #include "dawn/native/wgpu_structs_autogen.h"
  #include "src/dawn/common/Enumerator.h"
