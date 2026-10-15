@@ -4698,7 +4698,7 @@
     "phone_audio": "SILENT; MUSIC/RING 0, muted"
   },
   "pending_ohos_ycbcr_identity": {
-    "status": "Source candidate, device validation pending",
+    "status": "FAILED on a9e76143: native imports stable but all chroma stripes collapsed to gray; reverted",
     "change": "Use YCBCR_IDENTITY/ITU_FULL for OHOS opaque native YUV static sampler; compensate bit-depth chroma centering in Blink affine matrix",
     "host_checks": "12 Chromium and 7 Dawn source patches apply and byte-match; affine equivalence for 8/10-bit BT709/BT2020 limited/full",
     "required_runtime": [
@@ -4709,5 +4709,41 @@
       "Lifecycle soak only after color passes"
     ],
     "ci_code_modified": false
+  },
+  "runtime_a9e76143": {
+    "ci_run": 38802173775,
+    "installed": true,
+    "skia_backend": "GaneshVulkan",
+    "coldstart_compute_render_buffer_stress": "PASS",
+    "color_gates": "0/3 PASS: NV12 and P010 chroma absent; PQ EOTF still incorrect",
+    "evidence": "a9-native-color-gates.json",
+    "native_zero_copy_imports": "Present for all 3 fixtures, GPU stable",
+    "soak": "Not started: failed color gates"
+  },
+  "pq_fix_regression": {
+    "introduced_by": "a10e957",
+    "finding": "The native YUV source-block replacement removed the previously committed 2ca9954 PQ EOTF and luminance-scale code. Source and runtime gray ramp both confirm omission.",
+    "action": "Restore PQ conversion and includes into authoritative merged native source; retain analytic gate before soak."
+  },
+  "pending_native_yuv_identity_selectors": {
+    "status": "Source candidate awaiting pushed CI/device verification",
+    "changes": [
+      "Revert failed YCBCR_IDENTITY/full-range chroma compensation",
+      "Use canonical IDENTITY selectors for OHOS opaque native samplers and default native image views, matching Skia mapping style",
+      "Restore PQ EOTF and SDR-white scaling from 2ca9954"
+    ],
+    "host_checks": "12 Chromium + 8 Dawn patched files apply and match source; diff check clean",
+    "no_ci_code_changes": true
+  },
+  "occlusion_query_additional_diagnostics_440": {
+    "fragment_depth_readonly": "Alpha0 still incorrectly nonzero; no fix",
+    "atomic_storage_side_effect": "4/4 endpoint cases PASS, with and without depth attachment",
+    "conditional_atomic_never_executed": "4/4 endpoint cases PASS with uniform-false condition",
+    "scope": "Diagnostic shaders only; NOT official CTS fixes. No production workaround implemented.",
+    "evidence": [
+      "440-alpha-query-fragdepth.json",
+      "440-alpha-query-sideeffect.json",
+      "440-alpha-query-conditional-sideeffect.json"
+    ]
   }
 }

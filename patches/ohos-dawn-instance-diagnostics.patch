@@ -72,25 +72,19 @@ diff --git a/src/dawn/native/vulkan/BackendVk.cpp b/src/dawn/native/vulkan/Backe
 diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/TextureVk.cpp
 --- a/src/dawn/native/vulkan/TextureVk.cpp
 +++ b/src/dawn/native/vulkan/TextureVk.cpp
-@@ -1802,11 +1802,18 @@
-     // promoting to GENERAL.
-     VkImageLayout currentLayout = GetCurrentLayout(GetDisjointVulkanAspects());
-     VkImageLayout targetLayout;
+@@ -2248,6 +2248,12 @@
+         // https://docs.vulkan.org/spec/latest/chapters/renderpass.html#VUID-VkFramebufferCreateInfo-pAttachments-00884
+         createInfo.components = VkComponentMapping{VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G,
+                                                    VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A};
 +#if defined(__OHOS__)
-+    // OH_NativeBuffer consumers (Skia and EGL) share the allocation through
-+    // the foreign queue in GENERAL. Keep that layout when an import is
-+    // destroyed/recreated, rather than leaking a Dawn-specific optimal layout.
-+    targetLayout = VK_IMAGE_LAYOUT_GENERAL;
-+#else
-     if (currentLayout != VK_IMAGE_LAYOUT_UNDEFINED) {
-         targetLayout = currentLayout;
-     } else {
-         targetLayout = VK_IMAGE_LAYOUT_GENERAL;
-     }
++        if (format == wgpu::TextureFormat::OpaqueYCbCrAndroid) {
++            // Match Skia's native YUV image-view identity mapping.
++            createInfo.components = VkComponentMapping{};
++        }
 +#endif
- 
-     // We have to manually trigger a transition if the texture hasn't been actually used or if we
-     // need a layout transition.
+     } else {
+         MaybeConvertDepthStencilSwizzleOneToAlpha(isDepthOrStencilFormat, device->GetDeviceInfo(),
+                                                   &swizzle);
 diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
 --- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
 +++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
@@ -447,19 +441,23 @@ diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/Device
 diff --git a/src/dawn/native/vulkan/SamplerVk.cpp b/src/dawn/native/vulkan/SamplerVk.cpp
 --- a/src/dawn/native/vulkan/SamplerVk.cpp
 +++ b/src/dawn/native/vulkan/SamplerVk.cpp
-@@ -222,7 +222,15 @@
-     YCbCrVkDescriptor yCbCrDesc;
-     yCbCrDesc.vkFormat = vkFormat;
+@@ -224,10 +224,19 @@
      yCbCrDesc.externalFormat = androidExternalFormat;
-+#if defined(__OHOS__)
-+    // RGB_IDENTITY loses both chroma components on native decoder buffers on
-+    // Maleoon. Keep YUV sampling enabled, without a hardware color-model
-+    // conversion. Blink's opaque OHOS external-texture matrix compensates the
-+    // full-range chroma centering performed by YCBCR_IDENTITY.
-+    yCbCrDesc.vkYCbCrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_IDENTITY;
-+#else
      yCbCrDesc.vkYCbCrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY;
-+#endif
      yCbCrDesc.vkYCbCrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
++#if defined(__OHOS__)
++    // Use the canonical identity selectors for native external formats, as
++    // Skia does, rather than equivalent explicit channel selectors.
++    yCbCrDesc.vkComponentSwizzleRed = VK_COMPONENT_SWIZZLE_IDENTITY;
++    yCbCrDesc.vkComponentSwizzleGreen = VK_COMPONENT_SWIZZLE_IDENTITY;
++    yCbCrDesc.vkComponentSwizzleBlue = VK_COMPONENT_SWIZZLE_IDENTITY;
++    yCbCrDesc.vkComponentSwizzleAlpha = VK_COMPONENT_SWIZZLE_IDENTITY;
++#else
      yCbCrDesc.vkComponentSwizzleRed = VK_COMPONENT_SWIZZLE_R;
      yCbCrDesc.vkComponentSwizzleGreen = VK_COMPONENT_SWIZZLE_G;
+     yCbCrDesc.vkComponentSwizzleBlue = VK_COMPONENT_SWIZZLE_B;
+     yCbCrDesc.vkComponentSwizzleAlpha = VK_COMPONENT_SWIZZLE_A;
++#endif
+     yCbCrDesc.vkXChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+     yCbCrDesc.vkYChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+     yCbCrDesc.vkChromaFilter = wgpu::FilterMode::Nearest;
