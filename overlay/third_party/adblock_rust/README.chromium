@@ -1,0 +1,29 @@
+Name: adblock-rust (Lumie C ABI integration)
+Short Name: adblock-rust
+URL: https://github.com/brave/adblock-rust
+Version: 0.13.3
+Revision: 886d45dcf5283ce8eddc6d961e7dd27966ab23f2
+License: MPL-2.0
+License File: LICENSE
+Security Critical: yes
+Shipped: yes
+
+The upstream crate is pinned in Cargo.lock, with all dependency versions and
+registry SHA256 checksums. vendor.tar.gz is an unmodified `cargo vendor --locked`
+source snapshot including each dependency's license and checksum manifest.
+The bridge src/lib.rs is maintained here; upstream code is unmodified.
+
+Build with Rust 1.96.1 and OHOS SDK clang. build.py consumes the vendor archive
+with --frozen --offline; no dependency resolution or download occurs in Ninja.
+A separate liblumie_adblock.so isolates Rust allocation/runtime symbols from
+Chromium's independently built Rust dependencies. It is loaded only in the browser
+process using a C ABI. Immutable snapshots are matched on a sequenced worker.
+
+Features: embedded-domain-resolver, full-regex-handling, css-validation.
+The upstream single-thread feature is disabled. No resource-assembler, scriptlet
+or redirect resource pack is shipped. See docs/OHOS_ADBLOCK.md for integration
+boundaries and validation.
+
+Bundled filter lists are independent copyrighted data, with their original
+headers retained. lists/SOURCES.json records exact SHA256 snapshots and URLs.
+Their licenses and attribution are in lists/NOTICE.md and accompanying texts.

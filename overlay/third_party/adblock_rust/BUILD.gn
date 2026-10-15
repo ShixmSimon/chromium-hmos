@@ -1,0 +1,15 @@
+# Copyright 2026 The Chromium Authors. BSD-style license in LICENSE.
+import("//build/config/ohos/config.gni")
+action("runtime") {
+  script = "build.py"
+  inputs = [
+    "Cargo.toml", "Cargo.lock", "vendor.tar.gz", "src/lib.rs",
+    "lists/easylist.txt", "lists/easylist-china.txt", "lists/easyprivacy.txt",
+  ]
+  outputs = [ "$root_out_dir/liblumie_adblock.so" ]
+  args = [
+    "--out", rebase_path(outputs[0], root_build_dir),
+    "--sdk", rebase_path(ohos_sdk_root, root_build_dir),
+    "--cpu", current_cpu,
+  ]
+}

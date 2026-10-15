@@ -1,0 +1,227 @@
+diff --git a/chrome/browser/universal_web_contents_observers.cc b/chrome/browser/universal_web_contents_observers.cc
+--- a/chrome/browser/universal_web_contents_observers.cc
++++ b/chrome/browser/universal_web_contents_observers.cc
+@@ -3,6 +3,9 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/universal_web_contents_observers.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ohos/adblock/adblock.h"
++#endif
+ 
+ #include "components/performance_manager/embedder/performance_manager_registry.h"
+ #include "content/public/browser/web_contents.h"
+@@ -14,6 +17,9 @@
+ #endif
+ 
+ void AttachUniversalWebContentsObservers(content::WebContents* web_contents) {
++#if BUILDFLAG(IS_OHOS)
++  chrome::ohos::adblock::ObserveContents(web_contents);
++#endif
+   // This function is for attaching *universal* WebContentsObservers - ones that
+   // should be attached to *every* WebContents.  Such universal observers and/or
+   // helpers are relatively rare and therefore only a limited set of observers
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -1732,6 +1732,13 @@
+       "ohos/url_protection/rule_sources.cc",
+       "ohos/url_protection/rule_sources.h",
+     ]
++    deps += [ "//chrome/common/ohos/adblock:mojom", "//third_party/adblock_rust:runtime" ]
++    sources += [
++      "ohos/adblock/adblock.cc",
++      "ohos/adblock/adblock.h",
++      "ohos/adblock/engine.cc",
++      "ohos/adblock/engine.h",
++    ]
+     sources += [
+       "icon_loader_ohos.cc",
+       "memory_details_linux.cc",
+diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
+--- a/chrome/browser/chrome_content_browser_client.cc
++++ b/chrome/browser/chrome_content_browser_client.cc
+@@ -3,6 +3,9 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/chrome_content_browser_client.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ohos/adblock/adblock.h"
++#endif
+ 
+ #include <algorithm>
+ #include <iterator>
+@@ -6081,6 +6084,11 @@
+   Profile* profile = Profile::FromBrowserContext(browser_context);
+   DCHECK(profile);
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (auto throttle = chrome::ohos::adblock::NavigationThrottle(profile, request, wc_getter))
++    result.push_back(std::move(throttle));
++#endif
++
+   ChromeNavigationUIData* chrome_navigation_ui_data =
+       static_cast<ChromeNavigationUIData*>(navigation_ui_data);
+ 
+diff --git a/chrome/browser/chrome_content_browser_client_receiver_bindings.cc b/chrome/browser/chrome_content_browser_client_receiver_bindings.cc
+--- a/chrome/browser/chrome_content_browser_client_receiver_bindings.cc
++++ b/chrome/browser/chrome_content_browser_client_receiver_bindings.cc
+@@ -12,6 +12,9 @@
+ #include "chrome/browser/chrome_browser_interface_binders.h"
+ #include "chrome/browser/chrome_browser_interface_binders_webui.h"
+ #include "chrome/browser/chrome_content_browser_client.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ohos/adblock/adblock.h"
++#endif
+ #include "chrome/browser/chrome_content_browser_client_parts.h"
+ #include "chrome/browser/content_settings/content_settings_manager_delegate.h"
+ #include "chrome/browser/headless/headless_mode_util.h"
+@@ -224,6 +227,11 @@
+     content::RenderProcessHost* render_process_host) {
+   scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner =
+       content::GetUIThreadTaskRunner({});
++#if BUILDFLAG(IS_OHOS)
++  registry->AddInterface<chrome::ohos::adblock::mojom::Filter>(
++      base::BindRepeating(&chrome::ohos::adblock::BindFilter,
++                          render_process_host->GetDeprecatedID()), ui_task_runner);
++#endif
+   registry->AddInterface<metrics::mojom::CallStackProfileCollector>(
+       base::BindRepeating(&metrics::CallStackProfileCollector::Create));
+ 
+diff --git a/chrome/renderer/BUILD.gn b/chrome/renderer/BUILD.gn
+--- a/chrome/renderer/BUILD.gn
++++ b/chrome/renderer/BUILD.gn
+@@ -244,6 +244,10 @@
+   }
+ 
+   data_deps = [ "//tools/v8_context_snapshot" ]
++  if (is_ohos) {
++    sources += [ "ohos/adblock.cc", "ohos/adblock.h" ]
++    deps += [ "//chrome/common/ohos/adblock:mojom" ]
++  }
+ 
+   configs += [ "//build/config/compiler:wexit_time_destructors" ]
+ 
+diff --git a/chrome/renderer/chrome_content_renderer_client.cc b/chrome/renderer/chrome_content_renderer_client.cc
+--- a/chrome/renderer/chrome_content_renderer_client.cc
++++ b/chrome/renderer/chrome_content_renderer_client.cc
+@@ -3,6 +3,9 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/renderer/chrome_content_renderer_client.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/renderer/ohos/adblock.h"
++#endif
+ 
+ #include <functional>
+ #include <memory>
+@@ -638,6 +641,9 @@
+ 
+ void ChromeContentRendererClient::RenderFrameCreated(
+     content::RenderFrame* render_frame) {
++#if BUILDFLAG(IS_OHOS)
++  chrome::ohos::adblock::ObserveFrame(render_frame);
++#endif
+   ChromeRenderFrameObserver* render_frame_observer =
+       new ChromeRenderFrameObserver(render_frame, web_cache_impl_.get());
+   service_manager::BinderRegistry* registry = render_frame_observer->registry();
+diff --git a/chrome/renderer/url_loader_throttle_provider_impl.h b/chrome/renderer/url_loader_throttle_provider_impl.h
+--- a/chrome/renderer/url_loader_throttle_provider_impl.h
++++ b/chrome/renderer/url_loader_throttle_provider_impl.h
+@@ -9,6 +9,10 @@
+ #include <vector>
+ 
+ #include "base/memory/raw_ptr.h"
++#include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/renderer/ohos/adblock.h"
++#endif
+ #include "base/sequence_checker.h"
+ #include "base/types/pass_key.h"
+ #include "components/safe_browsing/content/common/safe_browsing.mojom.h"
+@@ -48,7 +52,11 @@
+           pending_extension_web_request_reporter,
+ #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
+       scoped_refptr<base::SequencedTaskRunner> main_thread_task_runner,
+-      base::PassKey<URLLoaderThrottleProviderImpl>);
++      base::PassKey<URLLoaderThrottleProviderImpl>
++#if BUILDFLAG(IS_OHOS)
++      , std::unique_ptr<chrome::ohos::adblock::Provider> adblock
++#endif
++      );
+ 
+   URLLoaderThrottleProviderImpl& operator=(
+       const URLLoaderThrottleProviderImpl&) = delete;
+@@ -95,6 +103,9 @@
+   // provider which was created on the main thread.
+   scoped_refptr<base::SequencedTaskRunner> main_thread_task_runner_;
+ 
++#if BUILDFLAG(IS_OHOS)
++  std::unique_ptr<chrome::ohos::adblock::Provider> adblock_;
++#endif
+   SEQUENCE_CHECKER(sequence_checker_);
+ };
+ 
+diff --git a/chrome/renderer/url_loader_throttle_provider_impl.cc b/chrome/renderer/url_loader_throttle_provider_impl.cc
+--- a/chrome/renderer/url_loader_throttle_provider_impl.cc
++++ b/chrome/renderer/url_loader_throttle_provider_impl.cc
+@@ -125,7 +125,11 @@
+       content::RenderThread::IsMainThread()
+           ? base::SequencedTaskRunner::GetCurrentDefault()
+           : nullptr,
+-      base::PassKey<URLLoaderThrottleProviderImpl>());
++      base::PassKey<URLLoaderThrottleProviderImpl>()
++#if BUILDFLAG(IS_OHOS)
++      , std::make_unique<chrome::ohos::adblock::Provider>(broker)
++#endif
++      );
+ }
+ 
+ URLLoaderThrottleProviderImpl::URLLoaderThrottleProviderImpl(
+@@ -138,7 +142,11 @@
+         pending_extension_web_request_reporter,
+ #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
+     scoped_refptr<base::SequencedTaskRunner> main_thread_task_runner,
+-    base::PassKey<URLLoaderThrottleProviderImpl>)
++    base::PassKey<URLLoaderThrottleProviderImpl>
++#if BUILDFLAG(IS_OHOS)
++    , std::unique_ptr<chrome::ohos::adblock::Provider> adblock
++#endif
++    )
+     : type_(type),
+       chrome_content_renderer_client_(chrome_content_renderer_client),
+       pending_safe_browsing_(std::move(pending_safe_browsing)),
+@@ -147,6 +155,9 @@
+           std::move(pending_extension_web_request_reporter)),
+ #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
+       main_thread_task_runner_(std::move(main_thread_task_runner)) {
++#if BUILDFLAG(IS_OHOS)
++  adblock_ = std::move(adblock);
++#endif
+   DETACH_FROM_SEQUENCE(sequence_checker_);
+ }
+ 
+@@ -162,7 +173,11 @@
+ #if BUILDFLAG(ENABLE_EXTENSIONS)
+       CloneExtensionWebRequestReporterPendingRemote(),
+ #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
+-      main_thread_task_runner_, base::PassKey<URLLoaderThrottleProviderImpl>());
++      main_thread_task_runner_, base::PassKey<URLLoaderThrottleProviderImpl>()
++#if BUILDFLAG(IS_OHOS)
++      , adblock_->Clone()
++#endif
++      );
+ }
+ 
+ std::vector<std::unique_ptr<blink::URLLoaderThrottle>>
+@@ -182,6 +197,10 @@
+ #endif
+ 
+   std::vector<std::unique_ptr<blink::URLLoaderThrottle>> throttles;
++#if BUILDFLAG(IS_OHOS)
++  if (auto throttle = adblock_->Create(local_frame_token, request))
++    throttles.push_back(std::move(throttle));
++#endif
+ 
+   // Some throttles have already been added in the browser for frame resources.
+   // Don't add them for frame requests.

@@ -300,6 +300,8 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection-updates.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-rule-sources.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-extension-updates.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-adblock-rust.patch"
+  bash "${repo_root}/scripts/setup-adblock-rust.sh" || die "Rust toolchain setup failed"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-msrt.patch" \
     "${src}/third_party/angle"
 
@@ -313,11 +315,21 @@ else
   while IFS= read -r -d '' f; do
     rel="${f#"${repo_root}/overlay/"}"
     case "$rel" in
+      third_party/adblock_rust/target/*) continue ;;
       chromium-ui/*|ohos_arkweb_playground/*) continue ;;  # app side, not Chromium
       arkweb/ohos_nweb/*) ;;  # Chromium's //ohos_nweb integration
       arkweb/*) continue ;;
     esac
     dst="${src}/${rel}"
+    # Vendored source archive is binary; newline normalization corrupts gzip.
+    if [[ "$rel" == third_party/adblock_rust/vendor.tar.gz ]]; then
+      if [[ ! -f "$dst" ]] || ! cmp -s "$f" "$dst"; then
+        mkdir -p "$(dirname "$dst")"
+        cp "$f" "$dst"
+        changed=$((changed + 1))
+      fi
+      continue
+    fi
     # The tree has symlinks where the overlay has plain files (ohos_glue,
     # ohos_nweb are links to real directories; git on Windows checked them out as
     # text). Writing through the link would land on whatever it points at, so

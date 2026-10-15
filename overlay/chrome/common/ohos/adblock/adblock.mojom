@@ -1,0 +1,14 @@
+// Copyright 2026 The Chromium Authors. BSD-style license in LICENSE.
+module chrome.ohos.adblock.mojom;
+import "url/mojom/url.mojom";
+import "third_party/blink/public/mojom/tokens/tokens.mojom";
+
+// Browser validates process/frame ownership. No arbitrary script or raw rule crosses IPC.
+interface Filter {
+  Clone(pending_receiver<Filter> receiver);
+  Check(blink.mojom.LocalFrameToken? frame, url.mojom.Url url,
+        url.mojom.Url initiator, string resource_type, string method)
+      => (bool blocked);
+  Cosmetics(blink.mojom.LocalFrameToken frame, url.mojom.Url document_url,
+            uint64 known_revision) => (string css, uint64 revision);
+};

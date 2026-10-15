@@ -1,0 +1,8 @@
+import("//mojo/public/tools/bindings/mojom.gni")
+mojom("mojom") {
+  sources = [ "adblock.mojom" ]
+  public_deps = [
+    "//url/mojom:url_mojom_gurl",
+    "//third_party/blink/public/mojom:mojom_platform",
+  ]
+}
