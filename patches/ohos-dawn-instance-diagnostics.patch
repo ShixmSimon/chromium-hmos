@@ -177,7 +177,7 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
  
      OH_NativeBuffer_Config config = {};
      OH_NativeBuffer_GetConfig(nativeBuffer, &config);
-@@ -853,30 +896,58 @@
+@@ -853,30 +896,68 @@
      DAWN_TRY(CheckVkSuccess(
          device->fn.GetNativeBufferPropertiesOHOS(vkDevice, nativeBuffer, &bufferProperties),
          "vkGetNativeBufferPropertiesOHOS"));
@@ -237,6 +237,16 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
 +        DAWN_INVALID_IF(vkFormat == VK_FORMAT_UNDEFINED,
 +                        "Unsupported OH_NativeBuffer external non-YUV format.");
 +        DAWN_TRY_ASSIGN(properties.format, FormatFromVkFormat(device, vkFormat));
++        // GPU-writable native RGBA buffers can back canvas storage textures.
++        // Require the allocation's actual Vulkan format capability, not merely
++        // the adapter's support for independently allocated storage images.
++        const bool storageFormat = properties.format == wgpu::TextureFormat::RGBA8Unorm ||
++            (properties.format == wgpu::TextureFormat::BGRA8Unorm &&
++             device->HasFeature(Feature::BGRA8UnormStorage));
++        if (storageFormat && (config.usage & NATIVEBUFFER_USAGE_HW_RENDER) &&
++            (formatProperties.formatFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)) {
++            properties.usage |= wgpu::TextureUsage::StorageBinding;
++        }
 +    }
  
      const Format* internalFormat = nullptr;
@@ -254,7 +264,7 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
      sharedTextureMemory->APIGetProperties(&properties);
  
      VkImageUsageFlags vkUsageFlags = VulkanImageUsage(device, properties.usage, *internalFormat);
-@@ -892,70 +963,84 @@
+@@ -892,70 +973,84 @@
          vkCreateFlags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
      }
  

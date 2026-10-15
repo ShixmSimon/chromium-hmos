@@ -2570,6 +2570,52 @@
       "root_cause": "gfx::ColorSpace::GetTransferFunction returns false for PQ and initializes identity; Blink GetColorSpaceConversionConstants ignored failure, so WebGPU gamma-encoded PQ codes as if linear light. A 0.1-nit stripe read as 71/255 instead of about 2/255.",
       "fix": "Use the pinned Dawn PQ shader mode and ST2084 coefficients, with linear gamut scaling derived from Skia HDR transfer function to preserve SDR reference white. Source patch applied cleanly; runtime retest pending CI.",
       "limits": "Canvas2D may apply its own tone mapping and is not the expected value for direct WebGPU color-space conversion. Compare static stripes against PQ EOTF then sRGB at 203-nit reference. HLG not covered by this fix."
+    },
+    "canvas_storage": {
+      "result": {
+        "tests": [
+          {
+            "format": "rgba8unorm",
+            "pass": false,
+            "firstPixel": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "maxError": 255,
+            "validation": "[Invalid Texture] is invalid due to a previous error.\n - While calling [Invalid Texture].CreateView([TextureViewDescriptor]).\n"
+          }
+        ],
+        "adapter": true,
+        "errors": [],
+        "pass": false
+      },
+      "evidence": "GPU log at 1792086074.435964: AssociateMailbox: wgpu::TextureUsage::StorageBinding is NOT supported yet on this platform.",
+      "root_cause": "OHOS is omitted from the platform allowlist for SharedImage StorageBinding; OH_NativeBuffer SharedTextureMemory properties also never include StorageBinding.",
+      "fix": "Allow OHOS mailbox storage access; expose storage usage only for GPU-writable native RGBA8 (or supported BGRA8) allocations whose VkNativeBufferFormatProperties reports STORAGE_IMAGE_BIT. Native YUV remains sampled/read-only.",
+      "verification": "Source patch application and whitespace checks pass. Native compile and device readback retest pending.",
+      "reproduction": {
+        "canvas_size": [
+          8,
+          8
+        ],
+        "format": "rgba8unorm",
+        "usage": [
+          "STORAGE_BINDING",
+          "COPY_SRC",
+          "RENDER_ATTACHMENT"
+        ],
+        "shader": "textureStore(image, id.xy, vec4f(1.0, 0.25, 0.0, 1.0));",
+        "expected_rgba": [
+          255,
+          64,
+          0,
+          255
+        ],
+        "checked_pixels": 64,
+        "max_allowed_error": 1
+      }
     }
   },
   "native_video_dawn_implementation": {
