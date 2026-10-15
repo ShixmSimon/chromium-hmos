@@ -114,10 +114,9 @@ apply_incremental_patch() {
   done
   if [[ -n "$best_rev" ]]; then
     git -C "$repo_root" show "${best_rev}:${rel}" |
-      git -C "$patch_root" apply -C0 --reverse ||
-      die "failed to back out ${name} at ${best_rev}"
+      python3 "${repo_root}/scripts/refresh-incremental-patch.py" \
+        "$patch_root" "$patch" || die "failed to refresh ${name} at ${best_rev}"
     say "backed out incremental patch ${name} at ${best_rev:0:8}"
-    git -C "$patch_root" apply "$patch" || die "failed to apply ${name}"
     say "applied incremental patch ${name}"
     return
   fi
@@ -378,7 +377,12 @@ else
   fi
   # Public-header mistakes can fail thousands of targets. Stop after a useful
   # sample and stream diagnostics instead of hiding them until ninja ends.
-  ( cd "$src" && third_party/ninja/ninja -C "$out" -j "$jobs" \
+  # Check the new native execution paths before a public-header rebuild can
+  # spend an hour reaching them. Ninja still regenerates GN inputs normally.
+  ( cd "$src" && third_party/ninja/ninja -C "$out" -j "$jobs" -k 1 \
+      obj/chrome/common/ohos/adblock/execution/decision_throttle.o \
+      obj/chrome/browser/core/adblock.o obj/chrome/renderer/renderer/adblock.o && \
+    third_party/ninja/ninja -C "$out" -j "$jobs" \
       -k "${NINJA_MAX_FAILURES:-20}" gn_all ) \
     2>&1 | tee "$log" \
     | awk -v every="${PROGRESS_EVERY:-50}" '

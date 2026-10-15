@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -34,18 +35,25 @@ class IncrementalPatchTest(unittest.TestCase):
                     self.run_command("git", "init", "-q", cwd=repo)
                     self.run_command("git", "config", "core.autocrlf", "false", cwd=repo)
                 (adapter / "patches").mkdir()
+                (adapter / "scripts").mkdir()
+                shutil.copy2(PROJECT / "scripts/refresh-incremental-patch.py", adapter / "scripts")
                 fixture = target / "fixture.txt"
                 original = "before\noriginal\nafter\n"
                 fixture.write_text(original, encoding="utf-8")
-                self.run_command("git", "add", "fixture.txt", cwd=target)
+                header = target / "unchanged.h"
+                header.write_text("before\n")
+                self.run_command("git", "add", "fixture.txt", "unchanged.h", cwd=target)
                 # A same-named Chromium file must not be touched by a DEPS patch.
                 if deps:
                     (chromium / "fixture.txt").write_text("chromium sentinel\n", encoding="utf-8")
                 for revision in ("old", "new"):
                     fixture.write_text(f"before\n{revision}\nafter\n", encoding="utf-8")
-                    diff = self.run_command("git", "diff", "--", "fixture.txt", cwd=target)
+                    header.write_text("before\nafter\n")
+                    diff = self.run_command("git", "diff", "--", "fixture.txt", "unchanged.h", cwd=target)
                     (adapter / "patches" / f"{revision}.txt").write_text(diff, encoding="utf-8")
                 fixture.write_text(original, encoding="utf-8")
+                header.write_text("before\n")
+                fixed_time = 1700000000000000000
                 patch = adapter / "patches/change.patch"
                 for revision in ("old", "new"):
                     patch.write_bytes((adapter / "patches" / f"{revision}.txt").read_bytes())
@@ -70,9 +78,32 @@ class IncrementalPatchTest(unittest.TestCase):
                     self.assertIn("already applied", output)
                     if revision == "new":
                         self.assertIn("backed out incremental patch", output)
+                        self.assertEqual(header.stat().st_mtime_ns, fixed_time)
+                        self.assertGreater(fixture.stat().st_mtime_ns, fixed_time)
+                    else:
+                        os.utime(header, ns=(fixed_time, fixed_time))
+                        os.utime(fixture, ns=(fixed_time, fixed_time))
                     self.assertEqual(fixture.read_text(encoding="utf-8"), f"before\n{revision}\nafter\n")
                     if deps:
                         self.assertEqual((chromium / "fixture.txt").read_text(), "chromium sentinel\n")
+
+    def test_failed_refresh_restores_bytes_and_mtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.run_command("git", "init", "-q", cwd=root)
+            fixture = root / "fixture.txt"
+            fixture.write_text("old\n")
+            stamp = 1700000000000000000
+            os.utime(fixture, ns=(stamp, stamp))
+            old = "--- a/fixture.txt\n+++ b/fixture.txt\n@@ -1 +1 @@\n-base\n+old\n"
+            new = root / "new.patch"
+            new.write_text("--- a/fixture.txt\n+++ b/fixture.txt\n@@ -1 +1 @@\n-wrong\n+new\n")
+            result = subprocess.run(
+                [sys.executable, str(PROJECT / "scripts/refresh-incremental-patch.py"),
+                 str(root), str(new)], input=old, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(fixture.read_text(), "old\n")
+            self.assertEqual(fixture.stat().st_mtime_ns, stamp)
 
     def test_dependent_hdr_patch_replay_preserves_only_unchanged_mtime(self):
         retire = "retire_incremental_patch() {" + BUILD_SCRIPT.split(
