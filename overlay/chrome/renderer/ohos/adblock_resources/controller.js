@@ -1,4 +1,5 @@
-// Copyright 2026. SPDX-License-Identifier: MPL-2.0
+// Copyright 2020 The Brave Authors; 2026 Lumie contributors.
+// SPDX-License-Identifier: MPL-2.0
 // Lumie scheduler for Brave's procedural selector evaluator. Runs only in the
 // dedicated isolated world. JSON rules are never evaluated as JavaScript.
 const previous = globalThis.__lumieAdblock;

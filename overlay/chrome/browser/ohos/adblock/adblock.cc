@@ -21,6 +21,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/timer/timer.h"
@@ -921,6 +922,14 @@ class Page : public content::WebContentsObserver,
       return frame->GetOutermostMainFrame()->GetLastCommittedURL();
     return std::nullopt;
   }
+  GURL RequestSite(content::RenderFrameHost* frame,
+                   const GURL& initiator) const {
+    const auto pending = committing_.find(frame->GetGlobalId());
+    if (pending != committing_.end() &&
+        url::Origin::Create(pending->second.first).IsSameOriginWith(initiator))
+      return pending->second.second;
+    return frame->GetOutermostMainFrame()->GetLastCommittedURL();
+  }
   void DidStartNavigation(content::NavigationHandle* handle) override {
     if (!handle->IsInPrimaryMainFrame() || handle->IsSameDocument())
       return;
@@ -1135,11 +1144,13 @@ class FilterHost : public mojom::Filter {
                    std::move(callback));
       return;
     }
-    if (!frame || !frame->GetLastCommittedURL().SchemeIsHTTPOrHTTPS()) {
+    if (!frame) {
       std::move(callback).Run(mojom::Decision::New());
       return;
     }
     auto* contents = content::WebContents::FromRenderFrameHost(frame);
+    auto* page = Page::Get(contents);
+    const GURL site = page->RequestSite(frame, initiator);
     auto* service =
         Service::Get(Profile::FromBrowserContext(frame->GetBrowserContext()));
     CheckRequest(
@@ -1147,8 +1158,7 @@ class FilterHost : public mojom::Filter {
         frame->GetOutermostMainFrame() == contents->GetPrimaryMainFrame()
             ? Page::Get(contents)
             : nullptr,
-        url, frame->GetOutermostMainFrame()->GetLastCommittedURL(), type,
-        method,
+        url, site, type, method,
         base::BindRepeating(
             [](base::WeakPtr<FilterHost> self) { return !!self; },
             weak_.GetWeakPtr()),
@@ -1287,13 +1297,13 @@ class BrowserThrottle : public DecisionThrottle {
                  base::BindRepeating(
                      [](base::WeakPtr<BrowserThrottle> self) { return !!self; },
                      weak_.GetWeakPtr()),
-                 base::BindOnce(
+                 base::BindPostTaskToCurrentDefault(base::BindOnce(
                      [](base::WeakPtr<BrowserThrottle> throttle,
                         mojom::DecisionPtr decision) {
                        if (throttle)
                          throttle->Resolve(std::move(decision));
                      },
-                     weak_.GetWeakPtr()));
+                     weak_.GetWeakPtr())));
   }
   base::WeakPtr<Service> service_;
   base::RepeatingCallback<content::WebContents*()> getter_;
@@ -1316,9 +1326,9 @@ void CheckWebSocket(const content::GlobalRenderFrameHostId& frame_id,
       Service::Get(Profile::FromBrowserContext(process->GetBrowserContext()));
   auto* contents =
       frame ? content::WebContents::FromRenderFrameHost(frame) : nullptr;
-  const GURL site = frame
-                        ? frame->GetOutermostMainFrame()->GetLastCommittedURL()
-                        : origin.GetURL();
+  const GURL site =
+      frame ? Page::Get(contents)->RequestSite(frame, origin.GetURL())
+            : origin.GetURL();
   CheckRequest(service, contents ? Page::Get(contents) : nullptr, url, site,
                "websocket", "GET", base::BindRepeating([] { return true; }),
                base::BindOnce(
