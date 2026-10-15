@@ -4834,5 +4834,140 @@
     "host_validation": "Effective source diff reviewed; 12 Chromium and 8 Dawn sources apply/byte-match; diff check PASS",
     "device_validation": "Pending push CI build and actual phone alias, cleanup and continuous playback tests",
     "ci_code_modified": false
+  },
+  "runtime_5540a9fc": {
+    "ci_run": 38808126752,
+    "installed": true,
+    "coldstart_compute_render_stress": "PASS",
+    "native_color_gates": "0/3 PASS; stable native imports still lose chroma",
+    "native_yuv_capabilities": {
+      "build": "5540a9fc",
+      "properties": {
+        "nv12": {
+          "native": 24,
+          "vk_format": 0,
+          "external_format": 1000156003,
+          "model": 2,
+          "range": 1,
+          "chroma": [
+            1,
+            1
+          ],
+          "components": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "features": 8785921
+        },
+        "p010": {
+          "native": 35,
+          "vk_format": 0,
+          "external_format": 1000156013,
+          "model": 2,
+          "range": 1,
+          "chroma": [
+            0,
+            0
+          ],
+          "components": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "features": 8785921
+        }
+      },
+      "feature_bits": [
+        "SAMPLED_IMAGE",
+        "SAMPLED_IMAGE_FILTER_LINEAR",
+        "MIDPOINT_CHROMA_SAMPLES",
+        "SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER",
+        "COSITED_CHROMA_SAMPLES"
+      ],
+      "absent_bits": [
+        "SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER",
+        "DISJOINT",
+        "CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE"
+      ],
+      "interpretation": "Driver suggests 709 narrow for both formats. P010 suggested cosited, NV12 midpoint. Both supported sitings are advertised. Suggested model cannot substitute frame metadata for BT2020 HDR. Raw RGB/YCBCR identity chroma still missing. No new color fix chosen yet.",
+      "evidence": "5540-native-yuv-properties.log",
+      "sources": [
+        "https://docs.vulkan.org/refpages/latest/refpages/source/VkNativeBufferFormatPropertiesOHOS.html",
+        "https://gpuweb.github.io/gpuweb/#dom-gpudevice-importexternaltexture"
+      ]
+    }
+  },
+  "runtime_1af5fbdb": {
+    "ci_run": 38808730802,
+    "installed": true,
+    "coldstart_compute_render_stress": "PASS",
+    "native_lifetime": {
+      "unused_import": "PASS with native import and stable GPU after cleanup",
+      "submitted_html_device_destroy": "PASS with native import and stable GPU after cleanup",
+      "frame_aliases": "FAIL Invalid Texture; GPU stays stable after cleanup, unlike b893",
+      "evidence": "1af-native-lifetime.json"
+    },
+    "color_gates": "0/3 PASS; GENERAL sampling does not fix chroma",
+    "diagnostics": {
+      "swapped_sampler_binding_order": "No change; all chroma stripes identical",
+      "compute_texture_load": "No change; all chroma stripes identical. Rules out fragment-only or RGBA16F-readback-only failure.",
+      "evidence": [
+        "1af-sampler-first-chroma.json",
+        "1af-compute-chroma.json"
+      ]
+    },
+    "full_goal_complete": false
+  },
+  "runtime_bd384ff7": {
+    "ci_run": 38809068027,
+    "installed": true,
+    "package": {
+      "run": "38809068027",
+      "source": "bd384ff7",
+      "har_sha256": "6d67ba3b14e3dcfda0ed19f89c9ad5444236e2a5ae4cd2c296cc7936d75cbe21",
+      "engine_sha256": "9a08fe8e7f126e3bc815eebaccf3f48035a82e0e50bd9800d0d0894730973bdb",
+      "hap_sha256": "bb3ff70b4893d85120b74ed32708b86dab592453a9fb09b13768d8ecd0c1f8ee",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-bd384ff7/phone-bd384ff7-signed.hap"
+    },
+    "coldstart_compute_render_stress": "PASS",
+    "native_lifetime": {
+      "pass": 3,
+      "fail": 0,
+      "cases": [
+        "unused import then close/device destroy",
+        "submitted HTMLVideoElement texture then device destroy",
+        "two VideoFrame aliases; original closed then surviving alias submitted again"
+      ],
+      "native_import_trace": "Present for all cases; alias case includes OhosNativeBufferDawnAlias",
+      "gpu_stable_after_cleanup": true,
+      "evidence": "bd384-native-lifetime.json"
+    },
+    "color_correctness": "Still unproven/known failing in predecessor 1af. Alias fix changes lifetime, not YUV sampling model.",
+    "full_goal_complete": false,
+    "short_sync_diagnostic": {
+      "pass": true,
+      "seconds": 30,
+      "native_imports": 1185,
+      "zero_copy_imports": 1185,
+      "gpu_stable_after_cleanup": true,
+      "sampled_frames": 1186,
+      "video_total": 1637,
+      "video_dropped": 270,
+      "scope": "Concurrent video/Skia + WebGPU synchronization diagnostic with tracing. Color remains incorrect; dropped frames mean this is not clean playback/performance acceptance.",
+      "evidence": "bd384-short-native-sync.json"
+    }
+  },
+  "native_yuv_sampling_probe_toggles": {
+    "status": "Default-disabled diagnostics; pending CI/device A/B",
+    "toggles": [
+      "ohos_native_yuv_hardware_probe",
+      "ohos_native_yuv_linear_chroma_probe"
+    ],
+    "purpose": "Compare raw identity/nearest, raw identity/linear, and hardware BT709 narrow conversion to isolate missing chroma; shader matrix remains unchanged so hardware mode is explicitly not color-correct output.",
+    "constraints": "Sampler and image-view conversions match; linear diagnostic forces both sampler filters to linear because device lacks separate reconstruction filtering. Standard behavior unchanged with both toggles off; restore standard HAP after testing.",
+    "host_validation": "12 Chromium +11 Dawn sources apply and byte-match; new baselines verified against pinned Dawn; effective source delta reviewed; no CI code edits."
   }
 }

@@ -107,6 +107,15 @@ diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/Textu
  
      // We have to manually trigger a transition if the texture hasn't been actually used or if we
      // need a layout transition.
+@@ -2139,7 +2155,7 @@
+             DAWN_ASSERT(device->HasFeature(Feature::OpaqueYCbCrAndroidForExternalTexture));
+ 
+             yCbCr = StaticSamplerSpecialization::GetYCbCrForTextureView(
+-                static_cast<VkFormat>(stmContents->GetYCbCrVkDesc().vkFormat),
++                device, static_cast<VkFormat>(stmContents->GetYCbCrVkDesc().vkFormat),
+                 stmContents->GetYCbCrVkDesc().externalFormat);
+         }
+ 
 diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
 --- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
 +++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
@@ -460,3 +469,100 @@ diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/Device
          usedKnobs.samplerYCbCrConversionFeatures.samplerYcbcrConversion = VK_TRUE;
          featuresChain.Add(&usedKnobs.samplerYCbCrConversionFeatures,
                            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES);
+diff --git a/src/dawn/native/vulkan/SamplerVk.cpp b/src/dawn/native/vulkan/SamplerVk.cpp
+--- a/src/dawn/native/vulkan/SamplerVk.cpp
++++ b/src/dawn/native/vulkan/SamplerVk.cpp
+@@ -82,8 +82,16 @@
+ 
+     YCbCrVkDescriptor yCbCrDesc;
+     if (s.isYCbCr) {
+-        yCbCrDesc = StaticSamplerSpecialization::GetYCbCrForTextureView(s.vkFormat,
++        yCbCrDesc = StaticSamplerSpecialization::GetYCbCrForTextureView(device, s.vkFormat,
+                                                                         s.androidExternalFormat);
++#if defined(__OHOS__)
++        if (s.androidExternalFormat != 0 &&
++            device->IsToggleEnabled(Toggle::OhosNativeYuvLinearChromaProbe)) {
++            // This device lacks separate reconstruction filtering. Keep the
++            // sampler and conversion filters equal for a valid diagnostic.
++            samplerDesc.minFilter = samplerDesc.magFilter = wgpu::FilterMode::Linear;
++        }
++#endif
+         samplerDesc.nextInChain = &yCbCrDesc;
+     }
+ 
+@@ -217,6 +225,7 @@
+ 
+ // static
+ YCbCrVkDescriptor StaticSamplerSpecialization::GetYCbCrForTextureView(
++    [[maybe_unused]] const Device* device,
+     VkFormat vkFormat,
+     uint64_t androidExternalFormat) {
+     YCbCrVkDescriptor yCbCrDesc;
+@@ -232,6 +241,20 @@
+     yCbCrDesc.vkYChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+     yCbCrDesc.vkChromaFilter = wgpu::FilterMode::Nearest;
+     yCbCrDesc.forceExplicitReconstruction = false;
++#if defined(__OHOS__)
++    // Both toggles are opt-in diagnostics, constant for this device. Sampler
++    // and texture view must use the exact same conversion. Normal imports
++    // retain raw YUV; changing the hardware model alone double-converts RGB.
++    if (androidExternalFormat != 0) {
++        if (device->IsToggleEnabled(Toggle::OhosNativeYuvHardwareProbe)) {
++            yCbCrDesc.vkYCbCrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
++            yCbCrDesc.vkYCbCrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
++        }
++        if (device->IsToggleEnabled(Toggle::OhosNativeYuvLinearChromaProbe)) {
++            yCbCrDesc.vkChromaFilter = wgpu::FilterMode::Linear;
++        }
++    }
++#endif
+     return yCbCrDesc;
+ }
+ 
+diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
+--- a/src/dawn/native/Toggles.h
++++ b/src/dawn/native/Toggles.h
+@@ -231,6 +231,9 @@
+     AutoMapBackendBuffer,
+     MetalPolyfillBoolVecDynamicStore,
+ 
++    OhosNativeYuvHardwareProbe,
++    OhosNativeYuvLinearChromaProbe,
++
+     EnumCount,
+     InvalidEnum = EnumCount,
+ };
+diff --git a/src/dawn/native/Toggles.cpp b/src/dawn/native/Toggles.cpp
+--- a/src/dawn/native/Toggles.cpp
++++ b/src/dawn/native/Toggles.cpp
+@@ -948,6 +948,17 @@
+       "boolean vectors fail.",
+       "https://crbug.com/540789158", ToggleStage::Device}},
+ 
++    {Toggle::OhosNativeYuvHardwareProbe,
++     {"ohos_native_yuv_hardware_probe",
++      "Diagnostic only: sample OHOS external YUV with hardware BT709 narrow conversion. "
++      "The external-texture shader still applies its matrix; this is not a color-correct mode.",
++      "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
++    {Toggle::OhosNativeYuvLinearChromaProbe,
++     {"ohos_native_yuv_linear_chroma_probe",
++      "Diagnostic only: use matching linear luma/chroma filtering for OHOS external YUV. "
++      "Overrides the application's sampler to isolate native chroma reconstruction.",
++      "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
++
+     // Comment to separate the }} so it is clearer what to copy-paste to add a toggle.
+ }};
+ 
+diff --git a/src/dawn/native/vulkan/SamplerVk.h b/src/dawn/native/vulkan/SamplerVk.h
+--- a/src/dawn/native/vulkan/SamplerVk.h
++++ b/src/dawn/native/vulkan/SamplerVk.h
+@@ -75,7 +75,8 @@
+     // conversion information at the moment. However to take advantage of hardware support we'll
+     // need to use different model/range values, at which point the views will need to be
+     // specialized either at ExternalTexture creation, or when the rest of the state is specialized.
+-    static YCbCrVkDescriptor GetYCbCrForTextureView(VkFormat vkFormat,
++    static YCbCrVkDescriptor GetYCbCrForTextureView(const Device* device,
++                                                    VkFormat vkFormat,
+                                                     uint64_t androidExternalFormat);
+ 
+     wgpu::FilterMode minFilter;
