@@ -66,7 +66,8 @@ bool ValidSharedPacket(const SharedPacket& p, size_t count) {
     case SharedOp::kAllocateImage:
       if (count || p.lease || p.tail_bytes || !p.width || !p.height ||
           p.width > 8192 || p.height > 8192 ||
-          uint64_t{p.width} * p.height * 4 > kMaxFrameBytes ||
+          uint64_t{p.width} * p.height * SharedImageBytesPerPixel(p.prefix[8]) >
+              kMaxFrameBytes ||
           p.color.mode != OhosOutputMode::kSdr8 || p.color_generation ||
           !IsSharedImageFormat(p.prefix[8]))
         return false;
@@ -92,6 +93,8 @@ bool ValidSharedPacket(const SharedPacket& p, size_t count) {
                     p.color.mode != OhosOutputMode::kSdr8 ||
                     p.color_generation || !IsSharedImageFormat(v[8])))
         return false;
+      const uint32_t bytes_per_pixel =
+          image ? SharedImageBytesPerPixel(v[8]) : 4;
       // These HW_RENDER buffers are imported as optimal-tiled Vulkan images,
       // never mapped as stride * height bytes. Native allocation size need not
       // include that hypothetical linear padding (e.g. 1617x175 on Maleoon).
@@ -103,9 +106,9 @@ bool ValidSharedPacket(const SharedPacket& p, size_t count) {
              v[6] == p.height &&
              (image || v[8] == OhosOutputNativeFormat(p.color)) &&
              v[13] == 1 && p.width && p.height && p.width <= 8192 &&
-             p.height <= 8192 && v[5] >= uint64_t{p.width} * 4 &&
+             p.height <= 8192 && v[5] >= uint64_t{p.width} * bytes_per_pixel &&
              v[5] <= kMaxFrameBytes && v[7] <= kMaxFrameBytes &&
-             uint64_t{p.width} * p.height * 4 <= v[7] &&
+             uint64_t{p.width} * p.height * bytes_per_pixel <= v[7] &&
              (p.tail_bytes == v[3] * 4 || p.tail_bytes == v[3] * 4 + 20);
     }
     case SharedOp::kColorProbe:

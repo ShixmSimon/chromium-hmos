@@ -17,6 +17,7 @@
 namespace ui::phone_gpu {
 static_assert(kSharedImageRgba8888 == NATIVEBUFFER_PIXEL_FMT_RGBA_8888);
 static_assert(kSharedImageBgra8888 == NATIVEBUFFER_PIXEL_FMT_BGRA_8888);
+static_assert(kSharedImageRgba16Float == NATIVEBUFFER_PIXEL_FMT_RGBA16_FLOAT);
 namespace {
 std::atomic<bool> ready{false};
 using WriteBuffer = int32_t (*)(OH_NativeBuffer*, OHIPCParcel*);

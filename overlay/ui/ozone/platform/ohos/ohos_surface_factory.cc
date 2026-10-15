@@ -53,7 +53,8 @@ constexpr base::TimeDelta kNativeSurfaceWaitTimeout = base::Seconds(3);
 
 bool IsOffscreenNativeFormat(viz::SharedImageFormat format) {
   return format == viz::SinglePlaneFormat::kRGBA_8888 ||
-         format == viz::SinglePlaneFormat::kBGRA_8888;
+         format == viz::SinglePlaneFormat::kBGRA_8888 ||
+         format == viz::SinglePlaneFormat::kRGBA_F16;
 }
 
 // OH_NativeBuffer_Format's RGBA_8888 and RGBA_1010102. Taking the enum by
@@ -1104,13 +1105,17 @@ class PhoneVulkanImplementation final : public VideoVulkanImplementation {
       VkFormat format,
       const gfx::ColorSpace& color) override {
     if (format == VK_FORMAT_R8G8B8A8_UNORM ||
-        format == VK_FORMAT_B8G8R8A8_UNORM) {
+        format == VK_FORMAT_B8G8R8A8_UNORM ||
+        format == VK_FORMAT_R16G16B16A16_SFLOAT) {
       if (handle.type != gfx::NATIVE_PIXMAP)
         return nullptr;
       const auto& prefix = handle.native_pixmap_handle().ohos_buffer_prefix;
-      const uint32_t native_format = format == VK_FORMAT_R8G8B8A8_UNORM
-                                         ? phone_gpu::kSharedImageRgba8888
-                                         : phone_gpu::kSharedImageBgra8888;
+      const uint32_t native_format =
+          format == VK_FORMAT_R16G16B16A16_SFLOAT
+              ? phone_gpu::kSharedImageRgba16Float
+              : format == VK_FORMAT_R8G8B8A8_UNORM
+                    ? phone_gpu::kSharedImageRgba8888
+                    : phone_gpu::kSharedImageBgra8888;
       if (prefix.size() != 14 || prefix[8] != native_format)
         return nullptr;
       return ImportOhosOffscreenVulkan(queue, std::move(handle), size);

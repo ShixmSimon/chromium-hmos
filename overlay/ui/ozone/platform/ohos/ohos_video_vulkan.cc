@@ -49,6 +49,8 @@ std::unique_ptr<gpu::VulkanImage> ImportOhosOffscreenVulkan(
     format = viz::SinglePlaneFormat::kRGBA_8888;
   else if (prefix[8] == NATIVEBUFFER_PIXEL_FMT_BGRA_8888)
     format = viz::SinglePlaneFormat::kBGRA_8888;
+  else if (prefix[8] == NATIVEBUFFER_PIXEL_FMT_RGBA16_FLOAT)
+    format = viz::SinglePlaneFormat::kRGBA_F16;
   else
     return nullptr;
   return ImportOhosOffscreenVulkan(
@@ -63,7 +65,8 @@ std::unique_ptr<gpu::VulkanImage> ImportOhosOffscreenVulkan(
     return nullptr;
   const auto format = pixmap->GetSharedImageFormat();
   const bool bgra = format == viz::SinglePlaneFormat::kBGRA_8888;
-  if (!bgra && format != viz::SinglePlaneFormat::kRGBA_8888)
+  const bool half_float = format == viz::SinglePlaneFormat::kRGBA_F16;
+  if (!bgra && !half_float && format != viz::SinglePlaneFormat::kRGBA_8888)
     return nullptr;
   const auto size = pixmap->GetBufferSize();
   if (size.IsEmpty() || size.width() > 8192 || size.height() > 8192)
@@ -73,10 +76,13 @@ std::unique_ptr<gpu::VulkanImage> ImportOhosOffscreenVulkan(
     return nullptr;
   OH_NativeBuffer_Config config{};
   OH_NativeBuffer_GetConfig(native, &config);
-  const int native_format = bgra ? NATIVEBUFFER_PIXEL_FMT_BGRA_8888
-                                 : NATIVEBUFFER_PIXEL_FMT_RGBA_8888;
-  const VkFormat vk_format = bgra ? VK_FORMAT_B8G8R8A8_UNORM
-                                  : VK_FORMAT_R8G8B8A8_UNORM;
+  const int native_format =
+      half_float ? NATIVEBUFFER_PIXEL_FMT_RGBA16_FLOAT
+                 : bgra ? NATIVEBUFFER_PIXEL_FMT_BGRA_8888
+                        : NATIVEBUFFER_PIXEL_FMT_RGBA_8888;
+  const VkFormat vk_format =
+      half_float ? VK_FORMAT_R16G16B16A16_SFLOAT
+                 : bgra ? VK_FORMAT_B8G8R8A8_UNORM : VK_FORMAT_R8G8B8A8_UNORM;
   if (config.width != size.width() || config.height != size.height() ||
       config.format != native_format)
     return nullptr;
@@ -104,8 +110,8 @@ std::unique_ptr<gpu::VulkanImage> ImportOhosOffscreenVulkan(
   external.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OH_NATIVE_BUFFER_BIT_OHOS;
   VkImageCreateInfo create{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
   create.pNext = &external;
-  // Dawn can create both linear and sRGB views of this same native image.
-  create.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+  // RGBA8/BGRA8 permit linear/sRGB view reinterpretation; RGBA16F has one format.
+  create.flags = half_float ? 0 : VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
   create.imageType = VK_IMAGE_TYPE_2D;
   create.format = vk_format;
   create.extent = {static_cast<uint32_t>(size.width()),

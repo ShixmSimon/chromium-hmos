@@ -84,6 +84,9 @@ std::optional<int32_t> OhosFormatFor(viz::SharedImageFormat format) {
   if (format == viz::SinglePlaneFormat::kBGRA_8888) {
     return NATIVEBUFFER_PIXEL_FMT_BGRA_8888;
   }
+  if (format == viz::SinglePlaneFormat::kRGBA_F16) {
+    return NATIVEBUFFER_PIXEL_FMT_RGBA16_FLOAT;
+  }
   return std::nullopt;
 }
 

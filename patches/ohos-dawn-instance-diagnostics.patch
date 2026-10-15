@@ -177,7 +177,7 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
  
      OH_NativeBuffer_Config config = {};
      OH_NativeBuffer_GetConfig(nativeBuffer, &config);
-@@ -853,30 +896,68 @@
+@@ -853,30 +896,69 @@
      DAWN_TRY(CheckVkSuccess(
          device->fn.GetNativeBufferPropertiesOHOS(vkDevice, nativeBuffer, &bufferProperties),
          "vkGetNativeBufferPropertiesOHOS"));
@@ -241,6 +241,7 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
 +        // Require the allocation's actual Vulkan format capability, not merely
 +        // the adapter's support for independently allocated storage images.
 +        const bool storageFormat = properties.format == wgpu::TextureFormat::RGBA8Unorm ||
++            properties.format == wgpu::TextureFormat::RGBA16Float ||
 +            (properties.format == wgpu::TextureFormat::BGRA8Unorm &&
 +             device->HasFeature(Feature::BGRA8UnormStorage));
 +        if (storageFormat && (config.usage & NATIVEBUFFER_USAGE_HW_RENDER) &&
@@ -264,7 +265,7 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
      sharedTextureMemory->APIGetProperties(&properties);
  
      VkImageUsageFlags vkUsageFlags = VulkanImageUsage(device, properties.usage, *internalFormat);
-@@ -892,70 +973,84 @@
+@@ -892,70 +974,84 @@
          vkCreateFlags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
      }
  

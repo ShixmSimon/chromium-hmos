@@ -2616,6 +2616,162 @@
         "checked_pixels": 64,
         "max_allowed_error": 1
       }
+    },
+    "pinned_cts": {
+      "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+      "source": "Chromium 154.0.8037.97 DEPS and pinned Dawn DEPS",
+      "runs": {
+        "getCurrentTexture": {
+          "state": {
+            "query": "webgpu:web_platform,canvas,getCurrentTexture:*",
+            "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+            "start": 1792086628889,
+            "done": true,
+            "counts": {
+              "pass": 30,
+              "fail": 0,
+              "skip": 0,
+              "warn": 0
+            },
+            "completed": 30,
+            "current": "webgpu:web_platform,canvas,getCurrentTexture:usage_as_texture_binding:canvasType=\"offscreen\";withView=false",
+            "stop": false,
+            "caseStart": 1792086630805,
+            "end": 1792086630830,
+            "pass": true
+          },
+          "failures": []
+        },
+        "canvas_readback": {
+          "state": {
+            "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:*",
+            "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+            "start": 1792086647675,
+            "done": true,
+            "counts": {
+              "pass": 24,
+              "fail": 10,
+              "skip": 0,
+              "warn": 0
+            },
+            "completed": 34,
+            "current": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,snapshot:format=\"rgba16float\";alphaMode=\"premultiplied\";colorSpace=\"display-p3\";snapshotType=\"toDataURL\"",
+            "stop": false,
+            "caseStart": 1792086650162,
+            "stoppedEarly": true,
+            "end": 1792086650181,
+            "pass": false
+          },
+          "failures": [
+            {
+              "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,snapshot:format=\"rgba16float\";alphaMode=\"opaque\";colorSpace=\"srgb\";snapshotType=\"toDataURL\"",
+              "result": {
+                "status": "fail",
+                "timems": 205.301,
+                "logs": [
+                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                            1,0,0                            0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                      00 00 00 00                      00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.400000,1.00000 0.00000,0.400000,0.00000,1.00000 0.400000,0.00000,0.00000,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                          0,0,0,0                          0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                      0,0,102,255                      0,102,0,255                      102,0,0,255 ...\n\n         tolerance ± 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                             0,0,-102,-255                    0,-102,0,-255                    -102,0,0,-255 ...\n  at (elided: below max severity)",
+                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                               1,0,0                                0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                         00 00 00 00                          00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000     0.00000,0.00000,0.00000,0.00000      0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.384314,1.00000 0.164706,0.392157,0.0980392,1.00000 0.364706,0.0549020,0.0274510,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                             0,0,0,0                              0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                       0,0,98,255                       42,100,25,255                          93,14,7,255 ...\n\n         tolerance ± 3 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                              0,0,-98,-255                   -42,-100,-25,-255                      -93,-14,-7,-255 ...\n  at (elided: below max severity)",
+                  "EXCEPTION: OperationError: A valid external Instance reference no longer exists.\nOperationError: A valid external Instance reference no longer exists."
+                ]
+              }
+            },
+            {
+              "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,snapshot:format=\"rgba16float\";alphaMode=\"opaque\";colorSpace=\"srgb\";snapshotType=\"toBlob\"",
+              "result": {
+                "status": "fail",
+                "timems": 21.3,
+                "logs": [
+                  "EXCEPTION: Error: requestAdapter returned null\n    at assert (http://127.0.0.1:18080/cts-source/out/common/util/util.js:37:11)\n    at DeviceHolder.create (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:364:5)\n    at async DescriptorToHolderMap.getOrCreate (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:218:15)\n    at async DevicePool.acquire (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:85:20)"
+                ]
+              }
+            },
+            {
+              "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,snapshot:format=\"rgba16float\";alphaMode=\"opaque\";colorSpace=\"srgb\";snapshotType=\"imageBitmap\"",
+              "result": {
+                "status": "fail",
+                "timems": 19.801,
+                "logs": [
+                  "EXCEPTION: Error: requestAdapter returned null\n    at assert (http://127.0.0.1:18080/cts-source/out/common/util/util.js:37:11)\n    at DeviceHolder.create (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:364:5)\n    at async DescriptorToHolderMap.getOrCreate (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:218:15)\n    at async DevicePool.acquire (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:85:20)"
+                ]
+              }
+            },
+            {
+              "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,snapshot:format=\"rgba16float\";alphaMode=\"opaque\";colorSpace=\"display-p3\";snapshotType=\"toDataURL\"",
+              "result": {
+                "status": "fail",
+                "timems": 19.1,
+                "logs": [
+                  "EXCEPTION: Error: requestAdapter returned null\n    at assert (http://127.0.0.1:18080/cts-source/out/common/util/util.js:37:11)\n    at DeviceHolder.create (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:364:5)\n    at async DescriptorToHolderMap.getOrCreate (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:218:15)\n    at async DevicePool.acquire (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:85:20)"
+                ]
+              }
+            },
+            {
+              "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,snapshot:format=\"rgba16float\";alphaMode=\"opaque\";colorSpace=\"display-p3\";snapshotType=\"toBlob\"",
+              "result": {
+                "status": "fail",
+                "timems": 19.2,
+                "logs": [
+                  "EXCEPTION: Error: requestAdapter returned null\n    at assert (http://127.0.0.1:18080/cts-source/out/common/util/util.js:37:11)\n    at DeviceHolder.create (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:364:5)\n    at async DescriptorToHolderMap.getOrCreate (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:218:15)\n    at async DevicePool.acquire (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:85:20)"
+                ]
+              }
+            },
+            {
+              "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,snapshot:format=\"rgba16float\";alphaMode=\"opaque\";colorSpace=\"display-p3\";snapshotType=\"imageBitmap\"",
+              "result": {
+                "status": "fail",
+                "timems": 18.901,
+                "logs": [
+                  "EXCEPTION: Error: requestAdapter returned null\n    at assert (http://127.0.0.1:18080/cts-source/out/common/util/util.js:37:11)\n    at DeviceHolder.create (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:364:5)\n    at async DescriptorToHolderMap.getOrCreate (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:218:15)\n    at async DevicePool.acquire (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:85:20)"
+                ]
+              }
+            },
+            {
+              "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,snapshot:format=\"rgba16float\";alphaMode=\"premultiplied\";colorSpace=\"srgb\";snapshotType=\"toDataURL\"",
+              "result": {
+                "status": "fail",
+                "timems": 18.5,
+                "logs": [
+                  "EXCEPTION: Error: requestAdapter returned null\n    at assert (http://127.0.0.1:18080/cts-source/out/common/util/util.js:37:11)\n    at DeviceHolder.create (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:364:5)\n    at async DescriptorToHolderMap.getOrCreate (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:218:15)\n    at async DevicePool.acquire (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:85:20)"
+                ]
+              }
+            },
+            {
+              "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,snapshot:format=\"rgba16float\";alphaMode=\"premultiplied\";colorSpace=\"srgb\";snapshotType=\"toBlob\"",
+              "result": {
+                "status": "fail",
+                "timems": 19,
+                "logs": [
+                  "EXCEPTION: Error: requestAdapter returned null\n    at assert (http://127.0.0.1:18080/cts-source/out/common/util/util.js:37:11)\n    at DeviceHolder.create (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:364:5)\n    at async DescriptorToHolderMap.getOrCreate (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:218:15)\n    at async DevicePool.acquire (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:85:20)"
+                ]
+              }
+            },
+            {
+              "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,snapshot:format=\"rgba16float\";alphaMode=\"premultiplied\";colorSpace=\"srgb\";snapshotType=\"imageBitmap\"",
+              "result": {
+                "status": "fail",
+                "timems": 19.3,
+                "logs": [
+                  "EXCEPTION: Error: requestAdapter returned null\n    at assert (http://127.0.0.1:18080/cts-source/out/common/util/util.js:37:11)\n    at DeviceHolder.create (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:364:5)\n    at async DescriptorToHolderMap.getOrCreate (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:218:15)\n    at async DevicePool.acquire (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:85:20)"
+                ]
+              }
+            },
+            {
+              "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,snapshot:format=\"rgba16float\";alphaMode=\"premultiplied\";colorSpace=\"display-p3\";snapshotType=\"toDataURL\"",
+              "result": {
+                "status": "fail",
+                "timems": 18.9,
+                "logs": [
+                  "EXCEPTION: Error: requestAdapter returned null\n    at assert (http://127.0.0.1:18080/cts-source/out/common/util/util.js:37:11)\n    at DeviceHolder.create (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:364:5)\n    at async DescriptorToHolderMap.getOrCreate (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:218:15)\n    at async DevicePool.acquire (http://127.0.0.1:18080/cts-source/out/webgpu/util/device_pool.js:85:20)"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "scope": "Focused test groups only; not a full CTS conformance claim. readback run stopped after 10 failures; initial RGBA16F allocation failure lost the context and caused subsequent adapter failures.",
+      "rgba16float_root_cause": "SharedImageBackingFactory could not create RGBA_F16 WebGPUSwapBufferProvider image (2x2). Existing OHOS native image support only accepted RGBA8/BGRA8.",
+      "rgba16float_fix": "Add native RGBA16_FLOAT allocation and parcel format, validate 8-byte pixels, and import VK_FORMAT_R16G16B16A16_SFLOAT for Skia/Dawn. GPU-writable storage usage is gated on actual format features. This offscreen format does not change SDR/HDR window output policy.",
+      "fix_runtime_status": "PENDING native CI and device rerun"
     }
   },
   "native_video_dawn_implementation": {

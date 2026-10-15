@@ -16,8 +16,15 @@ inline constexpr size_t kSharedMaxFds = 8;
 // NativeBuffer format values, checked against the SDK by the allocator.
 inline constexpr uint32_t kSharedImageRgba8888 = 12;
 inline constexpr uint32_t kSharedImageBgra8888 = 20;
+inline constexpr uint32_t kSharedImageRgba16Float = 39;
 inline constexpr bool IsSharedImageFormat(uint32_t format) {
-  return format == kSharedImageRgba8888 || format == kSharedImageBgra8888;
+  return format == kSharedImageRgba8888 || format == kSharedImageBgra8888 ||
+         format == kSharedImageRgba16Float;
+}
+inline constexpr uint32_t SharedImageBytesPerPixel(uint32_t format) {
+  if (format == kSharedImageRgba16Float)
+    return 8;
+  return IsSharedImageFormat(format) ? 4 : 0;
 }
 enum class SharedOp : uint32_t {
   kAcquire = 1,
