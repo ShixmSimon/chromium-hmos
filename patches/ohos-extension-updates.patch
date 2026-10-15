@@ -364,11 +364,11 @@ diff --git a/extensions/browser/updater/update_service.h b/extensions/browser/up
 diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
 --- a/chrome/browser/BUILD.gn
 +++ b/chrome/browser/BUILD.gn
-@@ -1732,4 +1732,7 @@
+@@ -1731,4 +1731,7 @@
+       "ui/ohos/shell_tab_groups_ohos.h",
        "ui/ohos/shell_extensions_ohos.cc",
        "ui/ohos/shell_extensions_ohos.h",
 +      "ui/ohos/shell_extension_updates_ohos.cc",
 +      "ui/ohos/shell_extension_updates_ohos.h",
 +      "ui/ohos/extension_update_result_ohos.h",
        "ui/ohos/shell_passwords_ohos.cc",
-     ]
