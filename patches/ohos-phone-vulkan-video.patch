@@ -176,7 +176,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  class ScopedDedicatedMemoryObject {
   public:
    explicit ScopedDedicatedMemoryObject(gl::GLApi* api) : api_(api) {
-@@ -103,6 +134,219 @@
+@@ -103,6 +134,226 @@
    GLuint id_;
  };
  
@@ -311,16 +311,22 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
 +    wgpu::SharedTextureMemoryVkImageLayoutEndState layout{};
 +    wgpu::SharedTextureMemoryEndAccessState access{};
 +    access.nextInChain = &layout;
-+    if (memory_.EndAccess(texture_, &access) != wgpu::Status::Success ||
++    const auto status = memory_.EndAccess(texture_, &access);
++    if (status != wgpu::Status::Success ||
 +        layout.newLayout != VK_IMAGE_LAYOUT_GENERAL ||
 +        access.fenceCount != access.signaledValueCount) {
-+      FailRelease();
++      LOG(ERROR) << "OHOS Dawn native video release state: status="
++                 << static_cast<int>(status) << " old_layout=" << layout.oldLayout
++                 << " new_layout=" << layout.newLayout
++                 << " fences=" << access.fenceCount
++                 << " values=" << access.signaledValueCount;
++      FailRelease("end-access state");
 +      return;
 +    }
 +    std::vector<ExternalSemaphore> semaphores;
 +    for (size_t i = 0; i < access.fenceCount; ++i) {
 +      if (UNSAFE_TODO(access.signaledValues[i]) != 1) {
-+        FailRelease();
++        FailRelease("signaled value");
 +        return;
 +      }
 +      const auto& fence = UNSAFE_TODO(access.fences[i]);
@@ -343,18 +349,18 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
 +        exported_fd = opaque.handle;
 +        type = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
 +      } else {
-+        FailRelease();
++        FailRelease("fence type");
 +        return;
 +      }
 +      base::ScopedFD fd(exported_fd >= 0 ? dup(exported_fd) : -1);
 +      if (!fd.is_valid()) {
-+        FailRelease();
++        FailRelease("duplicate fence fd");
 +        return;
 +      }
 +      auto semaphore = ExternalSemaphore::CreateFromHandle(
 +          backing_->context_provider(), SemaphoreHandle(type, std::move(fd)));
 +      if (!semaphore) {
-+        FailRelease();
++        FailRelease("import semaphore");
 +        return;
 +      }
 +      semaphores.push_back(std::move(semaphore));
@@ -375,8 +381,9 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
 +    begin_semaphores_.clear();
 +  }
 +
-+  void FailRelease() {
-+    LOG(ERROR) << "OHOS Dawn native video release failed; retaining decoder lease";
++  void FailRelease(const char* reason) {
++    LOG(ERROR) << "OHOS Dawn native video release failed; retaining decoder lease: "
++               << reason;
 +    backing_->QuarantineOhosVideoAccess();
 +    texture_.Destroy();
 +    texture_ = nullptr;
@@ -396,7 +403,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  }  // namespace
  
  bool ExternalVkImageBacking::UseSeparateGLTexture(
-@@ -145,7 +389,7 @@
+@@ -145,7 +396,7 @@
    return context_state->support_gl_external_object_flags();
  }
  
@@ -405,7 +412,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
                                 std::vector<ExternalSemaphore>* semaphores) {
    DCHECK(!gr_context->abandoned());
    std::vector<GrBackendSemaphore> backend_semaphores;
-@@ -154,8 +398,8 @@
+@@ -154,8 +405,8 @@
      backend_semaphores.emplace_back(
          GrBackendSemaphores::MakeVk(semaphore.GetVkSemaphore()));
    }
@@ -416,7 +423,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  }
  
  }  // namespace
-@@ -263,6 +507,46 @@
+@@ -263,6 +514,46 @@
  
    return backing;
  }
@@ -463,7 +470,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  
  // static
  std::unique_ptr<ExternalVkImageBacking> ExternalVkImageBacking::CreateFromGMB(
-@@ -379,8 +663,15 @@
+@@ -379,8 +670,15 @@
        use_separate_gl_texture_(use_separate_gl_texture),
        enable_webgpu_on_vk_via_gl_interop_(enable_webgpu_on_vk_via_gl_interop) {
  #if BUILDFLAG(IS_OZONE)
@@ -481,7 +488,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
      pixmap_ = ui::OzonePlatform::GetInstance()
                    ->GetSurfaceFactoryOzone()
                    ->CreateNativePixmapFromHandle(
-@@ -391,13 +682,34 @@
+@@ -391,13 +689,34 @@
  }
  
  ExternalVkImageBacking::~ExternalVkImageBacking() {
@@ -517,7 +524,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
      ReturnPendingSemaphoresWithFenceHelper(std::move(semaphores));
    }
  
-@@ -406,6 +718,16 @@
+@@ -406,6 +725,16 @@
          std::move(vk_texture.vulkan_image));
    }
    vk_textures_.clear();
@@ -534,7 +541,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  
    if (!gl_textures_.empty()) {
      // Ensure that a context is current before glDeleteTexture().
-@@ -619,6 +941,34 @@
+@@ -619,6 +948,34 @@
    }
  }
  
@@ -569,7 +576,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
  bool ExternalVkImageBacking::CheckSupportForAccessStream(
      SharedImageAccessStream stream,
      viz::SharedImageFormat format,
-@@ -651,6 +1001,18 @@
+@@ -651,6 +1008,18 @@
  }
  
  void ExternalVkImageBacking::Update(std::unique_ptr<gfx::GpuFence> in_fence) {
@@ -588,7 +595,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
    DCHECK(!in_fence);
  }
  
-@@ -730,6 +1092,15 @@
+@@ -730,6 +1099,15 @@
      std::vector<ExternalSemaphore> semaphores) {
    std::move(semaphores.begin(), semaphores.end(),
              std::back_inserter(pending_semaphores_));
@@ -604,7 +611,7 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.c
    external_semaphore_pool()->ReturnSemaphoresWithFenceHelper(
        std::move(pending_semaphores_));
    pending_semaphores_.clear();
-@@ -742,7 +1113,14 @@
+@@ -742,7 +1120,14 @@
      wgpu::BackendType backend_type,
      std::vector<wgpu::TextureFormat> view_formats,
      scoped_refptr<SharedContextState> context_state) {

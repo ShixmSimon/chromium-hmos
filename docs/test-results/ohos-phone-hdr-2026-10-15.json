@@ -4718,7 +4718,19 @@
     "color_gates": "0/3 PASS: NV12 and P010 chroma absent; PQ EOTF still incorrect",
     "evidence": "a9-native-color-gates.json",
     "native_zero_copy_imports": "Present for all 3 fixtures, GPU stable",
-    "soak": "Not started: failed color gates"
+    "soak": "Not started: failed color gates",
+    "short_sync_diagnostic": {
+      "seconds": 30,
+      "native_imports": 1229,
+      "zero_copy_imports": 1229,
+      "webgpu_sampled_frames": 1222,
+      "video_total": 1687,
+      "video_dropped": 241,
+      "gpu_stable": true,
+      "errors": 0,
+      "scope": "Concurrency/fence diagnostic only; color known wrong, tracing and dual rendering enabled. Not a performance or playback acceptance.",
+      "evidence": "a9-short-native-sync.json"
+    }
   },
   "pq_fix_regression": {
     "introduced_by": "a10e957",
@@ -4726,7 +4738,7 @@
     "action": "Restore PQ conversion and includes into authoritative merged native source; retain analytic gate before soak."
   },
   "pending_native_yuv_identity_selectors": {
-    "status": "Source candidate awaiting pushed CI/device verification",
+    "status": "FAILED on 897b92e3: native NV12 still loses chroma; sampler/view selector changes reverted",
     "changes": [
       "Revert failed YCBCR_IDENTITY/full-range chroma compensation",
       "Use canonical IDENTITY selectors for OHOS opaque native samplers and default native image views, matching Skia mapping style",
@@ -4745,5 +4757,28 @@
       "440-alpha-query-sideeffect.json",
       "440-alpha-query-conditional-sideeffect.json"
     ]
+  },
+  "runtime_897b92e3": {
+    "ci_run": 38803755877,
+    "installed": true,
+    "coldstart": "PASS",
+    "native_color_gate": "Failed NV12 with native imports but GPU restart, stops subsequent tests",
+    "release_regression": {
+      "cause": "897b92e3 TextureVk block replacement omitted the pre-existing OHOS GENERAL export layout; native release guard rejects the new optimal layout",
+      "action": "Reconstruct complete prior TextureVk patched source, restore GENERAL export, remove ineffective identity-selector changes, add detailed EndAccess status/layout/fence logging"
+    },
+    "dva_control": {
+      "native_engine_sha256": "ed0e187270b7948c364e435ce707cc702fc8be7c54d6f9fb8e146b1067b11167",
+      "toggle": "vulkan_direct_variable_access_transform_handle",
+      "enabled_verified": "CLI and chrome://gpu enabled/required toggle sections",
+      "result": "NV12 chroma still absent before release failure; no production toggle enabled",
+      "evidence": "897-dva-isolated-native-color-gates.json"
+    },
+    "harness_isolation": "Hidden video and no Canvas2D reference still reproduced native release failure. Full color comparison uses independent fixture code values."
+  },
+  "native_source_review_process": {
+    "change": "Before editing a new native file, apply its complete existing patch stack. Added local --review-head to reconstruct HEAD source and print effective source delta instead of reviewing only nested patch text.",
+    "evidence": "out/phone-validation-20261015/source-review-after-897.txt",
+    "ci_code_changes": false
   }
 }
