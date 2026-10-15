@@ -58,7 +58,7 @@ void Serve(std::string mime,
           "\r\nAccess-Control-Allow-Credentials: true\r\n"
           "Cross-Origin-Resource-Policy: cross-origin\r\n"
           "X-Content-Type-Options: nosniff\r\nContent-Length: " +
-          std::to_string(body.size()) + "\r\n"));
+          std::to_string(head->content_length) + "\r\n"));
   head->response_type = same_origin ? network::mojom::FetchResponseType::kBasic
                         : request.mode == network::mojom::RequestMode::kNoCors
                             ? network::mojom::FetchResponseType::kOpaque

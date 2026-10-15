@@ -368,21 +368,23 @@ else
   # ---- build -----------------------------------------------------------------
   say "building (-j ${jobs})"
   start=$(date +%s)
-  # The whole log goes to the file, as it always did -- tens of thousands of
-  # lines do not belong in a job log, and failures are carried through
-  # errors.txt and the step summary. But sending nothing at all left the job
-  # looking identical whether it was compiling or wedged, for the half hour a
-  # large rebuild takes. The first step, every fiftieth after it, and every
-  # failure also go to stdout -- the first one because that is the one that
-  # says the build started and how much there is to do -- and the last one,
-  # or a build of fewer steps than the spacing would report that it began
-  # and never that it finished. PROGRESS_EVERY changes the spacing. ninja
-  # prints one line per step when it has no terminal, which is the case
-  # here.
-  ( cd "$src" && third_party/ninja/ninja -C "$out" -j "$jobs" -k 0 gn_all ) \
+  # Keep bounded diagnostics from a previous interrupted build before tee
+  # replaces its raw log. This is especially useful after cancellation.
+  if [[ -f "$log" ]]; then
+    say "previous build diagnostics (may refer to an older commit)"
+    awk '/error:|undefined symbol:|ninja: error:/ && !seen[$0]++ {
+      print; if (++n == 30) exit
+    }' "$log"
+  fi
+  # Public-header mistakes can fail thousands of targets. Stop after a useful
+  # sample and stream diagnostics instead of hiding them until ninja ends.
+  ( cd "$src" && third_party/ninja/ninja -C "$out" -j "$jobs" \
+      -k "${NINJA_MAX_FAILURES:-20}" gn_all ) \
     2>&1 | tee "$log" \
     | awk -v every="${PROGRESS_EVERY:-50}" '
-        /^FAILED:/ { print; fflush(); next }
+        /^FAILED:/ || /error:|undefined symbol:|ninja: error:/ {
+          print; fflush(); next
+        }
         /^\[[0-9]+\/[0-9]+\]/ {
           last = $0
           if (++n == 1 || n % every == 0) {
