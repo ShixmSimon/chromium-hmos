@@ -214,6 +214,7 @@ export interface BrowserRuntimeEvent {
     'gpuContextLost' | 'lastSessionRestorable' | 'lastSessionRestored' | 'extensionInstallFailed' |
     'pageFullscreenChanged' | 'pullToRefresh' |
     'extensionDetails' | 'extensionCommandFailed' |
+    'extensionUpdateCapabilities' | 'extensionUpdateProgress' |
     'pageDragStarted' | 'pageDragEnded' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |

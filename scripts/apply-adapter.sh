@@ -42,6 +42,8 @@ git -C "${chromium_src}" apply \
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-rule-sources.patch"
 git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-extension-updates.patch"
+git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-phone-fork.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-phone-gpu-shared-output.patch"

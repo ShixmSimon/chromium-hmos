@@ -10,6 +10,7 @@
 #include "chrome/browser/ui/ohos/shell_context_menu_image_ohos.h"
 #include "chrome/browser/ui/ohos/shell_drag_drop_ohos.h"
 #include "chrome/browser/ui/ohos/shell_extensions_ohos.h"
+#include "chrome/browser/ui/ohos/shell_extension_updates_ohos.h"
 #include "chrome/browser/ui/ohos/shell_page_position_ohos.h"
 #include "chrome/browser/ui/ohos/shell_store_user_agent_ohos.h"
 #include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
@@ -4256,6 +4257,9 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     }
     return;
   }
+  if (HandleShellExtensionUpdateCommand(*name, widget, browser, command)) {
+    return;
+  }
   if (!browser || !tabs) {
     LOG(ERROR) << "OHOS Aura shell command has no active browser: " << *name;
     return;
@@ -5354,6 +5358,8 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "setExtensionEnabled",
       "uninstallExtension",
       "getExtensionDetails",
+      "getExtensionUpdateCapabilities",
+      "checkExtensionUpdates",
       "setExtensionSiteAccess",
       "openExtensionOptions",
       "setExtensionPinned",

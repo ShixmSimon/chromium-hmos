@@ -299,6 +299,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection-updates.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-rule-sources.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-extension-updates.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-msrt.patch" \
     "${src}/third_party/angle"
 
