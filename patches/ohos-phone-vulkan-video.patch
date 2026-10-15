@@ -608,15 +608,19 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing_f
 diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc b/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc
 --- a/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc
 +++ b/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc
-@@ -11,6 +11,7 @@
+@@ -10,7 +10,11 @@
+ #include "base/check_op.h"
  #include "base/logging.h"
  #include "components/viz/common/resources/shared_image_format_utils.h"
++#if BUILDFLAG(IS_OHOS)
++#include "components/viz/common/gpu/vulkan_context_provider.h"
++#endif
  #include "gpu/vulkan/vulkan_fence_helper.h"
 +#include "gpu/vulkan/vulkan_image.h"
  #include "gpu/vulkan/vulkan_implementation.h"
  #include "gpu/vulkan/vulkan_util.h"
  #include "third_party/skia/include/core/SkCanvas.h"
-@@ -185,6 +186,14 @@
+@@ -185,6 +189,14 @@
                                                  VK_QUEUE_FAMILY_EXTERNAL));
    }
  
@@ -631,7 +635,51 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_skia_repr
    access_mode_ = AccessMode::kRead;
    return promise_textures;
  }
-@@ -244,8 +253,15 @@
+@@ -205,8 +217,30 @@
+   DCHECK(!end_access_semaphore_);
+ 
+   DCHECK(begin_access_semaphores_.empty());
++#if BUILDFLAG(IS_OHOS)
++  // Allocate the signal semaphore before taking backing access. A failed
++  // allocation must not leave a reader registered or consume producer fences.
++  if (backing_impl()->need_synchronization()) {
++    end_access_semaphore_ =
++        backing_impl()->external_semaphore_pool()->GetOrCreateSemaphore();
++    if (!end_access_semaphore_) {
++      LOG(ERROR) << "OHOS Skia external signal semaphore unavailable; opaque_fd="
++                 << IsVkOpaqueExternalSemaphoreSupported(
++                        context_state_->vk_context_provider()->GetDeviceQueue());
++      return {};
++    }
++  }
++#endif
+   if (!backing_impl()->BeginAccess(readonly, &begin_access_semaphores_,
+                                    /*is_gl=*/false)) {
++#if BUILDFLAG(IS_OHOS)
++    if (end_access_semaphore_) {
++      backing_impl()->external_semaphore_pool()->ReturnSemaphore(
++          std::move(end_access_semaphore_));
++    }
++    LOG(ERROR) << "OHOS Skia backing access rejected; readonly=" << readonly
++               << " readers=" << backing_impl()->reads_in_progress();
++#endif
+     return {};
+   }
+ 
+@@ -221,10 +255,12 @@
+   if (backing_impl()->need_synchronization()) {
+     DCHECK(end_semaphores);
+     // Create an |end_access_semaphore_| which will be signalled by the caller.
++#if !BUILDFLAG(IS_OHOS)
+     end_access_semaphore_ =
+         backing_impl()->external_semaphore_pool()->GetOrCreateSemaphore();
+     if (!end_access_semaphore_)
+       return {};
++#endif
+     end_semaphores->emplace_back(
+         GrBackendSemaphores::MakeVk(end_access_semaphore_.GetVkSemaphore()));
+   }
+@@ -244,8 +280,15 @@
    auto result = GrBackendTextures::GetVkImageInfo(
        backing_impl()->backend_texture(), &info);
    DCHECK(result);
@@ -1120,3 +1168,43 @@ diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gp
  #else
    wgpu::TextureFormat webgpu_format = ToDawnFormat(format());
  #endif
+diff --git a/gpu/vulkan/vulkan_util.cc b/gpu/vulkan/vulkan_util.cc
+--- a/gpu/vulkan/vulkan_util.cc
++++ b/gpu/vulkan/vulkan_util.cc
+@@ -193,7 +193,12 @@
+       vkCreateSemaphore(vk_device, &sem_info, nullptr, &semaphore);
+ 
+   if (result != VK_SUCCESS) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS vkCreateSemaphore failed: " << result
++               << " handle_types=" << handle_types;
++#else
+     DLOG(ERROR) << "Failed to create VkSemaphore: " << result;
++#endif
+     return VK_NULL_HANDLE;
+   }
+ 
+diff --git a/gpu/vulkan/vulkan_util_posix.cc b/gpu/vulkan/vulkan_util_posix.cc
+--- a/gpu/vulkan/vulkan_util_posix.cc
++++ b/gpu/vulkan/vulkan_util_posix.cc
+@@ -5,6 +5,7 @@
+ #include "gpu/vulkan/vulkan_util.h"
+ 
+ #include "base/logging.h"
++#include "build/build_config.h"
+ #include "gpu/vulkan/vulkan_function_pointers.h"
+ 
+ namespace gpu {
+@@ -58,7 +59,12 @@
+   int fd = -1;
+   VkResult result = vkGetSemaphoreFdKHR(vk_device, &info, &fd);
+   if (result != VK_SUCCESS) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS vkGetSemaphoreFdKHR failed: " << result
++               << " handle_type=" << handle_type;
++#else
+     DLOG(ERROR) << "vkGetSemaphoreFdKHR failed: " << result;
++#endif
+     return SemaphoreHandle();
+   }
+ 
