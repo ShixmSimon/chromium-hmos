@@ -1213,5 +1213,47 @@
       ],
       "limitation": "Nested event durations must not be added; WritePixels includes upload work but is not pure GPU execution time. Pixel conversion and memory copying are not independently instrumented here."
     }
+  },
+  "offscreen_sharing_implementation": {
+    "source_commits": [
+      "eb1531a",
+      "04f8451"
+    ],
+    "status": "source committed locally; native CI build and device acceptance pending",
+    "scope": [
+      "Browser-brokered offscreen RGBA/BGRA NativeBuffer allocation and cross-process FD parcel ownership",
+      "Import the same allocation into Skia Vulkan and Dawn through OzoneImageBacking",
+      "GENERAL layout and FOREIGN queue ownership on native image handoff",
+      "Serialize Dawn access against Skia/GL readers and preserve all producer fences on failed BeginAccess"
+    ],
+    "source_validation": {
+      "patch_apply_and_reverse_check": "passed against pinned source with prerequisite HarmonyOS patch",
+      "git_diff_check": "passed",
+      "public_tree_check": "passed",
+      "host_transport_tests": "passed before wiring the Vulkan importer; native importer not built locally"
+    },
+    "runtime_acceptance": false,
+    "remaining": [
+      "Verify native compilation through existing push-triggered CI",
+      "Resolve requestAdapter context-provider failure",
+      "Verify all four pixel-sharing cases on device",
+      "Implement and verify native video Dawn representation before enabling WebGPU video shared-image capability",
+      "Re-test Main10 hardware playback, producer fences and decoder leases with IPC fix"
+    ],
+    "ci_code_modified": false,
+    "pending_native_runs": [
+      38753647316,
+      38755142433
+    ],
+    "baseline_extended_probe": {
+      "at": "2026-10-15T15:53:04.553Z",
+      "secure": true,
+      "api": true,
+      "adapter": false,
+      "tests": [],
+      "zeroCopyVerified": false,
+      "pass": false,
+      "reason": "requestAdapter returned null"
+    }
   }
 }
