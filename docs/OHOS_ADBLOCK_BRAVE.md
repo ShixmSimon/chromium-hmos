@@ -65,7 +65,7 @@ no phone startup/load/scroll/memory improvement is claimed without measurement.
 
 - 19 Rust tests passed, including resource permissions, aliases, redirect-rule,
   CSP exceptions, removeparam encoding, and bounded condition preprocessing.
-- 20 host Chrome 155.0.8059.40 tests passed against the shipped Rust ABI payload
+- 20 functional and 2 bounds/cancellation host Chrome 155.0.8059.40 tests passed against the shipped Rust ABI payload
   and procedural executor. These are not Chromium 154 native hook tests.
 - Existing Lumie shell contract tests: 12 passed. No shell protocol changes.
 - OHOS arm64 Rust DSO cross-compilation passed. Complete native HAR build is
@@ -170,3 +170,9 @@ produce even the basic blocking positive control. It is therefore **not a valid
 Brave behavioral comparison**, and is not used to claim compatibility or
 upstream lack of support. A working matching Brave/resource reference run remains
 pending. No existing Brave user profile was changed.
+
+The additional `scripts/tests/adblock-stress.mjs` uses the same environment
+variables as the browser suite. It verifies the 20000-match cap with 25000
+elements, full retained-marker cleanup, and cancellation during a partially
+applied batch (257 elements had been marked in the recorded run; zero remained
+after stop). It does not establish a phone frame-time or scrolling budget.
