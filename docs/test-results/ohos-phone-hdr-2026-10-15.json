@@ -4615,5 +4615,47 @@
     },
     "candidate": "Submit Skia retirement waits before VulkanFenceHelper cleanup; log submit/export result/fd on failure. Source only, pending CI/runtime.",
     "full_goal_complete": false
+  },
+  "runtime_70282018": {
+    "package": {
+      "run": "38797671430",
+      "source": "70282018",
+      "har_sha256": "086613e03ca3ca66ffde87e6e77c93ecf47a82f11badfe6a478883996925479a",
+      "engine_sha256": "f70d6c460af88743bc85f7ef8de437752c68855e86e3fb25f9199e5c6780de25",
+      "hap_sha256": "fd2514d7268aaf965b38faa80d2b1fa3d72050aaaabb49deadf24e21f20216da",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-70282018/phone-70282018-signed.hap"
+    },
+    "coldstart_smoke": "PASS first adapter, compute, render, buffer stress",
+    "unconfigured_bitmap_cts": {
+      "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:transferToImageBitmap_unconfigured_nonzero_size:*",
+      "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+      "start": 1792094900769,
+      "context": {
+        "url": "http://127.0.0.1:18080/",
+        "secure": true,
+        "webgpu": true
+      },
+      "done": true,
+      "counts": {
+        "pass": 2,
+        "fail": 0,
+        "skip": 0,
+        "warn": 0
+      },
+      "completed": 2,
+      "current": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:transferToImageBitmap_unconfigured_nonzero_size:readbackCanvasType=\"offscreen\"",
+      "stop": false,
+      "caseStart": 1792094901652,
+      "end": 1792094901661,
+      "pass": true
+    },
+    "native_video": "Same SyncFD code as 153df7c8; no native pass claimed; retirement ordering fix still in CI.",
+    "rgba16f_webgl_candidate": {
+      "status": "Source patch apply-verified, runtime pending",
+      "scope": "OHOS WebGPU canvas RGBA16F snapshots uploaded to WebGL via existing Skia readback/upload path. Other canvas formats and direct WebGL canvas blits unchanged.",
+      "precision": "Uses existing SkImage CPU upload and unpack conversion; runtime pixel comparison pending.",
+      "zero_copy": false
+    },
+    "full_goal_complete": false
   }
 }

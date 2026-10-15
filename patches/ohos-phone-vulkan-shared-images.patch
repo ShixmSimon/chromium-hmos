@@ -637,3 +637,26 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
      return staticBitmapImage
                 ? MakeGarbageCollected<ImageBitmap>(staticBitmapImage)
                 : nullptr;
+diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+--- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
++++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+@@ -6418,7 +6418,18 @@
+       DynamicTo<StaticBitmapImage>(image.get());
+   DCHECK(static_bitmap_image);
+ 
+-  const bool allow_copy_via_gpu = true;
++  bool allow_copy_via_gpu = true;
++#if BUILDFLAG(IS_OHOS)
++  // The OHOS phone EGL driver cannot import Vulkan's RGBA16F NativeBuffer.
++  // Use Skia's existing readback/upload path for these WebGPU snapshots,
++  // preserving floating-point pixels and the normal unpack conversions.
++  auto* source_context = context_host->RenderingContext();
++  if (source_context && source_context->IsWebGPU() &&
++      static_bitmap_image->GetSharedImageFormat() ==
++          viz::SinglePlaneFormat::kRGBA_F16) {
++    allow_copy_via_gpu = false;
++  }
++#endif
+   TexImageStaticBitmapImage(params, static_bitmap_image, allow_copy_via_gpu);
+ }
+ 
