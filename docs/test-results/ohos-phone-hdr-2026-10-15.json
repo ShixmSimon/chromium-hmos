@@ -2061,6 +2061,515 @@
     "conclusion": "Ozone offscreen factory registration fixed tested Canvas/Skia sharing. WebGPU remains intermittently unusable because V8 partial-sandbox shared mappings reject addresses while plain mmap of the same fd succeeds. Native HEVC-to-WebGPU zero-copy remains incomplete.",
     "proposed_fix": "On OHOS, EmulatedVirtualAddressSubspace allocates shared pages from its already reserved region first. A single region allocator prevents overlap with private mappings. Free restores PROT_NONE before releasing bookkeeping. No out-of-sandbox ArrayBuffer fallback.",
     "regression_test": "Added V8 unit test with occupied unreserved half, shared aliases/offset/read-only access, repeated reuse and reservation preservation. Source patch apply/reverse checked; unit test not executed locally; native compilation only through push CI.",
-    "source_delivery": "V8 files are delivered through the existing source overlay. Chromium-only adapter compatibility checkout has no V8 DEPS sources; applying root-level V8 hunks failed on 98bdb63. No CI script/workflow or patch-registration changes."
+    "source_delivery": "V8 files are delivered through the existing source overlay. Chromium-only adapter compatibility checkout has no V8 DEPS sources; applying root-level V8 hunks failed on 98bdb63. No CI script/workflow or patch-registration changes.",
+    "main10_1440p60_without_memory_dumps": {
+      "wall_target_seconds": 180,
+      "final": {
+        "wall": 1792083061390,
+        "time": 178.37724,
+        "duration": 600,
+        "total": 10705,
+        "dropped": 569,
+        "width": 2560,
+        "height": 1440,
+        "ready": 4,
+        "paused": true,
+        "visible": "visible",
+        "fullscreen": false,
+        "error": null
+      },
+      "drop_percent": 5.315273236805231,
+      "trace_segment": "Separate 15-second trace after the measured playback segment, not included in the reported frame count.",
+      "cpu_trace_summary": [
+        {
+          "name": "OhosVideoDecoder::ConvertBrowserFrame",
+          "count": 877,
+          "mean_us": 2010.1801596351197,
+          "p95_us": 4279,
+          "max_us": 9073
+        },
+        {
+          "name": "VideoFrameHandleReleaserImpl::ReleaseVideoFrame",
+          "count": 877,
+          "mean_us": 752.3511972633979,
+          "p95_us": 1581,
+          "max_us": 5687
+        },
+        {
+          "name": "RasterDecoderImpl::DoEndRasterCHROMIUM",
+          "count": 64,
+          "mean_us": 587.703125,
+          "p95_us": 1042,
+          "max_us": 5156
+        },
+        {
+          "name": "RasterDecoderImpl::DoEndRasterCHROMIUM::Flush",
+          "count": 64,
+          "mean_us": 552.375,
+          "p95_us": 1011,
+          "max_us": 5058
+        },
+        {
+          "name": "VideoFrameSubmitter::OnBeginFrame",
+          "count": 1361,
+          "mean_us": 441.7428361498898,
+          "p95_us": 1076,
+          "max_us": 2503
+        },
+        {
+          "name": "RasterDecoderImpl::DoRasterCHROMIUM",
+          "count": 64,
+          "mean_us": 260.078125,
+          "p95_us": 722,
+          "max_us": 1271
+        },
+        {
+          "name": "VideoFrameCompositor::UpdateCurrentFrame",
+          "count": 1336,
+          "mean_us": 241.12949101796409,
+          "p95_us": 565,
+          "max_us": 1886
+        },
+        {
+          "name": "RasterDecoderImpl::DoRasterCHROMIUM::Deserializing",
+          "count": 64,
+          "mean_us": 236.84375,
+          "p95_us": 696,
+          "max_us": 1186
+        },
+        {
+          "name": "MojoVideoDecoderService::OnDecoderOutput",
+          "count": 877,
+          "mean_us": 175.5689851767389,
+          "p95_us": 494,
+          "max_us": 3371
+        },
+        {
+          "name": "VideoFrameSubmitter::SubmitFrame",
+          "count": 936,
+          "mean_us": 172.01495726495727,
+          "p95_us": 527,
+          "max_us": 1474
+        },
+        {
+          "name": "MojoVideoDecoder::OnVideoFrameDecoded",
+          "count": 877,
+          "mean_us": 170.29646522234893,
+          "p95_us": 400,
+          "max_us": 4543
+        },
+        {
+          "name": "MojoVideoDecoder::Decode",
+          "count": 878,
+          "mean_us": 165.43963553530753,
+          "p95_us": 500,
+          "max_us": 7271
+        },
+        {
+          "name": "MojoVideoFrameHandleReleaser::ReleaseVideoFrame",
+          "count": 878,
+          "mean_us": 67.40660592255125,
+          "p95_us": 137,
+          "max_us": 822
+        },
+        {
+          "name": "RasterDecoderImpl::DoBeginRasterCHROMIUM",
+          "count": 64,
+          "mean_us": 59.515625,
+          "p95_us": 210,
+          "max_us": 356
+        },
+        {
+          "name": "DecodeStreamRead",
+          "count": 732,
+          "mean_us": 46.91803278688525,
+          "p95_us": 112,
+          "max_us": 2767
+        },
+        {
+          "name": "VideoFrameResourceProvider::AppendQuads",
+          "count": 875,
+          "mean_us": 46.896,
+          "p95_us": 91,
+          "max_us": 1197
+        },
+        {
+          "name": "SyncToken::Wait",
+          "count": 134,
+          "mean_us": 25.388059701492537,
+          "p95_us": 56,
+          "max_us": 563
+        },
+        {
+          "name": "VideoFrameCompositor::SetCurrentFrame",
+          "count": 878,
+          "mean_us": 18.485193621867882,
+          "p95_us": 68,
+          "max_us": 583
+        }
+      ]
+    },
+    "native_video_webgpu_api_probe": {
+      "tests": [
+        {
+          "clip": "h264-sdr.mp4",
+          "frame": {
+            "format": "BGRX",
+            "colorSpace": {
+              "fullRange": false,
+              "matrix": "bt709",
+              "primaries": "bt709",
+              "transfer": "bt709"
+            },
+            "width": 1280,
+            "height": 720
+          },
+          "uniqueColors": 79,
+          "maxError": 24,
+          "meanError": 0.17100694444444445,
+          "apiPass": true
+        },
+        {
+          "clip": "sdr-1080p60.mp4",
+          "frame": {
+            "format": null,
+            "colorSpace": {
+              "fullRange": false,
+              "matrix": "bt709",
+              "primaries": "bt709",
+              "transfer": "bt709"
+            },
+            "width": 1920,
+            "height": 1080
+          },
+          "uniqueColors": 77,
+          "maxError": 86,
+          "meanError": 0.11805555555555555,
+          "apiPass": true
+        },
+        {
+          "clip": "bear-hdr10.mp4",
+          "frame": {
+            "format": null,
+            "colorSpace": {
+              "fullRange": false,
+              "matrix": "bt2020-ncl",
+              "primaries": "bt2020",
+              "transfer": "pq"
+            },
+            "width": 1280,
+            "height": 720
+          },
+          "uniqueColors": 534,
+          "maxError": 156,
+          "meanError": 40.85112847222222,
+          "apiPass": true
+        }
+      ],
+      "zeroCopyVerified": false,
+      "adapter": true,
+      "errors": [],
+      "apiPass": true,
+      "caveat": "apiPass only means commands succeeded and produced non-uniform pixels. SDR max differences include edge sampling differences; HDR mean error 40.85/255 versus Canvas2D requires color/tonemap investigation. No native video zero-copy or color-correctness acceptance asserted."
+    },
+    "main10_4k30_without_memory_dumps": {
+      "final": {
+        "wall": 1792083583165,
+        "time": 177.238001,
+        "duration": 180,
+        "total": 5320,
+        "dropped": 9,
+        "width": 3840,
+        "height": 2160,
+        "ready": 4,
+        "paused": true,
+        "visible": "visible",
+        "fullscreen": false,
+        "error": null
+      },
+      "drop_percent": 0.16917293233082706,
+      "processes_before": [
+        {
+          "type": "browser",
+          "id": 56794,
+          "cpuTime": 89.7
+        },
+        {
+          "type": "renderer",
+          "id": 57535,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 57497,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 57523,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 57503,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 57544,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 57348,
+          "cpuTime": 0
+        },
+        {
+          "type": "GPU",
+          "id": 57303,
+          "cpuTime": 0
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 57317,
+          "cpuTime": 0
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "id": 57332,
+          "cpuTime": 0
+        },
+        {
+          "type": "tracing.mojom.TracingService",
+          "id": 57593,
+          "cpuTime": 0
+        }
+      ],
+      "processes_after": [
+        {
+          "type": "browser",
+          "id": 56794,
+          "cpuTime": 132.13
+        },
+        {
+          "type": "renderer",
+          "id": 57535,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 57497,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 57523,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 57503,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 57544,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 57348,
+          "cpuTime": 0
+        },
+        {
+          "type": "GPU",
+          "id": 57303,
+          "cpuTime": 0
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 57317,
+          "cpuTime": 0
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "id": 57332,
+          "cpuTime": 0
+        },
+        {
+          "type": "tracing.mojom.TracingService",
+          "id": 57593,
+          "cpuTime": 0
+        }
+      ]
+    },
+    "pq_transfer_diagnosis": {
+      "fixture": "pq-gray-203nits.mp4; lossless HEVC Main10 neutral stripes with known PQ code values",
+      "table": [
+        {
+          "nits": 0,
+          "webgpu_rgba": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "canvas2d_rgba": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "ideal_srgb_at_203nit_reference": 0
+        },
+        {
+          "nits": 0.1,
+          "webgpu_rgba": [
+            71,
+            71,
+            71,
+            255
+          ],
+          "canvas2d_rgba": [
+            1,
+            1,
+            1,
+            255
+          ],
+          "ideal_srgb_at_203nit_reference": 2
+        },
+        {
+          "nits": 1,
+          "webgpu_rgba": [
+            108,
+            108,
+            108,
+            255
+          ],
+          "canvas2d_rgba": [
+            8,
+            8,
+            8,
+            255
+          ],
+          "ideal_srgb_at_203nit_reference": 15
+        },
+        {
+          "nits": 5,
+          "webgpu_rgba": [
+            136,
+            136,
+            136,
+            255
+          ],
+          "canvas2d_rgba": [
+            29,
+            29,
+            29,
+            255
+          ],
+          "ideal_srgb_at_203nit_reference": 43
+        },
+        {
+          "nits": 18,
+          "webgpu_rgba": [
+            159,
+            159,
+            159,
+            255
+          ],
+          "canvas2d_rgba": [
+            60,
+            60,
+            60,
+            255
+          ],
+          "ideal_srgb_at_203nit_reference": 84
+        },
+        {
+          "nits": 50,
+          "webgpu_rgba": [
+            177,
+            177,
+            177,
+            255
+          ],
+          "canvas2d_rgba": [
+            98,
+            98,
+            98,
+            255
+          ],
+          "ideal_srgb_at_203nit_reference": 136
+        },
+        {
+          "nits": 100,
+          "webgpu_rgba": [
+            190,
+            188,
+            188,
+            255
+          ],
+          "canvas2d_rgba": [
+            139,
+            134,
+            135,
+            255
+          ],
+          "ideal_srgb_at_203nit_reference": 186
+        },
+        {
+          "nits": 203,
+          "webgpu_rgba": [
+            200,
+            200,
+            200,
+            255
+          ],
+          "canvas2d_rgba": [
+            187,
+            188,
+            188,
+            255
+          ],
+          "ideal_srgb_at_203nit_reference": 255
+        },
+        {
+          "nits": 400,
+          "webgpu_rgba": [
+            211,
+            211,
+            211,
+            255
+          ],
+          "canvas2d_rgba": [
+            223,
+            223,
+            223,
+            255
+          ],
+          "ideal_srgb_at_203nit_reference": 255
+        },
+        {
+          "nits": 1000,
+          "webgpu_rgba": [
+            225,
+            225,
+            225,
+            255
+          ],
+          "canvas2d_rgba": [
+            255,
+            255,
+            255,
+            255
+          ],
+          "ideal_srgb_at_203nit_reference": 255
+        }
+      ],
+      "root_cause": "gfx::ColorSpace::GetTransferFunction returns false for PQ and initializes identity; Blink GetColorSpaceConversionConstants ignored failure, so WebGPU gamma-encoded PQ codes as if linear light. A 0.1-nit stripe read as 71/255 instead of about 2/255.",
+      "fix": "Use the pinned Dawn PQ shader mode and ST2084 coefficients, with linear gamut scaling derived from Skia HDR transfer function to preserve SDR reference white. Source patch applied cleanly; runtime retest pending CI.",
+      "limits": "Canvas2D may apply its own tone mapping and is not the expected value for direct WebGPU color-space conversion. Compare static stripes against PQ EOTF then sRGB at 203-nit reference. HLG not covered by this fix."
+    }
   }
 }
