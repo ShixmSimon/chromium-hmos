@@ -33,6 +33,10 @@ HAR 必须携带该库；stage-runtime-assets.sh 已纳入强制检查与复制�
 
 ## 真机测试（由外壳侧执行）
 
+可控探针：`python3 docs/tools/adblock_probe.py`，手机访问
+`http://<电脑局域网 IP>:8108/`。页面给出两行个人规则和逐项预期，覆盖脚本、图片、
+iframe、fetch、重定向及 CSS。系统如询问局域网访问权限需正常允许。不要自动操作手机。
+
 1. 替换 HAR 后冷启动，在广告设置确认 supported=true、engine=adblock-rust、ready=true，
    capabilities 为 network/cosmetic，三内置源存在且前两项启用。离线首次启动仍应 ready。
 2. 用自有 HTTPS 测试页加载广告脚本、图片、iframe，含一次跳转到广告 URL 的重定向。
