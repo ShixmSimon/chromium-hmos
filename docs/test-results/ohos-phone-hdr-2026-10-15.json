@@ -849,5 +849,369 @@
     "Initial background CDP query timed out while the OS froze the page; repeated SDR tests use OS mission state before restoring and evaluating. HDR background transition was not independently certified.",
     "Phone fork Vulkan only; Pad/non-fork path not tested in this run.",
     "No kernel fix or build was performed; any follow-up native build must use push-triggered CI."
-  ]
+  ],
+  "additional_validation_20261015": {
+    "native_ci_commit": "4d7bb521",
+    "webgpu_secure_loopback": {
+      "secure_context": true,
+      "navigator_gpu": true,
+      "request_adapter": null,
+      "console_error": "Failed to create WebGPU Context Provider",
+      "acceptance": "failed; compute and shared texture tests could not start",
+      "trace_evidence": "GPU process enters WebGPUBufferStub::Initialize before context creation fails"
+    },
+    "vp9_hdr_10min": {
+      "codec": "VP9 profile 2",
+      "decoder": "VpxVideoDecoder",
+      "hardware": false,
+      "resolution": "1280x720",
+      "fps": 29.97,
+      "transfer": "PQ",
+      "duration_seconds": 600.018,
+      "wall_observed_seconds": 603.904,
+      "total_frames": 17983,
+      "dropped_frames": 3,
+      "dropped_percent": 0.016682422287716176,
+      "playback_errors": [],
+      "gpu_pids": [
+        61124
+      ],
+      "rss": {
+        "browser": {
+          "min_kib": 334584,
+          "max_kib": 334892,
+          "samples": 19
+        },
+        "gpu": {
+          "min_kib": 216812,
+          "max_kib": 216872,
+          "samples": 19
+        },
+        "test_renderer": {
+          "min_kib": 333496,
+          "max_kib": 341780,
+          "samples": 19
+        }
+      },
+      "limitation": "Continuous 600-second remux of a repeated 2.736-second clip; exercises sustained playback, not diverse content or Main10 hardware decoding."
+    },
+    "after_soak": [
+      {
+        "stage": "completed-10min",
+        "wall": 1792077264289,
+        "sample": {
+          "wall": 1792077264285,
+          "time": 600.018,
+          "duration": 600.018,
+          "total": 17983,
+          "dropped": 3,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "stage": "hdr-seek-resumed",
+        "wall": 1792077267718,
+        "sample": {
+          "wall": 1792077267741,
+          "time": 33.106778,
+          "duration": 600.018,
+          "total": 18160,
+          "dropped": 5,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "stage": "hdr-restored",
+        "wall": 1792077277090,
+        "sample": {
+          "wall": 1792077277082,
+          "time": 37.511748,
+          "duration": 600.018,
+          "total": 18291,
+          "dropped": 6,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "stage": "hdr-playing-after-restore",
+        "wall": 1792077280112,
+        "sample": {
+          "wall": 1792077280104,
+          "time": 40.533321,
+          "duration": 600.018,
+          "total": 18382,
+          "dropped": 6,
+          "width": 1280,
+          "height": 720,
+          "ready": 4,
+          "paused": false,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "stage": "sdr-after-10min-hdr",
+        "wall": 1792077283166,
+        "sample": {
+          "wall": 1792077283218,
+          "time": 0,
+          "duration": null,
+          "total": 0,
+          "dropped": 0,
+          "width": 0,
+          "height": 0,
+          "ready": 0,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      },
+      {
+        "stage": "sdr-restored",
+        "wall": 1792077292680,
+        "sample": {
+          "wall": 1792077292744,
+          "time": 0,
+          "duration": null,
+          "total": 0,
+          "dropped": 0,
+          "width": 0,
+          "height": 0,
+          "ready": 0,
+          "paused": true,
+          "visible": "visible",
+          "fullscreen": false,
+          "error": null
+        }
+      }
+    ],
+    "sdr_screenshot_pixels": [
+      {
+        "file": "sdr-after-10min-hdr.jpeg",
+        "x": [
+          109,
+          329,
+          548,
+          767,
+          987,
+          1206
+        ],
+        "y": 850,
+        "rgb": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            32,
+            32,
+            32
+          ],
+          [
+            64,
+            64,
+            64
+          ],
+          [
+            128,
+            128,
+            128
+          ],
+          [
+            192,
+            192,
+            192
+          ],
+          [
+            255,
+            255,
+            255
+          ]
+        ],
+        "pass": true
+      },
+      {
+        "file": "sdr-after-10min-hdr-restored.jpeg",
+        "x": [
+          109,
+          329,
+          548,
+          767,
+          987,
+          1206
+        ],
+        "y": 850,
+        "rgb": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            32,
+            32,
+            32
+          ],
+          [
+            64,
+            64,
+            64
+          ],
+          [
+            128,
+            128,
+            128
+          ],
+          [
+            192,
+            192,
+            192
+          ],
+          [
+            255,
+            255,
+            255
+          ]
+        ],
+        "pass": true
+      }
+    ],
+    "physical_color_measurement": false,
+    "vp9_hdr_1440p60_3min": {
+      "codec": "VP9 profile 2",
+      "decoder": "VpxVideoDecoder",
+      "hardware": false,
+      "resolution": "2560x1440",
+      "fps": 60,
+      "transfer": "PQ",
+      "wall_seconds": 180.843,
+      "frames": 10836,
+      "dropped_frames": 61,
+      "dropped_percent": 0.5629383536360281,
+      "playback_errors": [],
+      "gpu_pids": [
+        61124
+      ],
+      "limitation": "20-second generated testsrc2 HDR clip looped; not a YouTube throughput benchmark."
+    },
+    "vp9_1440_trace": {
+      "separate_from_playback_baseline": true,
+      "duration_seconds": 15,
+      "timings": [
+        {
+          "name": "vpx_codec_decode",
+          "count": 903,
+          "mean_us": 13939.398671096345,
+          "p95_us": 37832,
+          "max_us": 58807
+        },
+        {
+          "name": "DecodeStreamRead",
+          "count": 903,
+          "mean_us": 91.1827242524917,
+          "p95_us": 211,
+          "max_us": 2042
+        },
+        {
+          "name": "VideoFrameSubmitter::OnBeginFrame",
+          "count": 1351,
+          "mean_us": 4541.054034048852,
+          "p95_us": 8957,
+          "max_us": 15773
+        },
+        {
+          "name": "VideoFrameCompositor::UpdateCurrentFrame",
+          "count": 1351,
+          "mean_us": 188.3856402664693,
+          "p95_us": 334,
+          "max_us": 5926
+        },
+        {
+          "name": "VideoFrameCompositor::SetCurrentFrame",
+          "count": 900,
+          "mean_us": 27.776666666666667,
+          "p95_us": 61,
+          "max_us": 5670
+        },
+        {
+          "name": "VideoFrameSubmitter::SubmitFrame",
+          "count": 900,
+          "mean_us": 6386.391111111111,
+          "p95_us": 8996,
+          "max_us": 15532
+        },
+        {
+          "name": "VideoFrameResourceProvider::AppendQuads",
+          "count": 892,
+          "mean_us": 5475.492152466368,
+          "p95_us": 7853,
+          "max_us": 12742
+        },
+        {
+          "name": "RasterDecoderImpl::DoWritePixelsYUVINTERNAL",
+          "count": 892,
+          "mean_us": 2721.628923766816,
+          "p95_us": 4157,
+          "max_us": 5964
+        },
+        {
+          "name": "RasterDecoderImpl::DoBeginRasterCHROMIUM",
+          "count": 30,
+          "mean_us": 27.033333333333335,
+          "p95_us": 48,
+          "max_us": 49
+        },
+        {
+          "name": "RasterDecoderImpl::DoRasterCHROMIUM",
+          "count": 30,
+          "mean_us": 173.8,
+          "p95_us": 328,
+          "max_us": 329
+        },
+        {
+          "name": "RasterDecoderImpl::DoRasterCHROMIUM::Deserializing",
+          "count": 30,
+          "mean_us": 154.4,
+          "p95_us": 307,
+          "max_us": 314
+        },
+        {
+          "name": "RasterDecoderImpl::DoEndRasterCHROMIUM",
+          "count": 30,
+          "mean_us": 514.7,
+          "p95_us": 942,
+          "max_us": 1118
+        },
+        {
+          "name": "RasterDecoderImpl::DoEndRasterCHROMIUM::Flush",
+          "count": 30,
+          "mean_us": 481.6333333333333,
+          "p95_us": 915,
+          "max_us": 1084
+        }
+      ],
+      "limitation": "Nested event durations must not be added; WritePixels includes upload work but is not pure GPU execution time. Pixel conversion and memory copying are not independently instrumented here."
+    }
+  }
 }
