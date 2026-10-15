@@ -1281,7 +1281,66 @@ diff --git a/gpu/command_buffer/client/client_shared_image_unittest.cc b/gpu/com
 diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buffer/service/webgpu_decoder_impl.cc
 --- a/gpu/command_buffer/service/webgpu_decoder_impl.cc
 +++ b/gpu/command_buffer/service/webgpu_decoder_impl.cc
-@@ -1299,6 +1299,10 @@
+@@ -464,6 +464,12 @@
+     // Get an unowned reference to the wgpu::Texture for the shared image.
+     virtual wgpu::Texture texture() const = 0;
+     virtual Mailbox mailbox() const = 0;
++#if BUILDFLAG(IS_OHOS)
++    virtual std::unique_ptr<SharedImageRepresentationAndAccess>
++    ShareOhosNativeRead(const wgpu::Device& device) const {
++      return nullptr;
++    }
++#endif
+   };
+ 
+   // Wraps a |DawnImageRepresentation| as a wgpu::Texture.
+@@ -483,6 +489,45 @@
+     std::unique_ptr<DawnImageRepresentation> representation_;
+     std::unique_ptr<DawnImageRepresentation::ScopedAccess> access_;
+   };
++
++#if BUILDFLAG(IS_OHOS)
++  // Aliased VideoFrames in one device share one native read access. Importing
++  // the same decoder allocation twice must not request a second exclusive
++  // Vulkan acquire while the first external texture still exists. The access
++  // ends only after the final wire mailbox association releases this state.
++  class SharedImageRepresentationAndAccessOhosNativeRead final
++      : public SharedImageRepresentationAndAccess {
++   public:
++    struct State {
++      State(const wgpu::Device& device,
++            std::unique_ptr<DawnImageRepresentation> representation,
++            std::unique_ptr<DawnImageRepresentation::ScopedAccess> access)
++          : device(device), representation(std::move(representation)),
++            access(std::move(access)) {}
++      wgpu::Device device;
++      std::unique_ptr<DawnImageRepresentation> representation;
++      // Destroy access before its representation, and both before the device.
++      std::unique_ptr<DawnImageRepresentation::ScopedAccess> access;
++    };
++
++    explicit SharedImageRepresentationAndAccessOhosNativeRead(
++        std::shared_ptr<State> state) : state_(std::move(state)) {}
++
++    wgpu::Texture texture() const override { return state_->access->texture(); }
++    Mailbox mailbox() const override { return state_->representation->mailbox(); }
++    std::unique_ptr<SharedImageRepresentationAndAccess> ShareOhosNativeRead(
++        const wgpu::Device& device) const override {
++      if (state_->device.Get() != device.Get())
++        return nullptr;
++      TRACE_EVENT_INSTANT("gpu", "OhosNativeBufferDawnAlias");
++      return std::make_unique<SharedImageRepresentationAndAccessOhosNativeRead>(
++          state_);
++    }
++
++   private:
++    std::shared_ptr<State> state_;
++  };
++#endif
+ 
+   // Wraps a |SkiaImageRepresentation| and exposes
+   // it as a wgpu::Texture by performing CPU readbacks/uploads.
+@@ -1299,6 +1344,10 @@
      case wgpu::FeatureName::DualSourceBlending:
      case wgpu::FeatureName::Subgroups:
      case wgpu::FeatureName::DawnMultiPlanarFormats:
@@ -1292,7 +1351,7 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
      case wgpu::FeatureName::TextureFormatsTier1:
      case wgpu::FeatureName::TextureFormatsTier2:
      case wgpu::FeatureName::PrimitiveIndex:
-@@ -1505,6 +1509,11 @@
+@@ -1505,6 +1554,11 @@
        wgpu::FeatureName::SharedFenceSyncFD,
  #endif
  
@@ -1304,7 +1363,21 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
        wgpu::FeatureName::SharedTextureMemoryD3D11Texture2D,
        wgpu::FeatureName::SharedTextureMemoryDXGISharedHandle,
        wgpu::FeatureName::SharedFenceDXGISharedHandle,
-@@ -2086,7 +2095,7 @@
+@@ -2075,6 +2129,13 @@
+     wgpu::TextureUsage usage,
+     wgpu::TextureUsage internal_usage,
+     std::vector<wgpu::TextureFormat> view_formats) {
++#if BUILDFLAG(IS_OHOS)
++  const bool can_share_native_read =
++      backendType == wgpu::BackendType::Vulkan && flags == 0 &&
++      view_formats.empty() && usage == wgpu::TextureUsage::TextureBinding &&
++      (internal_usage == wgpu::TextureUsage::None ||
++       internal_usage == wgpu::TextureUsage::TextureBinding);
++#endif
+   std::unique_ptr<DawnImageRepresentation> shared_image =
+       shared_image_representation_factory_->ProduceDawn(
+           mailbox, device, backendType, std::move(view_formats),
+@@ -2086,11 +2147,24 @@
    }
  
  #if !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_APPLE) && \
@@ -1313,6 +1386,40 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
    if (usage & wgpu::TextureUsage::StorageBinding) {
      LOG(ERROR) << "AssociateMailbox: wgpu::TextureUsage::StorageBinding is NOT "
                    "supported yet on this platform.";
+     return nullptr;
++  }
++#endif
++
++#if BUILDFLAG(IS_OHOS)
++  // Retain the normal mailbox/usage/clear-state validation above, including
++  // for aliases. Only the native read wrapper can return a shared access.
++  if (can_share_native_read) {
++    for (const auto& entry : associated_shared_image_map_) {
++      if (entry.second->mailbox() == mailbox) {
++        if (auto alias = entry.second->ShareOhosNativeRead(device))
++          return alias;
++      }
++    }
+   }
+ #endif
+ 
+@@ -2102,6 +2176,16 @@
+     DLOG(ERROR) << "AssociateMailbox: Couldn't begin shared image access";
+     return nullptr;
+   }
++
++#if BUILDFLAG(IS_OHOS)
++  if (can_share_native_read &&
++      scoped_access->texture().GetFormat() ==
++          wgpu::TextureFormat::OpaqueYCbCrAndroid) {
++    return std::make_unique<SharedImageRepresentationAndAccessOhosNativeRead>(
++        std::make_shared<SharedImageRepresentationAndAccessOhosNativeRead::State>(
++            device, std::move(shared_image), std::move(scoped_access)));
++  }
++#endif
+ 
+   return std::make_unique<SharedImageRepresentationAndAccessDawn>(
+       std::move(shared_image), std::move(scoped_access));
 diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
 --- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
 +++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc

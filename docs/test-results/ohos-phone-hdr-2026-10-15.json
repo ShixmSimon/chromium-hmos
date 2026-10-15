@@ -4826,5 +4826,13 @@
     "host_validation": "12 Chromium and 8 Dawn source patch application/byte comparison PASS; reviewed effective source delta, diff check PASS",
     "runtime_status": "Pending CI and phone validation; no claim of fixed lifecycle/color",
     "ci_code_changes": false
+  },
+  "native_read_alias_candidate": {
+    "reproduction": "Two VideoFrame wrappers of the same decoded frame produce Invalid Texture on second simultaneous import (b893-aliased-native-frames.json).",
+    "change": "Within one WebGPU decoder/device, read-only opaque native YUV mailbox aliases share one existing representation, scoped access and texture. The last association ends access. Existing mailbox/clear-state/usage validation remains; no cross-device sharing, discard, writable usage or alternate views.",
+    "scope": "Addresses same-device native alias lifetime; does not authorize concurrent Skia/Dawn queue-family access or prove chroma correctness.",
+    "host_validation": "Effective source diff reviewed; 12 Chromium and 8 Dawn sources apply/byte-match; diff check PASS",
+    "device_validation": "Pending push CI build and actual phone alias, cleanup and continuous playback tests",
+    "ci_code_modified": false
   }
 }
