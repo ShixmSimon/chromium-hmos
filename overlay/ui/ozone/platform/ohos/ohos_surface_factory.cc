@@ -51,6 +51,11 @@ namespace {
 
 constexpr base::TimeDelta kNativeSurfaceWaitTimeout = base::Seconds(3);
 
+bool IsOffscreenNativeFormat(viz::SharedImageFormat format) {
+  return format == viz::SinglePlaneFormat::kRGBA_8888 ||
+         format == viz::SinglePlaneFormat::kBGRA_8888;
+}
+
 // OH_NativeBuffer_Format's RGBA_8888 and RGBA_1010102. Taking the enum by
 // value keeps native_buffer out of this target's headers for two constants.
 constexpr int32_t kPixelFormatRgba8888 = 12;
@@ -947,7 +952,8 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
   }
 
   bool CanImportNativePixmap(viz::SharedImageFormat format) override {
-    return !IsOhosPhoneGpuChild() && IsOhosNativePixmapFormat(format);
+    return IsOhosNativePixmapFormat(format) &&
+           (!IsOhosPhoneGpuChild() || IsOffscreenNativeFormat(format));
   }
 
   // A YUV buffer is sampled whole, through GL_TEXTURE_EXTERNAL_OES with the
@@ -960,9 +966,11 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
       const gfx::ColorSpace& color_space,
       GLenum target,
       GLuint texture_id) override {
-    if (IsOhosPhoneGpuChild())
+    if (IsOhosPhoneGpuChild() &&
+        !IsOffscreenNativeFormat(pixmap->GetSharedImageFormat()))
       return nullptr;
-    if (plane_index.has_value()) {
+    if (plane_index.has_value() &&
+        (!pixmap->GetSharedImageFormat().is_single_plane() || *plane_index != 0)) {
       LOG(ERROR) << "OHOS native pixmap: per-plane import of "
                  << plane_format.ToString() << " is not supported";
       return nullptr;
@@ -1014,12 +1022,14 @@ scoped_refptr<gfx::NativePixmap> OhosSurfaceFactory::CreateNativePixmap(
     viz::SharedImageFormat format,
     gfx::BufferUsage usage,
     std::optional<gfx::Size> framebuffer_size) {
-  return IsOhosPhoneGpuChild() ? nullptr : CreateOhosNativePixmap(size, format);
+  return IsOhosPhoneGpuChild() ? CreateOhosPhoneOffscreenPixmap(size, format)
+                               : CreateOhosNativePixmap(size, format);
 }
 
 bool OhosSurfaceFactory::CanCreateNativePixmapForFormat(
     viz::SharedImageFormat format) {
-  return !IsOhosPhoneGpuChild() && IsOhosNativePixmapFormat(format);
+  return IsOhosNativePixmapFormat(format) &&
+         (!IsOhosPhoneGpuChild() || IsOffscreenNativeFormat(format));
 }
 
 scoped_refptr<gfx::NativePixmap>
@@ -1028,8 +1038,11 @@ OhosSurfaceFactory::CreateNativePixmapFromHandle(
     gfx::Size size,
     viz::SharedImageFormat format,
     gfx::NativePixmapHandle handle) {
-  if (!handle.ohos_buffer_prefix.empty())
-    return ImportOhosVideoNativePixmap(size, format, std::move(handle));
+  if (!handle.ohos_buffer_prefix.empty()) {
+    return IsOffscreenNativeFormat(format)
+               ? ImportOhosOffscreenPixmap(size, format, std::move(handle))
+               : ImportOhosVideoNativePixmap(size, format, std::move(handle));
+  }
   return IsOhosPhoneGpuChild() ? nullptr
                                : CreateOhosNativePixmapFromHandle(
                                      size, format, std::move(handle));
@@ -1090,6 +1103,18 @@ class PhoneVulkanImplementation final : public VideoVulkanImplementation {
       gfx::Size size,
       VkFormat format,
       const gfx::ColorSpace& color) override {
+    if (format == VK_FORMAT_R8G8B8A8_UNORM ||
+        format == VK_FORMAT_B8G8R8A8_UNORM) {
+      if (handle.type != gfx::NATIVE_PIXMAP)
+        return nullptr;
+      const auto& prefix = handle.native_pixmap_handle().ohos_buffer_prefix;
+      const uint32_t native_format = format == VK_FORMAT_R8G8B8A8_UNORM
+                                         ? phone_gpu::kSharedImageRgba8888
+                                         : phone_gpu::kSharedImageBgra8888;
+      if (prefix.size() != 14 || prefix[8] != native_format)
+        return nullptr;
+      return ImportOhosOffscreenVulkan(queue, std::move(handle), size);
+    }
     return ImportOhosVideoVulkan(queue, std::move(handle), size, color);
   }
   std::unique_ptr<gpu::VulkanSurface> CreateViewSurface(

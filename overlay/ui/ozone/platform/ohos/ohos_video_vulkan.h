@@ -15,6 +15,15 @@ class VulkanImage;
 }  // namespace gpu
 namespace ui {
 bool CanImportOhosVideoVulkan(gpu::VulkanDeviceQueue* queue);
+// Offscreen RGBA/BGRA images share the same native allocation with Dawn/GL.
+// The VulkanImage retains its pixmap until deferred GPU cleanup completes.
+std::unique_ptr<gpu::VulkanImage> ImportOhosOffscreenVulkan(
+    gpu::VulkanDeviceQueue* queue,
+    scoped_refptr<gfx::NativePixmap> pixmap);
+std::unique_ptr<gpu::VulkanImage> ImportOhosOffscreenVulkan(
+    gpu::VulkanDeviceQueue* queue,
+    gfx::GpuMemoryBufferHandle handle,
+    const gfx::Size& size);
 // Same-process decoder path. The VkImage owns the Surface queue lease until
 // fence-helper cleanup; no parcel, socket, or CPU pixel mapping is needed.
 std::unique_ptr<gpu::VulkanImage> ImportOhosVideoVulkan(

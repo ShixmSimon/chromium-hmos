@@ -69,3 +69,25 @@ diff --git a/src/dawn/native/vulkan/BackendVk.cpp b/src/dawn/native/vulkan/Backe
      DAWN_INVALID_IF(mInstance == VK_NULL_HANDLE, "Failed to create VkInstance");
  
      return usedKnobs;
+diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/TextureVk.cpp
+--- a/src/dawn/native/vulkan/TextureVk.cpp
++++ b/src/dawn/native/vulkan/TextureVk.cpp
+@@ -1802,11 +1802,18 @@
+     // promoting to GENERAL.
+     VkImageLayout currentLayout = GetCurrentLayout(GetDisjointVulkanAspects());
+     VkImageLayout targetLayout;
++#if defined(__OHOS__)
++    // OH_NativeBuffer consumers (Skia and EGL) share the allocation through
++    // the foreign queue in GENERAL. Keep that layout when an import is
++    // destroyed/recreated, rather than leaking a Dawn-specific optimal layout.
++    targetLayout = VK_IMAGE_LAYOUT_GENERAL;
++#else
+     if (currentLayout != VK_IMAGE_LAYOUT_UNDEFINED) {
+         targetLayout = currentLayout;
+     } else {
+         targetLayout = VK_IMAGE_LAYOUT_GENERAL;
+     }
++#endif
+ 
+     // We have to manually trigger a transition if the texture hasn't been actually used or if we
+     // need a layout transition.
