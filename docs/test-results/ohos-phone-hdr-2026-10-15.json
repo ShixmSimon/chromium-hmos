@@ -4657,5 +4657,57 @@
       "zero_copy": false
     },
     "full_goal_complete": false
+  },
+  "runtime_7fb0a0e2": {
+    "installed": true,
+    "native_zero_copy_transport": "3/3: H264 NV12, HEVC Main10 SDR/PQ; native import traces and stable GPU process",
+    "color_correctness": "FAIL: green output. PQ analytic fails. Transport is not complete acceptance.",
+    "evidence": [
+      "7fb-native-webgpu-results.json",
+      "7fb-gray-webgpu-analytic.json"
+    ],
+    "long_soak": "Not run: color gate failed"
+  },
+  "runtime_4402db16": {
+    "installed": true,
+    "ci_run": 38799645127,
+    "canvas_cts": {
+      "pass": 149,
+      "fail": 0,
+      "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+      "evidence": "440-cts-canvas-readback.json"
+    },
+    "f16_webgl_precision": {
+      "pass": 2,
+      "fail": 0,
+      "max_error": 0,
+      "values": [
+        0.5,
+        1.5,
+        -0.25,
+        1
+      ],
+      "evidence": "440-f16-webgl-precision-same-task.json",
+      "invalid_initial_probe": "440-f16-webgl-precision.json yielded before snapshot and allowed presentation to expire the canvas; superseded"
+    },
+    "chroma_diagnostic": {
+      "result": "FAIL: fixed-Y eight differing UV stripes all return identical float RGB; Canvas2D differentiates them",
+      "evidence": "440-sdr-chroma-float.json"
+    },
+    "coldstart_compute_render_buffer_stress": "PASS",
+    "phone_audio": "SILENT; MUSIC/RING 0, muted"
+  },
+  "pending_ohos_ycbcr_identity": {
+    "status": "Source candidate, device validation pending",
+    "change": "Use YCBCR_IDENTITY/ITU_FULL for OHOS opaque native YUV static sampler; compensate bit-depth chroma centering in Blink affine matrix",
+    "host_checks": "12 Chromium and 7 Dawn source patches apply and byte-match; affine equivalence for 8/10-bit BT709/BT2020 limited/full",
+    "required_runtime": [
+      "Fixed-Y chroma stripes",
+      "SDR native color comparison",
+      "PQ analytic gray",
+      "Native import trace + stable GPU",
+      "Lifecycle soak only after color passes"
+    ],
+    "ci_code_modified": false
   }
 }

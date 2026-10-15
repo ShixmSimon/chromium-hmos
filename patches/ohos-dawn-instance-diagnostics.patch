@@ -444,3 +444,22 @@ diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/Device
          usedKnobs.samplerYCbCrConversionFeatures.samplerYcbcrConversion = VK_TRUE;
          featuresChain.Add(&usedKnobs.samplerYCbCrConversionFeatures,
                            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES);
+diff --git a/src/dawn/native/vulkan/SamplerVk.cpp b/src/dawn/native/vulkan/SamplerVk.cpp
+--- a/src/dawn/native/vulkan/SamplerVk.cpp
++++ b/src/dawn/native/vulkan/SamplerVk.cpp
+@@ -222,7 +222,15 @@
+     YCbCrVkDescriptor yCbCrDesc;
+     yCbCrDesc.vkFormat = vkFormat;
+     yCbCrDesc.externalFormat = androidExternalFormat;
++#if defined(__OHOS__)
++    // RGB_IDENTITY loses both chroma components on native decoder buffers on
++    // Maleoon. Keep YUV sampling enabled, without a hardware color-model
++    // conversion. Blink's opaque OHOS external-texture matrix compensates the
++    // full-range chroma centering performed by YCBCR_IDENTITY.
++    yCbCrDesc.vkYCbCrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_IDENTITY;
++#else
+     yCbCrDesc.vkYCbCrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY;
++#endif
+     yCbCrDesc.vkYCbCrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
+     yCbCrDesc.vkComponentSwizzleRed = VK_COMPONENT_SWIZZLE_R;
+     yCbCrDesc.vkComponentSwizzleGreen = VK_COMPONENT_SWIZZLE_G;
