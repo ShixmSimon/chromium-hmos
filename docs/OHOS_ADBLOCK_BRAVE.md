@@ -1,7 +1,8 @@
 # Brave execution integration — acceptance in progress
 
 Target: Chromium 154.0.8037.97; adblock-rust 0.13.3; Rust 1.96.1.
-The prior native package is 55345175. This change is not yet device-accepted.
+The prior native package is 55345175. The new native package is **4d7bb521**.
+The Chromium 154 build and HAR packaging passed; native device acceptance is pending.
 
 The pinned Brave core Cargo.lock resolves adblock 0.13.3, matching the existing
 vendored crate and adblock-resources package. Exact resource pins, hashes and
@@ -68,8 +69,11 @@ no phone startup/load/scroll/memory improvement is claimed without measurement.
 - 20 functional and 2 bounds/cancellation host Chrome 155.0.8059.40 tests passed against the shipped Rust ABI payload
   and procedural executor. These are not Chromium 154 native hook tests.
 - Existing Lumie shell contract tests: 12 passed. No shell protocol changes.
-- OHOS arm64 Rust DSO cross-compilation passed. Complete native HAR build is
-  tracked separately; a cross-compiled Rust library alone is not a HAR.
+- OHOS arm64 Rust DSO cross-compilation passed. Chromium 154 compilation,
+  linking and HAR packaging passed for 4d7bb521; Adapter CI passed.
+- Downloaded HAR SHA256, engine Build ID, five adblock ABI exports and all 27
+  packaged resource/license/list/renderer-source files matched their inputs.
+  The resource bundle contains 213 entries. Four incremental patch tests passed.
 - The controlled server was exercised on an unfiltered host Chrome. All
   expected filtering negative controls failed, while allowed requests, original
   CSP, worker endpoints and WebSocket handshakes succeeded. Server hit records
@@ -184,3 +188,25 @@ Resource exclusions follow the pinned upstream combination: Brave's packager
 boundaries, not resources silently lost from the selected Brave combination.
 Lumie's explicit trusted-resource permissions are intentionally stricter than
 Brave's fully trusted personal-filter provider, as required by the shell handoff.
+
+## Delivered native package (2026-10-15)
+
+- Engine commit: `4d7bb5215ff49424013303c248f6922b5d7b612b`.
+- Native build: https://github.com/miramira8295/chromium-hmos/actions/runs/38734958924 (passed).
+- Adapter CI: https://github.com/miramira8295/chromium-hmos/actions/runs/38734958969 (passed).
+- Release: https://github.com/miramira8295/chromium-hmos/releases/tag/build-4d7bb521.
+- HAR SHA256: `d5235a62f95dbbdbe1a588e689e275c016bc0857c56ffceaccb9391861fd3464`.
+- Engine ELF Build ID: `d81ded0152e0c04611753bbe04aeacd87536cffd`.
+- Local delivery: `/Users/anshuo/Downloads/Lumie-adblock-Brave-4d7bb521/`;
+  `TESTING.md`, standalone probe, capability matrix and evidence accompany the HAR.
+
+The final native run completed the remaining ten build steps, including linking,
+using the compiled objects from preceding incremental runs. Seven byte-identical
+headers were recovered only when both their full SHA256 and accidental-refresh
+time window matched. No changed source or build-output timestamps were rewritten.
+The patch updater now preserves timestamps for unchanged files, avoiding this
+unnecessary cache invalidation on future patch refreshes.
+
+Documentation-only follow-up commits do not change the delivered engine commit.
+Native phone/tablet acceptance and a working matching Brave reference comparison
+remain pending. No device was operated during this integration.
