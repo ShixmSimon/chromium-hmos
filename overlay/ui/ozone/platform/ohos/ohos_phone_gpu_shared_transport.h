@@ -13,6 +13,12 @@
 namespace ui::phone_gpu {
 inline constexpr uint32_t kSharedMagic = 0x50475334;
 inline constexpr size_t kSharedMaxFds = 8;
+// NativeBuffer format values, checked against the SDK by the allocator.
+inline constexpr uint32_t kSharedImageRgba8888 = 12;
+inline constexpr uint32_t kSharedImageBgra8888 = 20;
+inline constexpr bool IsSharedImageFormat(uint32_t format) {
+  return format == kSharedImageRgba8888 || format == kSharedImageBgra8888;
+}
 enum class SharedOp : uint32_t {
   kAcquire = 1,
   kBuffer,
@@ -28,7 +34,11 @@ enum class SharedOp : uint32_t {
   kColorFailed,
   kHdrDisplayQuery,
   kHdrDisplayState,
-  kColorReady
+  kColorReady,
+  // Offscreen images have no window queue or lease. The allocation request
+  // carries its native format in prefix[8]; the reply carries the full parcel.
+  kAllocateImage,
+  kImage
 };
 struct SharedPacket {
   uint32_t magic = kSharedMagic;

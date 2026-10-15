@@ -63,6 +63,18 @@ bool ValidSharedPacket(const SharedPacket& p, size_t count) {
   if (p.operation != SharedOp::kHdrDisplayState && p.display_id)
     return false;
   switch (p.operation) {
+    case SharedOp::kAllocateImage:
+      if (count || p.lease || p.tail_bytes || !p.width || !p.height ||
+          p.width > 8192 || p.height > 8192 ||
+          uint64_t{p.width} * p.height * 4 > kMaxFrameBytes ||
+          p.color.mode != OhosOutputMode::kSdr8 || p.color_generation ||
+          !IsSharedImageFormat(p.prefix[8]))
+        return false;
+      for (size_t i = 0; i < p.prefix.size(); ++i) {
+        if (i != 8 && p.prefix[i])
+          return false;
+      }
+      return true;
     case SharedOp::kHdrDisplayQuery:
     case SharedOp::kHdrDisplayState:
       return !count && !p.lease && !p.tail_bytes && !p.width && !p.height &&
@@ -72,16 +84,24 @@ bool ValidSharedPacket(const SharedPacket& p, size_t count) {
       return !count && !p.lease && !p.tail_bytes && p.width && p.height &&
              p.width <= 8192 && p.height <= 8192 &&
              uint64_t{p.width} * p.height * 4 <= kMaxFrameBytes;
+    case SharedOp::kImage:
     case SharedOp::kBuffer: {
       const auto& v = p.prefix;
+      const bool image = p.operation == SharedOp::kImage;
+      if (image && (p.lease || p.has_fence ||
+                    p.color.mode != OhosOutputMode::kSdr8 ||
+                    p.color_generation || !IsSharedImageFormat(v[8])))
+        return false;
       // These HW_RENDER buffers are imported as optimal-tiled Vulkan images,
       // never mapped as stride * height bytes. Native allocation size need not
       // include that hypothetical linear padding (e.g. 1617x175 on Maleoon).
       // Keep the conservative RGBA pixel-size floor and allocation cap; the
       // native Vulkan properties provide the actual import allocation size.
-      return p.lease && p.fd_count && v[1] == 1 && v[2] < kSharedMaxFds - 1 &&
+      return (image || p.lease) && p.fd_count && v[1] == 1 &&
+             v[2] < kSharedMaxFds - 1 &&
              p.fd_count == v[2] + 1 && v[3] <= 256 && v[4] == p.width &&
-             v[6] == p.height && v[8] == OhosOutputNativeFormat(p.color) &&
+             v[6] == p.height &&
+             (image || v[8] == OhosOutputNativeFormat(p.color)) &&
              v[13] == 1 && p.width && p.height && p.width <= 8192 &&
              p.height <= 8192 && v[5] >= uint64_t{p.width} * 4 &&
              v[5] <= kMaxFrameBytes && v[7] <= kMaxFrameBytes &&

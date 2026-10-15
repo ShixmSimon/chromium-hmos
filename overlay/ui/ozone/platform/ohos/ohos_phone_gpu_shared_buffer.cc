@@ -15,6 +15,8 @@
 #include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 
 namespace ui::phone_gpu {
+static_assert(kSharedImageRgba8888 == NATIVEBUFFER_PIXEL_FMT_RGBA_8888);
+static_assert(kSharedImageBgra8888 == NATIVEBUFFER_PIXEL_FMT_BGRA_8888);
 namespace {
 std::atomic<bool> ready{false};
 using WriteBuffer = int32_t (*)(OH_NativeBuffer*, OHIPCParcel*);
@@ -36,12 +38,18 @@ bool BufferStep(const SharedPacket& packet, const char* step, int result) {
                << " native_error=" << result << " widget=" << packet.widget
                << " sequence=" << packet.sequence
                << " mode=" << static_cast<uint32_t>(packet.color.mode)
-               << " format=" << OhosOutputNativeFormat(packet.color)
+               << " format="
+               << (packet.operation == SharedOp::kImage
+                       ? packet.prefix[8]
+                       : OhosOutputNativeFormat(packet.color))
                << " size=" << packet.width << "x" << packet.height;
   return result == 0;
 }
 bool Encode(OH_NativeBuffer* native, SharedMessage* m) {
   auto& p = m->packet;
+  const uint32_t native_format = p.operation == SharedOp::kImage
+                                     ? p.prefix[8]
+                                     : OhosOutputNativeFormat(p.color);
   auto writer = Writer();
   if (!writer) {
     LOG(ERROR) << "OHOS shared buffer: step=parcel-writer unavailable";
@@ -73,13 +81,13 @@ bool Encode(OH_NativeBuffer* native, SharedMessage* m) {
   if (v[1] != 1 || v[2] >= kSharedMaxFds - 1 || v[3] > 256 ||
       config.width != static_cast<int32_t>(p.width) ||
       config.height != static_cast<int32_t>(p.height) ||
-      config.format != static_cast<int32_t>(OhosOutputNativeFormat(p.color)) ||
+      config.format != static_cast<int32_t>(native_format) ||
       v[4] != p.width || v[6] != p.height ||
-      v[8] != OhosOutputNativeFormat(p.color) || v[13] != 1) {
+      v[8] != native_format || v[13] != 1) {
     LOG(ERROR) << "OHOS shared buffer: step=parcel-schema mode="
                << static_cast<uint32_t>(p.color.mode)
                << " requested=" << p.width << "x" << p.height << "/"
-               << OhosOutputNativeFormat(p.color) << " native=" << config.width
+               << native_format << " native=" << config.width
                << "x" << config.height << "/" << config.format
                << " parcel=" << v[4] << "x" << v[6] << "/" << v[8]
                << " present=" << v[1] << " reserve_fds=" << v[2]
@@ -151,6 +159,40 @@ bool PrepareSharedBufferAllocator() {
 bool SharedBufferAllocatorReady() {
   return ready.load();
 }
+bool AllocateSharedImage(uint32_t width,
+                         uint32_t height,
+                         uint32_t native_format,
+                         SharedMessage* response) {
+  if (!SharedBufferAllocatorReady() || !IsSharedImageFormat(native_format))
+    return false;
+  SharedPacket request;
+  request.operation = SharedOp::kAllocateImage;
+  request.sequence = response->packet.sequence;
+  request.widget = response->packet.widget;
+  request.width = width;
+  request.height = height;
+  request.prefix[8] = native_format;
+  if (!ValidSharedPacket(request, 0))
+    return false;
+  OH_NativeBuffer_Config config{};
+  config.width = static_cast<int32_t>(width);
+  config.height = static_cast<int32_t>(height);
+  config.format = static_cast<int32_t>(native_format);
+  config.usage = NATIVEBUFFER_USAGE_MEM_DMA | NATIVEBUFFER_USAGE_HW_RENDER |
+                 NATIVEBUFFER_USAGE_HW_TEXTURE;
+  auto* native = OH_NativeBuffer_Alloc(&config);
+  if (!native)
+    return false;
+  response->packet = request;
+  response->packet.operation = SharedOp::kImage;
+  const bool exported = Encode(native, response);
+  // Parcel FDs own references to the allocation, including while in transit.
+  // There is no decoder/window producer that can reuse this offscreen image.
+  OH_NativeBuffer_Unreference(native);
+  if (!exported)
+    response->CloseFds();
+  return exported;
+}
 SharedBufferColorState::~SharedBufferColorState() {
   Reset();
 }
@@ -214,7 +256,8 @@ void SharedBufferColorState::Reset() {
   windows_.clear();
 }
 OH_NativeBuffer* ImportSharedBuffer(const SharedMessage& m) {
-  if (m.packet.operation != SharedOp::kBuffer ||
+  if ((m.packet.operation != SharedOp::kBuffer &&
+       m.packet.operation != SharedOp::kImage) ||
       !ValidSharedPacket(m.packet, m.fds.size()))
     return nullptr;
   auto reader = Reader();

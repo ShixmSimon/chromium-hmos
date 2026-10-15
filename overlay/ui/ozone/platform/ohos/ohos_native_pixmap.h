@@ -60,6 +60,17 @@ scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmapFromHandle(
     viz::SharedImageFormat format,
     gfx::NativePixmapHandle handle);
 
+// Offscreen RGBA/BGRA images allocated by the browser for its fork GPU. The
+// parcel and native wrapper own the allocation directly; no CPU tag, mapping,
+// Surface queue lease, or registry handoff grace period is needed.
+scoped_refptr<gfx::NativePixmap> CreateOhosPhoneOffscreenPixmap(
+    gfx::Size size,
+    viz::SharedImageFormat format);
+scoped_refptr<gfx::NativePixmap> ImportOhosOffscreenPixmap(
+    gfx::Size size,
+    viz::SharedImageFormat format,
+    gfx::NativePixmapHandle handle);
+
 // Wraps an acquired decoder surface buffer in the GPU process. The caller
 // transfers a release closure that owns the buffer/consumer queue. No mapping,
 // pixel copy, writable tag, or cross-process dma-buf re-identification is used.
@@ -104,10 +115,9 @@ std::unique_ptr<NativePixmapGLBinding> ImportOhosNativePixmap(
 std::unique_ptr<gfx::ClientNativePixmapFactory>
 CreateOhosClientNativePixmapFactory();
 
-// The OH_NativeBuffer behind `pixmap` if this process allocated it, else
-// null; for Dawn, which imports it with VK_OHOS_external_memory
-// (DawnOzoneImageRepresentation). An OH_NativeBuffer*, untyped so that the
-// GPU service needs no HarmonyOS header to call it.
+// The OH_NativeBuffer represented by a registry, decoder, or offscreen pixmap.
+// Borrowed for the pixmap's lifetime; native importers must retain their own
+// reference. Untyped so the GPU service needs no HarmonyOS header to call it.
 void* GetOhosNativeBuffer(const gfx::NativePixmap& pixmap);
 
 }  // namespace ui

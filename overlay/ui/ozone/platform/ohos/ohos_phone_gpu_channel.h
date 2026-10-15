@@ -51,6 +51,12 @@ void SetOhosPhoneGpuFrameInterval(uint64_t widget, base::TimeDelta interval);
 bool InitializeOhosPhoneGpuChild(int received_fd);
 bool IsOhosPhoneGpuChild();
 int OhosPhoneGpuMinimumBufferFd();
+// Offscreen RGBA/BGRA allocation is brokered by the browser. No window or
+// display color state is consulted, and no pixels cross this channel.
+bool AllocateOhosPhoneGpuImage(uint32_t width,
+                               uint32_t height,
+                               uint32_t native_format,
+                               phone_gpu::SharedMessage* response);
 phone_gpu::Result SubmitOhosPhoneGpuFrame(phone_gpu::Frame frame,
                                           int buffer_fd);
 }  // namespace ui

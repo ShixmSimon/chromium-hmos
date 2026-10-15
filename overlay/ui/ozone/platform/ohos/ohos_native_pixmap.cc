@@ -40,6 +40,8 @@
 #include "base/time/time.h"
 #include "ui/gfx/client_native_pixmap.h"
 #include "ui/gfx/color_space.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_surface_egl.h"
@@ -486,9 +488,26 @@ class OhosNativePixmap : public gfx::NativePixmap {
         video_window_(window_buffer),
         video_release_(std::move(release)) {}
 
+  OhosNativePixmap(OHNativeWindowBuffer* window_buffer,
+                   gfx::Size size,
+                   viz::SharedImageFormat format,
+                   gfx::NativePixmapHandle handle)
+      : key_(0),
+        size_(size),
+        format_(format),
+        video_window_(window_buffer),
+        video_release_(base::BindOnce(
+            &OH_NativeWindow_DestroyNativeWindowBuffer, window_buffer)),
+        offscreen_handle_(
+            std::make_unique<gfx::NativePixmapHandle>(std::move(handle))) {
+    fd_ = offscreen_handle_->planes[0].fd.get();
+    const auto& plane = offscreen_handle_->planes[0];
+    planes_.push_back({plane.stride, plane.offset, plane.size});
+  }
+
   OHNativeWindowBuffer* WindowBuffer(const gfx::ColorSpace& color_space) const {
     if (video_window_) {
-      // The decoder owns color-space metadata on this buffer. Do not mutate it.
+      // The producer owns this native buffer's metadata. Do not mutate it.
       return video_window_;
     }
     return BufferRegistry::Get().With(
@@ -506,6 +525,7 @@ class OhosNativePixmap : public gfx::NativePixmap {
 
   uint64_t key() const { return key_; }
   std::optional<uint32_t> video_buffer_id() const { return video_buffer_id_; }
+  bool has_direct_buffer() const { return video_window_ != nullptr; }
 
   bool AreDmaBufFdsValid() const override { return fd_ >= 0; }
   int GetDmaBufFd(size_t plane) const override { return fd_; }
@@ -519,7 +539,9 @@ class OhosNativePixmap : public gfx::NativePixmap {
     return plane < planes_.size() ? planes_[plane].size : 0;
   }
   size_t GetNumberOfPlanes() const override { return planes_.size(); }
-  bool SupportsZeroCopyWebGPUImport() const override { return false; }
+  bool SupportsZeroCopyWebGPUImport() const override {
+    return offscreen_handle_ != nullptr;
+  }
   viz::SharedImageFormat GetSharedImageFormat() const override {
     return format_;
   }
@@ -527,7 +549,10 @@ class OhosNativePixmap : public gfx::NativePixmap {
     return gfx::NativePixmapHandle::kNoModifier;
   }
   gfx::Size GetBufferSize() const override { return size_; }
-  uint32_t GetUniqueId() const override { return static_cast<uint32_t>(key_); }
+  uint32_t GetUniqueId() const override {
+    return offscreen_handle_ ? offscreen_handle_->ohos_buffer_prefix[0]
+                              : static_cast<uint32_t>(key_);
+  }
   bool ScheduleOverlayPlane(
       gfx::AcceleratedWidget widget,
       const gfx::OverlayPlaneData& overlay_plane_data,
@@ -536,6 +561,8 @@ class OhosNativePixmap : public gfx::NativePixmap {
     return false;
   }
   gfx::NativePixmapHandle ExportHandle() const override {
+    if (offscreen_handle_)
+      return gfx::CloneHandleForIPC(*offscreen_handle_);
     gfx::NativePixmapHandle handle;
     if (fd_ < 0) {
       return handle;
@@ -567,6 +594,7 @@ class OhosNativePixmap : public gfx::NativePixmap {
   // an independent allocation reference used by a cached import.
   RAW_PTR_EXCLUSION OHNativeWindowBuffer* video_window_ = nullptr;
   base::ScopedClosureRunner video_release_;
+  std::unique_ptr<gfx::NativePixmapHandle> offscreen_handle_;
   // Owned by the registry entry, which outlives this pixmap.
   int fd_ = -1;
   std::vector<PlaneLayout> planes_;
@@ -811,6 +839,92 @@ scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmapFromHandle(
     return nullptr;
   }
   return base::MakeRefCounted<OhosNativePixmap>(*key, size, format);
+}
+
+scoped_refptr<gfx::NativePixmap> CreateOhosPhoneOffscreenPixmap(
+    gfx::Size size,
+    viz::SharedImageFormat format) {
+  const auto native_format = OhosFormatFor(format);
+  if (size.IsEmpty() || !native_format ||
+      !phone_gpu::IsSharedImageFormat(*native_format))
+    return nullptr;
+  phone_gpu::SharedMessage response;
+  if (!AllocateOhosPhoneGpuImage(size.width(), size.height(), *native_format,
+                                 &response))
+    return nullptr;
+  gfx::NativePixmapHandle handle;
+  handle.ohos_buffer_prefix.assign(response.packet.prefix.begin(),
+                                    response.packet.prefix.end());
+  handle.ohos_buffer_tail.assign(
+      response.packet.tail.begin(),
+      response.packet.tail.begin() + response.packet.tail_bytes);
+  for (int fd : response.fds)
+    handle.ohos_buffer_fds.emplace_back(fd);
+  response.fds.clear();
+  return ImportOhosOffscreenPixmap(size, format, std::move(handle));
+}
+
+scoped_refptr<gfx::NativePixmap> ImportOhosOffscreenPixmap(
+    gfx::Size size,
+    viz::SharedImageFormat format,
+    gfx::NativePixmapHandle handle) {
+  const auto native_format = OhosFormatFor(format);
+  if (size.IsEmpty() || !native_format ||
+      !phone_gpu::IsSharedImageFormat(*native_format) ||
+      handle.ohos_video_release_fd.is_valid() ||
+      handle.ohos_buffer_prefix.size() != 14 ||
+      handle.ohos_buffer_tail.size() > 1044 ||
+      handle.ohos_buffer_fds.size() >= phone_gpu::kSharedMaxFds)
+    return nullptr;
+  phone_gpu::SharedMessage message;
+  auto& p = message.packet;
+  p.operation = phone_gpu::SharedOp::kImage;
+  p.sequence = p.widget = 1;
+  p.width = size.width();
+  p.height = size.height();
+  p.fd_count = static_cast<uint32_t>(handle.ohos_buffer_fds.size());
+  p.tail_bytes = static_cast<uint32_t>(handle.ohos_buffer_tail.size());
+  std::copy(handle.ohos_buffer_prefix.begin(), handle.ohos_buffer_prefix.end(),
+            p.prefix.begin());
+  std::copy(handle.ohos_buffer_tail.begin(), handle.ohos_buffer_tail.end(),
+            p.tail.begin());
+  if (p.prefix[8] != static_cast<uint32_t>(*native_format) ||
+      !phone_gpu::ValidSharedPacket(p, handle.ohos_buffer_fds.size()))
+    return nullptr;
+  for (const auto& fd : handle.ohos_buffer_fds) {
+    if (!fd.is_valid())
+      return nullptr;
+    int copy = HANDLE_EINTR(dup(fd.get()));
+    if (copy < 0)
+      return nullptr;
+    message.fds.push_back(copy);
+  }
+  auto* native = phone_gpu::ImportSharedBuffer(message);
+  if (!native)
+    return nullptr;
+  OH_NativeBuffer_Config config{};
+  OH_NativeBuffer_GetConfig(native, &config);
+  if (config.width != size.width() || config.height != size.height() ||
+      config.format != *native_format) {
+    OH_NativeBuffer_Unreference(native);
+    return nullptr;
+  }
+  auto* window =
+      OH_NativeWindow_CreateNativeWindowBufferFromNativeBuffer(native);
+  OH_NativeBuffer_Unreference(native);
+  if (!window)
+    return nullptr;
+  // Normalize the generic plane description from the validated native parcel.
+  // This is a GPU image; its actual allocation size can exclude linear padding.
+  handle.planes.clear();
+  base::ScopedFD plane_fd(HANDLE_EINTR(dup(handle.ohos_buffer_fds[0].get())));
+  if (!plane_fd.is_valid()) {
+    OH_NativeWindow_DestroyNativeWindowBuffer(window);
+    return nullptr;
+  }
+  handle.planes.emplace_back(p.prefix[5], 0, p.prefix[7], std::move(plane_fd));
+  return base::MakeRefCounted<OhosNativePixmap>(window, size, format,
+                                               std::move(handle));
 }
 
 scoped_refptr<gfx::NativePixmap> CreateOhosVideoNativePixmap(
@@ -1064,15 +1178,14 @@ std::unique_ptr<NativePixmapGLBinding> ImportOhosNativePixmap(
 
 void* GetOhosNativeBuffer(const gfx::NativePixmap& pixmap) {
   const auto& video = static_cast<const OhosNativePixmap&>(pixmap);
-  if (video.video_buffer_id()) {
+  if (video.has_direct_buffer()) {
     OH_NativeBuffer* native = nullptr;
     if (OH_NativeBuffer_FromNativeWindowBuffer(
             video.WindowBuffer(gfx::ColorSpace()), &native) == 0)
       return native;
     return nullptr;
   }
-  // Decoder surface pixmaps are GPU-only and are not offered to Dawn. Keep
-  // this allocator-backed WebGPU path independent of video buffer ownership.
+  // Legacy allocator-backed buffers are identified through their registry.
   if (!pixmap.AreDmaBufFdsValid()) {
     return nullptr;
   }

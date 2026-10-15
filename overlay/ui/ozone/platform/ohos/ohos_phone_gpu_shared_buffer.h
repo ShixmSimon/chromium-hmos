@@ -13,6 +13,13 @@ namespace ui::phone_gpu {
 // Browser only, BEFORE StartOhosForkServer; never initializes EGL.
 bool PrepareSharedBufferAllocator();
 bool SharedBufferAllocatorReady();
+// Browser only. Allocates an offscreen GPU image and exports owned parcel FDs.
+// The reply holds the allocation alive without a Surface queue lease or a CPU
+// mapping; the importing process owns its native reference after receipt.
+bool AllocateSharedImage(uint32_t width,
+                         uint32_t height,
+                         uint32_t native_format,
+                         SharedMessage* response);
 // Reconstructs only the verified parcel schema; owns a native reference on
 // success.
 OH_NativeBuffer* ImportSharedBuffer(const SharedMessage& message);

@@ -122,7 +122,17 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
         if (Browser().current != connection || !connection->active.load())
           break;
         using Op = phone_gpu::SharedOp;
-        if (p.operation == Op::kAcquire || p.operation == Op::kColorProbe) {
+        if (p.operation == Op::kAllocateImage) {
+          if (!phone_gpu::AllocateSharedImage(p.width, p.height, p.prefix[8],
+                                               &response)) {
+            response.CloseFds();
+            reply = phone_gpu::SharedPacket{};
+            reply.sequence = p.sequence;
+            reply.widget = p.widget;
+            reply.operation = Op::kUnavailable;
+          }
+        } else if (p.operation == Op::kAcquire ||
+                   p.operation == Op::kColorProbe) {
           reply.operation = Op::kUnavailable;
           reply.result =
               static_cast<uint32_t>(phone_gpu::SharedBufferAllocatorReady()
@@ -492,6 +502,23 @@ bool ExchangeShared(phone_gpu::SharedMessage* request,
   return true;
 }
 }  // namespace
+bool AllocateOhosPhoneGpuImage(uint32_t width,
+                               uint32_t height,
+                               uint32_t native_format,
+                               phone_gpu::SharedMessage* response) {
+  if (!IsOhosPhoneGpuChild() || !phone_gpu::IsSharedImageFormat(native_format))
+    return false;
+  phone_gpu::SharedMessage request;
+  request.packet.operation = phone_gpu::SharedOp::kAllocateImage;
+  request.packet.widget = 1;  // Channel endpoint, not a window allocation.
+  request.packet.width = width;
+  request.packet.height = height;
+  request.packet.prefix[8] = native_format;
+  return ExchangeShared(&request, response) &&
+         response->packet.operation == phone_gpu::SharedOp::kImage &&
+         response->packet.width == width && response->packet.height == height &&
+         response->packet.prefix[8] == native_format;
+}
 bool QueryOhosPhoneHdrDisplay(uint64_t* display_id) {
   if (!IsOhosPhoneGpuChild())
     return false;
