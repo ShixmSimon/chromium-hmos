@@ -28,5 +28,6 @@ class Provider {
   mojo::Remote<mojom::Filter> remote_;
 };
 void ObserveFrame(content::RenderFrame* frame);
+bool RunDocumentStart(content::RenderFrame* frame);
 }  // namespace chrome::ohos::adblock
 #endif

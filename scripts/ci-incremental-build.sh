@@ -301,6 +301,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-rule-sources.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-extension-updates.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-adblock-rust.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-adblock-execution.patch"
   bash "${repo_root}/scripts/setup-adblock-rust.sh" || die "Rust toolchain setup failed"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-msrt.patch" \
     "${src}/third_party/angle"
@@ -322,7 +323,7 @@ else
     esac
     dst="${src}/${rel}"
     # Vendored source archive is binary; newline normalization corrupts gzip.
-    if [[ "$rel" == third_party/adblock_rust/vendor.tar.gz ]]; then
+    if [[ "$rel" == third_party/adblock_rust/*.tar.gz || "$rel" == third_party/adblock_rust/resources/*.tar.gz ]]; then
       if [[ ! -f "$dst" ]] || ! cmp -s "$f" "$dst"; then
         mkdir -p "$(dirname "$dst")"
         cp "$f" "$dst"

@@ -11,6 +11,10 @@ struct Api {
   // Deliberately separate DSO: Chromium and Cargo must not share Rust runtime
   // or allocator symbols.
   void* library = dlopen("liblumie_adblock.so", RTLD_NOW | RTLD_LOCAL);
+  using Version = uint32_t (*)();
+  Version version = library ? reinterpret_cast<Version>(
+                                  dlsym(library, "lumie_adblock_abi_version"))
+                            : nullptr;
   using Compile = void* (*)(const char*, size_t, char**);
   using Query = char* (*)(const void*, const char*, size_t);
   using Free = void (*)(void*);
@@ -29,7 +33,9 @@ struct Api {
       library ? reinterpret_cast<FreeString>(
                     dlsym(library, "lumie_adblock_free_string"))
               : nullptr;
-  bool valid() const { return compile && query && free && free_string; }
+  bool valid() const {
+    return version && version() == 2 && compile && query && free && free_string;
+  }
 };
 Api& GetApi() {
   static Api api;

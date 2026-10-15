@@ -30,12 +30,15 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/common/ohos/adblock/decision_throttle.h"
 #include "components/sessions/content/session_tab_helper.h"
+#include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/storage_partition.h"
+#include "content/public/browser/weak_document_ptr.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
@@ -129,6 +132,10 @@ struct Config {
                        .kind = "builtin",
                        .url = "https://easylist.to/easylist/easyprivacy.txt",
                        .enabled = false});
+    sources.push_back({.id = "brave-compat",
+                       .name = "兼容补充 · Brave 配套规则",
+                       .kind = "builtin",
+                       .enabled = false});
   }
   Source* Find(std::string_view id) {
     for (auto& s : sources)
@@ -174,6 +181,17 @@ Config Restore(const base::FilePath& path) {
     }
   }
   if (auto* sources = root->FindList("sources")) {
+    // Do not evict a saved custom source when adding the optional built-in to
+    // an already-full v1 profile. It appears after capacity becomes available.
+    if (sources->size() >= 32 &&
+        !std::ranges::any_of(*sources, [](const base::Value& value) {
+          return value.is_dict() &&
+                 Str(value.GetDict(), "id") == "brave-compat";
+        })) {
+      std::erase_if(config.sources, [](const Source& source) {
+        return source.id == "brave-compat";
+      });
+    }
     for (const auto& value : *sources) {
       if (!value.is_dict())
         continue;
@@ -198,7 +216,7 @@ Config Restore(const base::FilePath& path) {
       if (text.size() > kMaxBytes || !base::IsStringUTF8(text))
         continue;
       source->enabled = v.FindBool("enabled").value_or(true);
-      source->text = std::move(text);
+      source->text = id == "brave-compat" ? std::string() : std::move(text);
       source->updated = v.FindDouble("updatedAt").value_or(0);
       source->etag = Str(v, "etag");
       source->modified = Str(v, "modified");
@@ -545,6 +563,9 @@ class Service {
     StartNext();
   }
   void Queue(const std::string& id) {
+    auto* source = config_.Find(id);
+    if (!source || source->url.empty())
+      return;  // Signed offline compatibility pair.
     if (id != active_ && std::ranges::find(queue_, id) == queue_.end())
       queue_.push_back(id);
   }
@@ -880,6 +901,26 @@ class Page : public content::WebContentsObserver,
         .Set("reloadRequired", reload_)
         .Set("hits", hits_.Clone());
   }
+  void ReadyToCommitNavigation(content::NavigationHandle* handle) override {
+    auto* frame = handle->GetRenderFrameHost();
+    const GURL site =
+        frame->GetParent()
+            ? frame->GetOutermostMainFrame()->GetLastCommittedURL()
+            : handle->GetURL();
+    committing_[frame->GetGlobalId()] = {handle->GetURL(), site};
+  }
+  void RenderFrameDeleted(content::RenderFrameHost* frame) override {
+    committing_.erase(frame->GetGlobalId());
+  }
+  std::optional<GURL> CosmeticSite(content::RenderFrameHost* frame,
+                                   const GURL& url) const {
+    const auto it = committing_.find(frame->GetGlobalId());
+    if (it != committing_.end() && it->second.first == url)
+      return it->second.second;
+    if (frame->GetLastCommittedURL() == url)
+      return frame->GetOutermostMainFrame()->GetLastCommittedURL();
+    return std::nullopt;
+  }
   void DidStartNavigation(content::NavigationHandle* handle) override {
     if (!handle->IsInPrimaryMainFrame() || handle->IsSameDocument())
       return;
@@ -898,6 +939,8 @@ class Page : public content::WebContentsObserver,
     }
   }
   void DidFinishNavigation(content::NavigationHandle* handle) override {
+    if (handle->HasCommitted() && !handle->IsSameDocument())
+      committing_.erase(handle->GetRenderFrameHost()->GetGlobalId());
     if (!handle->IsInPrimaryMainFrame())
       return;
     if (handle->IsSameDocument()) {
@@ -972,6 +1015,7 @@ class Page : public content::WebContentsObserver,
         },
         weak_.GetWeakPtr()));
   }
+  std::map<content::GlobalRenderFrameHostId, std::pair<GURL, GURL>> committing_;
   std::string navigation_ = base::UnguessableToken::Create().ToString();
   GURL url_;
   uint64_t blocked_ = 0;
@@ -991,9 +1035,10 @@ void CheckRequest(Service* service,
                   const std::string& type,
                   const std::string& method,
                   base::RepeatingCallback<bool()> alive,
-                  base::OnceCallback<void(bool)> callback) {
-  if (!url.SchemeIsHTTPOrHTTPS() || !service->Eligible(site)) {
-    std::move(callback).Run(false);
+                  base::OnceCallback<void(mojom::DecisionPtr)> callback) {
+  if (!(url.SchemeIsHTTPOrHTTPS() || url.SchemeIsWSOrWSS()) ||
+      !service->Eligible(site)) {
+    std::move(callback).Run(mojom::Decision::New());
     return;
   }
   auto navigation = page ? page->navigation() : "";
@@ -1011,11 +1056,12 @@ void CheckRequest(Service* service,
              std::string navigation, uint64_t revision, GURL site, GURL url,
              std::string type, std::string method,
              base::RepeatingCallback<bool()> alive,
-             base::OnceCallback<void(bool)> callback, base::DictValue result) {
+             base::OnceCallback<void(mojom::DecisionPtr)> callback,
+             base::DictValue result) {
             if (!alive.Run())
               return;
             if (page && page->navigation() != navigation) {
-              std::move(callback).Run(false);
+              std::move(callback).Run(mojom::Decision::New());
               return;
             }
             if (owner && owner->revision() != revision) {
@@ -1029,7 +1075,14 @@ void CheckRequest(Service* service,
             if (blocked && page)
               page->Record(navigation, url, type,
                            owner->SourceName(Str(result, "sourceId")));
-            std::move(callback).Run(blocked);
+            auto decision = mojom::Decision::New();
+            if (owner && owner->Active(site) && owner->revision() == revision) {
+              decision->blocked = blocked;
+              decision->redirect = Str(result, "redirect");
+              decision->rewritten_url = GURL(Str(result, "rewrittenUrl"));
+              decision->csp = Str(result, "csp");
+            }
+            std::move(callback).Run(std::move(decision));
           },
           service->weak(), weak_page, navigation, revision, site, url, type,
           method, alive, std::move(callback)));
@@ -1053,14 +1106,35 @@ class FilterHost : public mojom::Filter {
              const std::string& type,
              const std::string& method,
              CheckCallback callback) override {
-    // Background/shared workers do not have one unambiguous top-level site.
-    // Document loads are checked before service-worker interception. Do not
-    // invent a tab/site for independent worker traffic or apply its exceptions.
     auto* frame = token ? Frame(*token) : nullptr;
-    if (!frame || (initiator.is_valid() && !initiator.SchemeIsHTTPOrHTTPS()) ||
-        type.size() > 32 || method.size() > 32 ||
-        !frame->GetLastCommittedURL().SchemeIsHTTPOrHTTPS()) {
-      std::move(callback).Run(false);
+    if (type.size() > 32 || method.size() > 32 ||
+        (initiator.is_valid() && !initiator.SchemeIsHTTPOrHTTPS())) {
+      std::move(callback).Run(mojom::Decision::New());
+      return;
+    }
+    if (!token) {
+      // Worker-owned traffic uses its validated origin for exceptions; never
+      // attribute a shared/background worker to an active tab. Browser-owned
+      // subscription/system factories do not use this renderer interface.
+      auto* process = content::RenderProcessHost::FromID(process_);
+      if (!process || !initiator.SchemeIsHTTPOrHTTPS() ||
+          !content::ChildProcessSecurityPolicy::GetInstance()
+               ->CanAccessDataForOrigin(process->GetDeprecatedID(),
+                                        url::Origin::Create(initiator))) {
+        std::move(callback).Run(mojom::Decision::New());
+        return;
+      }
+      CheckRequest(Service::Get(Profile::FromBrowserContext(
+                       process->GetBrowserContext())),
+                   nullptr, url, initiator, type, method,
+                   base::BindRepeating(
+                       [](base::WeakPtr<FilterHost> self) { return !!self; },
+                       weak_.GetWeakPtr()),
+                   std::move(callback));
+      return;
+    }
+    if (!frame || !frame->GetLastCommittedURL().SchemeIsHTTPOrHTTPS()) {
+      std::move(callback).Run(mojom::Decision::New());
       return;
     }
     auto* contents = content::WebContents::FromRenderFrameHost(frame);
@@ -1077,6 +1151,11 @@ class FilterHost : public mojom::Filter {
             [](base::WeakPtr<FilterHost> self) { return !!self; },
             weak_.GetWeakPtr()),
         std::move(callback));
+  }
+  void StartCosmetics(const blink::LocalFrameToken& token,
+                      const GURL& url,
+                      StartCosmeticsCallback callback) override {
+    SendCosmetics(token, url, std::move(callback));
   }
   void Cosmetics(const blink::LocalFrameToken& token,
                  const GURL& url,
@@ -1112,7 +1191,11 @@ class FilterHost : public mojom::Filter {
                      const GURL& url,
                      CosmeticsCallback callback) {
     auto* frame = Frame(token);
-    if (!frame || frame->GetLastCommittedURL() != url) {
+    auto* page =
+        frame ? Page::Get(content::WebContents::FromRenderFrameHost(frame))
+              : nullptr;
+    auto site = page ? page->CosmeticSite(frame, url) : std::nullopt;
+    if (!site || !url.SchemeIsHTTPOrHTTPS()) {
       std::move(callback).Run("", 0);
       return;
     }
@@ -1120,14 +1203,17 @@ class FilterHost : public mojom::Filter {
         Service::Get(Profile::FromBrowserContext(frame->GetBrowserContext()));
     const auto revision = service->revision();
     service->Query(
-        base::DictValue().Set("op", "cosmetic").Set("url", url.spec()),
-        frame->GetOutermostMainFrame()->GetLastCommittedURL(),
+        base::DictValue().Set("op", "cosmetic").Set("url", url.spec()), *site,
         base::BindOnce(
-            [](CosmeticsCallback callback, uint64_t revision,
+            [](base::WeakPtr<Service> owner, GURL site,
+               CosmeticsCallback callback, uint64_t revision,
                base::DictValue value) {
-              std::move(callback).Run(Str(value, "css"), revision);
+              std::string payload;
+              if (owner && owner->Active(site) && owner->revision() == revision)
+                base::JSONWriter::Write(value, &payload);
+              std::move(callback).Run(payload, owner ? owner->revision() : 0);
             },
-            std::move(callback), revision));
+            service->weak(), *site, std::move(callback), revision));
   }
   int process_;
   blink::LocalFrameToken token_;
@@ -1136,7 +1222,7 @@ class FilterHost : public mojom::Filter {
   base::CallbackListSubscription subscription_;
   base::WeakPtrFactory<FilterHost> weak_{this};
 };
-class BrowserThrottle : public blink::URLLoaderThrottle {
+class BrowserThrottle : public DecisionThrottle {
  public:
   BrowserThrottle(Service* service,
                   base::RepeatingCallback<content::WebContents*()> getter,
@@ -1144,6 +1230,7 @@ class BrowserThrottle : public blink::URLLoaderThrottle {
       : service_(service->weak()), getter_(std::move(getter)), main_(main) {}
   void WillStartRequest(network::ResourceRequest* request,
                         bool* defer) override {
+    Capture(*request);
     method_ = request->method;
     Check(request->url, defer);
   }
@@ -1151,6 +1238,7 @@ class BrowserThrottle : public blink::URLLoaderThrottle {
                            const network::mojom::URLResponseHead&,
                            bool* defer,
                            network::HttpRequestHeadersUpdateParams*) override {
+    Redirect(*redirect);
     method_ = redirect->new_method;
     Check(redirect->new_url, defer);
   }
@@ -1158,27 +1246,34 @@ class BrowserThrottle : public blink::URLLoaderThrottle {
  private:
   void Check(const GURL& url, bool* defer) {
     auto* contents = getter_.Run();
-    if (!service_ || !contents || !url.SchemeIsHTTPOrHTTPS())
+    using D = network::mojom::RequestDestination;
+    const bool worker = request_.destination == D::kWorker ||
+                        request_.destination == D::kSharedWorker ||
+                        request_.destination == D::kServiceWorker;
+    if (!service_ || (!worker && !contents) || !url.SchemeIsHTTPOrHTTPS())
       return;
-    auto* page = Page::Get(contents);
-    GURL site = main_ ? url : contents->GetLastCommittedURL();
+    auto* page = worker ? nullptr : Page::Get(contents);
+    GURL site = worker  ? (request_.request_initiator
+                               ? request_.request_initiator->GetURL()
+                               : request_.url)
+                : main_ ? url
+                        : contents->GetLastCommittedURL();
     if (!service_->Eligible(site))
       return;
     *defer = true;
     CheckRequest(service_.get(), page, url, site,
-                 main_ ? "document" : "subdocument", method_,
+                 worker  ? "script"
+                 : main_ ? "document"
+                         : "subdocument",
+                 method_,
                  base::BindRepeating(
                      [](base::WeakPtr<BrowserThrottle> self) { return !!self; },
                      weak_.GetWeakPtr()),
                  base::BindOnce(
-                     [](base::WeakPtr<BrowserThrottle> throttle, bool blocked) {
-                       if (!throttle)
-                         return;
-                       if (blocked)
-                         throttle->delegate_->CancelWithError(
-                             net::ERR_BLOCKED_BY_CLIENT);
-                       else
-                         throttle->delegate_->Resume();
+                     [](base::WeakPtr<BrowserThrottle> throttle,
+                        mojom::DecisionPtr decision) {
+                       if (throttle)
+                         throttle->Resolve(std::move(decision));
                      },
                      weak_.GetWeakPtr()));
   }
@@ -1189,6 +1284,32 @@ class BrowserThrottle : public blink::URLLoaderThrottle {
   base::WeakPtrFactory<BrowserThrottle> weak_{this};
 };
 }  // namespace
+void CheckWebSocket(const content::GlobalRenderFrameHostId& frame_id,
+                    const url::Origin& origin,
+                    const GURL& url,
+                    base::OnceCallback<void(bool)> callback) {
+  auto* process = content::RenderProcessHost::FromID(frame_id.child_id);
+  auto* frame = content::RenderFrameHost::FromID(frame_id);
+  if (!process || !origin.GetURL().SchemeIsHTTPOrHTTPS()) {
+    std::move(callback).Run(true);
+    return;
+  }
+  auto* service =
+      Service::Get(Profile::FromBrowserContext(process->GetBrowserContext()));
+  auto* contents =
+      frame ? content::WebContents::FromRenderFrameHost(frame) : nullptr;
+  const GURL site = frame
+                        ? frame->GetOutermostMainFrame()->GetLastCommittedURL()
+                        : origin.GetURL();
+  CheckRequest(service, contents ? Page::Get(contents) : nullptr, url, site,
+               "websocket", "GET", base::BindRepeating([] { return true; }),
+               base::BindOnce(
+                   [](base::OnceCallback<void(bool)> callback,
+                      mojom::DecisionPtr decision) {
+                     std::move(callback).Run(!decision || !decision->blocked);
+                   },
+                   std::move(callback)));
+}
 void ObserveContents(content::WebContents* contents) {
   Page::Get(contents);
 }
@@ -1206,9 +1327,15 @@ std::unique_ptr<blink::URLLoaderThrottle> NavigationThrottle(
     Profile* profile,
     const network::ResourceRequest& request,
     const base::RepeatingCallback<content::WebContents*()>& getter) {
-  if (!blink::IsRequestDestinationFrame(request.destination) || !getter.Run())
+  using D = network::mojom::RequestDestination;
+  const bool worker = request.destination == D::kWorker ||
+                      request.destination == D::kSharedWorker ||
+                      request.destination == D::kServiceWorker;
+  if (!worker &&
+      (!blink::IsRequestDestinationFrame(request.destination) || !getter.Run()))
     return nullptr;
-  Page::Get(getter.Run());
+  if (!worker)
+    Page::Get(getter.Run());
   return std::make_unique<BrowserThrottle>(Service::Get(profile), getter,
                                            request.is_outermost_main_frame);
 }

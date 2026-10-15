@@ -29,7 +29,7 @@ diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
        "ohos/url_protection/rule_sources.cc",
        "ohos/url_protection/rule_sources.h",
      ]
-+    deps += [ "//chrome/common/ohos/adblock:mojom", "//third_party/adblock_rust:runtime" ]
++    deps += [ "//chrome/common/ohos/adblock:mojom", "//chrome/common/ohos/adblock:execution", "//third_party/adblock_rust:runtime" ]
 +    sources += [
 +      "ohos/adblock/adblock.cc",
 +      "ohos/adblock/adblock.h",
@@ -100,7 +100,7 @@ diff --git a/chrome/renderer/BUILD.gn b/chrome/renderer/BUILD.gn
    data_deps = [ "//tools/v8_context_snapshot" ]
 +  if (is_ohos) {
 +    sources += [ "ohos/adblock.cc", "ohos/adblock.h" ]
-+    deps += [ "//chrome/common/ohos/adblock:mojom" ]
++    deps += [ "//chrome/common/ohos/adblock:mojom", "//chrome/common/ohos/adblock:execution", "//chrome/renderer/ohos/adblock_resources:runtime" ]
 +  }
  
    configs += [ "//build/config/compiler:wexit_time_destructors" ]
@@ -129,6 +129,16 @@ diff --git a/chrome/renderer/chrome_content_renderer_client.cc b/chrome/renderer
    ChromeRenderFrameObserver* render_frame_observer =
        new ChromeRenderFrameObserver(render_frame, web_cache_impl_.get());
    service_manager::BinderRegistry* registry = render_frame_observer->registry();
+@@ -1433,6 +1440,9 @@
+ 
+ void ChromeContentRendererClient::RunScriptsAtDocumentStart(
+     content::RenderFrame* render_frame) {
++#if BUILDFLAG(IS_OHOS)
++  if (!chrome::ohos::adblock::RunDocumentStart(render_frame)) return;
++#endif
+ #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+   extensions::ExtensionsRendererClient::Get()->RunScriptsAtDocumentStart(
+       render_frame);
 diff --git a/chrome/renderer/url_loader_throttle_provider_impl.h b/chrome/renderer/url_loader_throttle_provider_impl.h
 --- a/chrome/renderer/url_loader_throttle_provider_impl.h
 +++ b/chrome/renderer/url_loader_throttle_provider_impl.h

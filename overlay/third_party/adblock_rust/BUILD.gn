@@ -3,8 +3,8 @@ import("//build/config/ohos/config.gni")
 action("runtime") {
   script = "build.py"
   inputs = [
-    "Cargo.toml", "Cargo.lock", "vendor.tar.gz", "src/lib.rs",
-    "lists/easylist.txt", "lists/easylist-china.txt", "lists/easyprivacy.txt",
+    "Cargo.toml", "Cargo.lock", "vendor.tar.gz", "src/lib.rs", "src/preprocess.rs", "resources/resources.json", "resources/SOURCES.json",
+    "lists/brave-specific.txt", "lists/brave-unbreak.txt", "lists/easylist.txt", "lists/easylist-china.txt", "lists/easyprivacy.txt",
   ]
   outputs = [ "$root_out_dir/liblumie_adblock.so" ]
   args = [

@@ -1,0 +1,13 @@
+{
+  "commit": "8846788d578bf89696ad4ec5cdff845dfb170f1a",
+  "repo": "https://github.com/brave/adblock-lists",
+  "id": "brave-compat",
+  "defaultEnabled": false,
+  "delivery": "paired offline bundle, updated only with signed HAR",
+  "permissionMask": 3,
+  "catalogReview": "Brave Default Adblock Filters includes both files and EasyList among many other sources. Lumie adds only this opt-in pair; no duplicate EasyList, Android/iOS list, first-party heuristic, service identity, or component keys. This list contains Statcounter exceptions relying on Brave protections; opt-in until Lumie compatibility review.",
+  "sha256": {
+    "brave-specific.txt": "f2fa61e972136c51b052cf1e832480cbba22adf03c1210eaff5a654b8e0935a1",
+    "brave-unbreak.txt": "63a1fdc6aeebbb93b8c15602b6180c85f9aadfddfab200b7c8f4e0cc8ee76159"
+  }
+}

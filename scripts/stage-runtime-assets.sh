@@ -113,7 +113,8 @@ adblock_source="$(cd "$(dirname "${BASH_SOURCE[0]}")/../overlay/third_party/adbl
 adblock_notices="${project}/engine/src/main/resources/rawfile/adblock-licenses"
 mkdir -p "$adblock_notices"
 cp "$adblock_source/LICENSE" "$adblock_source/THIRD_PARTY_NOTICES.txt" "$adblock_source/Cargo.lock" "$adblock_notices/"
-cp -R "$adblock_source/lists" "$adblock_notices/"
+cp -R "$adblock_source/lists" "$adblock_source/resources" "$adblock_notices/"
+cp -R "$(dirname "$adblock_source")/../chrome/renderer/ohos/adblock_resources" "$adblock_notices/renderer"
 
 # Written last, and after the hash is computed, so it never covers itself.
 runtime_version=$(

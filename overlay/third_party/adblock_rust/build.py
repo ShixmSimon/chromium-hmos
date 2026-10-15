@@ -7,6 +7,11 @@ p.add_argument('--sdk',required=True)
 p.add_argument('--cpu',default='arm64')
 a=p.parse_args()
 root=pathlib.Path(__file__).resolve().parent
+import json
+manifest=json.loads((root/'resources/SOURCES.json').read_text())
+for name,digest in manifest['files'].items():
+    if hashlib.sha256((root/'resources'/name).read_bytes()).hexdigest()!=digest:
+        raise SystemExit('Adblock resource integrity mismatch: '+name)
 out=pathlib.Path(a.out).resolve()
 out.parent.mkdir(parents=True,exist_ok=True)
 work=out.parent/'adblock-rust-build'
@@ -19,7 +24,7 @@ if not stamp.exists() or stamp.read_text()!=digest:
     with tarfile.open(archive) as tar: tar.extractall(work,filter='data')
     stamp.write_text(digest)
 # Separate source/config tree so Chromium's parent .cargo settings cannot alter this crate.
-for name in ['Cargo.toml','Cargo.lock','src','lists']:
+for name in ['Cargo.toml','Cargo.lock','src','lists','resources']:
     source=root/name
     if source.is_dir(): shutil.copytree(source,work/name,dirs_exist_ok=True)
     else: shutil.copy2(source,work/name)
