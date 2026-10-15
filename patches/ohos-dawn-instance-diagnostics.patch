@@ -433,38 +433,7 @@ diff --git a/src/dawn/native/vulkan/UtilsVulkan.cpp b/src/dawn/native/vulkan/Uti
 diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/DeviceVk.cpp
 --- a/src/dawn/native/vulkan/DeviceVk.cpp
 +++ b/src/dawn/native/vulkan/DeviceVk.cpp
-@@ -395,6 +395,19 @@
-     return mDeviceInfo;
- }
- 
-+bool Device::UsePreciseOcclusionQueries() const {
-+#if defined(__OHOS__)
-+    // Maleoon 920's boolean query path can report coverage for alpha=0 when
-+    // color and depth writes are disabled. Request the precise path only
-+    // when the native feature is present; it preserves WebGPU query semantics.
-+    return mDeviceInfo.properties.vendorID == 0x19e5 &&
-+           mDeviceInfo.properties.deviceID == 0x20001000 &&
-+           mDeviceInfo.features.occlusionQueryPrecise == VK_TRUE;
-+#else
-+    return false;
-+#endif
-+}
-+
- const VulkanGlobalInfo& Device::GetGlobalInfo() const {
-     return ToBackend(GetPhysicalDevice())->GetVulkanInstance()->GetGlobalInfo();
- }
-@@ -478,6 +491,10 @@
-     usedKnobs.features.shaderStorageBufferArrayDynamicIndexing = VK_TRUE;
-     usedKnobs.features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
-     usedKnobs.features.shaderStorageImageArrayDynamicIndexing = VK_TRUE;
-+
-+    if (UsePreciseOcclusionQueries()) {
-+        usedKnobs.features.occlusionQueryPrecise = VK_TRUE;
-+    }
- 
-     if (IsRobustnessEnabled()) {
-         usedKnobs.features.robustBufferAccess = VK_TRUE;
-@@ -674,7 +691,11 @@
+@@ -674,7 +674,11 @@
  
      if ((HasFeature(Feature::YCbCrVulkanSamplers) ||
           HasFeature(Feature::OpaqueYCbCrAndroidForExternalTexture)) &&
@@ -477,30 +446,3 @@ diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/Device
          usedKnobs.samplerYCbCrConversionFeatures.samplerYcbcrConversion = VK_TRUE;
          featuresChain.Add(&usedKnobs.samplerYCbCrConversionFeatures,
                            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES);
-diff --git a/src/dawn/native/vulkan/DeviceVk.h b/src/dawn/native/vulkan/DeviceVk.h
---- a/src/dawn/native/vulkan/DeviceVk.h
-+++ b/src/dawn/native/vulkan/DeviceVk.h
-@@ -87,6 +87,7 @@
- 
-     VkInstance GetVkInstance() const;
-     const VulkanDeviceInfo& GetDeviceInfo() const;
-+    bool UsePreciseOcclusionQueries() const;
-     const VulkanGlobalInfo& GetGlobalInfo() const;
-     VkDevice GetVkDevice() const;
-     uint32_t GetGraphicsQueueFamily() const;
-diff --git a/src/dawn/native/vulkan/CommandBufferVk.cpp b/src/dawn/native/vulkan/CommandBufferVk.cpp
---- a/src/dawn/native/vulkan/CommandBufferVk.cpp
-+++ b/src/dawn/native/vulkan/CommandBufferVk.cpp
-@@ -2123,8 +2123,11 @@
-                 workCommandCount++;
-                 BeginOcclusionQueryCmd* cmd = mCommands.NextCommand<BeginOcclusionQueryCmd>();
- 
-+                const VkQueryControlFlags queryFlags = device->UsePreciseOcclusionQueries()
-+                                                           ? VK_QUERY_CONTROL_PRECISE_BIT
-+                                                           : 0;
-                 device->fn.CmdBeginQuery(commands, ToBackend(cmd->querySet.Get())->GetHandle(),
--                                         uint32_t{cmd->queryIndex}, 0);
-+                                         uint32_t{cmd->queryIndex}, queryFlags);
-                 break;
-             }
- 

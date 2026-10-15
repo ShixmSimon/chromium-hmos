@@ -568,6 +568,43 @@ diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing_f
    }
  #endif
  
+@@ -158,6 +162,11 @@
+ 
+ SharedImageUsageSet SupportedUsage() {
+   SharedImageUsageSet supported_usage =
++#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
++      // Only native video sampling is implemented by the OHOS representation.
++      // IsSupported below excludes CPU images and all writable WebGPU usages.
++      SHARED_IMAGE_USAGE_WEBGPU_READ |
++#endif
+ #if BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DAWN)
+       SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_WEBGPU_WRITE |
+       SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE |
+@@ -275,6 +284,24 @@
+     gfx::GpuMemoryBufferType gmb_type,
+     GrContextType gr_context_type,
+     base::span<const uint8_t> pixel_data) {
++#if BUILDFLAG(IS_OHOS)
++  if (usage.Has(SHARED_IMAGE_USAGE_WEBGPU_READ)) {
++    if (gmb_type != gfx::NATIVE_PIXMAP || !format.is_multi_plane() ||
++        !format.PrefersExternalSampler()) {
++      return false;
++    }
++    auto native_format = format;
++    native_format.ClearPrefersExternalSampler();
++    if ((native_format != viz::MultiPlaneFormat::kNV12 &&
++         native_format != viz::MultiPlaneFormat::kP010) ||
++        !usage.HasAll(SHARED_IMAGE_USAGE_RASTER_READ |
++                      SHARED_IMAGE_USAGE_DISPLAY_READ) ||
++        !(SHARED_IMAGE_USAGE_RASTER_READ | SHARED_IMAGE_USAGE_DISPLAY_READ |
++          SHARED_IMAGE_USAGE_WEBGPU_READ).HasAll(usage)) {
++      return false;
++    }
++  }
++#endif
+   if (!IsFormatSupported(format, gmb_type, usage)) {
+     return false;
+   }
 diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc b/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc
 --- a/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc
 +++ b/gpu/command_buffer/service/shared_image/external_vk_image_skia_representation.cc
