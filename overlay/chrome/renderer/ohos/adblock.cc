@@ -149,7 +149,7 @@ class CosmeticObserver : public content::RenderFrameObserver {
       key_ = blink::WebString();
       css_ = css;
       if (!css.empty())
-        key_ = document.InsertStyleSheet(blink::WebString::FromUTF8(css),
+        key_ = document.InsertStyleSheet(blink::WebString::FromUtf8(css),
                                          nullptr, blink::WebCssOrigin::kUser);
     }
     // A new document can reach the renderer before its browser-side commit.

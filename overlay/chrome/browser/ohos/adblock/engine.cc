@@ -4,7 +4,6 @@
 #include "base/functional/bind.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
-#include "base/no_destructor.h"
 #include "base/task/sequenced_task_runner.h"
 namespace chrome::ohos::adblock {
 namespace {
@@ -33,8 +32,8 @@ struct Api {
   bool valid() const { return compile && query && free && free_string; }
 };
 Api& GetApi() {
-  static base::NoDestructor<Api> api;
-  return *api;
+  static Api api;
+  return api;
 }
 base::DictValue Decode(char* result) {
   if (!result)

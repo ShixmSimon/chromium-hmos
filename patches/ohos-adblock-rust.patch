@@ -1,17 +1,18 @@
 diff --git a/chrome/browser/universal_web_contents_observers.cc b/chrome/browser/universal_web_contents_observers.cc
 --- a/chrome/browser/universal_web_contents_observers.cc
 +++ b/chrome/browser/universal_web_contents_observers.cc
-@@ -3,6 +3,9 @@
+@@ -3,6 +3,10 @@
  // found in the LICENSE file.
  
  #include "chrome/browser/universal_web_contents_observers.h"
++#include "build/build_config.h"
 +#if BUILDFLAG(IS_OHOS)
 +#include "chrome/browser/ohos/adblock/adblock.h"
 +#endif
  
  #include "components/performance_manager/embedder/performance_manager_registry.h"
  #include "content/public/browser/web_contents.h"
-@@ -14,6 +17,9 @@
+@@ -14,6 +18,9 @@
  #endif
  
  void AttachUniversalWebContentsObservers(content::WebContents* web_contents) {
@@ -41,17 +42,18 @@ diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
 diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
 --- a/chrome/browser/chrome_content_browser_client.cc
 +++ b/chrome/browser/chrome_content_browser_client.cc
-@@ -3,6 +3,9 @@
+@@ -3,6 +3,10 @@
  // found in the LICENSE file.
  
  #include "chrome/browser/chrome_content_browser_client.h"
++#include "build/build_config.h"
 +#if BUILDFLAG(IS_OHOS)
 +#include "chrome/browser/ohos/adblock/adblock.h"
 +#endif
  
  #include <algorithm>
  #include <iterator>
-@@ -6081,6 +6084,11 @@
+@@ -6081,6 +6085,11 @@
    Profile* profile = Profile::FromBrowserContext(browser_context);
    DCHECK(profile);
  
@@ -66,17 +68,18 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
 diff --git a/chrome/browser/chrome_content_browser_client_receiver_bindings.cc b/chrome/browser/chrome_content_browser_client_receiver_bindings.cc
 --- a/chrome/browser/chrome_content_browser_client_receiver_bindings.cc
 +++ b/chrome/browser/chrome_content_browser_client_receiver_bindings.cc
-@@ -12,6 +12,9 @@
+@@ -12,6 +12,10 @@
  #include "chrome/browser/chrome_browser_interface_binders.h"
  #include "chrome/browser/chrome_browser_interface_binders_webui.h"
  #include "chrome/browser/chrome_content_browser_client.h"
++#include "build/build_config.h"
 +#if BUILDFLAG(IS_OHOS)
 +#include "chrome/browser/ohos/adblock/adblock.h"
 +#endif
  #include "chrome/browser/chrome_content_browser_client_parts.h"
  #include "chrome/browser/content_settings/content_settings_manager_delegate.h"
  #include "chrome/browser/headless/headless_mode_util.h"
-@@ -224,6 +227,11 @@
+@@ -224,6 +228,11 @@
      content::RenderProcessHost* render_process_host) {
    scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner =
        content::GetUIThreadTaskRunner({});
@@ -105,17 +108,18 @@ diff --git a/chrome/renderer/BUILD.gn b/chrome/renderer/BUILD.gn
 diff --git a/chrome/renderer/chrome_content_renderer_client.cc b/chrome/renderer/chrome_content_renderer_client.cc
 --- a/chrome/renderer/chrome_content_renderer_client.cc
 +++ b/chrome/renderer/chrome_content_renderer_client.cc
-@@ -3,6 +3,9 @@
+@@ -3,6 +3,10 @@
  // found in the LICENSE file.
  
  #include "chrome/renderer/chrome_content_renderer_client.h"
++#include "build/build_config.h"
 +#if BUILDFLAG(IS_OHOS)
 +#include "chrome/renderer/ohos/adblock.h"
 +#endif
  
  #include <functional>
  #include <memory>
-@@ -638,6 +641,9 @@
+@@ -638,6 +642,9 @@
  
  void ChromeContentRendererClient::RenderFrameCreated(
      content::RenderFrame* render_frame) {
@@ -128,10 +132,11 @@ diff --git a/chrome/renderer/chrome_content_renderer_client.cc b/chrome/renderer
 diff --git a/chrome/renderer/url_loader_throttle_provider_impl.h b/chrome/renderer/url_loader_throttle_provider_impl.h
 --- a/chrome/renderer/url_loader_throttle_provider_impl.h
 +++ b/chrome/renderer/url_loader_throttle_provider_impl.h
-@@ -9,6 +9,10 @@
+@@ -9,6 +9,11 @@
  #include <vector>
  
  #include "base/memory/raw_ptr.h"
++#include "build/build_config.h"
 +#include "build/build_config.h"
 +#if BUILDFLAG(IS_OHOS)
 +#include "chrome/renderer/ohos/adblock.h"
@@ -139,7 +144,7 @@ diff --git a/chrome/renderer/url_loader_throttle_provider_impl.h b/chrome/render
  #include "base/sequence_checker.h"
  #include "base/types/pass_key.h"
  #include "components/safe_browsing/content/common/safe_browsing.mojom.h"
-@@ -48,7 +52,11 @@
+@@ -48,7 +53,11 @@
            pending_extension_web_request_reporter,
  #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
        scoped_refptr<base::SequencedTaskRunner> main_thread_task_runner,
@@ -152,7 +157,7 @@ diff --git a/chrome/renderer/url_loader_throttle_provider_impl.h b/chrome/render
  
    URLLoaderThrottleProviderImpl& operator=(
        const URLLoaderThrottleProviderImpl&) = delete;
-@@ -95,6 +103,9 @@
+@@ -95,6 +104,9 @@
    // provider which was created on the main thread.
    scoped_refptr<base::SequencedTaskRunner> main_thread_task_runner_;
  

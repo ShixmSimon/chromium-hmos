@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <algorithm>
+#include <cstdlib>
 #include <deque>
 #include <map>
 #include <set>
@@ -22,7 +23,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
-#include "base/threading/thread_restrictions.h"
 #include "base/timer/timer.h"
 #include "base/unguessable_token.h"
 #include "chrome/browser/ohos/adblock/engine.h"
@@ -70,7 +70,7 @@ bool SubscriptionUrl(const GURL& url) {
 std::string Host(const GURL& url) {
   if (!url.SchemeIsHTTPOrHTTPS())
     return {};
-  std::string host = url.host();
+  std::string host(url.host());
   while (!host.empty() && host.back() == '.')
     host.pop_back();
   return host;
@@ -99,8 +99,11 @@ struct Source {
                  .Set("ruleCount", rules)
                  .Set("unsupportedCount", unsupported)
                  .Set("updatedAt", updated);
-    if (disk)
-      v.Set("text", text).Set("etag", etag).Set("modified", modified);
+    if (disk) {
+      v.Set("text", text);
+      v.Set("etag", etag);
+      v.Set("modified", modified);
+    }
     return v;
   }
 };
@@ -109,6 +112,7 @@ struct Config {
   std::vector<Source> sources;
   std::set<std::string> exceptions;
   std::string user;
+  int user_rule_count = 0;
   Config() {
     sources.push_back({.id = "easylist",
                        .name = "基础广告过滤 · EasyList",
@@ -235,6 +239,8 @@ Compiled Compile(Config config) {
       if (!count.is_dict())
         continue;
       const auto& v = count.GetDict();
+      if (Str(v, "id") == "user")
+        config.user_rule_count = v.FindInt("ruleCount").value_or(0);
       if (auto* s = config.Find(Str(v, "id"))) {
         s->rules = v.FindInt("ruleCount").value_or(0);
         s->unsupported = v.FindInt("unsupportedCount").value_or(0);
@@ -249,7 +255,6 @@ Compiled Compile(Config config) {
 // read-only descriptor before replying; never reopen the filename on the
 // worker.
 base::File OpenImport(const std::string& path) {
-  base::ScopedAllowBlocking allow;
   base::FilePath file(path);
   if (!file.IsAbsolute() || file.ReferencesParent())
     return {};
@@ -266,7 +271,15 @@ base::File OpenImport(const std::string& path) {
     approved = !module.empty() && module.find('/') == module.npos &&
                module != "." && module != "..";
   }
-  if (!approved || base::MakeAbsoluteFilePath(dir) != dir)
+  if (!approved)
+    return {};
+  // The protocol requires acquiring the FD before acknowledgement. Only these
+  // bounded local metadata operations are synchronous; all reads/parse are on
+  // the worker. Reject symlink parents as well as the final directory entry.
+  char* resolved = realpath(d.c_str(), nullptr);
+  const bool canonical = resolved && d == resolved;
+  free(resolved);
+  if (!canonical)
     return {};
   int directory =
       open(d.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
@@ -331,26 +344,32 @@ class Service {
   bool Eligible(const GURL& url) const {
     return config().enabled && !Host(url).empty() && SiteEnabled(url);
   }
-  bool Active(const GURL& url) const { return Eligible(url) && engine(); }
+  bool Active(const GURL& url) const {
+    return Eligible(url) && engine() &&
+           (config().user_rule_count > 0 ||
+            std::ranges::any_of(config().sources, [](const Source& source) {
+              return source.enabled && source.rules > 0;
+            }));
+  }
   uint64_t revision() const { return revision_; }
   const std::string& context() const { return context_; }
   Profile* profile() const { return profile_; }
   base::DictValue State() const {
     auto v = config().Value(false);
-    v.Set("protocolVersion", 1)
-        .Set("supported", true)
-        .Set("engine", "adblock-rust")
-        .Set("capabilities",
-             base::ListValue().Append("network").Append("cosmetic"))
-        .Set("ok", true)
-        .Set("reason", error_)
-        .Set("errorLine", 0)
-        .Set("incognito", profile_->IsOffTheRecord())
-        .Set("contextId", context_)
-        .Set("revision", static_cast<double>(revision_))
-        .Set("ready", !!engine())
-        .Set("updating", busy() || (parent_ ? parent_->loader_ != nullptr
-                                            : loader_ != nullptr));
+    v.Set("protocolVersion", 1);
+    v.Set("supported", true);
+    v.Set("engine", "adblock-rust");
+    v.Set("capabilities",
+          base::ListValue().Append("network").Append("cosmetic"));
+    v.Set("ok", true);
+    v.Set("reason", error_);
+    v.Set("errorLine", 0);
+    v.Set("incognito", profile_->IsOffTheRecord());
+    v.Set("contextId", context_);
+    v.Set("revision", static_cast<double>(revision_));
+    v.Set("ready", !!engine());
+    v.Set("updating", busy() || (parent_ ? parent_->loader_ != nullptr
+                                         : loader_ != nullptr));
     if (profile_->IsOffTheRecord()) {
       auto hosts = config().exceptions;
       for (const auto& [host, enabled] : site_overrides_) {
@@ -420,7 +439,7 @@ class Service {
       return;
     }
     auto snapshot = engine();
-    worker_->PostTaskAndReplyWithResult(
+    matcher_->PostTaskAndReplyWithResult(
         FROM_HERE,
         base::BindOnce([](std::shared_ptr<Engine> e,
                           base::DictValue q) { return e->Query(q); },
@@ -488,8 +507,13 @@ class Service {
       error_ = Str(compiled.info, "reason");
       if (error_.empty())
         error_ = "compileFailed";
-      if (auto* s = config_.Find(active_))
+      if (auto* s = config_.Find(active_)) {
         s->status = "failed";
+        int& failures = failures_[active_];
+        failures = std::min(failures + 1, 7);
+        retry_[active_] =
+            base::Time::Now() + base::Minutes(5 * (1 << failures));
+      }
     }
     initialized_ = true;
     active_.clear();
@@ -541,6 +565,10 @@ class Service {
   std::vector<base::OnceClosure> waiting_;
   raw_ptr<Profile> profile_;
   scoped_refptr<base::SequencedTaskRunner> worker_;
+  // Updating a list must not queue existing-page requests behind compilation.
+  scoped_refptr<base::SequencedTaskRunner> matcher_ =
+      base::ThreadPool::CreateSequencedTaskRunner(
+          {base::TaskPriority::USER_VISIBLE});
   base::FilePath path_;
   Config config_;
   std::shared_ptr<Engine> engine_;
@@ -986,6 +1014,10 @@ void CheckRequest(Service* service,
              base::OnceCallback<void(bool)> callback, base::DictValue result) {
             if (!alive.Run())
               return;
+            if (page && page->navigation() != navigation) {
+              std::move(callback).Run(false);
+              return;
+            }
             if (owner && owner->revision() != revision) {
               CheckRequest(owner.get(), page.get(), url, site, type, method,
                            alive, std::move(callback));
@@ -1025,7 +1057,8 @@ class FilterHost : public mojom::Filter {
     // Document loads are checked before service-worker interception. Do not
     // invent a tab/site for independent worker traffic or apply its exceptions.
     auto* frame = token ? Frame(*token) : nullptr;
-    if (!frame || type.size() > 32 || method.size() > 32 ||
+    if (!frame || (initiator.is_valid() && !initiator.SchemeIsHTTPOrHTTPS()) ||
+        type.size() > 32 || method.size() > 32 ||
         !frame->GetLastCommittedURL().SchemeIsHTTPOrHTTPS()) {
       std::move(callback).Run(false);
       return;
@@ -1033,13 +1066,17 @@ class FilterHost : public mojom::Filter {
     auto* contents = content::WebContents::FromRenderFrameHost(frame);
     auto* service =
         Service::Get(Profile::FromBrowserContext(frame->GetBrowserContext()));
-    CheckRequest(service, Page::Get(contents), url,
-                 frame->GetOutermostMainFrame()->GetLastCommittedURL(), type,
-                 method,
-                 base::BindRepeating(
-                     [](base::WeakPtr<FilterHost> self) { return !!self; },
-                     weak_.GetWeakPtr()),
-                 std::move(callback));
+    CheckRequest(
+        service,
+        frame->GetOutermostMainFrame() == contents->GetPrimaryMainFrame()
+            ? Page::Get(contents)
+            : nullptr,
+        url, frame->GetOutermostMainFrame()->GetLastCommittedURL(), type,
+        method,
+        base::BindRepeating(
+            [](base::WeakPtr<FilterHost> self) { return !!self; },
+            weak_.GetWeakPtr()),
+        std::move(callback));
   }
   void Cosmetics(const blink::LocalFrameToken& token,
                  const GURL& url,
@@ -1218,12 +1255,11 @@ bool HandleCommand(const ShellCommandContext& context,
                    .Set("contextId", service->context())
                    .Set("revision", static_cast<double>(service->revision()))
                    .Set("tabId", Str(command, "tabId"));
-    state
-        .Set("event", name == "getAdBlockPageState" ? "adBlockPageState"
-                                                    : "adBlockSiteResult")
-        .Set("requestId", request)
-        .Set("ok", error.empty())
-        .Set("reason", error);
+    state.Set("event", name == "getAdBlockPageState" ? "adBlockPageState"
+                                                     : "adBlockSiteResult");
+    state.Set("requestId", request);
+    state.Set("ok", error.empty());
+    state.Set("reason", error);
     ReplyToShell(context, std::move(state));
     return true;
   }
@@ -1233,11 +1269,11 @@ bool HandleCommand(const ShellCommandContext& context,
         if (!service)
           return;
         auto state = service->State();
-        state.Set("event", event)
-            .Set("requestId", request)
-            .Set("ok", reason.empty())
-            .Set("reason", reason)
-            .Set("errorLine", error_line);
+        state.Set("event", event);
+        state.Set("requestId", request);
+        state.Set("ok", reason.empty());
+        state.Set("reason", reason);
+        state.Set("errorLine", error_line);
         ReplyToShell(context, std::move(state));
       },
       service->weak(), context, request,
