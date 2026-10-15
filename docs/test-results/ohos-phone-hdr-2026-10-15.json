@@ -2669,8 +2669,8 @@
                 "status": "fail",
                 "timems": 205.301,
                 "logs": [
-                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                            1,0,0                            0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                      00 00 00 00                      00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.400000,1.00000 0.00000,0.400000,0.00000,1.00000 0.400000,0.00000,0.00000,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                          0,0,0,0                          0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                      0,0,102,255                      0,102,0,255                      102,0,0,255 ...\n\n         tolerance \u00b1 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                             0,0,-102,-255                    0,-102,0,-255                    -102,0,0,-255 ...\n  at (elided: below max severity)",
-                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                               1,0,0                                0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                         00 00 00 00                          00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000     0.00000,0.00000,0.00000,0.00000      0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.384314,1.00000 0.164706,0.392157,0.0980392,1.00000 0.364706,0.0549020,0.0274510,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                             0,0,0,0                              0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                       0,0,98,255                       42,100,25,255                          93,14,7,255 ...\n\n         tolerance \u00b1 3 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                              0,0,-98,-255                   -42,-100,-25,-255                      -93,-14,-7,-255 ...\n  at (elided: below max severity)",
+                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                            1,0,0                            0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                      00 00 00 00                      00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.400000,1.00000 0.00000,0.400000,0.00000,1.00000 0.400000,0.00000,0.00000,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                          0,0,0,0                          0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                      0,0,102,255                      0,102,0,255                      102,0,0,255 ...\n\n         tolerance ± 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                             0,0,-102,-255                    0,-102,0,-255                    -102,0,0,-255 ...\n  at (elided: below max severity)",
+                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                               1,0,0                                0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                         00 00 00 00                          00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000     0.00000,0.00000,0.00000,0.00000      0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.384314,1.00000 0.164706,0.392157,0.0980392,1.00000 0.364706,0.0549020,0.0274510,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                             0,0,0,0                              0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                       0,0,98,255                       42,100,25,255                          93,14,7,255 ...\n\n         tolerance ± 3 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                              0,0,-98,-255                   -42,-100,-25,-255                      -93,-14,-7,-255 ...\n  at (elided: below max severity)",
                   "EXCEPTION: OperationError: A valid external Instance reference no longer exists.\nOperationError: A valid external Instance reference no longer exists."
                 ]
               }
@@ -3508,5 +3508,1062 @@
         "pass": false
       }
     }
+  },
+  "runtime_aea18c1b": {
+    "build": {
+      "run": "38792703679",
+      "source": "aea18c1b",
+      "har_sha256": "9a7412d3cd25054538deef297fee0cb11ce5016310ad0fa457f697d105f0ee25",
+      "engine_sha256": "ba6bf523fe180ee44425fc710862c0578d6f0415f0410e1c4d3436fc29e003d1",
+      "hap_sha256": "83cc3c16e332c976a2858e3c01392eddb7fe25d884a96c110ec26a33723bdb10",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-aea18c1b/phone-aea18c1b-signed.hap"
+    },
+    "coldstarts": [
+      {
+        "cycle": 1,
+        "firstAdapter": true,
+        "compute": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "api": true,
+          "tests": [
+            {
+              "name": "compute-storage-buffer-readback",
+              "pass": true,
+              "data": {
+                "count": 256,
+                "first": 7,
+                "last": 772
+              }
+            },
+            {
+              "name": "render-texture-readback",
+              "pass": true,
+              "data": [
+                64,
+                128,
+                191,
+                255
+              ]
+            }
+          ],
+          "adapter": true,
+          "features": [
+            "depth32float-stencil8",
+            "rg11b10ufloat-renderable",
+            "chromium-experimental-multi-draw-indirect",
+            "chromium-experimental-sampling-resource-table",
+            "core-features-and-limits",
+            "chromium-experimental-timestamp-query-inside-passes",
+            "float32-filterable",
+            "indirect-first-instance",
+            "texture-compression-astc-sliced-3d",
+            "float32-blendable",
+            "subgroup-size-control",
+            "texture-compression-unaligned",
+            "texture-compression-astc",
+            "texture-compression-etc2",
+            "depth-clip-control",
+            "clip-distances",
+            "timestamp-query",
+            "primitive-index",
+            "texture-component-swizzle",
+            "subgroups"
+          ],
+          "info": {
+            "vendor": "huawei",
+            "architecture": "maleoon",
+            "device": "",
+            "description": ""
+          },
+          "errors": [],
+          "pass": true
+        },
+        "bufferStress": {
+          "adapter": true,
+          "cycles": [
+            {
+              "round": 0,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 8388608,
+              "pass": true
+            }
+          ],
+          "errors": [],
+          "pass": true
+        }
+      },
+      {
+        "cycle": 2,
+        "firstAdapter": true,
+        "compute": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "api": true,
+          "tests": [
+            {
+              "name": "compute-storage-buffer-readback",
+              "pass": true,
+              "data": {
+                "count": 256,
+                "first": 7,
+                "last": 772
+              }
+            },
+            {
+              "name": "render-texture-readback",
+              "pass": true,
+              "data": [
+                64,
+                128,
+                191,
+                255
+              ]
+            }
+          ],
+          "adapter": true,
+          "features": [
+            "depth32float-stencil8",
+            "rg11b10ufloat-renderable",
+            "chromium-experimental-multi-draw-indirect",
+            "core-features-and-limits",
+            "chromium-experimental-sampling-resource-table",
+            "chromium-experimental-timestamp-query-inside-passes",
+            "float32-filterable",
+            "indirect-first-instance",
+            "texture-compression-astc-sliced-3d",
+            "float32-blendable",
+            "subgroup-size-control",
+            "texture-compression-unaligned",
+            "texture-compression-astc",
+            "texture-compression-etc2",
+            "depth-clip-control",
+            "clip-distances",
+            "timestamp-query",
+            "primitive-index",
+            "texture-component-swizzle",
+            "subgroups"
+          ],
+          "info": {
+            "vendor": "huawei",
+            "architecture": "maleoon",
+            "device": "",
+            "description": ""
+          },
+          "errors": [],
+          "pass": true
+        },
+        "bufferStress": {
+          "adapter": true,
+          "cycles": [
+            {
+              "round": 0,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 8388608,
+              "pass": true
+            }
+          ],
+          "errors": [],
+          "pass": true
+        }
+      },
+      {
+        "cycle": 3,
+        "firstAdapter": true,
+        "compute": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "api": true,
+          "tests": [
+            {
+              "name": "compute-storage-buffer-readback",
+              "pass": true,
+              "data": {
+                "count": 256,
+                "first": 7,
+                "last": 772
+              }
+            },
+            {
+              "name": "render-texture-readback",
+              "pass": true,
+              "data": [
+                64,
+                128,
+                191,
+                255
+              ]
+            }
+          ],
+          "adapter": true,
+          "features": [
+            "depth32float-stencil8",
+            "rg11b10ufloat-renderable",
+            "chromium-experimental-multi-draw-indirect",
+            "chromium-experimental-sampling-resource-table",
+            "core-features-and-limits",
+            "chromium-experimental-timestamp-query-inside-passes",
+            "float32-filterable",
+            "indirect-first-instance",
+            "texture-compression-astc-sliced-3d",
+            "float32-blendable",
+            "subgroup-size-control",
+            "texture-compression-unaligned",
+            "texture-compression-astc",
+            "texture-compression-etc2",
+            "depth-clip-control",
+            "timestamp-query",
+            "clip-distances",
+            "primitive-index",
+            "texture-component-swizzle",
+            "subgroups"
+          ],
+          "info": {
+            "vendor": "huawei",
+            "architecture": "maleoon",
+            "device": "",
+            "description": ""
+          },
+          "errors": [],
+          "pass": true
+        },
+        "bufferStress": {
+          "adapter": true,
+          "cycles": [
+            {
+              "round": 0,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 0,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 1,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 2,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 3,
+              "size": 8388608,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 256,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 65536,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 2097152,
+              "pass": true
+            },
+            {
+              "round": 4,
+              "size": 8388608,
+              "pass": true
+            }
+          ],
+          "errors": [],
+          "pass": true
+        }
+      }
+    ],
+    "sharing": {
+      "at": "2026-10-15T19:28:11.449Z",
+      "secure": true,
+      "api": true,
+      "adapter": true,
+      "tests": [
+        {
+          "name": "canvas-rgba8-copy-full-pattern",
+          "pass": true,
+          "data": {
+            "pixels": 64,
+            "maxError": 0
+          }
+        },
+        {
+          "name": "canvas-bgra8-copy-full-pattern",
+          "pass": true,
+          "data": {
+            "pixels": 64,
+            "maxError": 0
+          }
+        },
+        {
+          "name": "videoframe-external-texture-full-pattern",
+          "pass": true,
+          "data": {
+            "pixels": 64,
+            "maxError": 0
+          }
+        },
+        {
+          "name": "webgpu-canvas-to-skia-roundtrip-resize",
+          "pass": true,
+          "data": {
+            "cycles": 20
+          }
+        }
+      ],
+      "zeroCopyVerified": false,
+      "errors": [],
+      "pass": true
+    },
+    "storage": {
+      "tests": [
+        {
+          "format": "rgba8unorm",
+          "pass": true,
+          "firstPixel": [
+            255,
+            64,
+            0,
+            255
+          ],
+          "maxError": 0
+        },
+        {
+          "format": "rgba16float",
+          "pass": true,
+          "firstPixel": [
+            15360,
+            13312,
+            0,
+            15360
+          ],
+          "maxError": 0
+        }
+      ],
+      "adapter": true,
+      "errors": [],
+      "pass": true
+    },
+    "mapping_cts": {
+      "query": "webgpu:api,validation,buffer,mapping:*",
+      "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+      "start": 1792092630094,
+      "done": true,
+      "counts": {
+        "pass": 35,
+        "fail": 0,
+        "skip": 0,
+        "warn": 0
+      },
+      "completed": 35,
+      "current": "webgpu:api,validation,buffer,mapping:gc_behavior,mapAsync:",
+      "stop": false,
+      "caseStart": 1792092630670,
+      "end": 1792092630744,
+      "pass": true
+    },
+    "occlusion_cts": {
+      "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:*",
+      "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+      "start": 1792092581856,
+      "done": true,
+      "counts": {
+        "pass": 212,
+        "fail": 32,
+        "skip": 0,
+        "warn": 0
+      },
+      "completed": 244,
+      "current": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,multi_resolve:",
+      "stop": false,
+      "caseStart": 1792092587784,
+      "end": 1792092587813,
+      "pass": false
+    },
+    "precise_query_control": {
+      "results": [
+        {
+          "mode": "no-depth",
+          "alpha": 0,
+          "expected": [
+            0,
+            255,
+            0,
+            255
+          ],
+          "pixel": [
+            0,
+            255,
+            0,
+            255
+          ],
+          "unique": 1,
+          "maxError": 0,
+          "query": 256,
+          "pass": false,
+          "errors": []
+        },
+        {
+          "mode": "no-depth",
+          "alpha": 1,
+          "expected": [
+            255,
+            0,
+            0,
+            255
+          ],
+          "pixel": [
+            0,
+            255,
+            0,
+            255
+          ],
+          "unique": 1,
+          "maxError": 255,
+          "query": 256,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "mode": "depth-write",
+          "alpha": 0,
+          "expected": [
+            0,
+            255,
+            0,
+            255
+          ],
+          "pixel": [
+            0,
+            255,
+            0,
+            255
+          ],
+          "unique": 1,
+          "maxError": 0,
+          "query": 0,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "mode": "depth-write",
+          "alpha": 1,
+          "expected": [
+            255,
+            0,
+            0,
+            255
+          ],
+          "pixel": [
+            255,
+            0,
+            0,
+            255
+          ],
+          "unique": 1,
+          "maxError": 0,
+          "query": 256,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "mode": "depth-readonly",
+          "alpha": 0,
+          "expected": [
+            0,
+            255,
+            0,
+            255
+          ],
+          "pixel": [
+            0,
+            255,
+            0,
+            255
+          ],
+          "unique": 1,
+          "maxError": 0,
+          "query": 256,
+          "pass": false,
+          "errors": []
+        },
+        {
+          "mode": "depth-readonly",
+          "alpha": 1,
+          "expected": [
+            255,
+            0,
+            0,
+            255
+          ],
+          "pixel": [
+            0,
+            255,
+            0,
+            255
+          ],
+          "unique": 1,
+          "maxError": 255,
+          "query": 256,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "mode": "conditional-discard",
+          "alpha": 0,
+          "expected": [
+            0,
+            255,
+            0,
+            255
+          ],
+          "pixel": [
+            0,
+            255,
+            0,
+            255
+          ],
+          "unique": 1,
+          "maxError": 0,
+          "query": 256,
+          "pass": false,
+          "errors": []
+        },
+        {
+          "mode": "conditional-discard",
+          "alpha": 1,
+          "expected": [
+            255,
+            0,
+            0,
+            255
+          ],
+          "pixel": [
+            0,
+            255,
+            0,
+            255
+          ],
+          "unique": 1,
+          "maxError": 255,
+          "query": 256,
+          "pass": true,
+          "errors": []
+        }
+      ],
+      "pass": false,
+      "scope": "Query zero/nonzero at alpha endpoints, varying only depth attachment/write and dynamic discard. Pixels recorded but not graded for cases without depth writes. Diagnostic only."
+    },
+    "native_video_preflight": {
+      "pass": false,
+      "results": [
+        {
+          "clip": "h264-sdr.mp4",
+          "zeroCopyVerified": false,
+          "nativeImports": [],
+          "externalTextures": [
+            {
+              "video_frame": "format:PIXEL_FORMAT_NV12 storage_type:OPAQUE coded_size:1280x720 visible_rect:0,0 1280x720 natural_size:1280x720 timestamp:0 color_space: {primaries:BT709, transfer:BT709, matrix:BT709, range:LIMITED} hdr_metadata: {} shared_image: { format: (Y_UV, 420, 8unorm, ExtSamplerOn) usage: RasterRead|DisplayRead|WebgpuRead label: OhosPhoneVideo }",
+              "zero_copy": false
+            }
+          ],
+          "result": {
+            "zeroCopyVerified": false,
+            "adapter": true,
+            "errors": [],
+            "apiPass": false,
+            "tests": [
+              {
+                "clip": "h264-sdr.mp4",
+                "frame": {
+                  "format": "BGRX",
+                  "colorSpace": {
+                    "fullRange": false,
+                    "matrix": "bt709",
+                    "primaries": "bt709",
+                    "transfer": "bt709"
+                  },
+                  "width": 1280,
+                  "height": 720
+                },
+                "uniqueColors": 1,
+                "maxError": 0,
+                "meanError": 0,
+                "apiPass": false
+              }
+            ]
+          }
+        },
+        {
+          "clip": "sdr-1080p60.mp4",
+          "zeroCopyVerified": false,
+          "nativeImports": [],
+          "externalTextures": [
+            {
+              "video_frame": "format:PIXEL_FORMAT_P010LE storage_type:OPAQUE coded_size:1920x1080 visible_rect:0,0 1920x1080 natural_size:1920x1080 timestamp:0 color_space: {primaries:BT709, transfer:BT709, matrix:BT709, range:LIMITED} hdr_metadata: {} shared_image: { format: (Y_UV, 420, 10unorm, ExtSamplerOn) usage: RasterRead|DisplayRead|WebgpuRead label: OhosPhoneVideo }",
+              "zero_copy": false
+            }
+          ],
+          "result": {
+            "zeroCopyVerified": false,
+            "adapter": true,
+            "errors": [],
+            "apiPass": false,
+            "tests": [
+              {
+                "clip": "sdr-1080p60.mp4",
+                "frame": {
+                  "format": null,
+                  "colorSpace": {
+                    "fullRange": false,
+                    "matrix": "bt709",
+                    "primaries": "bt709",
+                    "transfer": "bt709"
+                  },
+                  "width": 1920,
+                  "height": 1080
+                },
+                "uniqueColors": 1,
+                "maxError": 0,
+                "meanError": 0,
+                "apiPass": false
+              }
+            ]
+          }
+        },
+        {
+          "clip": "bear-hdr10.mp4",
+          "zeroCopyVerified": false,
+          "nativeImports": [],
+          "externalTextures": [
+            {
+              "video_frame": "format:PIXEL_FORMAT_P010LE storage_type:OPAQUE coded_size:1280x720 visible_rect:0,0 1280x720 natural_size:1280x720 timestamp:0 color_space: {primaries:BT2020, transfer:PQ (white:203.0000 nits), matrix:BT2020_NCL, range:LIMITED} hdr_metadata: {mdcv:{red:[0.68000001,0.31999999], green:[0.26499999,0.69000000], blue:[0.15000001,0.06000000], white:[0.31270000,0.32900000], maxLum:1000.000000, minLum:0.050000}, clli:{maxCLL:1000.000000, maxFALL:400.000000}, } shared_image: { format: (Y_UV, 420, 10unorm, ExtSamplerOn) usage: RasterRead|DisplayRead|WebgpuRead label: OhosPhoneVideo }",
+              "zero_copy": false
+            }
+          ],
+          "result": {
+            "zeroCopyVerified": false,
+            "adapter": true,
+            "errors": [],
+            "apiPass": false,
+            "tests": [
+              {
+                "clip": "bear-hdr10.mp4",
+                "frame": {
+                  "format": null,
+                  "colorSpace": {
+                    "fullRange": false,
+                    "matrix": "bt2020-ncl",
+                    "primaries": "bt2020",
+                    "transfer": "pq"
+                  },
+                  "width": 1280,
+                  "height": 720
+                },
+                "uniqueColors": 1,
+                "maxError": 0,
+                "meanError": 0,
+                "apiPass": false
+              }
+            ]
+          }
+        }
+      ],
+      "cause": "ExternalVkImageBackingFactory::SupportedUsage omitted WEBGPU_READ on OHOS. Factory rejects RasterRead|DisplayRead|WebgpuRead for native NV12/P010 before backing creation, resulting in non-existent mailboxes and black video. Fixed in 8a24fb6c, native CI pending."
+    },
+    "canvas_cts_combined": {
+      "official_case_count": 149,
+      "unique_executed": 149,
+      "pass": 139,
+      "fail": 10,
+      "failures": [
+        {
+          "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,uploadToWebGL:format=\"rgba16float\";alphaMode=\"opaque\";webgl=\"webgl\";upload=\"texImage2D\"",
+          "errors": [
+            "EXPECTATION FAILED: Array had unexpected contents at indices 2 through 15.\n Starting at index 1:\n   actual == 0x: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n   failed ->        xx xx    xx    xx xx       xx xx xx    xx\n expected ==     00 66 ff 00 66 00 ff 66 00 00 ff 66 66 00 ff\n    at failCheckElements (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:265:10)\n    at checkElementsEqual (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:66:10)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:435:14)"
+          ]
+        },
+        {
+          "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,uploadToWebGL:format=\"rgba16float\";alphaMode=\"opaque\";webgl=\"webgl\";upload=\"texSubImage2D\"",
+          "errors": [
+            "EXPECTATION FAILED: Array had unexpected contents at indices 2 through 15.\n Starting at index 1:\n   actual == 0x: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n   failed ->        xx xx    xx    xx xx       xx xx xx    xx\n expected ==     00 66 ff 00 66 00 ff 66 00 00 ff 66 66 00 ff\n    at failCheckElements (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:265:10)\n    at checkElementsEqual (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:66:10)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:435:14)"
+          ]
+        },
+        {
+          "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,uploadToWebGL:format=\"rgba16float\";alphaMode=\"opaque\";webgl=\"webgl2\";upload=\"texImage2D\"",
+          "errors": [
+            "EXPECTATION FAILED: Array had unexpected contents at indices 2 through 15.\n Starting at index 1:\n   actual == 0x: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n   failed ->        xx xx    xx    xx xx       xx xx xx    xx\n expected ==     00 66 ff 00 66 00 ff 66 00 00 ff 66 66 00 ff\n    at failCheckElements (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:265:10)\n    at checkElementsEqual (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:66:10)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:435:14)"
+          ]
+        },
+        {
+          "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,uploadToWebGL:format=\"rgba16float\";alphaMode=\"opaque\";webgl=\"webgl2\";upload=\"texSubImage2D\"",
+          "errors": [
+            "EXPECTATION FAILED: Array had unexpected contents at indices 2 through 15.\n Starting at index 1:\n   actual == 0x: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n   failed ->        xx xx    xx    xx xx       xx xx xx    xx\n expected ==     00 66 ff 00 66 00 ff 66 00 00 ff 66 66 00 ff\n    at failCheckElements (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:265:10)\n    at checkElementsEqual (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:66:10)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:435:14)"
+          ]
+        },
+        {
+          "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,uploadToWebGL:format=\"rgba16float\";alphaMode=\"premultiplied\";webgl=\"webgl\";upload=\"texImage2D\"",
+          "errors": [
+            "EXPECTATION FAILED: Array had unexpected contents at indices 2 through 15.\n Starting at index 1:\n   actual == 0x: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n   failed ->        xx xx    xx    xx xx       xx xx xx    xx\n expected ==     00 ff 66 00 ff 00 66 ff 00 00 66 ff ff 00 66\n    at failCheckElements (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:265:10)\n    at checkElementsEqual (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:66:10)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:435:14)"
+          ]
+        },
+        {
+          "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,uploadToWebGL:format=\"rgba16float\";alphaMode=\"premultiplied\";webgl=\"webgl\";upload=\"texSubImage2D\"",
+          "errors": [
+            "EXPECTATION FAILED: Array had unexpected contents at indices 2 through 15.\n Starting at index 1:\n   actual == 0x: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n   failed ->        xx xx    xx    xx xx       xx xx xx    xx\n expected ==     00 ff 66 00 ff 00 66 ff 00 00 66 ff ff 00 66\n    at failCheckElements (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:265:10)\n    at checkElementsEqual (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:66:10)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:435:14)"
+          ]
+        },
+        {
+          "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,uploadToWebGL:format=\"rgba16float\";alphaMode=\"premultiplied\";webgl=\"webgl2\";upload=\"texImage2D\"",
+          "errors": [
+            "EXPECTATION FAILED: Array had unexpected contents at indices 2 through 15.\n Starting at index 1:\n   actual == 0x: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n   failed ->        xx xx    xx    xx xx       xx xx xx    xx\n expected ==     00 ff 66 00 ff 00 66 ff 00 00 66 ff ff 00 66\n    at failCheckElements (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:265:10)\n    at checkElementsEqual (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:66:10)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:435:14)"
+          ]
+        },
+        {
+          "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:onscreenCanvas,uploadToWebGL:format=\"rgba16float\";alphaMode=\"premultiplied\";webgl=\"webgl2\";upload=\"texSubImage2D\"",
+          "errors": [
+            "EXPECTATION FAILED: Array had unexpected contents at indices 2 through 15.\n Starting at index 1:\n   actual == 0x: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n   failed ->        xx xx    xx    xx xx       xx xx xx    xx\n expected ==     00 ff 66 00 ff 00 66 ff 00 00 66 ff ff 00 66\n    at failCheckElements (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:265:10)\n    at checkElementsEqual (http://127.0.0.1:18080/cts-source/out/webgpu/util/check_contents.js:66:10)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:435:14)"
+          ]
+        },
+        {
+          "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:transferToImageBitmap_unconfigured_nonzero_size:readbackCanvasType=\"onscreen\"",
+          "errors": [
+            "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,2,0 inclusive:\n                            coords ==   X,Y,Z:                           0,0,0                           1,0,0                           0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                     00 00 00 ff                     00 00 00 ff                     00 00 00 ff ...\n                       act. colors == R,G,B,A: 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                       0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                         0,0,0,0                         0,0,0,0                         0,0,0,0 ...\n\n         tolerance ± 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                                0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n    at readPixelsFrom2DCanvasAndCompare (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:244:7)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:526:3)"
+          ]
+        },
+        {
+          "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:transferToImageBitmap_unconfigured_nonzero_size:readbackCanvasType=\"offscreen\"",
+          "errors": [
+            "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,2,0 inclusive:\n                            coords ==   X,Y,Z:                           0,0,0                           1,0,0                           0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                     00 00 00 ff                     00 00 00 ff                     00 00 00 ff ...\n                       act. colors == R,G,B,A: 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                       0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                         0,0,0,0                         0,0,0,0                         0,0,0,0 ...\n\n         tolerance ± 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                                0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n    at readPixelsFrom2DCanvasAndCompare (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:244:7)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:526:3)"
+          ]
+        }
+      ],
+      "inputs": [
+        "aea-cts-canvas-readback.json",
+        "aea-cts-bitmap-zero-localhost.json",
+        "aea-cts-bitmap-huge-localhost.json"
+      ],
+      "note": "First group stopped at failure limit after146 cases; last3 run separately on valid localhost context. Earlier insecure-origin trials explicitly invalidated."
+    },
+    "canvas_findings": [
+      "8 rgba16float WebGPU canvas uploads to WebGL fail. EGL logs Unsupported OH_NativeBuffer format / EGL_BAD_PARAMETER; Ozone wrongly advertises GL access to native FP16. Vulkan/Skia and storage readback work.",
+      "2 unconfigured nonzero-size transferToImageBitmap cases return opaque black instead of transparent black. Independently reproduced.",
+      "Zero-size2 and huge-size1 tests pass on secure localhost."
+    ],
+    "next_source": "8a24fb6c also removes ineffective precise-query candidate (alpha0 still256 with precise flag). Runtime not yet tested.",
+    "remaining": [
+      "Native video zero-copy gate, analytic PQ and lifecycle soak after factory fix",
+      "F16-to-WebGL and unconfigured canvas alpha correctness",
+      "32 occlusion alpha-to-coverage failures and4large_draw failures",
+      "1440p60 dropped frames, native Display-P3 SDR output"
+    ]
+  },
+  "runtime_8a24fb6c": {
+    "build": {
+      "run": "38794689694",
+      "source": "8a24fb6c",
+      "har_sha256": "f0cc1a3c81b1c2447f39d4bdbbc61eed47714d1bc58021ef3fa8ab2621d767f3",
+      "engine_sha256": "2acf70a0531228140fe8f66df1529b716e6a364b853038a2fa501c2660b2440b",
+      "hap_sha256": "ab8dd583aab0d09d08aea781bdbada6024b6ba9611f83af34a382bc764a67576",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-8a24fb6c/phone-8a24fb6c-signed.hap"
+    },
+    "compute_render_smoke": "2 PASS",
+    "native_video_preflight": {
+      "pass": false,
+      "clips": [
+        "h264-sdr.mp4",
+        "hevc-main10-sdr.mp4",
+        "hevc-main10-pq.mp4"
+      ],
+      "result": "All three produced black Canvas2D and WebGPU readbacks; no native Dawn import trace. Image factory now accepts native YUV WEBGPU_READ, but Skia BeginAccess fails.",
+      "evidence": "out/phone-validation-20261015/8a2-native-webgpu-results.json"
+    },
+    "native_sync_diagnosis": {
+      "source": "8a24fb6c",
+      "native_preflight": "FAIL: all three clips black in Canvas2D and WebGPU",
+      "evidence": [
+        "8a2-native-webgpu-results.json",
+        "8a2-chrome-gpu.json",
+        "device-aea.log"
+      ],
+      "capabilities": {
+        "shared-fence-sync-fd": true,
+        "shared-fence-vk-semaphore-opaque-fd": false,
+        "opaque-ycbcr-android-for-external-texture": false
+      },
+      "syncfd_candidate": "153df7c8cf58d30c8ade02dc1377daf35a411411",
+      "candidate_runtime_verified": false,
+      "goal_complete": false
+    },
+    "precise_occlusion_candidate": "Reverted ineffective precise query workaround in 8a24fb6c; 32 alpha-to-coverage occlusion failures remain.",
+    "latest_source_candidates": {
+      "3c7349fc": "CI passed; semaphore allocation rollback and Vulkan failure diagnostics. Runtime pending.",
+      "153df7c8cf58d30c8ade02dc1377daf35a411411": "CI in progress; native video SyncFD handoff, deferred cleanup, retain decoder lease on failure, enable native YCbCr using verified SyncFD capability. Runtime pending."
+    },
+    "unconfigured_bitmap_candidate": {
+      "status": "Source patch applies; no runtime pass claimed",
+      "behavior": "Return transparent black when unconfigured; retain opaque fallback for configured invalid canvas.",
+      "spec": "https://github.com/gpuweb/gpuweb/pull/4738/files",
+      "cts": "https://github.com/gpuweb/cts/pull/4607",
+      "baseline": "2 original CTS cases fail with alpha 255 instead of 0"
+    },
+    "full_goal_complete": false,
+    "constraints": [
+      "No CI code/workflow/build orchestration modifications",
+      "Native compilation only from pushes into existing GitHub Actions",
+      "System SILENT, MUSIC and RING volume zero and muted; all test media muted and volume zero",
+      "Phone kept awake"
+    ]
   }
 }

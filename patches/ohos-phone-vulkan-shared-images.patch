@@ -617,3 +617,23 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_buffer.cc b/third_par
  
    // And send the command, leaving remaining validation to Dawn.
    auto* callback = MakeWGPUOnceCallback(resolver->WrapCallbackInScriptScope(
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
+--- a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
+@@ -353,11 +353,12 @@
+ ImageBitmap* GPUCanvasContext::TransferToImageBitmap(
+     ScriptState* script_state,
+     ExceptionState& exception_state) {
+-  // If the canvas configuration is invalid, WebGPU requires that we give a
+-  // fallback black ImageBitmap if possible.
++  // An unconfigured context has transparent black image contents. A
++  // configured context with an invalid configuration uses opaque black.
+   if (!swap_buffers_) {
+-    auto staticBitmapImage =
+-        MakeFallbackStaticBitmapImage(V8GPUCanvasAlphaMode::Enum::kOpaque);
++    auto staticBitmapImage = MakeFallbackStaticBitmapImage(
++        configured_ ? V8GPUCanvasAlphaMode::Enum::kOpaque
++                    : V8GPUCanvasAlphaMode::Enum::kPremultiplied);
+     return staticBitmapImage
+                ? MakeGarbageCollected<ImageBitmap>(staticBitmapImage)
+                : nullptr;
