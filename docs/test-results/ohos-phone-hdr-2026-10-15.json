@@ -2669,8 +2669,8 @@
                 "status": "fail",
                 "timems": 205.301,
                 "logs": [
-                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                            1,0,0                            0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                      00 00 00 00                      00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.400000,1.00000 0.00000,0.400000,0.00000,1.00000 0.400000,0.00000,0.00000,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                          0,0,0,0                          0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                      0,0,102,255                      0,102,0,255                      102,0,0,255 ...\n\n         tolerance ± 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                             0,0,-102,-255                    0,-102,0,-255                    -102,0,0,-255 ...\n  at (elided: below max severity)",
-                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                               1,0,0                                0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                         00 00 00 00                          00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000     0.00000,0.00000,0.00000,0.00000      0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.384314,1.00000 0.164706,0.392157,0.0980392,1.00000 0.364706,0.0549020,0.0274510,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                             0,0,0,0                              0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                       0,0,98,255                       42,100,25,255                          93,14,7,255 ...\n\n         tolerance ± 3 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                              0,0,-98,-255                   -42,-100,-25,-255                      -93,-14,-7,-255 ...\n  at (elided: below max severity)",
+                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                            1,0,0                            0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                      00 00 00 00                      00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.400000,1.00000 0.00000,0.400000,0.00000,1.00000 0.400000,0.00000,0.00000,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                          0,0,0,0                          0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                      0,0,102,255                      0,102,0,255                      102,0,0,255 ...\n\n         tolerance \u00b1 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                             0,0,-102,-255                    0,-102,0,-255                    -102,0,0,-255 ...\n  at (elided: below max severity)",
+                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                               1,0,0                                0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                         00 00 00 00                          00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000     0.00000,0.00000,0.00000,0.00000      0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.384314,1.00000 0.164706,0.392157,0.0980392,1.00000 0.364706,0.0549020,0.0274510,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                             0,0,0,0                              0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                       0,0,98,255                       42,100,25,255                          93,14,7,255 ...\n\n         tolerance \u00b1 3 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                              0,0,-98,-255                   -42,-100,-25,-255                      -93,-14,-7,-255 ...\n  at (elided: below max severity)",
                   "EXCEPTION: OperationError: A valid external Instance reference no longer exists.\nOperationError: A valid external Instance reference no longer exists."
                 ]
               }
@@ -3027,6 +3027,486 @@
         "caveat": "Renderer references only; GPU fence-held NativePixmap leases may outlive these releases. Edge intervals without both trace endpoints omitted."
       },
       "next_diagnostic": "Add media trace scopes for decoder output arrival, Surface submission/backpressure, acquisition and final native lease release. Preserve four-buffer limit until measured. These scopes are recorded only when the media tracing category is enabled."
+    }
+  },
+  "runtime_98bdb63a_additional": {
+    "large_draw": {
+      "build": "98bdb63a",
+      "cts_revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+      "raw_cts": {
+        "rendering_basic": {
+          "query": "webgpu:api,operation,rendering,basic:*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+          "start": 1792088810686,
+          "done": true,
+          "counts": {
+            "pass": 2,
+            "fail": 4,
+            "skip": 0,
+            "warn": 0
+          },
+          "completed": 6,
+          "current": "webgpu:api,operation,rendering,basic:large_draw:indexed=false;indirect=false",
+          "stop": false,
+          "caseStart": 1792088815232,
+          "end": 1792088816505,
+          "pass": false
+        },
+        "filter_mode": {
+          "query": "webgpu:api,operation,sampling,filter_mode:*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+          "start": 1792088817368,
+          "done": true,
+          "counts": {
+            "pass": 70,
+            "fail": 0,
+            "skip": 30,
+            "warn": 0
+          },
+          "completed": 100,
+          "current": "webgpu:api,operation,sampling,filter_mode:mipmapFilter:format=\"rg11b10ufloat\"",
+          "stop": false,
+          "caseStart": 1792088822290,
+          "end": 1792088822317,
+          "pass": true
+        }
+      },
+      "isolated_cts": {
+        "artifact": "98b-large-draw-result.json",
+        "failure": "vkQueueSubmit failed with VK_ERROR_DEVICE_LOST",
+        "mapping_failures": 0,
+        "system_diagnostic": "DMD_HIGPU_JOB_FAIL observed at matching timestamp"
+      },
+      "invalid_probe_artifacts": [
+        "98b-draw-boundary.json",
+        "98b-draw-split.json",
+        "98b-draw-sync-pipeline.json"
+      ],
+      "invalid_probe_reason": "These reuse one GPUAdapter for multiple requestDevice calls. Second case did not reach drawing; apparent 65536-instance boundary was invalid and retracted. Do not use their unfinished cases as driver evidence.",
+      "valid_probes": {
+        "fresh_adapter": "98b-draw-fresh-adapter.json",
+        "high_load": "98b-draw-load.json",
+        "separate_submissions": "98b-draw-submit-split.json",
+        "render_pass_boundaries": "98b-draw-pass-split.json"
+      },
+      "findings": [
+        "With a fresh adapter per case, 16 vertices x65535 and x65536 instances both render correctly. No 16-bit instance boundary evidence.",
+        "65536 vertices x1024 instances in one submission returns all-zero pixels. Splitting into4draw calls inside the same render pass/submission still returns zeros.",
+        "The same total workload split into4or8 separate render passes/submissions with preserved attachment load/store and firstInstance offsets produces all9expectedyellowpixels.",
+        "16 vertices x1048576 instances and1048576vertices x4instances each pass as a single draw.",
+        "Cause not yet proven: submission workload limits/timeouts/driver resource handling remain hypotheses. Generic backend workaround must preserve render attachment contents, state, query and synchronization semantics; no blind per-draw split applied.",
+        "Additional isolation:4renderpasses inONEcommandbuffer/ONEqueue.submit PASSall9pixels~822ms.4commandbuffers inONEsubmit PASS~743ms.4submitsWITHOUTintermediateCPUwait PASS~782ms.",
+        "The failure correlates with SINGLE RENDER PASS workload, not total queue submission workload or need for CPU waiting. Hardware watchdog/resource-budget cause remains unproven."
+      ],
+      "native_source_changed_for_this_issue": false,
+      "backend_design_notes": [
+        "PinnedDawnCommandBufferVk::RecordRenderPass begins at1724;RecordBeginRenderPass924/RecordEndRenderPass1064 switchdynamicRendering vslegacyrenderpass.",
+        "ProgrammablePassState retainsVkbindings acrossrenderpass boundaries; backingattachments needSTORE thenLOAD andgraphicsmemorybarrier. Originalstore-discard/transient/MSAAresolve/framebufferFetch/depthreadonly/query semantics needexplicitcare.",
+        "Indirectdrawcounts liveinGPUbuffers; CPUreadbackorassumingconstantcount wouldbeincorrect. GPUgeneratedchunkargs mustpreservefirstInstance andrespectnativeVulkan drawIndirectFirstInstanceenablement evenwhenJSfeatureunrequested. No backend workaround committed yet."
+      ],
+      "legacy_renderpass_control": {
+        "package": "out/install-98b-legacy-renderpass/package.json",
+        "native_engine_sha_unchanged": true,
+        "test_switch": "disable-dawn-features=vulkan_use_dynamic_rendering",
+        "switch_evidence": "98b-legacy-chrome-gpu.json contains switch in command line and [WebGPU Required Toggles - disabled]",
+        "cts": {
+          "query": "webgpu:api,operation,rendering,basic:*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+          "start": 1792090475843,
+          "done": true,
+          "counts": {
+            "pass": 2,
+            "fail": 4,
+            "skip": 0,
+            "warn": 0
+          },
+          "completed": 6,
+          "current": "webgpu:api,operation,rendering,basic:large_draw:indexed=false;indirect=false",
+          "stop": false,
+          "caseStart": 1792090481159,
+          "end": 1792090482400,
+          "pass": false
+        },
+        "conclusion": "Disabling dynamic rendering does not fix the 4 large_draw failures. Standard98b HAP restored and switch absence verified in98b-restored-chrome-gpu.json.",
+        "local_native_compile": false
+      }
+    },
+    "alpha_coverage": {
+      "build": "98bdb63a",
+      "full_query": {
+        "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792091389269,
+        "done": true,
+        "counts": {
+          "pass": 212,
+          "fail": 32,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 244,
+        "current": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,multi_resolve:",
+        "stop": false,
+        "caseStart": 1792091394252,
+        "end": 1792091394270,
+        "pass": false
+      },
+      "failures": [
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"zero\";querySetOffset=\"zero\";alpha=0",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 0"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"zero\";querySetOffset=\"zero\";alpha=0.25",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 1"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"zero\";querySetOffset=\"zero\";alpha=0.5",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 2"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"zero\";querySetOffset=\"zero\";alpha=0.75",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 3"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"zero\";querySetOffset=\"non-zero\";alpha=0",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 0"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"zero\";querySetOffset=\"non-zero\";alpha=0.25",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 1"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"zero\";querySetOffset=\"non-zero\";alpha=0.5",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 2"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"zero\";querySetOffset=\"non-zero\";alpha=0.75",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 3"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"non-zero\";querySetOffset=\"zero\";alpha=0",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 0"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"non-zero\";querySetOffset=\"zero\";alpha=0.25",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 1"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"non-zero\";querySetOffset=\"zero\";alpha=0.5",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 2"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"non-zero\";querySetOffset=\"zero\";alpha=0.75",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 3"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"non-zero\";querySetOffset=\"non-zero\";alpha=0",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 0"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"non-zero\";querySetOffset=\"non-zero\";alpha=0.25",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 1"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"non-zero\";querySetOffset=\"non-zero\";alpha=0.5",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 2"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"direct\";bufferOffset=\"non-zero\";querySetOffset=\"non-zero\";alpha=0.75",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 3"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"zero\";querySetOffset=\"zero\";alpha=0",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 0"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"zero\";querySetOffset=\"zero\";alpha=0.25",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 1"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"zero\";querySetOffset=\"zero\";alpha=0.5",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 2"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"zero\";querySetOffset=\"zero\";alpha=0.75",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 3"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"zero\";querySetOffset=\"non-zero\";alpha=0",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 0"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"zero\";querySetOffset=\"non-zero\";alpha=0.25",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 1"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"zero\";querySetOffset=\"non-zero\";alpha=0.5",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 2"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"zero\";querySetOffset=\"non-zero\";alpha=0.75",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 3"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"non-zero\";querySetOffset=\"zero\";alpha=0",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 0"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"non-zero\";querySetOffset=\"zero\";alpha=0.25",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 1"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"non-zero\";querySetOffset=\"zero\";alpha=0.5",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 2"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"non-zero\";querySetOffset=\"zero\";alpha=0.75",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 3"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"non-zero\";querySetOffset=\"non-zero\";alpha=0",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 0"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"non-zero\";querySetOffset=\"non-zero\";alpha=0.25",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 1"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"non-zero\";querySetOffset=\"non-zero\";alpha=0.5",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 2"
+        },
+        {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"non-zero\";querySetOffset=\"non-zero\";alpha=0.75",
+          "first_error": "EXPECTATION FAILED: queryGroup: 0, was: 4, expected: 3"
+        }
+      ],
+      "controls": {
+        "98b-cts-alpha-coverage-write": {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=15;*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+          "start": 1792091338285,
+          "done": true,
+          "counts": {
+            "pass": 40,
+            "fail": 0,
+            "skip": 0,
+            "warn": 0
+          },
+          "completed": 40,
+          "current": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,alpha_to_coverage:writeMask=15;renderMode=\"render-bundle\";bufferOffset=\"non-zero\";querySetOffset=\"non-zero\";alpha=1",
+          "stop": false,
+          "caseStart": 1792091339057,
+          "end": 1792091339076,
+          "pass": true
+        },
+        "98b-cts-sample-mask-no-write": {
+          "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,sample_mask:writeMask=0;*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+          "start": 1792091358864,
+          "done": true,
+          "counts": {
+            "pass": 32,
+            "fail": 0,
+            "skip": 0,
+            "warn": 0
+          },
+          "completed": 32,
+          "current": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,sample_mask:writeMask=0;renderMode=\"render-bundle\";bufferOffset=\"non-zero\";querySetOffset=\"non-zero\";sampleMask=6",
+          "stop": false,
+          "caseStart": 1792091359495,
+          "end": 1792091359516,
+          "pass": true
+        },
+        "98b-cts-indirect-draw": {
+          "query": "webgpu:api,operation,rendering,indirect_draw:*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+          "start": 1792091267564,
+          "done": true,
+          "counts": {
+            "pass": 2,
+            "fail": 0,
+            "skip": 0,
+            "warn": 0
+          },
+          "completed": 2,
+          "current": "webgpu:api,operation,rendering,indirect_draw:basics:isIndexed=false",
+          "stop": false,
+          "caseStart": 1792091268807,
+          "end": 1792091268842,
+          "pass": true
+        },
+        "98b-cts-render-state": {
+          "query": "webgpu:api,operation,command_buffer,render,state_tracking:*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+          "start": 1792091284575,
+          "done": true,
+          "counts": {
+            "pass": 5,
+            "fail": 0,
+            "skip": 0,
+            "warn": 0
+          },
+          "completed": 5,
+          "current": "webgpu:api,operation,command_buffer,render,state_tracking:set_index_buffer_before_non_indexed_draw:",
+          "stop": false,
+          "caseStart": 1792091284924,
+          "end": 1792091284938,
+          "pass": true
+        }
+      },
+      "finding": "All 32 failures are alpha-to-coverage with color writeMask=0. Actual four quadrants pass despite alpha 0/.25/.5/.75; expected 0/1/2/3. Color writes enabled: all 40 pass. Fixed pipeline sample mask with no color writes: all 32 pass. This isolates alpha-to-coverage plus no color writes; does not prove the exact driver implementation cause. Browser/GPU PIDs unchanged.",
+      "source_review": "Pinned Dawn RenderPipelineVk.cpp retains fragment stage, sets alphaToCoverageEnable from pipeline, and forwards zero colorWriteMask. No source fix committed. Existing upstream expectations for other vendors/platforms do not excuse this Maleoon failure.",
+      "remaining": "Retest latest build. A destination-preserving blend substitution is not automatically equivalent for NaN/float/integer targets; no unsafe generic workaround applied.",
+      "depth_controls": {
+        "pixel_probe": "98b-alpha-coverage-depth-valid.json",
+        "pixel_result": "12 valid cases pass, max error 0. Four sample_mask variants in initial probe invalid because WebGPU disallows sample_mask output with alphaToCoverageEnabled; excluded, raw file retained.",
+        "query_probe": "98b-alpha-coverage-query-fixed.json",
+        "query_result": "Alpha=0 returns false positive 1 with no depth, read-only depth, or conditional discard; enabling depth writes returns 0. Alpha=1 returns 1 for all four controls. Initial probe attempted overlapping getMappedRange calls; invalid and superseded.",
+        "normal_color_output_cts": {
+          "query": "webgpu:api,operation,render_pipeline,sample_mask:alpha_to_coverage_mask:*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+          "start": 1792091486459,
+          "done": true,
+          "counts": {
+            "pass": 32,
+            "fail": 0,
+            "skip": 0,
+            "warn": 0
+          },
+          "completed": 32,
+          "current": "webgpu:api,operation,render_pipeline,sample_mask:alpha_to_coverage_mask:interpolated=true;sampleCount=4;rasterizationMask=15",
+          "stop": false,
+          "caseStart": 1792091496855,
+          "end": 1792091497164,
+          "pass": true
+        }
+      },
+      "precise_query_candidate": {
+        "status": "SOURCE_READY_RUNTIME_PENDING",
+        "condition": "OHOS only, vendor 0x19e5, device 0x20001000, native occlusionQueryPrecise feature available",
+        "change": "Enable native occlusionQueryPrecise on VkDevice and use VK_QUERY_CONTROL_PRECISE_BIT consistently. No attachment, shader or color/depth write changes.",
+        "limitation": "This is a compatibility candidate, not a verified fix. Boolean queries are also required to return zero for zero passing samples; the original result is not excused by Vulkan semantics.",
+        "spec": "https://docs.vulkan.org/spec/latest/chapters/queries.html",
+        "acceptance": [
+          "Full 244-case occlusion CTS zero failures",
+          "Alpha=0 no-write query zero; alpha=1 nonzero in custom control",
+          "Existing pixel/depth rendering controls and basic rendering regressions",
+          "Native device creation succeeds without requesting unsupported features"
+        ]
+      }
+    },
+    "skia_fence_stress": {
+      "started": 1792088764264,
+      "cycles": 600,
+      "errors": [],
+      "formats": [
+        {
+          "format": "rgba8unorm",
+          "cycles": 300,
+          "maxError": 0
+        },
+        {
+          "format": "bgra8unorm",
+          "cycles": 300,
+          "maxError": 0
+        }
+      ],
+      "pass": true,
+      "done": true,
+      "ended": 1792088783749
+    },
+    "cts": {
+      "98b-cts-rendering-basic": {
+        "query": "webgpu:api,operation,rendering,basic:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792088810686,
+        "done": true,
+        "counts": {
+          "pass": 2,
+          "fail": 4,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 6,
+        "current": "webgpu:api,operation,rendering,basic:large_draw:indexed=false;indirect=false",
+        "stop": false,
+        "caseStart": 1792088815232,
+        "end": 1792088816505,
+        "pass": false
+      },
+      "98b-cts-filter-mode": {
+        "query": "webgpu:api,operation,sampling,filter_mode:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792088817368,
+        "done": true,
+        "counts": {
+          "pass": 70,
+          "fail": 0,
+          "skip": 30,
+          "warn": 0
+        },
+        "completed": 100,
+        "current": "webgpu:api,operation,sampling,filter_mode:mipmapFilter:format=\"rg11b10ufloat\"",
+        "stop": false,
+        "caseStart": 1792088822290,
+        "end": 1792088822317,
+        "pass": true
+      },
+      "98b-cts-indirect-draw": {
+        "query": "webgpu:api,operation,rendering,indirect_draw:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792091267564,
+        "done": true,
+        "counts": {
+          "pass": 2,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 2,
+        "current": "webgpu:api,operation,rendering,indirect_draw:basics:isIndexed=false",
+        "stop": false,
+        "caseStart": 1792091268807,
+        "end": 1792091268842,
+        "pass": true
+      },
+      "98b-cts-render-state": {
+        "query": "webgpu:api,operation,command_buffer,render,state_tracking:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792091284575,
+        "done": true,
+        "counts": {
+          "pass": 5,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 5,
+        "current": "webgpu:api,operation,command_buffer,render,state_tracking:set_index_buffer_before_non_indexed_draw:",
+        "stop": false,
+        "caseStart": 1792091284924,
+        "end": 1792091284938,
+        "pass": true
+      },
+      "98b-cts-occlusion-query-full": {
+        "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+        "start": 1792091389269,
+        "done": true,
+        "counts": {
+          "pass": 212,
+          "fail": 32,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 244,
+        "current": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,multi_resolve:",
+        "stop": false,
+        "caseStart": 1792091394252,
+        "end": 1792091394270,
+        "pass": false
+      }
     }
   }
 }
