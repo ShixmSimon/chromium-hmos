@@ -2,6 +2,8 @@
 """Exercise the CI patch helper against isolated Chromium and DEPS repositories."""
 
 import os
+import json
+import hashlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -86,6 +88,27 @@ class IncrementalPatchTest(unittest.TestCase):
                     self.assertEqual(fixture.read_text(encoding="utf-8"), f"before\n{revision}\nafter\n")
                     if deps:
                         self.assertEqual((chromium / "fixture.txt").read_text(), "chromium sentinel\n")
+
+    def test_timestamp_repair_requires_exact_content_and_time_window(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            start, end, restored = 1700000000000000000, 1700000010000000000, 1699999990000000000
+            entries = []
+            for name, data, mtime in [('known.h', b'known', start),
+                                      ('changed.h', b'edited', start),
+                                      ('later.h', b'known', end + 1)]:
+                path = root / name
+                path.write_bytes(data)
+                os.utime(path, ns=(mtime, mtime))
+                entries.append({'path': name, 'sha256': hashlib.sha256(b'known').hexdigest()})
+            manifest = root / 'repair.json'
+            manifest.write_text(json.dumps({'fromMtimeNs': start, 'toMtimeNs': end,
+                                           'restoreMtimeNs': restored, 'files': entries}))
+            self.run_command(sys.executable, str(PROJECT / 'scripts/refresh-incremental-patch.py'),
+                             '--repair-known-inputs', str(root), str(manifest), cwd=root)
+            self.assertEqual((root / 'known.h').stat().st_mtime_ns, restored)
+            self.assertEqual((root / 'changed.h').stat().st_mtime_ns, start)
+            self.assertEqual((root / 'later.h').stat().st_mtime_ns, end + 1)
 
     def test_failed_refresh_restores_bytes_and_mtime(self):
         with tempfile.TemporaryDirectory() as directory:

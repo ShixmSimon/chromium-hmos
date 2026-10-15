@@ -364,6 +364,11 @@ else
     say "engine commit ${engine_commit}"
   fi
 
+  # Narrow recovery for the already-observed 2026-10-15 patch refresh. Only
+  # byte-identical known headers inside that six-second window qualify.
+  python3 "${repo_root}/scripts/refresh-incremental-patch.py" --repair-known-inputs \
+    "$src" "${repo_root}/scripts/ci-input-mtime-repair.json" || die "input timestamp repair failed"
+
   # ---- build -----------------------------------------------------------------
   say "building (-j ${jobs})"
   start=$(date +%s)

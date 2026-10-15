@@ -6,6 +6,8 @@ and nanosecond mtimes on unchanged files, and restore the original state if the
 replacement fails. No build-output timestamps are modified.
 """
 import os
+import hashlib
+import json
 from pathlib import Path
 import stat
 import subprocess
@@ -62,5 +64,28 @@ def refresh(root, old, new):
     print(f'preserved timestamps of {preserved} unchanged patch file(s)')
 
 
+def repair_known_inputs(root, manifest):
+    root = Path(root).resolve()
+    if not manifest['restoreMtimeNs'] < manifest['fromMtimeNs'] <= manifest['toMtimeNs']:
+        raise ValueError('invalid repair time window')
+    for entry in manifest['files']:
+        path = root / entry['path']
+        if not path.resolve().is_relative_to(root) or path.is_symlink():
+            raise ValueError('repair path must remain inside its repository')
+        if not path.is_file():
+            continue
+        info = path.stat()
+        if not manifest['fromMtimeNs'] <= info.st_mtime_ns <= manifest['toMtimeNs']:
+            continue
+        if hashlib.sha256(path.read_bytes()).hexdigest() != entry['sha256']:
+            print(f"skipped modified input: {entry['path']}")
+            continue
+        os.utime(path, ns=(info.st_atime_ns, manifest['restoreMtimeNs']))
+        print(f"restored known unchanged input: {entry['path']} (was {info.st_mtime_ns})")
+
+
 if __name__ == '__main__':
-    refresh(sys.argv[1], sys.stdin.buffer.read(), Path(sys.argv[2]).read_bytes())
+    if sys.argv[1] == '--repair-known-inputs':
+        repair_known_inputs(sys.argv[2], json.loads(Path(sys.argv[3]).read_text()))
+    else:
+        refresh(sys.argv[1], sys.stdin.buffer.read(), Path(sys.argv[2]).read_bytes())

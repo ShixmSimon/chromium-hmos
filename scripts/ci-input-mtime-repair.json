@@ -1,0 +1,37 @@
+{
+  "reason": "Unchanged headers rewritten when refreshing af6e0ea3 patch to 2b1d724a in run 38728598112. Identical full content was already compiled by run 38724348678.",
+  "upstream": "b510e9d7cd3a2fbd78d0ddc42234103206c5f78d",
+  "fromMtimeNs": 1792066344000000000,
+  "toMtimeNs": 1792066350000000000,
+  "restoreMtimeNs": 1792062177000000000,
+  "files": [
+    {
+      "path": "chrome/browser/chrome_content_browser_client.h",
+      "sha256": "2270196c9add4b1f9f24a28e2eed2f65c32ed44e930dfe50b35cbb6977732c14"
+    },
+    {
+      "path": "chrome/common/chrome_isolated_world_ids.h",
+      "sha256": "09f3456d8990b5001e8125f03674d5cd9be377eed4497aefaafea4bb74e1859e"
+    },
+    {
+      "path": "content/browser/websockets/websocket_connector_impl.h",
+      "sha256": "b1bd79ef7b31acf34edd30f2e93e14172a33288b29842af4a28ace5ff9702e41"
+    },
+    {
+      "path": "content/public/browser/content_browser_client.h",
+      "sha256": "1f80c95d925d639efb43d6362b790248072d7baca8c9cc84ec38c1ef741ab903"
+    },
+    {
+      "path": "mojo/public/cpp/bindings/sync_call_restrictions.h",
+      "sha256": "a70d1d7b7f06273cea556f923c23087e4706cb3f31632f32e63479aab54fa2f6"
+    },
+    {
+      "path": "third_party/blink/public/common/loader/throttling_url_loader.h",
+      "sha256": "49f54c51c57bf94028eb5d6fa96ea7a37248c599ce1753d4e1626a5ed5226c3b"
+    },
+    {
+      "path": "third_party/blink/public/common/loader/url_loader_throttle.h",
+      "sha256": "bdca3403db1abd7ce6b4a1518594140f066b77b8f1f0bea376b96ec73ff1961c"
+    }
+  ]
+}
