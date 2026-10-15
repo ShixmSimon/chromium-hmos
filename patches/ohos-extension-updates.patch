@@ -110,9 +110,9 @@ diff --git a/chrome/browser/extensions/updater/extension_updater.cc b/chrome/bro
                                  InstallStageTracker::Stage::INSTALLING);
    UpdatePingData(file.extension_id, ping);
 +  for (int request_id : request_ids) {
-+    const auto& callback = requests_in_progress_.at(request_id).stage_callback;
-+    if (callback) {
-+      callback.Run(file.extension_id, ExtensionUpdateStage::kInstalling);
++    const auto& stage_callback = requests_in_progress_.at(request_id).stage_callback;
++    if (stage_callback) {
++      stage_callback.Run(file.extension_id, ExtensionUpdateStage::kInstalling);
 +    }
 +  }
  
