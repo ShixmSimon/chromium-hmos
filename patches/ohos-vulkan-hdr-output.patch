@@ -272,7 +272,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
        return nullptr;
      }
    } else {
-@@ -312,8 +394,56 @@
+@@ -312,8 +394,57 @@
      LOG(ERROR) << "Failed to create vulkan surface.";
      return false;
    }
@@ -315,12 +315,13 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
 +      hdr_capable_ = true;
 +      output_color_ = {ui::OhosOutputMode::kSdr10};
 +    }
-+    // Actually create the selected swapchain before publishing output caps.
-+    if (result)
-+      result = vulkan_surface->Reshape({}, gfx::OVERLAY_TRANSFORM_INVALID);
++    // Native popup surfaces can still be 0x0 here. Match the SDR8 path and
++    // create buffers in Reshape(), once Viz supplies the first frame size.
++    // A real allocation failure there records the session fallback before
++    // context recreation; an unlaid-out popup is not a format failure.
 +    if (!result) {
 +      vulkan_surface->Destroy();
-+      ui::NoteOhosOutputColorFailure("WSI 10-bit/PQ format pair or swapchain");
++      ui::NoteOhosOutputColorFailure("WSI 10-bit/PQ format pair");
 +      return Initialize();  // Marker forces SDR8; exactly one bounded retry.
 +    }
 +  }
@@ -331,7 +332,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
    if (!result) [[unlikely]] {
      LOG(ERROR) << "Failed to initialize vulkan surface.";
      vulkan_surface->Destroy();
-@@ -338,26 +468,42 @@
+@@ -338,26 +469,42 @@
    capabilities_.damage_area_from_skia_output_device = true;
  
    const auto surface_format = vulkan_surface_->surface_format().format;
