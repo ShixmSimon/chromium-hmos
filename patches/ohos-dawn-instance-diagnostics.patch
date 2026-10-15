@@ -145,11 +145,11 @@ diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/
 +    createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 +    createInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 +    VkImage image = VK_NULL_HANDLE;
-+    VkResult result = VK_ERROR_FORMAT_NOT_SUPPORTED;
++    ::VkResult result = VK_ERROR_FORMAT_NOT_SUPPORTED;
 +    for (uint32_t handleType :
 +         {kOhosNativeBufferHandleType, kOhosNativeBufferHandleTypeDeprecated}) {
 +        externalMemory.handleTypes = handleType;
-+        result = device->fn.CreateImage(device->GetVkDevice(), &createInfo, nullptr, &image);
++        result = device->fn.CreateImage(device->GetVkDevice(), &createInfo, nullptr, &*image);
 +        if (result == VK_SUCCESS ||
 +            (result != VK_ERROR_INVALID_EXTERNAL_HANDLE &&
 +             result != VK_ERROR_FORMAT_NOT_SUPPORTED)) {
