@@ -56,8 +56,8 @@ try {
  await init(`<p id="long">${'a'.repeat(1999)}😀${'z'.repeat(2100)}</p>`);await start();await page.waitForTimeout(300);b=await take();assert(b.segments.length>=3);assert.equal(b.segments.map(s=>s.text).join(''),'a'.repeat(1999)+'😀'+'z'.repeat(2100));assert(b.segments.every(s=>!/[\uD800-\uDBFF]$/.test(s.text)));ok('long paragraphs split without breaking surrogate pairs');
  assert.equal((await call({op:'apply',sessionId:'old',batchId:'b',segments:[]})).reason,'sessionEnded');ok('old session cannot write');
  await call({op:'release',batchId:'b',retryable:false});assert.equal((await take('released')).segments.length,0);ok('nonretryable failure is terminal');
- await init('<p>Strict policy text.</p><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'none\'; require-trusted-types-for \'script\'">');
- await start({targetLanguage:'ar',style:'gray'});await page.waitForTimeout(250);b=await take();await apply(b);await page.waitForTimeout(200);
+ await init('<style>body{color-scheme:light dark;color:light-dark(#111,#eee);background:light-dark(white,#111)}</style><p>Strict policy text.</p><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'none\'; require-trusted-types-for \'script\'">');
+ await start({targetLanguage:'ar',style:'gray'});await page.waitForTimeout(250);b=await take();await call({op:'apply',batchId:'b',segments:b.segments.map(p=>({...p,translatedText:'ترجمة تجريبية للنص الأصلي.'}))});await page.waitForTimeout(200);
  await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:'artifacts/translation/gray-dark-rtl.png'});
  assert.equal(await evaluate('document.querySelector("p").nextElementSibling.tagName'),'SPAN');ok('strict CSP/Trusted Types text insertion and dark RTL screenshot');
  await init('<p>Retryable paragraph</p>');await start();await page.waitForTimeout(250);

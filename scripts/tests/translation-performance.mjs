@@ -1,5 +1,6 @@
 // Synthetic host benchmark; native/OHOS frame-time and process memory are pending.
 import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true});
 try {
@@ -23,6 +24,7 @@ try {
   if(b.segments.length)await call({op:'apply',batchId:String(i),segments:b.segments.map(p=>({...p,translatedText:'【测试】'+p.text}))});
   await page.waitForTimeout(50);
  }
+ assert.equal(samples.apply.length,20,'each settled viewport must provide work');
  for(const style of ['quote','gray','standard'])await call({op:'presentation',style,showTranslation:true});
  const state=await call({op:'status'});await call({op:'stop'});
  const metrics=await run('({timerSamples,longTasks})');
