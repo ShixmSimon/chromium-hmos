@@ -565,7 +565,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/external_texture_helper.c
    // Get the appropriate YUV to RGB conversion matrix.
    SkYUVColorSpace src_sk_color_space;
    color_space.ToSkYUVColorSpace(static_cast<int>(bit_depth),
-@@ -110,6 +131,44 @@
+@@ -110,6 +131,67 @@
                             src_transfer_fn.d, src_transfer_fn.e,
                             src_transfer_fn.f};
  
@@ -600,6 +600,29 @@ diff --git a/third_party/blink/renderer/modules/webgpu/external_texture_helper.c
 +        if (std::isfinite(peak) && peak > 0.f) {
 +          luminance_scale = peak;
 +        }
++      }
++    }
++    for (float& value : color_space_conversion_constants.gamut_conversion_matrix) {
++      value *= luminance_scale;
++    }
++  } else if (src_color_space.GetTransferID() ==
++             gfx::ColorSpace::TransferID::HLG) {
++    // HLG also cannot be represented by GetTransferFunction(). Use Dawn's
++    // HLG inverse-OETF mode, rather than passing encoded samples as linear.
++    // These coefficients and luminance normalization match the pinned Dawn
++    // common/ExternalTextureParams.cpp implementation.
++    color_space_conversion_constants.src_transfer_constants = {
++        -1.f, 0.17883277f, 0.28466892f, 0.55991073f, 0.5f, 3.f, 12.f};
++    float luminance_scale = 1000.f / gfx::ColorSpace::kDefaultSDRWhiteLevel;
++    auto sk_color_space = src_color_space.GetAsFullRangeRGB().ToSkColorSpace();
++    if (sk_color_space) {
++      skcms_TransferFunction hdr_transfer;
++      sk_color_space->transferFn(&hdr_transfer);
++      if (skcms_TransferFunction_isHLG(&hdr_transfer) &&
++          std::isfinite(hdr_transfer.a) && hdr_transfer.a > 0.f &&
++          std::isfinite(hdr_transfer.b) && hdr_transfer.b > 0.f) {
++        // Modern skcms stores reference white in A and display peak in B.
++        luminance_scale = hdr_transfer.b / hdr_transfer.a;
 +      }
 +    }
 +    for (float& value : color_space_conversion_constants.gamut_conversion_matrix) {

@@ -17,6 +17,12 @@ function run() {
       const hdr = mode.value.endsWith('hdr');
       const ctx = c.getContext('2d', {alpha:false, colorSpace, colorType: hdr ? 'float16' : 'unorm8', toneMapping:{mode:hdr?'extended':'standard'}});
       if (!ctx) throw Error('2D context unavailable');
+      if (hdr) {
+        report.hdrConfigurationApi = typeof c.configureHighDynamicRange;
+        if (typeof c.configureHighDynamicRange !== 'function') throw Error('configureHighDynamicRange unavailable');
+        c.configureHighDynamicRange({mode:'extended'});
+        report.hdrConfigured = true;
+      }
       report.attributes = ctx.getContextAttributes();
       ctx.fillStyle = p3 ? 'color(display-p3 0 1 0)' : '#00ff00'; ctx.fillRect(0,0,300,240);
       ctx.fillStyle = hdr ? 'color(display-p3 2 0 0)' : (p3 ? 'color(display-p3 1 0 0)' : '#ff0000'); ctx.fillRect(300,0,300,240);
@@ -32,6 +38,11 @@ function run() {
         report.floatExtension = !!gl.getExtension('EXT_color_buffer_float');
         if (typeof gl.drawingBufferStorage !== 'function') throw Error('drawingBufferStorage unavailable');
         gl.drawingBufferStorage(gl.RGBA16F,600,240);
+        if (mode.value.includes('hdr')) {
+          if (typeof c.configureHighDynamicRange !== 'function') throw Error('configureHighDynamicRange unavailable');
+          c.configureHighDynamicRange({mode:'extended'});
+          report.hdrConfigured = true;
+        }
       }
       report.colorSpace = gl.drawingBufferColorSpace;
       report.format = gl.drawingBufferFormat;

@@ -3,5 +3,5 @@
 <style>body{font:16px sans-serif;background:#eee;color:#111}canvas{width:90vw;max-width:600px;height:240px;border:1px solid #888}pre{white-space:pre-wrap}button,select{font-size:18px;margin:8px}</style>
 <h1>Color output diagnostic</h1>
 <p>Choose one path at a time. Left: green. Right: red. Readback confirms rendering, not physical screen color.</p>
-<select id="mode"><option>2d-srgb</option><option>2d-p3</option><option>2d-p3-hdr</option><option>webgl2-srgb</option><option>webgl2-p3</option><option>webgl2-p3-float</option></select><button id="run">Run</button><button id="save">Save report</button>
+<select id="mode"><option>2d-srgb</option><option>2d-p3</option><option>2d-p3-hdr</option><option>webgl2-srgb</option><option>webgl2-p3</option><option>webgl2-p3-float</option><option>webgl2-p3-hdr-float</option></select><button id="run">Run</button><button id="save">Save report</button>
 <div id="host"></div><pre id="report"></pre><script src="probe.js"></script>
