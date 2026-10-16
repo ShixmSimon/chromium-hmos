@@ -23,6 +23,7 @@ index 09245d2..219716e 100644
          "external_semaphore.cc",
          "external_semaphore.h",
 diff --git a/gpu/command_buffer/service/shared_context_state.cc b/gpu/command_buffer/service/shared_context_state.cc
+index 4f1e6fd..f7e363b 100644
 --- a/gpu/command_buffer/service/shared_context_state.cc
 +++ b/gpu/command_buffer/service/shared_context_state.cc
 @@ -68,8 +68,12 @@
@@ -39,7 +40,7 @@ diff --git a/gpu/command_buffer/service/shared_context_state.cc b/gpu/command_bu
  #endif
  
  #endif
-@@ -304,9 +308,16 @@
+@@ -304,9 +308,17 @@ SharedContextState::SharedContextState(
  #endif
    ) {
      if (vk_context_provider_) {
@@ -50,7 +51,8 @@ diff --git a/gpu/command_buffer/service/shared_context_state.cc b/gpu/command_bu
 +    (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN) || \
 +     BUILDFLAG(IS_OHOS))
 +#if BUILDFLAG(IS_OHOS)
-+      if (gr_context_type_ == GrContextType::kVulkan)
++      if (ui::IsOhosPhoneGpuChild() &&
++          gr_context_type_ == GrContextType::kVulkan)
 +#endif
 +      {
 +        external_semaphore_pool_ =
@@ -59,7 +61,7 @@ diff --git a/gpu/command_buffer/service/shared_context_state.cc b/gpu/command_bu
  #endif
      }
    }
-@@ -345,8 +356,9 @@
+@@ -345,8 +357,9 @@ SharedContextState::~SharedContextState() {
      UnbindCacheFromCurrentOpenGLContext();
    }
  
