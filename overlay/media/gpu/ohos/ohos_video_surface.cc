@@ -67,6 +67,16 @@ scoped_refptr<OhosVideoSurface> OhosVideoSurface::Create(
   return surface;
 }
 
+int OhosVideoSurface::GetBufferQueueSize() const {
+  DCHECK(task_runner_->RunsTasksInCurrentSequence());
+  int size = 0;
+  if (!window_ || OH_NativeWindow_NativeWindowHandleOpt(
+                      window_, GET_BUFFERQUEUE_SIZE, &size) != 0) {
+    return 0;
+  }
+  return size;
+}
+
 void OhosVideoSurface::StopListening() {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   if (listening_) {

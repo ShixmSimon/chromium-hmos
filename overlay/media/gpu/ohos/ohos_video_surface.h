@@ -28,6 +28,7 @@ class OhosVideoSurface
       base::RepeatingClosure frame_available);
 
   OHNativeWindow* window() const { return window_; }
+  int GetBufferQueueSize() const;
   void StopListening();
   // Call before destroying the producer. Its teardown clears the queue cache;
   // outstanding frames must then drop their references without ReleaseBuffer.

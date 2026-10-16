@@ -634,6 +634,8 @@ void OhosVideoDecoder::DestroyCodec() {
   surface_outputs_.clear();
   rendered_output_.reset();
   surface_frames_in_flight_ = 0;
+  surface_frame_limit_ = 0;
+  surface_queue_size_ = 0;
   pending_conversions_ = 0;
   surface_eos_ = false;
   if (surface_) {
@@ -985,7 +987,28 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
       state_ == State::kError) {
     return;
   }
-  if (surface_frames_in_flight_ >= kMaxSurfaceFramesInFlight) {
+  if (!surface_frame_limit_) {
+    // Query after codec startup: the producer can configure the queue during
+    // Prepare/Start. Keep one slot free for its next render. NativeImage
+    // releases run on this sequence too, so a blocking RenderOutputBuffer
+    // cannot wait for us to return an acquired buffer. On a three-buffer
+    // queue the previous four-frame bound could therefore exhaust the queue.
+    surface_queue_size_ = surface_->GetBufferQueueSize();
+    if (surface_queue_size_ == 1) {
+      EnterErrorState("surface queue cannot retain a frame and render the next");
+      return;
+    }
+    // If the optional capacity query fails, reserve one of the platform's
+    // three default slots rather than assuming the old four-frame capacity.
+    surface_frame_limit_ =
+        surface_queue_size_ > 1
+            ? std::min(kMaxSurfaceFramesInFlight,
+                       static_cast<size_t>(surface_queue_size_ - 1))
+            : 2;
+    LOG(WARNING) << "OHOS video surface queue: capacity=" << surface_queue_size_
+                 << " max_acquired=" << surface_frame_limit_;
+  }
+  if (surface_frames_in_flight_ >= surface_frame_limit_) {
     TRACE_EVENT2("media", "OhosVideoDecoder::SurfaceBackpressure", "in_flight",
                  surface_frames_in_flight_, "queued_output",
                  surface_outputs_.size());
@@ -1276,6 +1299,8 @@ void OhosVideoDecoder::EnterErrorState(const char* reason) {
              << " generation=" << generation_
              << " surface_mode=" << surface_enabled_
              << " in_flight=" << surface_frames_in_flight_
+             << " surface_queue_capacity=" << surface_queue_size_
+             << " surface_frame_limit=" << surface_frame_limit_
              << " queued_output=" << surface_outputs_.size()
              << " waiting_surface=" << rendered_output_.has_value()
              << " waiting_flags="
