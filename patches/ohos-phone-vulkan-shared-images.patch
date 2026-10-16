@@ -1548,3 +1548,43 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_external_texture.h b/
  
    bool expire_task_scheduled_ = false;
    HeapHashSet<Member<GPUExternalTexture>> expire_set_;
+diff --git a/third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.cc b/third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.cc
+--- a/third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.cc
++++ b/third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.cc
+@@ -9,6 +9,7 @@
+ #include "base/feature_list.h"
+ #include "base/task/single_thread_task_runner.h"
+ #include "base/trace_event/trace_event.h"
++#include "build/build_config.h"
+ #include "components/viz/common/quads/compositor_frame.h"
+ #include "components/viz/common/quads/texture_draw_quad.h"
+ #include "components/viz/common/resources/release_callback.h"
+@@ -28,6 +29,7 @@
+ #include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
+ #include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
+ #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
++#include "ui/gfx/display_color_spaces.h"
+ #include "ui/gfx/geometry/point_f.h"
+ #include "ui/gfx/geometry/size_f.h"
+ #include "ui/gfx/mojom/presentation_feedback.mojom-blink.h"
+@@ -167,6 +169,20 @@
+         /*needs_verified_synctoken=*/true);
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // This child surface bypasses cc's layer color-usage analysis. Viz merges
++  // the frame metadata when choosing the root output color space; leaving
++  // the default sRGB clips worker canvas P3 and HDR despite correctly tagged
++  // resources. Classify the actual resource, including explicit linear/SDR-
++  // transfer HDR metadata, without promoting ordinary P3 SDR to HDR.
++  frame->metadata.content_color_usage =
++      resource.GetColorSpace().GetContentColorUsage();
++  if (resource.hdr_metadata.extended_range &&
++      resource.hdr_metadata.extended_range->current_headroom > 1.f) {
++    frame->metadata.content_color_usage = gfx::ContentColorUsage::kHDR;
++  }
++#endif
++
+   const viz::ResourceId resource_id = id_generator_.GenerateNextId();
+   resource.id = resource_id;
+ 
