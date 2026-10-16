@@ -164,8 +164,9 @@ class Page : public content::WebContentsObserver,
     Send(widget_, std::move(e));
   }
   void End(std::string reason, bool cleanup) {
-    if (session_.empty() || stopped_)
+    if (session_.empty())
       return;
+    const bool was_active = !stopped_;
     if (cleanup && navigation_ == Navigation() &&
         web_contents()->GetPrimaryMainFrame()->IsRenderFrameLive()) {
       base::DictValue c;
@@ -188,7 +189,8 @@ class Page : public content::WebContentsObserver,
     state_.clear();
     state_.Set("state", "stopped");
     state_.Set("hasMore", false);
-    Notify("translationSessionEnded", reason);
+    if (was_active)
+      Notify("translationSessionEnded", reason);
   }
   void DidStartNavigation(content::NavigationHandle* h) override {
     if (h->IsInPrimaryMainFrame() && !h->IsSameDocument())
@@ -273,105 +275,102 @@ class Page : public content::WebContentsObserver,
         return;
       }
       if (name == "stopTranslation") {
-        End("userStopped", true);
-        auto e = State();
-        e.Set("event", event);
-        e.Set("requestId", request);
-        e.Set("ok", true);
-        Send(ctx.widget, std::move(e));
-        return;
-      }
-      if (stopped_) {
-        reject("sessionEnded");
-        return;
-      }
-      if (busy_) {
-        reject("busy");
-        return;
-      }
-      if (name == "setTranslationPresentation") {
-        if (!Style(Str(input, "style")) || !input.FindBool("showTranslation")) {
-          reject("invalidRequest");
-          return;
-        }
-        c.Set("op", "presentation");
-        c.Set("style", Str(input, "style"));
-        c.Set("showTranslation", *input.FindBool("showTranslation"));
-      } else if (name == "takeTranslationBatch") {
-        const int n = input.FindInt("maxSegments").value_or(kMaxSegments),
-                  units = input.FindInt("maxTextUnits").value_or(kMaxText);
-        if (n < 1 || n > kMaxSegments || units < 2000 || units > kMaxText) {
-          reject("invalidRequest");
-          return;
-        }
-        Expire();
-        if (batches_.size() >= 2) {
-          reject("concurrencyLimit");
-          return;
-        }
-        if (web_contents()->GetVisibility() != content::Visibility::VISIBLE) {
-          reject("paused");
-          return;
-        }
-        c.Set("op", "take");
-        c.Set("batchId", Id());
-        c.Set("maxSegments", n);
-        c.Set("maxTextUnits", units);
+        End("userStopped", false);
+        c.Set("op", "stop");
       } else {
-        const std::string id = Str(input, "batchId");
-        auto it = batches_.find(id);
-        if (it == batches_.end() ||
-            it->second.expires <= base::TimeTicks::Now()) {
-          reject("batchExpired");
+        if (stopped_) {
+          reject("sessionEnded");
           return;
         }
-        c.Set("batchId", id);
-        if (name == "releaseTranslationBatch") {
-          const std::string reason = Str(input, "reason");
-          if (reason != "providerError" && reason != "rateLimited" &&
-              reason != "authentication" && reason != "quota" &&
-              reason != "cancelled" && reason != "timeout") {
+        if (busy_) {
+          reject("busy");
+          return;
+        }
+        if (name == "setTranslationPresentation") {
+          if (!Style(Str(input, "style")) ||
+              !input.FindBool("showTranslation")) {
             reject("invalidRequest");
             return;
           }
-          c.Set("op", "release");
-          c.Set("retryable", input.FindBool("retryable").value_or(false));
-          c.Set("reason", reason);
-        } else {
-          const auto* values = input.FindList("segments");
-          if (!values || values->size() > kMaxSegments) {
-            reject("invalidResult");
+          c.Set("op", "presentation");
+          c.Set("style", Str(input, "style"));
+          c.Set("showTranslation", *input.FindBool("showTranslation"));
+        } else if (name == "takeTranslationBatch") {
+          const int n = input.FindInt("maxSegments").value_or(kMaxSegments),
+                    units = input.FindInt("maxTextUnits").value_or(kMaxText);
+          if (n < 1 || n > kMaxSegments || units < 2000 || units > kMaxText) {
+            reject("invalidRequest");
             return;
           }
-          size_t units = 0;
-          std::set<std::string> seen;
-          for (const auto& value : *values) {
-            const auto* d = value.GetIfDict();
-            if (!d) {
-              reject("invalidResult");
-              return;
-            }
-            const auto segment_id = Str(*d, "segmentId");
-            const auto known = it->second.revisions.find(segment_id);
-            if (known == it->second.revisions.end() ||
-                !seen.insert(segment_id).second ||
-                Str(*d, "frameId") != navigation_ ||
-                Str(*d, "frameDocumentId") != navigation_ ||
-                d->FindInt("segmentRevision") != known->second ||
-                !d->FindString("translatedText")) {
-              reject("invalidResult");
-              return;
-            }
-            size_t n = Units(Str(*d, "translatedText"));
-            units += n;
-            if (n > 8000 || units > kMaxResult ||
-                source_units_ + result_units_ + units > 1048576) {
-              reject("tooLarge");
-              return;
-            }
+          Expire();
+          if (batches_.size() >= 2) {
+            reject("concurrencyLimit");
+            return;
           }
-          c.Set("op", "apply");
-          c.Set("segments", values->Clone());
+          if (web_contents()->GetVisibility() != content::Visibility::VISIBLE) {
+            reject("paused");
+            return;
+          }
+          c.Set("op", "take");
+          c.Set("batchId", Id());
+          c.Set("maxSegments", n);
+          c.Set("maxTextUnits", units);
+        } else {
+          const std::string id = Str(input, "batchId");
+          auto it = batches_.find(id);
+          if (it == batches_.end() ||
+              it->second.expires <= base::TimeTicks::Now()) {
+            reject("batchExpired");
+            return;
+          }
+          c.Set("batchId", id);
+          if (name == "releaseTranslationBatch") {
+            const std::string reason = Str(input, "reason");
+            if (reason != "providerError" && reason != "rateLimited" &&
+                reason != "authentication" && reason != "quota" &&
+                reason != "cancelled" && reason != "timeout") {
+              reject("invalidRequest");
+              return;
+            }
+            c.Set("op", "release");
+            c.Set("retryable", input.FindBool("retryable").value_or(false));
+            c.Set("reason", reason);
+          } else {
+            const auto* values = input.FindList("segments");
+            if (!values || values->size() > kMaxSegments) {
+              reject("invalidResult");
+              return;
+            }
+            size_t units = 0;
+            std::set<std::string> seen;
+            for (const auto& value : *values) {
+              const auto* d = value.GetIfDict();
+              if (!d) {
+                reject("invalidResult");
+                return;
+              }
+              const auto segment_id = Str(*d, "segmentId");
+              const auto known = it->second.revisions.find(segment_id);
+              if (known == it->second.revisions.end() ||
+                  !seen.insert(segment_id).second ||
+                  Str(*d, "frameId") != navigation_ ||
+                  Str(*d, "frameDocumentId") != navigation_ ||
+                  d->FindInt("segmentRevision") != known->second ||
+                  !d->FindString("translatedText")) {
+                reject("invalidResult");
+                return;
+              }
+              size_t n = Units(Str(*d, "translatedText"));
+              units += n;
+              if (n > 8000 || units > kMaxResult ||
+                  source_units_ + result_units_ + units > 1048576) {
+                reject("tooLarge");
+                return;
+              }
+            }
+            c.Set("op", "apply");
+            c.Set("segments", values->Clone());
+          }
         }
       }
     }
@@ -473,7 +472,8 @@ class Page : public content::WebContentsObserver,
     reply.Set("event", event);
     reply.Set("requestId", request);
     reply.Set("ok", false);
-    if (session != session_ || nav != Navigation() || stopped_) {
+    if (session != session_ || nav != Navigation() ||
+        (stopped_ && Str(command, "op") != "stop")) {
       reply.Set("reason", "sessionEnded");
       Send(widget, std::move(reply));
       return;

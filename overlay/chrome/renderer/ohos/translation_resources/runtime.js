@@ -201,6 +201,7 @@
   }
   function call(c) {
     if(c.op==='start')return start(c);
+    if(!s && c.op==='stop')return {ok:true,state:'stopped'};
     if(!s||s.session!==c.sessionId)return {ok:false,reason:'sessionEnded'};
     if(c.op==='stop') {stop();return {ok:true,state:'stopped'};}
     if(c.op==='status'){s.paused=!!c.paused;if(!paused())schedule();return {ok:true,...tick()};}
