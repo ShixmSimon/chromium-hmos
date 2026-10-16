@@ -1518,3 +1518,33 @@ diff --git a/cc/paint/paint_image.cc b/cc/paint/paint_image.cc
    if (HasGainmapInfo()) {
      const SkGainmapInfo& gainmap_info = GetGainmapInfo();
      float max_ratio = std::max({gainmap_info.fGainmapRatioMax[0],
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_external_texture.h b/third_party/blink/renderer/modules/webgpu/gpu_external_texture.h
+--- a/third_party/blink/renderer/modules/webgpu/gpu_external_texture.h
++++ b/third_party/blink/renderer/modules/webgpu/gpu_external_texture.h
+@@ -8,6 +8,7 @@
+ #include <atomic>
+ 
+ #include "base/task/single_thread_task_runner.h"
++#include "build/build_config.h"
+ #include "media/base/video_frame.h"
+ #include "third_party/blink/renderer/modules/webgpu/dawn_object.h"
+ #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
+@@ -72,8 +73,18 @@
+   // when the device is destroyed (via .destroy) to free the memory.
+   HeapHashMap<WeakMember<HTMLVideoElement>, WeakMember<GPUExternalTexture>>
+       from_html_video_element_;
++#if BUILDFLAG(IS_OHOS)
++  // Bind groups retain Dawn external textures, not their Blink wrappers. A
++  // native wrapper's collection ends its mailbox access and destroys the
++  // imported texture, invalidating otherwise live bind groups. Keep it until
++  // its source frame closes or is collected; the weak key does not retain
++  // that source. Explicit close and device destruction still clear the cache.
++  HeapHashMap<WeakMember<VideoFrame>, Member<GPUExternalTexture>>
++      from_video_frame_;
++#else
+   HeapHashMap<WeakMember<VideoFrame>, WeakMember<GPUExternalTexture>>
+       from_video_frame_;
++#endif
+ 
+   bool expire_task_scheduled_ = false;
+   HeapHashSet<Member<GPUExternalTexture>> expire_set_;
