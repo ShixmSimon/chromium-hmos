@@ -633,7 +633,7 @@ diff --git a/gpu/vulkan/vulkan_surface.cc b/gpu/vulkan/vulkan_surface.cc
  
  void VulkanSurface::Destroy() {
    if (swap_chain_) {
-@@ -303,7 +347,8 @@
+@@ -303,11 +347,20 @@
    DCHECK_GT(static_cast<uint32_t>(image_size.width()), 0u);
    DCHECK_GT(static_cast<uint32_t>(image_size.height()), 0u);
  
@@ -643,7 +643,19 @@ diff --git a/gpu/vulkan/vulkan_surface.cc b/gpu/vulkan/vulkan_surface.cc
        swap_chain_->state() == VK_SUCCESS) {
      return true;
    }
-@@ -336,7 +381,12 @@
+ 
++#if BUILDFLAG(IS_OHOS)
++  // A native window may resize again immediately after leaving immersive
++  // mode. Finish submissions using its old buffers before the OHOS WSI
++  // retires that swapchain and reallocates the native window's buffer queue.
++  // The unchanged-size fast path above avoids a wait during normal playback.
++  if (swap_chain_)
++    Finish();
++#endif
+   image_size_ = image_size;
+   transform_ = transform;
+ 
+@@ -336,7 +389,12 @@
      return false;
    }
  
