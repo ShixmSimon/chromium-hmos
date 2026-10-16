@@ -497,7 +497,7 @@ void OhosVideoDecoder::OnNewOutputBuffer(uint32_t generation,
     surface_outputs_.push_back(
         SurfaceOutput{output.index, base::Microseconds(attr.pts), visible_rect,
                       config_.aspect_ratio().GetNaturalSize(visible_rect),
-                      color_space, config_.hdr_metadata()});
+                      color_space, config_.hdr_metadata(), attr.flags});
     RenderNextSurfaceOutput();
     return;
   }
@@ -1278,6 +1278,16 @@ void OhosVideoDecoder::EnterErrorState(const char* reason) {
              << " in_flight=" << surface_frames_in_flight_
              << " queued_output=" << surface_outputs_.size()
              << " waiting_surface=" << rendered_output_.has_value()
+             << " waiting_flags="
+             << (rendered_output_ ? rendered_output_->flags : 0)
+             << " waiting_pts_us="
+             << (rendered_output_ ? rendered_output_->timestamp.InMicroseconds()
+                                  : -1)
+             << " waiting_age_ms="
+             << (rendered_output_
+                     ? (base::TimeTicks::Now() - surface_wait_started_)
+                           .InMilliseconds()
+                     : 0)
              << " pending_conversions=" << pending_conversions_
              << " surface_frames=" << surface_frame_count_;
   MEDIA_LOG(ERROR, media_log_) << "OhosVideoDecoder: " << reason;

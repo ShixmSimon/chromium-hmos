@@ -114,6 +114,7 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
     gfx::Size natural_size;
     gfx::ColorSpace color_space;
     gfx::HDRMetadata hdr_metadata;
+    uint32_t flags = 0;
   };
 
   enum class State {
