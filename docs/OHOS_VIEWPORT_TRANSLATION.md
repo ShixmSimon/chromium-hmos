@@ -69,5 +69,16 @@ PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chrome node
 
 - 宿主 Chrome 155.0.8059.82 的实际隔离世界执行器：28 项通过，涵盖滚动、溢出裁剪、嵌套滚动、缓存、样式、敏感区域、严格 CSP/Trusted Types、Unicode 分片、动态内容、租期、重试、乱序、超大结果和上限。租期/退避测试使用可控宿主时钟，不等待真实 45 秒。
 - HAR 类型及外壳假 provider 样例：定向 ArkTS 检查 4 个文件无错误。全项目扫描仍有 entry 模块现存的 11 个 engine 导出解析错误，不能把定向检查称为全项目检查通过；最终 HAR 打包结果另行核对。
-- macOS arm64、480×800 视口、4500 段合成正文、20 轮滚动：20 批成功应用；take p95 1.5 ms、apply p95 0.4 ms，执行器定时任务 p95 0.3 ms、最大 1.4 ms，未记录到 >50 ms 长任务。样本少且带测试计时开销，不构成手机 120 Hz 帧预算保证；一次性总内存、页面 DOM 清理和真实手机 p95 仍待验收。
+- macOS arm64、480×800 视口、4500 段合成正文、20 轮滚动：20 批成功应用；take p95 0.9 ms、apply p95 0.3 ms，执行器定时任务 p95 0.3 ms、最大 0.7 ms，未记录到 >50 ms 长任务。样本少且带测试计时开销，不构成手机 120 Hz 帧预算保证；一次性总内存、页面 DOM 清理和真实手机 p95 仍待验收。
 - 标准/引用/灰背景、深色截图由宿主受控页面生成，不是真机截图；原生 IPC、手机/平板生命周期验收仍待用户完成。
+
+## 原生交付（2026-10-16）
+
+- 内核提交 `e193164763428a5161fcbda54e99f465e1cae58d`，原分支已推送，无分支切换。
+- Chromium 154 编译、链接、HAR 打包及流水线原生回归通过：[构建 38860977308](https://github.com/miramira8295/chromium-hmos/actions/runs/38860977308)。
+- [Adapter CI 38860976942](https://github.com/miramira8295/chromium-hmos/actions/runs/38860976942) 通过。
+- HAR SHA256：`f1ad21b2e198facbcc0143c7d2f068f8ec96c3540cedd1e3cc4c3c42b29c894e`。
+- 引擎 Build ID：`d93473b27a188d2ce183b733f1f0c772594c81d0`。
+- 本地交付：`/Users/anshuo/Downloads/Lumie-viewport-translation-e1931647/engine.har`；同目录 TESTING.md、PROTOCOL.md、假 provider、合成页面、截图和 evidence.zip。
+- 已验证 HAR 内 8 个原生命令、文档握手标记、TranslationTypes/NativeContext 声明和导出；二进制内嵌执行器与实际测试源码逐字节一致。
+- 真机未操作，手机/平板与真实 provider 验收仍待用户完成。文档后续提交不改变交付内核的 commit。
