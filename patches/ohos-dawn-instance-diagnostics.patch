@@ -1424,3 +1424,54 @@ diff --git a/src/dawn/native/vulkan/RenderPipelineVk.cpp b/src/dawn/native/vulka
      createInfo.stageCount = stageCount;
      createInfo.pStages = shaderStages.data();
      createInfo.pVertexInputState = &vertexInputCreateInfo;
+diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/DeviceVk.cpp
+--- a/src/dawn/native/vulkan/DeviceVk.cpp
++++ b/src/dawn/native/vulkan/DeviceVk.cpp
+@@ -33,6 +33,7 @@
+ #include "dawn/dawn_version.h"
+ #include "dawn/native/VulkanBackend.h"
+ #include "src/dawn/common/Math.h"
++#include "src/dawn/common/GPUInfo.h"
+ #include "src/dawn/native/BackendConnection.h"
+ #include "src/dawn/native/ChainUtils.h"
+ #include "src/dawn/native/CreatePipelineAsyncEvent.h"
+@@ -472,6 +473,17 @@
+         usedKnobs.features.sampleRateShading = VK_TRUE;
+     }
+     // Required for core and compat WebGPU features.
++#if defined(__OHOS__)
++    // Maleoon's boolean query path can count samples before alpha-to-coverage
++    // when a fragment shader writes neither color nor depth. Request its
++    // precise query path when supported; results must still be zero when no
++    // samples survive coverage. Keep all other devices on the existing path.
++    if (gpu_info::IsHuaweiMaleoon(mDeviceInfo.properties.vendorID,
++                                 mDeviceInfo.properties.deviceID) &&
++        mDeviceInfo.features.occlusionQueryPrecise) {
++        usedKnobs.features.occlusionQueryPrecise = VK_TRUE;
++    }
++#endif
+     usedKnobs.features.fullDrawIndexUint32 = VK_TRUE;
+     usedKnobs.features.fragmentStoresAndAtomics = VK_TRUE;
+     usedKnobs.features.shaderUniformBufferArrayDynamicIndexing = VK_TRUE;
+diff --git a/src/dawn/native/vulkan/CommandBufferVk.cpp b/src/dawn/native/vulkan/CommandBufferVk.cpp
+--- a/src/dawn/native/vulkan/CommandBufferVk.cpp
++++ b/src/dawn/native/vulkan/CommandBufferVk.cpp
+@@ -2123,8 +2123,17 @@
+                 workCommandCount++;
+                 BeginOcclusionQueryCmd* cmd = mCommands.NextCommand<BeginOcclusionQueryCmd>();
+ 
++                VkQueryControlFlags queryFlags = 0;
++#if defined(__OHOS__)
++                // GetDeviceInfo contains the features enabled on this logical
++                // device, not merely the physical device's supported features.
++                if (device->GetDeviceInfo().features.occlusionQueryPrecise) {
++                    queryFlags = VK_QUERY_CONTROL_PRECISE_BIT;
++                    device->EmitWarningOnce("OHOS precise occlusion queries enabled");
++                }
++#endif
+                 device->fn.CmdBeginQuery(commands, ToBackend(cmd->querySet.Get())->GetHandle(),
+-                                         uint32_t{cmd->queryIndex}, 0);
++                                         uint32_t{cmd->queryIndex}, queryFlags);
+                 break;
+             }
+ 
