@@ -1067,7 +1067,7 @@ diff --git a/gpu/command_buffer/service/gpu_persistent_cache.cc b/gpu/command_bu
  };
  
  GpuPersistentCache::DiskCache::DiskCache(
-@@ -255,10 +267,18 @@
+@@ -255,14 +267,28 @@
  
  GpuPersistentCache::DiskCache::~DiskCache() = default;
  
@@ -1087,7 +1087,17 @@ diff --git a/gpu/command_buffer/service/gpu_persistent_cache.cc b/gpu/command_bu
      cache_in_use_ = false;
    }
  
-@@ -287,6 +307,10 @@
++#if BUILDFLAG(IS_OHOS)
++  // All waiters must observe backend retirement. They return without taking
++  // the operation gate, so no later completion would wake the next waiter.
++  cache_in_use_cond_var_.Broadcast();
++#else
+   cache_in_use_cond_var_.Signal();
++#endif
+ }
+ 
+ GpuPersistentCache::CacheLoadResult GpuPersistentCache::DiskCache::Load(
+@@ -287,6 +313,10 @@
        return CacheLoadResult::kMissTimeout;
      }
  
@@ -1098,7 +1108,7 @@ diff --git a/gpu/command_buffer/service/gpu_persistent_cache.cc b/gpu/command_bu
      cache_in_use_ = true;
    }
  
-@@ -300,11 +324,14 @@
+@@ -300,11 +330,14 @@
    }
  
    // Notify other threads
@@ -1115,7 +1125,7 @@ diff --git a/gpu/command_buffer/service/gpu_persistent_cache.cc b/gpu/command_bu
          return CacheLoadResult::kMissTransactionError;
        });
  
-@@ -352,6 +379,10 @@
+@@ -352,6 +385,10 @@
      while (cache_in_use_) {
        cache_in_use_cond_var_.Wait();
      }
@@ -1126,7 +1136,7 @@ diff --git a/gpu/command_buffer/service/gpu_persistent_cache.cc b/gpu/command_bu
      cache_in_use_ = true;
    }
  
-@@ -363,10 +394,13 @@
+@@ -363,10 +400,13 @@
    }
  
    // Unblock other threads.
@@ -1142,7 +1152,7 @@ diff --git a/gpu/command_buffer/service/gpu_persistent_cache.cc b/gpu/command_bu
    });
  }
  
-@@ -435,7 +469,8 @@
+@@ -435,7 +475,8 @@
        persistent_cache::PersistentCache::Bind(
            persistent_cache::Client::kShaderCache, std::move(pending_backend)),
        [&](persistent_cache::TransactionError error) {
