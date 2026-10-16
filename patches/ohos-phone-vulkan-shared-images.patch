@@ -711,7 +711,15 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_buffer.cc b/third_par
 diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
 --- a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
 +++ b/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
-@@ -353,11 +353,12 @@
+@@ -7,6 +7,7 @@
+ #include "base/metrics/histogram_functions.h"
+ #include "components/viz/common/resources/shared_image_format_utils.h"
+ #include "gpu/command_buffer/client/raster_interface.h"
++#include "gpu/command_buffer/common/capabilities.h"
+ #include "gpu/config/gpu_finch_features.h"
+ #include "third_party/blink/renderer/bindings/core/v8/v8_canvas_tone_mapping.h"
+ #include "third_party/blink/renderer/bindings/core/v8/v8_canvas_tone_mapping_mode.h"
+@@ -353,11 +354,12 @@
  ImageBitmap* GPUCanvasContext::TransferToImageBitmap(
      ScriptState* script_state,
      ExceptionState& exception_state) {
@@ -728,6 +736,44 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
      return staticBitmapImage
                 ? MakeGarbageCollected<ImageBitmap>(staticBitmapImage)
                 : nullptr;
+@@ -498,6 +500,21 @@
+     // WebGPU on vulkan with GL interop cannot support BGRA due to bugs in
+     // mesa. See anglebug.com/40644739
+     copy_to_swap_texture_required_ = true;
++  }
++#endif
++
++#if BUILDFLAG(IS_OHOS)
++  if (texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float) {
++    auto compositor_context = SharedGpuContext::ContextProviderWrapper();
++    if (!compositor_context ||
++        !compositor_context->ContextProvider()
++             .GetCapabilities()
++             .using_vulkan_context) {
++      // The OHOS EGL compositor cannot import RGBA16F NativeBuffers. Keep
++      // the application's float texture, and use Dawn's existing GPU blit
++      // to an 8-bit presentation texture. Vulkan imports float buffers directly.
++      copy_to_swap_texture_required_ = true;
++    }
+   }
+ #endif
+ 
+@@ -602,6 +619,15 @@
+         break;
+     }
+   }
++
++#if BUILDFLAG(IS_OHOS)
++  if (copy_to_swap_texture_required_ &&
++      texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float) {
++    // The GL presentation blit is clamped SDR, even when the application's
++    // float texture has extended range. Do not label that 8-bit image as HDR.
++    hdr_metadata.extended_range.reset();
++  }
++#endif
+ 
+   const wgpu::DawnTextureInternalUsageDescriptor* internal_usage_desc = nullptr;
+   if (const wgpu::ChainedStruct* next_in_chain =
 diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
 --- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
 +++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
