@@ -61,6 +61,11 @@ namespace {
 // only bounds how far the demuxer can run ahead of free codec input slots.
 constexpr int kMaxDecodeRequests = 4;
 constexpr size_t kMaxSurfaceFramesInFlight = 4;
+// The phone's imported frame is read by Viz and optionally Dawn. Retaining a
+// current picture plus one replacement bounds decoder-buffer pressure while
+// those independent GPU readers finish. Queue capacity alone is not a count
+// of free producer buffers: the codec can hold its other output slots too.
+constexpr size_t kMaxPhoneSurfaceFramesInFlight = 2;
 
 BASE_FEATURE(kOhosZeroCopyVideo,
              "OhosZeroCopyVideo",
@@ -1000,9 +1005,12 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
     }
     // If the optional capacity query fails, reserve one of the platform's
     // three default slots rather than assuming the old four-frame capacity.
+    const size_t max_acquired = browser_sii_
+                                   ? kMaxPhoneSurfaceFramesInFlight
+                                   : kMaxSurfaceFramesInFlight;
     surface_frame_limit_ =
         surface_queue_size_ > 1
-            ? std::min(kMaxSurfaceFramesInFlight,
+            ? std::min(max_acquired,
                        static_cast<size_t>(surface_queue_size_ - 1))
             : 2;
     LOG(WARNING) << "OHOS video surface queue: capacity=" << surface_queue_size_
@@ -1019,8 +1027,19 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
                surface_outputs_.size());
   rendered_output_ = std::move(surface_outputs_.front());
   surface_outputs_.pop_front();
-  if (OH_VideoDecoder_RenderOutputBuffer(
-          codec_.get(), rendered_output_->index) != AV_ERR_OK) {
+  const auto render_started = base::TimeTicks::Now();
+  const auto render_result = OH_VideoDecoder_RenderOutputBuffer(
+      codec_.get(), rendered_output_->index);
+  const auto render_elapsed = base::TimeTicks::Now() - render_started;
+  if (render_elapsed >= base::Milliseconds(50)) {
+    LOG(WARNING) << "OHOS video surface render delayed: elapsed_ms="
+                 << render_elapsed.InMilliseconds()
+                 << " result=" << static_cast<int>(render_result)
+                 << " in_flight=" << surface_frames_in_flight_
+                 << " queued_output=" << surface_outputs_.size()
+                 << " queue_capacity=" << surface_->GetBufferQueueSize();
+  }
+  if (render_result != AV_ERR_OK) {
     EnterErrorState("RenderOutputBuffer failed");
     return;
   }
@@ -1300,6 +1319,8 @@ void OhosVideoDecoder::EnterErrorState(const char* reason) {
              << " surface_mode=" << surface_enabled_
              << " in_flight=" << surface_frames_in_flight_
              << " surface_queue_capacity=" << surface_queue_size_
+             << " current_surface_queue_capacity="
+             << (surface_ ? surface_->GetBufferQueueSize() : 0)
              << " surface_frame_limit=" << surface_frame_limit_
              << " queued_output=" << surface_outputs_.size()
              << " waiting_surface=" << rendered_output_.has_value()
