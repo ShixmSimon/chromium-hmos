@@ -1424,3 +1424,608 @@ diff --git a/src/dawn/native/vulkan/RenderPipelineVk.cpp b/src/dawn/native/vulka
      createInfo.stageCount = stageCount;
      createInfo.pStages = shaderStages.data();
      createInfo.pVertexInputState = &vertexInputCreateInfo;
+diff --git a/src/dawn/native/PassResourceUsage.h b/src/dawn/native/PassResourceUsage.h
+index cb78519..663be2e 100644
+--- a/src/dawn/native/PassResourceUsage.h
++++ b/src/dawn/native/PassResourceUsage.h
+@@ -105,6 +105,7 @@ struct RenderPassResourceUsage : public SyncScopeResourceUsage {
+     std::vector<QuerySetBase*> querySets;
+     std::vector<ityp::vector<QueryIndex, bool>> queryAvailabilities;
+     bool usesFramebufferFetch = false;
++    bool usesZeroColorWriteATC = false;
+ };
+ 
+ using RenderPassUsages = ityp::vector<PassIndex, RenderPassResourceUsage>;
+diff --git a/src/dawn/native/PassResourceUsageTracker.cpp b/src/dawn/native/PassResourceUsageTracker.cpp
+index 1df06f0..bd691ff 100644
+--- a/src/dawn/native/PassResourceUsageTracker.cpp
++++ b/src/dawn/native/PassResourceUsageTracker.cpp
+@@ -335,6 +335,7 @@ RenderPassResourceUsage RenderPassResourceUsageTracker::AcquireResourceUsage() {
+     mQueryAvailabilities.clear();
+ 
+     result.usesFramebufferFetch = mFramebufferFetchUsed;
++    result.usesZeroColorWriteATC = mZeroColorWriteATCUsed;
+ 
+     return result;
+ }
+diff --git a/src/dawn/native/PassResourceUsageTracker.h b/src/dawn/native/PassResourceUsageTracker.h
+index b073f55..bd105c6 100644
+--- a/src/dawn/native/PassResourceUsageTracker.h
++++ b/src/dawn/native/PassResourceUsageTracker.h
+@@ -115,6 +115,7 @@ class RenderPassResourceUsageTracker : public SyncScopeUsageTracker {
+     const QueryAvailabilityMap& GetQueryAvailabilityMap() const;
+ 
+     void MarkFramebufferFetchUsed();
++    void MarkZeroColorWriteATCUsed() { mZeroColorWriteATCUsed = true; }
+ 
+     RenderPassResourceUsage AcquireResourceUsage();
+ 
+@@ -127,6 +128,7 @@ class RenderPassResourceUsageTracker : public SyncScopeUsageTracker {
+     QueryAvailabilityMap mQueryAvailabilities;
+ 
+     bool mFramebufferFetchUsed = false;
++    bool mZeroColorWriteATCUsed = false;
+ };
+ 
+ }  // namespace dawn::native
+diff --git a/src/dawn/native/RenderEncoderBase.cpp b/src/dawn/native/RenderEncoderBase.cpp
+index d05e6d4..443be40 100644
+--- a/src/dawn/native/RenderEncoderBase.cpp
++++ b/src/dawn/native/RenderEncoderBase.cpp
+@@ -563,6 +563,9 @@ void RenderEncoderBase::APISetPipeline(RenderPipelineBase* pipeline) {
+ 
+             mCommandBufferState.SetRenderPipeline(pipeline);
+ 
++            if (pipeline->HasZeroColorWriteAlphaToCoverage()) {
++                mUsageTracker.MarkZeroColorWriteATCUsed();
++            }
+             if (pipeline->UsesFramebufferFetch()) {
+                 mUsageTracker.MarkFramebufferFetchUsed();
+             }
+diff --git a/src/dawn/native/RenderPassEncoder.cpp b/src/dawn/native/RenderPassEncoder.cpp
+index 9a63bd7..800be5d 100644
+--- a/src/dawn/native/RenderPassEncoder.cpp
++++ b/src/dawn/native/RenderPassEncoder.cpp
+@@ -419,6 +419,9 @@ void RenderPassEncoder::APIExecuteBundles(Span<RenderBundleBase* const> renderBu
+                 bundles[i] = renderBundles[i];
+ 
+                 mUsageTracker.MergeResourceUsages(bundle->GetResourceUsage());
++                if (bundle->GetResourceUsage().usesZeroColorWriteATC) {
++                    mUsageTracker.MarkZeroColorWriteATCUsed();
++                }
+                 if (bundle->GetResourceUsage().usesFramebufferFetch) {
+                     mUsageTracker.MarkFramebufferFetchUsed();
+                 }
+diff --git a/src/dawn/native/RenderPipeline.h b/src/dawn/native/RenderPipeline.h
+index 7919fed..bd60b14 100644
+--- a/src/dawn/native/RenderPipeline.h
++++ b/src/dawn/native/RenderPipeline.h
+@@ -133,6 +133,17 @@ class RenderPipelineBase : public PipelineBase,
+     uint32_t GetSampleCount() const;
+     uint32_t GetSampleMask() const;
+     bool IsAlphaToCoverageEnabled() const;
++    bool HasZeroColorWriteAlphaToCoverage() const {
++        if (!IsAlphaToCoverageEnabled() || !GetColorAttachmentsMask().any()) {
++            return false;
++        }
++        for (auto i : GetColorAttachmentsMask()) {
++            if (GetColorTargetState(i)->writeMask != wgpu::ColorWriteMask::None) {
++                return false;
++            }
++        }
++        return true;
++    }
+     bool UseSampleRateShading() const;
+ 
+     // Shader builtin getters
+diff --git a/src/dawn/native/vulkan/CommandBufferVk.cpp b/src/dawn/native/vulkan/CommandBufferVk.cpp
+index 9092c65..167d842 100644
+--- a/src/dawn/native/vulkan/CommandBufferVk.cpp
++++ b/src/dawn/native/vulkan/CommandBufferVk.cpp
+@@ -31,6 +31,7 @@
+ #include <concepts>
+ #include <limits>
+ #include <memory>
++#include <type_traits>
+ #include <utility>
+ #include <vector>
+ 
+@@ -650,6 +651,9 @@ struct ProgrammablePassState : public StackAllocated {
+ 
+         descriptorSets.Apply(vk, commands, PipelineBindPoint);
+         immediates.Apply(vk, commands);
++        if constexpr (std::is_same_v<Pipeline, RenderPipeline>) {
++            lastPipeline->BindZeroColorWriteATCSink(commands, lastPipeline->GetVkLayout());
++        }
+ 
+         DoOperation(vk, commands);
+         return {};
+@@ -747,6 +751,9 @@ struct ProgrammablePassState : public StackAllocated {
+         descriptorSets.Apply(vk, commands, PipelineBindPoint, pipelineHandles.layout,
+                              [&](BindGroupIndex i) { return newDescriptorSets[i]->GetHandle(); });
+         immediates.Apply(vk, commands, pipelineHandles.layout, lastPipeline->GetImmediateMask());
++        if constexpr (std::is_same_v<Pipeline, RenderPipeline>) {
++            lastPipeline->BindZeroColorWriteATCSink(commands, pipelineHandles.layout);
++        }
+ 
+         DoOperation(vk, commands);
+ 
+@@ -1136,6 +1143,11 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* recordingConte
+                                             CommandRecordingContext* recordingContext,
+                                             const RenderPassResourceUsage& usages) -> MaybeError {
+         DAWN_TRY(PrepareResourcesForSyncScope(device, recordingContext, usages));
++        if (usages.usesZeroColorWriteATC && device->NeedsZeroColorWriteATCWorkaround()) {
++            // Initialization and storage WAW barriers must precede BeginRenderPass,
++            // including when the affected draw originates in a render bundle.
++            device->PrepareZeroColorWriteATCSink(recordingContext);
++        }
+ 
+         // Reset all query set used on current render pass together before beginning render pass
+         // because the reset command must be called outside render pass
+diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/DeviceVk.cpp
+index 41d3d96..d7210c5 100644
+--- a/src/dawn/native/vulkan/DeviceVk.cpp
++++ b/src/dawn/native/vulkan/DeviceVk.cpp
+@@ -85,6 +85,69 @@ struct NoopDrawFunction<R(VKAPI_PTR*)(Args...)> {
+ 
+ }  // namespace
+ 
++// An immutable descriptor set for one private word. The shader writes zero
++// atomically, so the side effect is unobservable to WebGPU applications and does
++// not change attachment contents. Initialization failures clean up partial state.
++class ZeroColorWriteATCSink {
++  public:
++    explicit ZeroColorWriteATCSink(Device* device) : device(device) {}
++    ~ZeroColorWriteATCSink() {
++        if (pool != VK_NULL_HANDLE) {
++            device->fn.DestroyDescriptorPool(device->GetVkDevice(), pool, nullptr);
++        }
++        if (layout != VK_NULL_HANDLE) {
++            device->fn.DestroyDescriptorSetLayout(device->GetVkDevice(), layout, nullptr);
++        }
++    }
++    MaybeError Initialize() {
++        BufferDescriptor descriptor;
++        descriptor.size = sizeof(uint32_t);
++        descriptor.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst;
++        DAWN_TRY_ASSIGN(buffer, device->CreateBuffer(&descriptor));
++        VkDescriptorSetLayoutBinding binding{};
++        binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
++        binding.descriptorCount = 1;
++        binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
++        VkDescriptorSetLayoutCreateInfo layoutInfo{};
++        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
++        layoutInfo.bindingCount = 1;
++        layoutInfo.pBindings = &binding;
++        DAWN_TRY(CheckVkSuccess(device->fn.CreateDescriptorSetLayout(
++            device->GetVkDevice(), &layoutInfo, nullptr, &*layout), "CreateATCSinkLayout"));
++        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1};
++        VkDescriptorPoolCreateInfo poolInfo{};
++        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
++        poolInfo.maxSets = 1;
++        poolInfo.poolSizeCount = 1;
++        poolInfo.pPoolSizes = &size;
++        DAWN_TRY(CheckVkSuccess(device->fn.CreateDescriptorPool(
++            device->GetVkDevice(), &poolInfo, nullptr, &*pool), "CreateATCSinkPool"));
++        VkDescriptorSetAllocateInfo allocation{};
++        allocation.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
++        allocation.descriptorPool = pool;
++        allocation.descriptorSetCount = 1;
++        allocation.pSetLayouts = &*layout;
++        DAWN_TRY(CheckVkSuccess(device->fn.AllocateDescriptorSets(
++            device->GetVkDevice(), &allocation, &*set), "AllocateATCSinkSet"));
++        VkDescriptorBufferInfo bufferInfo{};
++        bufferInfo.buffer = ToBackend(buffer.Get())->GetHandle();
++        bufferInfo.range = sizeof(uint32_t);
++        VkWriteDescriptorSet write{};
++        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
++        write.dstSet = set;
++        write.descriptorCount = 1;
++        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
++        write.pBufferInfo = &bufferInfo;
++        device->fn.UpdateDescriptorSets(device->GetVkDevice(), 1, &write, 0, nullptr);
++        return {};
++    }
++    Device* device;
++    Ref<BufferBase> buffer;
++    VkDescriptorSetLayout layout = VK_NULL_HANDLE;
++    VkDescriptorPool pool = VK_NULL_HANDLE;
++    VkDescriptorSet set = VK_NULL_HANDLE;
++};
++
+ // static
+ ResultOrError<Ref<Device>> Device::Create(AdapterBase* adapter,
+                                           const UnpackedPtr<DeviceDescriptor>& descriptor,
+@@ -416,6 +479,43 @@ FramebufferFetchHelper* Device::GetFramebufferFetchHelper() {
+     return mFramebufferFetchHelper.get();
+ }
+ 
++bool Device::NeedsZeroColorWriteATCWorkaround() const {
++    return NeedsOhosZeroColorWriteATCWorkaround(mDeviceInfo.properties);
++}
++MaybeError Device::EnsureZeroColorWriteATCSink() {
++    return mZeroColorWriteATCSink.Use([this](auto sink) -> MaybeError {
++        if (!*sink) {
++            auto candidate = std::make_unique<ZeroColorWriteATCSink>(this);
++            DAWN_TRY(candidate->Initialize());
++            *sink = std::move(candidate);
++            InfoLog() << "OHOS Vulkan: private zero-color-write alpha-to-coverage sink enabled";
++        }
++        return {};
++    });
++}
++void Device::PrepareZeroColorWriteATCSink(CommandRecordingContext* recordingContext) {
++    mZeroColorWriteATCSink.Use([recordingContext](auto sink) {
++        DAWN_ASSERT(*sink);
++        auto* buffer = ToBackend((*sink)->buffer.Get());
++        buffer->EnsureDataInitialized(recordingContext);
++        buffer->TransitionUsageNow(recordingContext, wgpu::BufferUsage::Storage,
++                                   wgpu::ShaderStage::Fragment);
++    });
++}
++VkDescriptorSetLayout Device::GetZeroColorWriteATCLayout() {
++    return mZeroColorWriteATCSink.Use([](auto sink) {
++        DAWN_ASSERT(*sink);
++        return (*sink)->layout;
++    });
++}
++VkDescriptorSet Device::GetZeroColorWriteATCSet() {
++    return mZeroColorWriteATCSink.Use([](auto sink) {
++        DAWN_ASSERT(*sink);
++        return (*sink)->set;
++    });
++}
++
++
+ Ref<FencedDeleter>& Device::GetFencedDeleter() {
+     return mDeleter;
+ }
+@@ -1115,6 +1215,9 @@ void Device::DestroyImpl(DestroyReason reason) {
+     }
+ 
+     mFramebufferFetchHelper.reset();
++    // GPU work has finished. Break the private buffer -> device reference cycle
++    // before draining allocator/deleter queues and before destroying VkDevice.
++    mZeroColorWriteATCSink.Use([](auto sink) { sink->reset(); });
+ 
+     mDescriptorAllocatorsPendingDeallocation.Use([&](auto pending) {
+         for (Ref<DescriptorSetAllocator>& allocator : pending->IterateUpTo(kMaxExecutionSerial)) {
+diff --git a/src/dawn/native/vulkan/DeviceVk.h b/src/dawn/native/vulkan/DeviceVk.h
+index c990d80..567d127 100644
+--- a/src/dawn/native/vulkan/DeviceVk.h
++++ b/src/dawn/native/vulkan/DeviceVk.h
+@@ -51,6 +51,7 @@ class BufferUploader;
+ class FencedDeleter;
+ class FramebufferCache;
+ class FramebufferFetchHelper;
++class ZeroColorWriteATCSink;
+ class RenderPassCache;
+ class ResourceMemoryAllocator;
+ 
+@@ -92,6 +93,11 @@ class Device final : public DeviceBase {
+     uint32_t GetGraphicsQueueFamily() const;
+     const VkDescriptorSetLayout& GetResourceTableLayout() const;
+     FramebufferFetchHelper* GetFramebufferFetchHelper();
++    bool NeedsZeroColorWriteATCWorkaround() const;
++    MaybeError EnsureZeroColorWriteATCSink();
++    void PrepareZeroColorWriteATCSink(CommandRecordingContext* recordingContext);
++    VkDescriptorSetLayout GetZeroColorWriteATCLayout();
++    VkDescriptorSet GetZeroColorWriteATCSet();
+ 
+     Ref<FencedDeleter>& GetFencedDeleter();
+     FramebufferCache* GetFramebufferCache() const;
+@@ -232,6 +238,7 @@ class Device final : public DeviceBase {
+ 
+     VkDescriptorSetLayout mResourceTableLayout = VK_NULL_HANDLE;
+     std::unique_ptr<FramebufferFetchHelper> mFramebufferFetchHelper;
++    MutexProtected<std::unique_ptr<ZeroColorWriteATCSink>> mZeroColorWriteATCSink;
+ 
+     // Entries can be appended without holding the device mutex.
+     MutexProtected<SerialQueue<ExecutionSerial, Ref<DescriptorSetAllocator>>>
+diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+index 87548c9..4b314b1 100644
+--- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
++++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+@@ -760,7 +760,19 @@ MaybeError PhysicalDevice::InitializeSupportedLimitsInternal(wgpu::FeatureLevel
+     GetDefaultLimits(limits, featureLevel);
+     CombinedLimits baseLimits = *limits;
+ 
+-    const VkPhysicalDeviceLimits& vkLimits = mDeviceInfo.properties.limits;
++    VkPhysicalDeviceLimits vkLimits = mDeviceInfo.properties.limits;
++    if (NeedsOhosZeroColorWriteATCWorkaround(mDeviceInfo.properties)) {
++        // The private fragment storage binding must fit even at the advertised
++        // public limits. Keep existing user bind-group indices and core minima.
++        --vkLimits.maxBoundDescriptorSets;
++        --vkLimits.maxDescriptorSetStorageBuffers;
++        --vkLimits.maxPerStageDescriptorStorageBuffers;
++        --vkLimits.maxPerStageResources;
++        --vkLimits.maxFragmentCombinedOutputResources;
++        vkLimits.maxPerStageDescriptorStorageBuffers =
++            std::min(vkLimits.maxPerStageDescriptorStorageBuffers,
++                     vkLimits.maxDescriptorSetStorageBuffers / 3);
++    }
+ 
+ #define CHECK_V1_LIMIT_IMPL(vulkanName, webgpuName, compareOp, msgSegment)           \
+     do {                                                                             \
+diff --git a/src/dawn/native/vulkan/PipelineLayoutVk.cpp b/src/dawn/native/vulkan/PipelineLayoutVk.cpp
+index 2543031..56e6aee 100644
+--- a/src/dawn/native/vulkan/PipelineLayoutVk.cpp
++++ b/src/dawn/native/vulkan/PipelineLayoutVk.cpp
+@@ -53,7 +53,7 @@ ResultOrError<Ref<PipelineLayout>> PipelineLayout::Create(
+ ResultOrError<Ref<RefCountedVkHandle<VkPipelineLayout>>> PipelineLayout::CreateVkPipelineLayout(
+     const Specialization& specialization) {
+     // Compute the array of VkDescriptorSetLayouts that will be chained in the create info.
+-    ityp::array<BindGroupIndex, VkDescriptorSetLayout, size_t{kMaxBindGroupsTyped} + 2> setLayouts;
++    ityp::array<BindGroupIndex, VkDescriptorSetLayout, size_t{kMaxBindGroupsTyped} + 3> setLayouts;
+ 
+     // The first VkDescriptorSetLayouts are the for framebuffer fetch and/or the resource table if
+     // needed.
+@@ -91,6 +91,11 @@ ResultOrError<Ref<RefCountedVkHandle<VkPipelineLayout>>> PipelineLayout::CreateV
+     createInfo.pNext = nullptr;
+     createInfo.flags = 0;
+     createInfo.setLayoutCount = static_cast<uint32_t>(highestBindGroupIndex + startOfBindGroups);
++    if (specialization.zeroColorWriteATC) {
++        setLayouts[highestBindGroupIndex + startOfBindGroups] =
++            ToBackend(GetDevice())->GetZeroColorWriteATCLayout();
++        ++createInfo.setLayoutCount;
++    }
+     createInfo.pSetLayouts = AsVkArray(setLayouts.data());
+     createInfo.pushConstantRangeCount = 0;
+     createInfo.pPushConstantRanges = nullptr;
+@@ -113,6 +118,11 @@ ResultOrError<Ref<RefCountedVkHandle<VkPipelineLayout>>> PipelineLayout::CreateV
+     return AcquireRef(new RefCountedVkHandle<VkPipelineLayout>(device, vkPipelineLayout));
+ }
+ 
++uint32_t PipelineLayout::GetZeroColorWriteATCSetIndex(bool framebufferFetch) const {
++    return uint32_t{GetHighestBitIndexPlusOne(GetBindGroupLayoutsMask())} +
++           uint32_t{framebufferFetch} + uint32_t{UsesResourceTable()};
++}
++
+ MaybeError PipelineLayout::Initialize() {
+     BindGroupMask bindGroupMask = GetBindGroupLayoutsMask();
+     BindGroupIndex highestBindGroupIndex = GetHighestBitIndexPlusOne(bindGroupMask);
+diff --git a/src/dawn/native/vulkan/PipelineLayoutVk.h b/src/dawn/native/vulkan/PipelineLayoutVk.h
+index c50133e..c54f884 100644
+--- a/src/dawn/native/vulkan/PipelineLayoutVk.h
++++ b/src/dawn/native/vulkan/PipelineLayoutVk.h
+@@ -54,19 +54,22 @@ class PipelineLayout final : public PipelineLayoutBase {
+         PerBindGroup<BindGroupLayout::Specialization> bindGroups = {};
+         uint32_t pushConstantBytes = 0;
+         uint32_t framebufferFetchAttachmentCount = 0;
++        bool zeroColorWriteATC = false;
+ 
+         template <typename H>
+         friend H AbslHashValue(H h, const Specialization& s) {
+             for (auto& bg : s.bindGroups) {
+                 h = H::combine(std::move(h), bg);
+             }
+-            return H::combine(std::move(h), s.pushConstantBytes, s.framebufferFetchAttachmentCount);
++            return H::combine(std::move(h), s.pushConstantBytes, s.framebufferFetchAttachmentCount, s.zeroColorWriteATC);
+         }
+         bool operator==(const Specialization& other) const = default;
+     };
+     ResultOrError<Ref<RefCountedVkHandle<VkPipelineLayout>>> GetOrCreateVkLayoutObject(
+         const Specialization& specialization);
+ 
++    uint32_t GetZeroColorWriteATCSetIndex(bool framebufferFetch) const;
++
+     // Friend definition of StreamIn which can be found by ADL to override stream::StreamIn<T>.
+     friend void StreamIn(stream::Sink* sink, const PipelineLayout& obj) {
+         StreamIn(sink, static_cast<const CachedObject&>(obj));
+diff --git a/src/dawn/native/vulkan/RenderPipelineVk.cpp b/src/dawn/native/vulkan/RenderPipelineVk.cpp
+index 189b10e..529e33d 100644
+--- a/src/dawn/native/vulkan/RenderPipelineVk.cpp
++++ b/src/dawn/native/vulkan/RenderPipelineVk.cpp
+@@ -397,6 +397,9 @@ Ref<RenderPipeline> RenderPipeline::CreateUninitialized(
+ }
+ 
+ MaybeError RenderPipeline::InitializeImpl() {
++    if (UsesZeroColorWriteATCWorkaround()) {
++        DAWN_TRY(ToBackend(GetDevice())->EnsureZeroColorWriteATCSink());
++    }
+     // Gather list of internal immediates used by this pipeline
+     if ((NeedsPixelCenterPolyfill() || UsesFragDepth()) && !HasUnclippedDepth()) {
+         mImmediateMask |= GetImmediateBlockBits(offsetof(RenderImmediates, clampFragDepth),
+@@ -421,6 +424,7 @@ MaybeError RenderPipeline::InitializeImpl() {
+             AttachmentCount(GetColorAttachmentsMask());
+     }
+ 
++    specialization.layout.zeroColorWriteATC = UsesZeroColorWriteATCWorkaround();
+     SpecializationResult r;
+     DAWN_TRY_ASSIGN(r, InitializeSpecialization(specialization, buildCacheKey));
+     mHandles = {.pipeline = r.pipeline->Get(), .layout = r.layout->Get()};
+@@ -433,6 +437,7 @@ MaybeError RenderPipeline::InitializeImpl() {
+ ResultOrError<PipelineHandles> RenderPipeline::GetOrCreateSpecializedHandle(
+     Specialization&& specializationIn) {
+     Specialization specialization = specializationIn;
++    specialization.layout.zeroColorWriteATC = UsesZeroColorWriteATCWorkaround();
+     specialization.layout.pushConstantBytes = ToPushConstantBytes(mImmediateMask);
+     if (UsesFramebufferFetch()) {
+         specialization.layout.framebufferFetchAttachmentCount =
+@@ -563,6 +568,9 @@ ResultOrError<RenderPipeline::SpecializationResult> RenderPipeline::InitializeSp
+             .polyfillPixelCenter = pixelCenterPolyfillLocation,
+             .pipelineUsesFramebufferFetch = UsesFramebufferFetch(),
+             .needsMultisampledFramebufferFetch = UseSampleRateShading() && UsesFramebufferFetch(),
++            .zeroColorWriteATCSinkSet = UsesZeroColorWriteATCWorkaround()
++                ? std::optional<uint32_t>(layout->GetZeroColorWriteATCSetIndex(UsesFramebufferFetch()))
++                : std::nullopt,
+         }));
+     }
+ 
+@@ -1104,6 +1112,22 @@ VkPipeline RenderPipeline::GetHandle() const {
+     return mHandles.pipeline;
+ }
+ 
++bool RenderPipeline::UsesZeroColorWriteATCWorkaround() const {
++    return ToBackend(GetDevice())->NeedsZeroColorWriteATCWorkaround() &&
++           HasZeroColorWriteAlphaToCoverage();
++}
++void RenderPipeline::BindZeroColorWriteATCSink(VkCommandBuffer commands,
++                                              VkPipelineLayout layout) const {
++    if (!UsesZeroColorWriteATCWorkaround()) {
++        return;
++    }
++    auto* device = ToBackend(GetDevice());
++    const auto index = ToBackend(GetLayout())->GetZeroColorWriteATCSetIndex(UsesFramebufferFetch());
++    VkDescriptorSet set = device->GetZeroColorWriteATCSet();
++    device->fn.CmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, layout,
++                                     index, 1, &*set, 0, nullptr);
++}
++
+ VkPipelineLayout RenderPipeline::GetVkLayout() const {
+     DAWN_ASSERT(mHandles.layout != nullptr);
+     return mHandles.layout;
+diff --git a/src/dawn/native/vulkan/RenderPipelineVk.h b/src/dawn/native/vulkan/RenderPipelineVk.h
+index 4163ec6..a4295f7 100644
+--- a/src/dawn/native/vulkan/RenderPipelineVk.h
++++ b/src/dawn/native/vulkan/RenderPipelineVk.h
+@@ -50,6 +50,8 @@ class RenderPipeline final : public RenderPipelineBase {
+     using Specialization = CommonPipelineSpecialization;
+     ResultOrError<PipelineHandles> GetOrCreateSpecializedHandle(Specialization&& specialization);
+     bool RequiresSpecialization() const;
++    bool UsesZeroColorWriteATCWorkaround() const;
++    void BindZeroColorWriteATCSink(VkCommandBuffer commands, VkPipelineLayout layout) const;
+ 
+     VkPipeline GetHandle() const;
+     VkPipelineLayout GetVkLayout() const;
+diff --git a/src/dawn/native/vulkan/ShaderModuleVk.cpp b/src/dawn/native/vulkan/ShaderModuleVk.cpp
+index 806b750..d558c97 100644
+--- a/src/dawn/native/vulkan/ShaderModuleVk.cpp
++++ b/src/dawn/native/vulkan/ShaderModuleVk.cpp
+@@ -290,6 +290,9 @@ ResultOrError<ShaderModule::ModuleAndSpirv> ShaderModule::GetHandleAndSpirv(
+     req.tintOptions.emit_vertex_point_size = in.emitPointSize;
+     req.tintOptions.polyfill_pixel_center = in.polyfillPixelCenter;
+     req.tintOptions.multisampled_framebuffer_fetch = in.needsMultisampledFramebufferFetch;
++    if (in.zeroColorWriteATCSinkSet) {
++        req.tintOptions.zero_color_write_atc_sink = tint::BindingPoint(*in.zeroColorWriteATCSinkSet, 0);
++    }
+ 
+     req.tintOptions.spirv_version = GetDevice()->IsToggleEnabled(Toggle::UseSpirv14)
+                                         ? tint::spirv::writer::SpvVersion::kSpv14
+diff --git a/src/dawn/native/vulkan/ShaderModuleVk.h b/src/dawn/native/vulkan/ShaderModuleVk.h
+index 00d0bee..8e0429b 100644
+--- a/src/dawn/native/vulkan/ShaderModuleVk.h
++++ b/src/dawn/native/vulkan/ShaderModuleVk.h
+@@ -76,6 +76,7 @@ class ShaderModule final : public ShaderModuleBase {
+         bool emitPointSize = false;
+         bool pipelineUsesFramebufferFetch = false;
+         bool needsMultisampledFramebufferFetch = false;
++        std::optional<uint32_t> zeroColorWriteATCSinkSet = std::nullopt;
+     };
+ 
+     ResultOrError<ModuleAndSpirv> GetHandleAndSpirv(const CompileParameters& in);
+diff --git a/src/dawn/native/vulkan/VulkanInfo.h b/src/dawn/native/vulkan/VulkanInfo.h
+index d705eed..fdda276 100644
+--- a/src/dawn/native/vulkan/VulkanInfo.h
++++ b/src/dawn/native/vulkan/VulkanInfo.h
+@@ -28,6 +28,7 @@
+ #ifndef SRC_DAWN_NATIVE_VULKAN_VULKANINFO_H_
+ #define SRC_DAWN_NATIVE_VULKAN_VULKANINFO_H_
+ 
++#include <string_view>
+ #include <vector>
+ 
+ #include "src/dawn/common/ityp_array.h"
+@@ -37,6 +38,24 @@
+ 
+ namespace dawn::native::vulkan {
+ 
++// This driver can elide the fragment stage when every color write mask is zero,
++// losing alpha-to-coverage even though the shader's alpha still determines coverage.
++inline bool NeedsOhosZeroColorWriteATCWorkaround(const VkPhysicalDeviceProperties& properties) {
++#if defined(__OHOS__)
++    const auto& limits = properties.limits;
++    return properties.vendorID == 0x19e5 &&
++           std::string_view(properties.deviceName) == "Maleoon 920" &&
++           limits.maxBoundDescriptorSets >= 7 &&
++           limits.maxPerStageDescriptorStorageBuffers > 8 &&
++           limits.maxDescriptorSetStorageBuffers > 24 &&
++           limits.maxPerStageResources > 32 &&
++           limits.maxFragmentCombinedOutputResources > 32;
++#else
++    (void)properties;
++    return false;
++#endif
++}
++
+ class PhysicalDevice;
+ class Backend;
+ struct VulkanFunctions;
+diff --git a/src/tint/lang/spirv/writer/common/options.h b/src/tint/lang/spirv/writer/common/options.h
+index f09b019..bd1bf47 100644
+--- a/src/tint/lang/spirv/writer/common/options.h
++++ b/src/tint/lang/spirv/writer/common/options.h
+@@ -303,6 +303,9 @@ struct Options {
+     /// user-defined. Used to size the decomposed immediate array.
+     uint32_t minimum_immediate_size = 0;
+ 
++    /// Optional backend-private storage binding to keep fragment execution for zero-mask ATC.
++    std::optional<BindingPoint> zero_color_write_atc_sink = std::nullopt;
++
+     /// Reflect the fields of this class so that it can be used by tint::ForeachField()
+     TINT_REFLECT(Options,
+                  entry_point_name,
+@@ -324,7 +327,8 @@ struct Options {
+                  spirv_version,
+                  resource_table,
+                  substitute_overrides_config,
+-                 minimum_immediate_size);
++                 minimum_immediate_size,
++                 zero_color_write_atc_sink);
+ };
+ 
+ }  // namespace tint::spirv::writer
+diff --git a/src/tint/lang/spirv/writer/raise/raise.cc b/src/tint/lang/spirv/writer/raise/raise.cc
+index 6c8b1cb..a593ed5 100644
+--- a/src/tint/lang/spirv/writer/raise/raise.cc
++++ b/src/tint/lang/spirv/writer/raise/raise.cc
+@@ -31,6 +31,7 @@
+ 
+ #include "src/tint/lang/core/ir/builder.h"
+ #include "src/tint/lang/core/ir/module.h"
++#include "src/tint/lang/core/ir/function.h"
+ #include "src/tint/lang/core/ir/transform/bgra8unorm_polyfill.h"
+ #include "src/tint/lang/core/ir/transform/binary_polyfill.h"
+ #include "src/tint/lang/core/ir/transform/binding_remapper.h"
+@@ -60,6 +61,8 @@
+ #include "src/tint/lang/core/type/sampler.h"
+ #include "src/tint/lang/spirv/ir/builtin_call.h"
+ #include "src/tint/lang/spirv/type/sampled_image.h"
++#include "src/tint/lang/core/ir/var.h"
++#include "src/tint/lang/core/type/atomic.h"
+ #include "src/tint/lang/spirv/writer/common/option_helpers.h"
+ #include "src/tint/lang/spirv/writer/raise/builtin_polyfill.h"
+ #include "src/tint/lang/spirv/writer/raise/case_switch_to_if_else.h"
+@@ -195,6 +198,32 @@ Result<SuccessType> Raise(core::ir::Module& module, const Options& options) {
+ 
+     TINT_CHECK_RESULT(core::ir::transform::BindingRemapper(module, remapper_data));
+ 
++    if (options.zero_color_write_atc_sink) {
++        core::ir::Builder b(module);
++        core::ir::Var* sink = nullptr;
++        for (auto* function : module.functions) {
++            if (function->Stage() != core::ir::Function::PipelineStage::kFragment) {
++                continue;
++            }
++            if (!sink) {
++                b.Append(module.root_block, [&] {
++                    sink = b.Var("tint_private_atc_sink", core::AddressSpace::kStorage,
++                                 module.Types().Get<core::type::Atomic>(module.Types().u32()),
++                                 core::Access::kReadWrite);
++                    sink->SetBindingPoint(options.zero_color_write_atc_sink->group,
++                                          options.zero_color_write_atc_sink->binding);
++                });
++            }
++            // Before the user body, so unconditional discard/early returns are
++            // covered too. Later block-layout and helper-invocation transforms
++            // process this ordinary storage atomic alongside user operations.
++            b.InsertBefore(function->Block()->Front(), [&] {
++                b.Call(module.Types().void_(), core::BuiltinFn::kAtomicStore,
++                       sink, b.Constant(core::u32(0)));
++            });
++        }
++    }
++
+     if (!options.disable_robustness) {
+         core::ir::transform::RobustnessConfig config;
+         if (options.extensions.disable_image_robustness) {
