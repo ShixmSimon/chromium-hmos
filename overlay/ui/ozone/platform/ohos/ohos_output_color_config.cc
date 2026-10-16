@@ -186,9 +186,12 @@ bool OhosSingleDisplaySupportsP3() {
     const auto* spaces = displays->displaysInfo[0].colorSpace;
     if (spaces && spaces->colorSpaces) {
       for (uint32_t i = 0; i < spaces->colorSpaceLength; ++i) {
-        // Display-manager values use colorSpaceManager.ColorSpace, not the
-        // NativeBuffer enum: DISPLAY_P3 = 3 (sRGB transfer, D65 white).
-        supported |= spaces->colorSpaces[i] == 3;
+        // Native display-manager values use DM_ColorSpace, which differs from
+        // both colorSpaceManager.ColorSpace and NativeBuffer's color enum.
+        // DM_ColorSpace::DISPLAY_P3 = 9 (sRGB transfer, D65 white).
+        LOG(WARNING) << "OHOS P3 display probe: color_space="
+                     << spaces->colorSpaces[i];
+        supported |= spaces->colorSpaces[i] == 9;
       }
     }
   }
