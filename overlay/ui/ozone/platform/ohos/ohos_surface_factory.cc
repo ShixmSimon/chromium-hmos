@@ -1087,21 +1087,6 @@ class VideoVulkanImplementation : public gpu::VulkanImplementationOhos {
       if (handle.type != gfx::NATIVE_PIXMAP)
         return nullptr;
       const auto& prefix = handle.native_pixmap_handle().ohos_buffer_prefix;
-      if (prefix.empty()) {
-        // Pad/PC allocations are owned by the local NativeBuffer registry.
-        // Reacquire the allocation by fd; never reinterpret it as a phone
-        // broker parcel or import a plain dma-buf into the OHOS driver.
-        const auto image_format =
-            format == VK_FORMAT_R16G16B16A16_SFLOAT
-                ? viz::SinglePlaneFormat::kRGBA_F16
-                : format == VK_FORMAT_R8G8B8A8_UNORM
-                      ? viz::SinglePlaneFormat::kRGBA_8888
-                      : viz::SinglePlaneFormat::kBGRA_8888;
-        return ImportOhosOffscreenVulkan(
-            queue, CreateOhosNativePixmapFromHandle(
-                       size, image_format,
-                       std::move(handle).native_pixmap_handle()));
-      }
       const uint32_t native_format =
           format == VK_FORMAT_R16G16B16A16_SFLOAT
               ? phone_gpu::kSharedImageRgba16Float
