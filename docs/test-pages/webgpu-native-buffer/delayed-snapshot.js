@@ -1,0 +1,10 @@
+window.runDelayedSnapshot = async function() { return await (async()=>{
+const adapter=await navigator.gpu.requestAdapter(),device=await adapter.requestDevice();const r={cases:[],errors:[],lost:null};device.onuncapturederror=e=>r.errors.push(e.error.message);device.lost.then(e=>r.lost=e.message);
+for(const format of ['rgba8unorm','bgra8unorm','rgba16float'])for(const alphaMode of ['opaque','premultiplied']){
+const canvas=document.createElement('canvas');canvas.width=canvas.height=128;document.body.append(canvas);const context=canvas.getContext('webgpu');context.configure({device,format,alphaMode});
+const copy=document.createElement('canvas');copy.width=copy.height=128;const ctx=copy.getContext('2d',{willReadFrequently:true});
+const render=async(color)=>{await new Promise(requestAnimationFrame);const e=device.createCommandEncoder(),p=e.beginRenderPass({colorAttachments:[{view:context.getCurrentTexture().createView(),loadOp:'clear',storeOp:'store',clearValue:color}]});p.end();device.queue.submit([e.finish()]);};
+const snap=async()=>{ctx.clearRect(0,0,128,128);ctx.drawImage(canvas,0,0);const draw=Array.from(ctx.getImageData(64,64,1,1).data);const bitmap=await createImageBitmap(canvas);ctx.clearRect(0,0,128,128);ctx.drawImage(bitmap,0,0);const image=Array.from(ctx.getImageData(64,64,1,1).data);bitmap.close();return {draw,image};};
+await render({r:1,g:0,b:0,a:1});await new Promise(x=>setTimeout(x,150));const firstDelayed=await snap();await render({r:0,g:1,b:0,a:1});const sameFrame=await snap();await render({r:0,g:0,b:1,a:1});await new Promise(x=>setTimeout(x,150));const afterCachedSnapshot=await snap();const check=(s,e)=>[s.draw,s.image].every(p=>JSON.stringify(p)===JSON.stringify(e));r.cases.push({format,alphaMode,firstDelayed,sameFrame,afterCachedSnapshot,pass:check(firstDelayed,[255,0,0,255])&&check(sameFrame,[0,255,0,255])&&check(afterCachedSnapshot,[0,0,255,255])});context.unconfigure();canvas.remove();}
+r.pass=r.cases.every(c=>c.pass)&&!r.errors.length&&!r.lost;return r;
+})(); };
