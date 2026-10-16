@@ -61,11 +61,12 @@ namespace {
 // only bounds how far the demuxer can run ahead of free codec input slots.
 constexpr int kMaxDecodeRequests = 4;
 constexpr size_t kMaxSurfaceFramesInFlight = 4;
-// The phone's imported frame is read by Viz and optionally Dawn. Retaining a
-// current picture plus one replacement bounds decoder-buffer pressure while
-// those independent GPU readers finish. Queue capacity alone is not a count
-// of free producer buffers: the codec can hold its other output slots too.
-constexpr size_t kMaxPhoneSurfaceFramesInFlight = 2;
+// Allow the current picture and two replacements for the phone's Viz/Dawn
+// pipeline. Two acquired frames starve visible video when both consumers are
+// active; four can submit a blocking render while three leases are held.
+// Queue capacity alone is not a count of free producer buffers: the codec can
+// hold its other output slots too.
+constexpr size_t kMaxPhoneSurfaceFramesInFlight = 3;
 
 BASE_FEATURE(kOhosZeroCopyVideo,
              "OhosZeroCopyVideo",
