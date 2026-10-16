@@ -384,11 +384,25 @@ class Page : public content::WebContentsObserver,
     pending_reply_.Set("requestId", request);
     operation_timeout_.Start(FROM_HERE, base::Seconds(5), this,
                              &Page::TimedOut);
-    auto parameters = c.Clone();
-    Execute(std::move(parameters),
-            base::BindOnce(&Page::Complete, weak_.GetWeakPtr(), operation,
-                           ctx.widget, request, event, session_, navigation_,
-                           std::move(c)));
+    if (Str(c, "op") == "start") {
+      // Phase one has no runtime, observers or text reads. The callback must
+      // still refer to the same WeakDocumentPtr before phase two can start.
+      std::string marker;
+      base::JSONWriter::Write(base::Value(navigation_), &marker);
+      web_contents()->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
+          base::UTF8ToUTF16("globalThis.__lumieTranslationDocument=" + marker +
+                            ";true"),
+          base::BindOnce(&Page::Prepared, weak_.GetWeakPtr(), operation,
+                         ctx.widget, request, event, session_, navigation_,
+                         std::move(c)),
+          ISOLATED_WORLD_ID_LUMIE_TRANSLATION);
+    } else {
+      auto parameters = c.Clone();
+      Execute(std::move(parameters),
+              base::BindOnce(&Page::Complete, weak_.GetWeakPtr(), operation,
+                             ctx.widget, request, event, session_, navigation_,
+                             std::move(c)));
+    }
   }
 
  private:
@@ -401,14 +415,45 @@ class Page : public content::WebContentsObserver,
   void Execute(base::DictValue c, base::OnceCallback<void(base::Value)> cb) {
     std::string json;
     base::JSONWriter::Write(c, &json);
+    std::string marker;
+    base::JSONWriter::Write(base::Value(navigation_), &marker);
     const std::string script =
+        "(()=>{if(globalThis.__lumieTranslationDocument!==" + marker +
+        ")return {ok:false,reason:'sessionEnded'};" +
         (Str(c, "op") == "start" ? std::string(kTranslationRuntime)
                                  : std::string()) +
-        ";globalThis.__lumieTranslation ? globalThis.__lumieTranslation.call(" +
-        json + ") : ({ok:false,reason:'sessionEnded'})";
+        ";return globalThis.__lumieTranslation ? "
+        "globalThis.__lumieTranslation.call(" +
+        json + ") : ({ok:false,reason:'sessionEnded'});})()";
     web_contents()->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
         base::UTF8ToUTF16(script), std::move(cb),
         ISOLATED_WORLD_ID_LUMIE_TRANSLATION);
+  }
+  void Prepared(uint64_t operation,
+                gfx::AcceleratedWidget widget,
+                int request,
+                std::string event,
+                std::string session,
+                std::string nav,
+                base::DictValue command,
+                base::Value value) {
+    if (operation != operation_)
+      return;
+    if (session != session_ || nav != Navigation() || stopped_ ||
+        !value.is_bool() || !value.GetBool()) {
+      Complete(operation, widget, request, std::move(event), std::move(session),
+               std::move(nav), std::move(command),
+               base::Value(base::DictValue()
+                               .Set("ok", false)
+                               .Set("reason", "sessionEnded")));
+      return;
+    }
+    auto parameters = command.Clone();
+    Execute(
+        std::move(parameters),
+        base::BindOnce(&Page::Complete, weak_.GetWeakPtr(), operation, widget,
+                       request, std::move(event), std::move(session),
+                       std::move(nav), std::move(command)));
   }
   void Complete(uint64_t operation,
                 gfx::AcceleratedWidget widget,

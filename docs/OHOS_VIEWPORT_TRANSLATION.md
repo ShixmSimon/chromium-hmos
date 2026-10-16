@@ -6,7 +6,7 @@
 
 `translation.cc` 为独立 WebContents 服务，Profile 身份由 Profile 自有 user data 持有，普通/无痕隔离。`navigationId` 是原生生成的随机值，绑定 Chromium 公共 `WeakDocumentPtr` 的真实文档生命周期；刷新、同址新文档及 RFH 复用都使旧身份失效，不用 URL 判断文档。同文档跳转保留会话。
 
-`runtime.js` 仅由原生 `ExecuteJavaScriptInIsolatedWorld` 执行，具有独立 `ISOLATED_WORLD_ID_LUMIE_TRANSLATION`。复用 Chromium 既有 browser→renderer 脚本 IPC，不增加通用脚本执行命令、网页消息桥或付费 API 入口；无需自定义 Mojo 接口或复用广告模块。原生再次检查批次、片段数、UTF-16 单位和身份。网页不能调用隔离世界入口，但插入 DOM 的译文不应被宣称对网站保密。
+`runtime.js` 仅由原生 `ExecuteJavaScriptInIsolatedWorld` 执行，具有独立 `ISOLATED_WORLD_ID_LUMIE_TRANSLATION`。复用 Chromium 既有 browser→renderer 脚本 IPC，不增加通用脚本执行命令、网页消息桥或付费 API 入口；无需自定义 Mojo 接口或复用广告模块。启动采用两阶段文档标记：第一阶段只设置隔离世界标记，不读取正文；原生确认 WeakDocumentPtr 仍有效后才启动执行器，第二阶段及后续操作还必须匹配原文档标记，避免导航与脚本 IPC 竞争时把会话启动到新文档。原生再次检查批次、片段数、UTF-16 单位和身份。网页不能调用隔离世界入口，但插入 DOM 的译文不应被宣称对网站保密。
 
 仅用户启动会话后建立观察器。按段收集叶级 p、标题、li、dt/dd、blockquote 及叶级 div/section/article；保留原 DOM。过滤表单及后代、按钮、input/textarea/select、代码/pre、editable、隐藏、translate=no/notranslate、iframe 和本组件节点。不追踪 shadow DOM。父块包含正文子块时只处理子块，父块的散落文本首版不单独翻译。文本空白归一，Unicode 不截断代理对。
 
@@ -64,3 +64,10 @@ PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chrome node
 外壳先接确定性假 provider：把每片译文设为 `【测试译文】` + text；提供延迟 0/2/10/50 秒、逆序片段、丢弃回包、超大结果、鉴权/额度错误开关。只用合成页面，验证 UI 和实际 native 命令。顺序是 capabilities → getState(tabId) → start(返回身份) → take → apply/release；每批确认后再拉。样式不经过 provider。
 
 验收应补齐：同址刷新/跨站跳转/标签关闭/多窗口移动的迟到结果；45 秒过期回收和最多 3 次领取；DOM 变更部分成功；非法 frame/segment/revision；后台停止新请求；单进程/多进程/平板；普通/无痕隔离；原链接/表单/选择；严格 CSP、RTL、主题/字号/窄屏；长文章/动态列表的采集与插入 p95、长任务和总内存。真机结果未取得前不能称全部验收通过。
+
+## 2026-10-16 自动验证记录
+
+- 宿主 Chrome 155.0.8059.82 的实际隔离世界执行器：28 项通过，涵盖滚动、溢出裁剪、嵌套滚动、缓存、样式、敏感区域、严格 CSP/Trusted Types、Unicode 分片、动态内容、租期、重试、乱序、超大结果和上限。租期/退避测试使用可控宿主时钟，不等待真实 45 秒。
+- HAR 类型及外壳假 provider 样例：定向 ArkTS 检查 4 个文件无错误。全项目扫描仍有 entry 模块现存的 11 个 engine 导出解析错误，不能把定向检查称为全项目检查通过；最终 HAR 打包结果另行核对。
+- macOS arm64、480×800 视口、4500 段合成正文、20 轮滚动：20 批成功应用；take p95 1.5 ms、apply p95 0.4 ms，执行器定时任务 p95 0.3 ms、最大 1.4 ms，未记录到 >50 ms 长任务。样本少且带测试计时开销，不构成手机 120 Hz 帧预算保证；一次性总内存、页面 DOM 清理和真实手机 p95 仍待验收。
+- 标准/引用/灰背景、深色截图由宿主受控页面生成，不是真机截图；原生 IPC、手机/平板生命周期验收仍待用户完成。
