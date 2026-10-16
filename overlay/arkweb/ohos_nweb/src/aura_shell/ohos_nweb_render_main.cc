@@ -68,7 +68,7 @@ bool ForwardChromiumChildLogToHilog(int severity,
 // Opt-in diagnostics for isolated renderers whose system crash report cannot
 // be attributed to the parent bundle. The signal handler only copies registers
 // and uses async-signal-safe syscalls; symbol lookup and hilog run on a reader.
-// Never replace an existing application handler or change normal crash policy.
+// Chain to the original handler with its signal context and crash policy intact.
 #if defined(__aarch64__)
 struct TrapRegisters {
   uintptr_t pc;
@@ -79,18 +79,30 @@ int trap_pipe[2] = {-1, -1};
 int trap_ack[2] = {-1, -1};
 struct sigaction previous_trap_action = {};
 
-void RecordNativeChildTrap(int signal, siginfo_t*, void* context) {
+void RecordNativeChildTrap(int signal, siginfo_t* info, void* context) {
   const auto* registers = static_cast<ucontext_t*>(context);
   TrapRegisters record{registers->uc_mcontext.pc,
                        registers->uc_mcontext.regs[30],
                        registers->uc_mcontext.regs[29]};
-  if (write(trap_pipe[1], &record, sizeof(record)) == static_cast<ssize_t>(sizeof(record))) {
+  if (write(trap_pipe[1], &record, sizeof(record)) ==
+      static_cast<ssize_t>(sizeof(record))) {
     // Bound the diagnostic delay even if the logger or dynamic loader is stuck.
     struct pollfd ack = {trap_ack[0], POLLIN, 0};
     poll(&ack, 1, 200);
   }
-  sigaction(signal, &previous_trap_action, nullptr);
-  raise(signal);
+  struct sigaction restore = previous_trap_action;
+  if (restore.sa_flags & SA_RESETHAND) {
+    restore.sa_handler = SIG_DFL;
+    restore.sa_flags = 0;
+  }
+  sigaction(signal, &restore, nullptr);
+  if (previous_trap_action.sa_handler == SIG_DFL) {
+    raise(signal);
+  } else if (previous_trap_action.sa_flags & SA_SIGINFO) {
+    previous_trap_action.sa_sigaction(signal, info, context);
+  } else {
+    previous_trap_action.sa_handler(signal);
+  }
 }
 
 void* LogNativeChildTrap(void*) {
@@ -122,7 +134,8 @@ void* LogNativeChildTrap(void*) {
 
 void EnableNativeChildTrapDiagnostics() {
   if (sigaction(SIGTRAP, nullptr, &previous_trap_action) != 0 ||
-      previous_trap_action.sa_handler != SIG_DFL) {
+      previous_trap_action.sa_handler == SIG_IGN) {
+    LOG(WARNING) << "OHOS trap diagnostics unavailable or signal ignored";
     return;
   }
   if (pipe2(trap_pipe, O_CLOEXEC) != 0)
@@ -139,10 +152,9 @@ void EnableNativeChildTrapDiagnostics() {
     return;
   }
   pthread_detach(reader);
-  struct sigaction action = {};
+  struct sigaction action = previous_trap_action;
   action.sa_sigaction = &RecordNativeChildTrap;
-  action.sa_flags = SA_SIGINFO;
-  sigemptyset(&action.sa_mask);
+  action.sa_flags = (action.sa_flags | SA_SIGINFO) & ~SA_RESETHAND;
   if (sigaction(SIGTRAP, &action, nullptr) == 0)
     LOG(WARNING) << "OHOS isolated renderer trap diagnostics enabled";
 }
