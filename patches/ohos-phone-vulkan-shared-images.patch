@@ -753,7 +753,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
        }
        Host()->UpdateMemoryUsage();
        provider = resource_provider_.get();
-@@ -273,6 +282,39 @@
+@@ -273,6 +282,42 @@
    wgpu::Texture texture;
  
    scoped_refptr<WebGPUMailboxTexture> front_buffer_texture;
@@ -765,7 +765,10 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
 +    // the same Vulkan owner. Only explicit snapshots pay for this GPU copy.
 +    auto front_image = swap_buffers_->GetFrontBufferSharedImage();
 +    auto context = SharedGpuContext::ContextProviderWrapper();
-+    if (!front_image || !context) {
++    if (!front_image) {
++      return MakeFallbackStaticBitmapImage(alpha_mode_);
++    }
++    if (!context) {
 +      return nullptr;
 +    }
 +    gpu::SyncToken destination_token;
@@ -793,7 +796,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
    if (source_buffer == kFrontBuffer) {
  #if BUILDFLAG(IS_LINUX)
      // By returning false here the canvas will show up as black in the scenarios
-@@ -353,11 +395,12 @@
+@@ -353,11 +398,12 @@
  ImageBitmap* GPUCanvasContext::TransferToImageBitmap(
      ScriptState* script_state,
      ExceptionState& exception_state) {
@@ -810,7 +813,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
      return staticBitmapImage
                 ? MakeGarbageCollected<ImageBitmap>(staticBitmapImage)
                 : nullptr;
-@@ -497,6 +540,23 @@
+@@ -497,6 +543,23 @@
    if (texture_descriptor_.format == wgpu::TextureFormat::BGRA8Unorm) {
      // WebGPU on vulkan with GL interop cannot support BGRA due to bugs in
      // mesa. See anglebug.com/40644739
@@ -834,7 +837,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
      copy_to_swap_texture_required_ = true;
    }
  #endif
-@@ -576,6 +636,12 @@
+@@ -576,6 +639,12 @@
      // In cases where a copy is necessary the swap buffers will always use the
      // preferred canvas format.
      swap_texture_descriptor_.format = GPU::GetPreferredCanvasFormat();
@@ -847,7 +850,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
  
      // The swap buffer texture doesn't need any view formats.
      swap_texture_descriptor_.viewFormats = nullptr;
-@@ -602,6 +668,15 @@
+@@ -602,6 +671,15 @@
          break;
      }
    }
@@ -863,6 +866,19 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
  
    const wgpu::DawnTextureInternalUsageDescriptor* internal_usage_desc = nullptr;
    if (const wgpu::ChainedStruct* next_in_chain =
+@@ -802,6 +880,12 @@
+ }
+ 
+ void GPUCanvasContext::ReplaceDrawingBuffer(bool destroy_swap_buffers) {
++#if BUILDFLAG(IS_OHOS)
++  // Resizing, reconfiguration and unconfigure replace the drawing buffer.
++  // A snapshot of its previous contents must not survive that replacement.
++  resource_provider_.reset();
++  did_fail_to_create_resource_provider_ = false;
++#endif
+   if (!swap_buffers_) {
+     return;
+   }
 
 diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
 --- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
@@ -983,3 +999,20 @@ diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gp
  
    if (!vulkan_image) {
      return nullptr;
+
+diff --git a/third_party/blink/renderer/platform/graphics/gpu/webgpu_swap_buffer_provider.cc b/third_party/blink/renderer/platform/graphics/gpu/webgpu_swap_buffer_provider.cc
+--- a/third_party/blink/renderer/platform/graphics/gpu/webgpu_swap_buffer_provider.cc
++++ b/third_party/blink/renderer/platform/graphics/gpu/webgpu_swap_buffer_provider.cc
+@@ -107,6 +107,12 @@
+ }
+ 
+ void WebGPUSwapBufferProvider::DiscardCurrentSwapBuffer() {
++#if BUILDFLAG(IS_OHOS)
++  // Explicit drawing-buffer replacement invalidates old snapshot contents.
++  // The compositor's release callback still owns the actual swap buffer.
++  front_buffer_shared_image_ = nullptr;
++  front_buffer_sync_token_ = gpu::SyncToken();
++#endif
+   // We're discarding the current texture without sending it to the compositor.
+   if (current_swap_buffer_ && current_swap_buffer_->mailbox_texture) {
+     current_swap_buffer_->mailbox_texture->SetNeedsPresent(false);
