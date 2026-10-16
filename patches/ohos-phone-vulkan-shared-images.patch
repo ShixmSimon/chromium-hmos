@@ -719,24 +719,74 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
  #include "gpu/config/gpu_finch_features.h"
  #include "third_party/blink/renderer/bindings/core/v8/v8_canvas_tone_mapping.h"
  #include "third_party/blink/renderer/bindings/core/v8/v8_canvas_tone_mapping_mode.h"
-@@ -273,7 +274,15 @@
+@@ -205,6 +206,10 @@
+     return SnapshotInternal(swap_texture_->GetHandle());
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  return PaintRenderingResultsToSnapshot(kFrontBuffer);
++#endif
++
+   // If there is no current texture, return a snapshot of the front buffer if
+   // possible.
+   auto front_buffer_texture = GetFrontBufferMailboxTexture();
+@@ -223,10 +228,14 @@
+       if (SharedGpuContext::IsGpuCompositingEnabled()) {
+         // This code path could be used for compositing so add the necessary
+         // shared image usage flags.
++        auto snapshot_usage = swap_buffers_->GetSharedImageUsagesForDisplay();
++#if BUILDFLAG(IS_OHOS)
++        snapshot_usage |= gpu::SHARED_IMAGE_USAGE_RASTER_WRITE;
++#endif
+         resource_provider_ = CanvasNon2DResourceProvider::CreateForWebGPU(
+             Host()->Size(), GetSharedImageFormat(), GetAlphaType(),
+             GetColorSpace(), swap_buffers_->GetHDRMetadata(),
+-            swap_buffers_->GetSharedImageUsagesForDisplay(), Host());
++            snapshot_usage, Host());
+       }
+       Host()->UpdateMemoryUsage();
+       provider = resource_provider_.get();
+@@ -273,6 +282,39 @@
    wgpu::Texture texture;
  
    scoped_refptr<WebGPUMailboxTexture> front_buffer_texture;
--  if (source_buffer == kFrontBuffer) {
-+  // After presentation OnTextureTransferred clears texture_, but the canvas
-+  // drawing buffer must remain readable until the next getCurrentTexture().
-+  // OHOS snapshots must read the presented image, not a stale cached snapshot.
 +#if BUILDFLAG(IS_OHOS)
-+  const bool read_front_buffer = source_buffer == kFrontBuffer || !texture_;
-+#else
-+  const bool read_front_buffer = source_buffer == kFrontBuffer;
++  if (source_buffer == kFrontBuffer || !texture_) {
++    // Dawn takes exclusive FOREIGN queue ownership even for reads. Reimporting
++    // a presented buffer into Dawn races the compositor's Skia read access.
++    // Copy on the shared raster context instead, where concurrent reads use
++    // the same Vulkan owner. Only explicit snapshots pay for this GPU copy.
++    auto front_image = swap_buffers_->GetFrontBufferSharedImage();
++    auto context = SharedGpuContext::ContextProviderWrapper();
++    if (!front_image || !context) {
++      return nullptr;
++    }
++    gpu::SyncToken destination_token;
++    auto destination =
++        resource_provider->BeginExternalOverwrite(destination_token);
++    if (!destination) {
++      return nullptr;
++    }
++    auto* ri = context->ContextProvider().RasterInterface();
++    const auto source_token = swap_buffers_->GetFrontBufferSyncToken();
++    ri->WaitSyncTokenCHROMIUM(source_token.GetConstData());
++    ri->WaitSyncTokenCHROMIUM(destination_token.GetConstData());
++    ri->CopySharedImage(front_image->mailbox(), destination->mailbox(), 0, 0,
++                        0, 0, front_image->size().width(),
++                        front_image->size().height());
++    // The compositor owns the source's recycle callback. Complete this copy
++    // before yielding to it so the source cannot reenter the swap-buffer pool
++    // while the snapshot still reads it. No pixel data is read back to CPU.
++    ri->Finish();
++    ri->GenUnverifiedSyncTokenCHROMIUM(destination_token.GetData());
++    resource_provider->EndExternalWrite(destination_token);
++    return resource_provider->Snapshot();
++  }
 +#endif
-+  if (read_front_buffer) {
+   if (source_buffer == kFrontBuffer) {
  #if BUILDFLAG(IS_LINUX)
      // By returning false here the canvas will show up as black in the scenarios
-     // that copy the front buffer, such as printing.
-@@ -353,11 +362,12 @@
+@@ -353,11 +395,12 @@
  ImageBitmap* GPUCanvasContext::TransferToImageBitmap(
      ScriptState* script_state,
      ExceptionState& exception_state) {
@@ -753,7 +803,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
      return staticBitmapImage
                 ? MakeGarbageCollected<ImageBitmap>(staticBitmapImage)
                 : nullptr;
-@@ -497,6 +507,23 @@
+@@ -497,6 +540,23 @@
    if (texture_descriptor_.format == wgpu::TextureFormat::BGRA8Unorm) {
      // WebGPU on vulkan with GL interop cannot support BGRA due to bugs in
      // mesa. See anglebug.com/40644739
@@ -777,7 +827,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
      copy_to_swap_texture_required_ = true;
    }
  #endif
-@@ -576,6 +603,12 @@
+@@ -576,6 +636,12 @@
      // In cases where a copy is necessary the swap buffers will always use the
      // preferred canvas format.
      swap_texture_descriptor_.format = GPU::GetPreferredCanvasFormat();
@@ -790,7 +840,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
  
      // The swap buffer texture doesn't need any view formats.
      swap_texture_descriptor_.viewFormats = nullptr;
-@@ -602,6 +635,15 @@
+@@ -602,6 +668,15 @@
          break;
      }
    }
