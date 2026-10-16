@@ -177,6 +177,7 @@ class Page : public content::WebContentsObserver,
     operation_timeout_.Stop();
     ++operation_;
     if (!pending_reply_.empty()) {
+      pending_reply_.Set("sequence", static_cast<double>(++sequence_));
       pending_reply_.Set("ok", false);
       pending_reply_.Set("reason", "sessionEnded");
       Send(pending_widget_, std::move(pending_reply_));
@@ -589,6 +590,7 @@ class Page : public content::WebContentsObserver,
   }
   void TimedOut() {
     if (!pending_reply_.empty()) {
+      pending_reply_.Set("sequence", static_cast<double>(++sequence_));
       pending_reply_.Set("ok", false);
       pending_reply_.Set("reason", "rendererTimeout");
       Send(pending_widget_, std::move(pending_reply_));
