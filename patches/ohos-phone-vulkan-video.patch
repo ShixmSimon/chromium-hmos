@@ -1594,3 +1594,22 @@ diff --git a/gpu/command_buffer/service/shared_image/shared_image_representation
   private:
    friend class WrappedDawnCompoundImageRepresentation;
  
+diff --git a/gpu/command_buffer/service/shared_image/compound_image_backing.cc b/gpu/command_buffer/service/shared_image/compound_image_backing.cc
+--- a/gpu/command_buffer/service/shared_image/compound_image_backing.cc
++++ b/gpu/command_buffer/service/shared_image/compound_image_backing.cc
+@@ -462,6 +462,15 @@
+     DCHECK(wrapped_);
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  bool ResumeOhosNativeReadAccess() override {
++    return wrapped_->ResumeOhosNativeReadAccess();
++  }
++  void SuspendOhosNativeReadAccess() override {
++    wrapped_->SuspendOhosNativeReadAccess();
++  }
++#endif
++
+   CompoundImageBacking* compound_backing() {
+     return static_cast<CompoundImageBacking*>(backing());
+   }
