@@ -24,6 +24,7 @@ grep '^diff --git ' "${project_root}/patches/chromium-154-harmonyos.patch" \
   "${project_root}/patches/ohos-extension-updates.patch" \
   "${project_root}/patches/ohos-adblock-rust.patch" \
   "${project_root}/patches/ohos-adblock-execution.patch" \
+  "${project_root}/patches/ohos-viewport-translation.patch" \
   "${project_root}/patches/ohos-phone-fork.patch" \
   "${project_root}/patches/ohos-phone-gpu-shared-output.patch" \
   "${project_root}/patches/ohos-adaptive-vsync.patch" \
@@ -122,7 +123,8 @@ if [[ "${compatible}" == true ]]; then
   fi
   if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
       "${project_root}/patches/ohos-adblock-rust.patch" \
-      "${project_root}/patches/ohos-adblock-execution.patch" 2>"${failure_log}"; then
+      "${project_root}/patches/ohos-adblock-execution.patch" \
+      "${project_root}/patches/ohos-viewport-translation.patch" 2>"${failure_log}"; then
     compatible=false
   fi
   rsync -a "${project_root}/overlay/" "${checkout}/"

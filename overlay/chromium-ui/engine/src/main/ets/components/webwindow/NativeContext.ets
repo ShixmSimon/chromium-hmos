@@ -14,6 +14,7 @@
  */
 
 import { common } from '@kit.AbilityKit';
+import { TranslationStyle, TranslationResult, TranslationReleaseReason } from './TranslationTypes';
 import { DisplayBrightnessBridge, DisplayBrightnessNativePort } from '../../utils/DisplayBrightnessBridge';
 import { BluetoothBridge, BluetoothNativePort } from '../../utils/BluetoothBridge';
 import { UsbBridge, UsbNativePort } from '../../utils/UsbBridge';
@@ -221,6 +222,9 @@ export interface BrowserRuntimeEvent {
     'extensionActionsChanged' |
     'sitePermissionCancelled' |
     'browserControlsRatio' | 'findResult' | 'pageText' |
+    'translationCapabilities' | 'translationState' | 'translationSessionResult' |
+    'translationBatch' | 'translationBatchResult' | 'translationWorkAvailable' |
+    'translationStateChanged' | 'translationSessionEnded' | 'translationBatchInvalidated' |
     'contextMenuRequested' | 'externalUrlRequested' | 'popupBlocked' |
     'fileOpenRequested' | 'dateTimePickerRequested' | 'dateTimePickerClosed' |
     'selectPopupRequested' | 'selectPopupClosed' | 'contactsPickerRequested' |
@@ -477,6 +481,19 @@ export interface DroppedFileRef {
 
 export interface BrowserCommandPayload {
   command: string;
+  // Translation v1: use native-issued identities from getTranslationState/start.
+  sessionId?: string;
+  batchId?: string;
+  sourceLanguage?: string;
+  targetLanguage?: string;
+  style?: TranslationStyle;
+  prefetchViewportRatio?: number;
+  maxSegments?: number;
+  maxTextUnits?: number;
+  segments?: TranslationResult[];
+  showTranslation?: boolean;
+  reason?: TranslationReleaseReason;
+  retryable?: boolean;
   // URL/site protection: native-issued identity and atomic policy revision.
   contextId?: string;
   tabId?: string;

@@ -9,6 +9,7 @@
 
 #include "base/logging.h"
 #include "chrome/browser/ohos/adblock/adblock.h"
+#include "chrome/browser/ohos/translation/translation.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
@@ -35,6 +36,15 @@ struct ShellServiceCommand {
 };
 
 constexpr ShellServiceCommand kShellServiceCommands[] = {
+    {"getTranslationCapabilities", &translation::HandleCommand},
+    {"getTranslationState", &translation::HandleCommand},
+    {"startTranslation", &translation::HandleCommand},
+    {"takeTranslationBatch", &translation::HandleCommand},
+    {"applyTranslationBatch", &translation::HandleCommand},
+    {"releaseTranslationBatch", &translation::HandleCommand},
+    {"setTranslationPresentation", &translation::HandleCommand},
+    {"stopTranslation", &translation::HandleCommand},
+
     {"getAdBlockState", &adblock::HandleCommand},
     {"setAdBlockEnabled", &adblock::HandleCommand},
     {"setAdBlockAutoUpdate", &adblock::HandleCommand},

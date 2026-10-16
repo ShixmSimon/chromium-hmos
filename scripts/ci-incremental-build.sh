@@ -301,6 +301,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-extension-updates.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-adblock-rust.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-adblock-execution.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-viewport-translation.patch"
   bash "${repo_root}/scripts/setup-adblock-rust.sh" || die "Rust toolchain setup failed"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-msrt.patch" \
     "${src}/third_party/angle"
@@ -386,7 +387,8 @@ else
   # spend an hour reaching them. Ninja still regenerates GN inputs normally.
   ( cd "$src" && third_party/ninja/ninja -C "$out" -j "$jobs" -k 1 \
       obj/chrome/common/ohos/adblock/execution/decision_throttle.o \
-      obj/chrome/browser/core/adblock.o obj/chrome/renderer/renderer/adblock.o && \
+      obj/chrome/browser/core/adblock.o obj/chrome/renderer/renderer/adblock.o \
+      obj/chrome/browser/core/translation.o && \
     third_party/ninja/ninja -C "$out" -j "$jobs" \
       -k "${NINJA_MAX_FAILURES:-20}" gn_all ) \
     2>&1 | tee "$log" \

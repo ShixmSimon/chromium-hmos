@@ -1,0 +1,30 @@
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -1732,12 +1732,15 @@
+       "ohos/url_protection/rule_sources.cc",
+       "ohos/url_protection/rule_sources.h",
+     ]
++    deps += [ "//chrome/renderer/ohos/translation_resources:runtime" ]
+     deps += [ "//chrome/common/ohos/adblock:mojom", "//chrome/common/ohos/adblock:execution", "//third_party/adblock_rust:runtime" ]
+     sources += [
+       "ohos/adblock/adblock.cc",
+       "ohos/adblock/adblock.h",
+       "ohos/adblock/engine.cc",
+       "ohos/adblock/engine.h",
++      "ohos/translation/translation.cc",
++      "ohos/translation/translation.h",
+     ]
+     sources += [
+       "icon_loader_ohos.cc",
+diff --git a/chrome/common/chrome_isolated_world_ids.h b/chrome/common/chrome_isolated_world_ids.h
+--- a/chrome/common/chrome_isolated_world_ids.h
++++ b/chrome/common/chrome_isolated_world_ids.h
+@@ -29,6 +29,7 @@
+   // to this number.
+ #if BUILDFLAG(IS_OHOS)
+   ISOLATED_WORLD_ID_LUMIE_ADBLOCK,
++  ISOLATED_WORLD_ID_LUMIE_TRANSLATION,
+ #endif
+   ISOLATED_WORLD_ID_EXTENSIONS
+ };
