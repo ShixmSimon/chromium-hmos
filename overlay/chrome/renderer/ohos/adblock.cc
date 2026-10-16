@@ -1,5 +1,6 @@
 // Copyright 2026 The Chromium Authors. BSD-style license in LICENSE.
 #include "chrome/renderer/ohos/adblock.h"
+#include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
@@ -75,6 +76,12 @@ class Throttle : public DecisionThrottle {
            std::optional<blink::LocalFrameToken> frame,
            std::string type)
       : pending_(std::move(remote)), frame_(frame), type_(std::move(type)) {}
+  void DetachFromCurrentSequence() override {
+    // Sync worker loads move the throttle to a loading sequence before any
+    // Will* callback. Keep the pipe pending until Check() runs there; no Mojo
+    // remote or weak callback has been bound to the creating sequence yet.
+    DCHECK(!remote_.is_bound());
+  }
   void WillStartRequest(network::ResourceRequest* request,
                         bool* defer) override {
     Capture(*request);
