@@ -185,6 +185,9 @@ class Page : public content::WebContentsObserver,
     stopped_ = true;
     busy_ = false;
     batches_.clear();
+    source_attempts_.clear();
+    source_units_ = 0;
+    result_units_ = 0;
     timer_.Stop();
     state_.clear();
     state_.Set("state", "stopped");
