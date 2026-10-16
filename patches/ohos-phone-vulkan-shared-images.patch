@@ -736,36 +736,51 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
      return staticBitmapImage
                 ? MakeGarbageCollected<ImageBitmap>(staticBitmapImage)
                 : nullptr;
-@@ -498,6 +500,21 @@
+@@ -497,6 +499,23 @@
+   if (texture_descriptor_.format == wgpu::TextureFormat::BGRA8Unorm) {
      // WebGPU on vulkan with GL interop cannot support BGRA due to bugs in
      // mesa. See anglebug.com/40644739
-     copy_to_swap_texture_required_ = true;
++    copy_to_swap_texture_required_ = true;
 +  }
 +#endif
 +
 +#if BUILDFLAG(IS_OHOS)
-+  if (texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float) {
-+    auto compositor_context = SharedGpuContext::ContextProviderWrapper();
-+    if (!compositor_context ||
-+        !compositor_context->ContextProvider()
-+             .GetCapabilities()
-+             .using_vulkan_context) {
-+      // The OHOS EGL compositor cannot import RGBA16F NativeBuffers. Keep
-+      // the application's float texture, and use Dawn's existing GPU blit
-+      // to an 8-bit presentation texture. Vulkan imports float buffers directly.
-+      copy_to_swap_texture_required_ = true;
-+    }
++  auto compositor_context = SharedGpuContext::ContextProviderWrapper();
++  const bool ohos_vulkan_compositor =
++      compositor_context && compositor_context->ContextProvider()
++                                .GetCapabilities()
++                                .using_vulkan_context;
++  // NativeBuffer render targets cannot reliably be written as storage images.
++  // Keep storage access on a regular Dawn texture and blit only for presentation.
++  // Likewise, EGL needs an 8-bit presentation image for a float canvas; Vulkan
++  // can keep its float format, including when a storage-to-display blit is used.
++  if ((texture_descriptor_.usage & wgpu::TextureUsage::StorageBinding) != 0 ||
++      (texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float &&
++       !ohos_vulkan_compositor)) {
+     copy_to_swap_texture_required_ = true;
    }
  #endif
+@@ -576,6 +595,12 @@
+     // In cases where a copy is necessary the swap buffers will always use the
+     // preferred canvas format.
+     swap_texture_descriptor_.format = GPU::GetPreferredCanvasFormat();
++#if BUILDFLAG(IS_OHOS)
++    if (ohos_vulkan_compositor &&
++        texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float) {
++      swap_texture_descriptor_.format = wgpu::TextureFormat::RGBA16Float;
++    }
++#endif
  
-@@ -602,6 +619,15 @@
+     // The swap buffer texture doesn't need any view formats.
+     swap_texture_descriptor_.viewFormats = nullptr;
+@@ -602,6 +627,15 @@
          break;
      }
    }
 +
 +#if BUILDFLAG(IS_OHOS)
-+  if (copy_to_swap_texture_required_ &&
-+      texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float) {
++  if (texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float &&
++      swap_texture_descriptor_.format != wgpu::TextureFormat::RGBA16Float) {
 +    // The GL presentation blit is clamped SDR, even when the application's
 +    // float texture has extended range. Do not label that 8-bit image as HDR.
 +    hdr_metadata.extended_range.reset();
