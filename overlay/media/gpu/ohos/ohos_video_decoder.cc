@@ -1217,7 +1217,14 @@ void OhosVideoDecoder::OnDrainComplete() {
 }
 
 void OhosVideoDecoder::EnterErrorState(const char* reason) {
-  LOG(ERROR) << "OhosVideoDecoder error: " << reason;
+  LOG(ERROR) << "OhosVideoDecoder error: " << reason
+             << " generation=" << generation_
+             << " surface_mode=" << surface_enabled_
+             << " in_flight=" << surface_frames_in_flight_
+             << " queued_output=" << surface_outputs_.size()
+             << " waiting_surface=" << rendered_output_.has_value()
+             << " pending_conversions=" << pending_conversions_
+             << " surface_frames=" << surface_frame_count_;
   MEDIA_LOG(ERROR, media_log_) << "OhosVideoDecoder: " << reason;
   state_ = State::kError;
   DestroyCodec();
