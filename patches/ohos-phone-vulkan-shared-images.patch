@@ -1317,3 +1317,49 @@ diff --git a/gpu/command_buffer/service/shared_image/gl_texture_holder.cc b/gpu/
      if (gl_format != static_cast<GLenum>(preferred_format) ||
          gl_type != static_cast<GLenum>(preferred_type)) {
        if (format_ == viz::SinglePlaneFormat::kBGRA_8888 ||
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_external_texture.cc b/third_party/blink/renderer/modules/webgpu/gpu_external_texture.cc
+--- a/third_party/blink/renderer/modules/webgpu/gpu_external_texture.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_external_texture.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/modules/webgpu/gpu_external_texture.h"
+ 
++#include "build/build_config.h"
+ #include "media/base/video_frame.h"
+ #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_external_texture_descriptor.h"
+ #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_texture_view_descriptor.h"
+@@ -333,6 +334,15 @@
+ 
+   GetHandle().Expire();
+   status_ = Status::Expired;
++#if BUILDFLAG(IS_OHOS)
++  if (video_ && isZeroCopy() && IsReadLockFenceEnabled()) {
++    // An expired native HTML-video import must not keep exclusive cross-queue
++    // access while playback is hidden or paused. WebGPU permits creating a
++    // fresh external texture on the next task, even for the same video frame.
++    // Reuse within this task remains intact.
++    RemoveFromCache();
++  }
++#endif
+ }
+ 
+ void GPUExternalTexture::Destroy() {
+@@ -342,9 +352,18 @@
+   // One copy path finished video frame access after GPUExternalTexture
+   // construction. Zero copy path needs to ensure all gpu commands
+   // execution finished before destroy.
++#if !BUILDFLAG(IS_OHOS)
+   if (isZeroCopy() && IsReadLockFenceEnabled()) {
+     device()->queue()->ReferenceUntilGPUIsFinished(std::move(mailbox_texture_));
+   }
++#else
++  // OHOS native backings export all Dawn completion fences in EndAccess and
++  // retain the decoder allocation through Vulkan fence-helper cleanup (or
++  // quarantine it on failure). Dissociate the mailbox now, before another
++  // task tries to import the same frame. Waiting for a renderer-side queue
++  // callback here unnecessarily holds exclusive backing access and can pin
++  // every buffer needed by the decoder after background/seek transitions.
++#endif
+ 
+   status_ = Status::Destroyed;
+   mailbox_texture_.reset();
