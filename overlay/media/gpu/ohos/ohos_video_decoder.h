@@ -18,6 +18,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "media/base/callback_registry.h"
 #include "media/base/cdm_context.h"
@@ -159,6 +160,9 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   DecoderStatus CreateCodec();
   void RenderNextSurfaceOutput();
   void OnSurfaceFrameAvailable(uint32_t generation);
+  bool TryProcessSurfaceFrame(uint32_t generation);
+  void OnSurfaceFrameArrivalTimeout(uint32_t generation);
+  void OnSurfaceFramePoll(uint32_t generation);
   void OnSurfaceFrameConverted(uint32_t generation,
                                scoped_refptr<VideoFrame> frame);
   void OnSurfaceFrameReleased(uint32_t generation);
@@ -220,6 +224,8 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   // have an unambiguous PTS association, including duplicate timestamps.
   std::optional<SurfaceOutput> rendered_output_;
   base::OneShotTimer surface_timeout_;
+  base::RepeatingTimer surface_poll_;
+  base::TimeTicks surface_wait_started_;
   size_t surface_frames_in_flight_ = 0;
   size_t pending_conversions_ = 0;
   bool surface_eos_ = false;

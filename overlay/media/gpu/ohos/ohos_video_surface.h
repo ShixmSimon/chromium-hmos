@@ -36,9 +36,10 @@ class OhosVideoSurface
   // The returned closure owns the acquired buffer and the surface. Run or
   // destroy it only after GPU reads have completed. It releases on our
   // sequence.
-  bool Acquire(OHNativeWindowBuffer** buffer,
-               base::ScopedFD* acquire_fence,
-               base::OnceClosure* release);
+  enum class AcquireResult { kAcquired, kEmpty, kError };
+  AcquireResult Acquire(OHNativeWindowBuffer** buffer,
+                        base::ScopedFD* acquire_fence,
+                        base::OnceClosure* release);
 
  private:
   friend class base::RefCountedDeleteOnSequence<OhosVideoSurface>;

@@ -629,6 +629,7 @@ void OhosVideoDecoder::DestroyCodec() {
   // codec are ignored even if a new codec reuses their indices.
   AdvanceGeneration();
   surface_timeout_.Stop();
+  surface_poll_.Stop();
   free_inputs_.clear();
   surface_outputs_.clear();
   rendered_output_.reset();
@@ -1000,16 +1001,60 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
     EnterErrorState("RenderOutputBuffer failed");
     return;
   }
-  surface_timeout_.Start(FROM_HERE, base::Seconds(10),
-                         base::BindOnce(&OhosVideoDecoder::EnterErrorState,
-                                        weak_factory_.GetWeakPtr(),
-                                        "surface frame arrival timed out"));
+  surface_wait_started_ = base::TimeTicks::Now();
+  surface_timeout_.Start(
+      FROM_HERE, base::Seconds(10),
+      base::BindOnce(&OhosVideoDecoder::OnSurfaceFrameArrivalTimeout,
+                     weak_factory_.GetWeakPtr(), generation_));
+  // NativeImage availability callbacks can be coalesced or delayed across
+  // background transitions. Probe the actual consumer queue while an output
+  // is pending; normal callbacks cancel this before it fires. Polling never
+  // restarts the ten-second failure deadline.
+  surface_poll_.Start(
+      FROM_HERE, base::Milliseconds(100),
+      base::BindRepeating(&OhosVideoDecoder::OnSurfaceFramePoll,
+                         weak_factory_.GetWeakPtr(), generation_));
 }
 
 void OhosVideoDecoder::OnSurfaceFrameAvailable(uint32_t generation) {
+  TryProcessSurfaceFrame(generation);
+}
+
+void OhosVideoDecoder::OnSurfaceFramePoll(uint32_t generation) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  const auto wait = base::TimeTicks::Now() - surface_wait_started_;
+  if (TryProcessSurfaceFrame(generation)) {
+    LOG(WARNING) << "OHOS video acquired queued surface buffer before notification"
+                 << " wait_ms=" << wait.InMilliseconds();
+  }
+}
+
+void OhosVideoDecoder::OnSurfaceFrameArrivalTimeout(uint32_t generation) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (generation != generation_ || !surface_ || !rendered_output_ ||
+      state_ == State::kError) {
+    return;
+  }
+  // Before declaring decode failure, check whether only the native
+  // notification was lost. Do not extend the original deadline when the
+  // consumer queue is genuinely empty.
+  const auto wait = base::TimeTicks::Now() - surface_wait_started_;
+  const auto weak_this = weak_factory_.GetWeakPtr();
+  if (TryProcessSurfaceFrame(generation)) {
+    LOG(WARNING) << "OHOS video acquired queued surface buffer at deadline"
+                 << " wait_ms=" << wait.InMilliseconds();
+    return;
+  }
+  if (weak_this && generation == generation_ && state_ != State::kError) {
+    EnterErrorState(
+        "surface frame arrival timed out (native consumer queue empty)");
+  }
+}
+
+bool OhosVideoDecoder::TryProcessSurfaceFrame(uint32_t generation) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (generation != generation_ || !surface_ || !rendered_output_) {
-    return;
+    return false;
   }
   TRACE_EVENT2("media", "OhosVideoDecoder::AcquireSurfaceFrame", "pts_us",
                rendered_output_->timestamp.InMicroseconds(), "in_flight",
@@ -1017,11 +1062,20 @@ void OhosVideoDecoder::OnSurfaceFrameAvailable(uint32_t generation) {
   OHNativeWindowBuffer* buffer = nullptr;
   base::ScopedFD acquire_fence;
   base::OnceClosure release;
-  if (!surface_->Acquire(&buffer, &acquire_fence, &release)) {
+  const auto acquired = surface_->Acquire(&buffer, &acquire_fence, &release);
+  if (acquired == OhosVideoSurface::AcquireResult::kEmpty) {
+    // Availability is a notification, not a reservation. A delayed callback
+    // may follow a timeout-side acquire. The outstanding render keeps its
+    // bounded deadline while an empty queue is retried by its next callback.
+    TRACE_EVENT_INSTANT("media", "OhosVideoSurfaceEmptyNotification");
+    return false;
+  }
+  if (acquired != OhosVideoSurface::AcquireResult::kAcquired) {
     EnterErrorState("could not acquire surface buffer");
-    return;
+    return false;
   }
   surface_timeout_.Stop();
+  surface_poll_.Stop();
   SurfaceOutput output = std::move(*rendered_output_);
   rendered_output_.reset();
   ++surface_frames_in_flight_;
@@ -1040,7 +1094,7 @@ void OhosVideoDecoder::OnSurfaceFrameAvailable(uint32_t generation) {
           base::ScopedClosureRunner(std::move(released))));
   if (!pixmap) {
     EnterErrorState("unsupported decoder NativeBuffer");
-    return;
+    return false;
   }
   auto native_format = pixmap->GetSharedImageFormat();
   native_format.ClearPrefersExternalSampler();
@@ -1049,7 +1103,7 @@ void OhosVideoDecoder::OnSurfaceFrameAvailable(uint32_t generation) {
     LOG(ERROR) << "OHOS video zero-copy: " << GetProfileName(config_.profile())
                << " requires P010 but received " << native_format.ToString();
     EnterErrorState("decoder did not preserve high bit depth output precision");
-    return;
+    return false;
   }
   ++pending_conversions_;
   gfx::GpuFenceHandle fence;
@@ -1058,7 +1112,7 @@ void OhosVideoDecoder::OnSurfaceFrameAvailable(uint32_t generation) {
     ConvertBrowserFrame(generation, std::move(pixmap), std::move(fence),
                         std::move(output));
     RenderNextSurfaceOutput();
-    return;
+    return true;
   }
   gpu_task_runner_->PostTask(
       FROM_HERE,
@@ -1072,6 +1126,7 @@ void OhosVideoDecoder::OnSurfaceFrameAvailable(uint32_t generation) {
               base::BindOnce(&OhosVideoDecoder::OnSurfaceFrameConverted,
                              weak_factory_.GetWeakPtr(), generation))));
   RenderNextSurfaceOutput();
+  return true;
 }
 
 void OhosVideoDecoder::ConvertBrowserFrame(

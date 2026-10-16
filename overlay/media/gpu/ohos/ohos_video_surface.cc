@@ -5,6 +5,7 @@
 #include "media/gpu/ohos/ohos_video_surface.h"
 
 #include <native_buffer/native_buffer.h>
+#include <native_image/graphic_error_code.h>
 #include <native_window/external_window.h>
 
 #include <unistd.h>
@@ -85,20 +86,26 @@ void OhosVideoSurface::Retire() {
   retired_ = true;
 }
 
-bool OhosVideoSurface::Acquire(OHNativeWindowBuffer** buffer,
-                               base::ScopedFD* acquire_fence,
-                               base::OnceClosure* release) {
+OhosVideoSurface::AcquireResult OhosVideoSurface::Acquire(
+    OHNativeWindowBuffer** buffer,
+    base::ScopedFD* acquire_fence,
+    base::OnceClosure* release) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   if (retired_) {
-    return false;
+    return AcquireResult::kError;
   }
   int fence = -1;
   *buffer = nullptr;
   const int result =
       OH_NativeImage_AcquireNativeWindowBuffer(image_, buffer, &fence);
   acquire_fence->reset(fence);
-  if (result != 0 || !*buffer) {
-    return false;
+  if (result == NATIVE_ERROR_NO_BUFFER) {
+    return AcquireResult::kEmpty;
+  }
+  if (result != NATIVE_ERROR_OK || !*buffer) {
+    LOG(ERROR) << "OHOS NativeImage acquire failed; status=" << result
+               << " has_buffer=" << (*buffer != nullptr);
+    return AcquireResult::kError;
   }
   if (OH_NativeWindow_NativeObjectReference(*buffer) != 0) {
     if (OH_NativeImage_ReleaseNativeWindowBuffer(
@@ -106,7 +113,7 @@ bool OhosVideoSurface::Acquire(OHNativeWindowBuffer** buffer,
       OH_NativeWindow_NativeObjectUnreference(*buffer);
     }
     *buffer = nullptr;
-    return false;
+    return AcquireResult::kError;
   }
   // Preserve the producer fence even if conversion is cancelled before GPU
   // import. Returning an unfinished decode buffer with fence=-1 is unsafe.
@@ -116,7 +123,7 @@ bool OhosVideoSurface::Acquire(OHNativeWindowBuffer** buffer,
     if (!producer_fence.is_valid()) {
       ReleaseBuffer(BufferToRelease{*buffer, std::move(*acquire_fence)});
       *buffer = nullptr;
-      return false;
+      return AcquireResult::kError;
     }
   }
   // ScopedClosureRunner also releases when a posted conversion task is dropped.
@@ -126,7 +133,7 @@ bool OhosVideoSurface::Acquire(OHNativeWindowBuffer** buffer,
                      base::WrapRefCounted(this),
                      BufferToRelease{*buffer, std::move(producer_fence)})));
   *release = base::BindOnce([](base::ScopedClosureRunner) {}, std::move(lease));
-  return true;
+  return AcquireResult::kAcquired;
 }
 
 void OhosVideoSurface::ReleaseBuffer(BufferToRelease acquired) {
