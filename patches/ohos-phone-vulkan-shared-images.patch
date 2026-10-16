@@ -1016,3 +1016,249 @@ diff --git a/third_party/blink/renderer/platform/graphics/gpu/webgpu_swap_buffer
    // We're discarding the current texture without sending it to the compositor.
    if (current_swap_buffer_ && current_swap_buffer_->mailbox_texture) {
      current_swap_buffer_->mailbox_texture->SetNeedsPresent(false);
+diff --git a/gpu/command_buffer/service/gpu_persistent_cache.cc b/gpu/command_buffer/service/gpu_persistent_cache.cc
+--- a/gpu/command_buffer/service/gpu_persistent_cache.cc
++++ b/gpu/command_buffer/service/gpu_persistent_cache.cc
+@@ -27,6 +27,7 @@
+ #include "base/trace_event/memory_dump_request_args.h"
+ #include "base/trace_event/trace_event.h"
+ #include "base/types/expected_macros.h"
++#include "build/build_config.h"
+ #include "components/persistent_cache/client.h"
+ #include "components/persistent_cache/persistent_cache.h"
+ #include "components/persistent_cache/transaction_error.h"
+@@ -137,12 +138,19 @@
+   LOG(ERROR) << "Persistent cache error: " << static_cast<int>(error);
+   switch (error) {
+     case persistent_cache::TransactionError::kPermanent:
++#if BUILDFLAG(IS_OHOS)
++      // Disk-cache failure is not a rendering failure. In-process GPUs would
++      // kill the browser; phone fork GPUs would unnecessarily lose Vulkan.
++      // DiskCache retires this backend before releasing its operation gate.
++      break;
++#else
+       if (use_shader_cache_shm_count) {
+         GpuProcessShmCount::ScopedIncrement scoped_increment(
+             use_shader_cache_shm_count);
+         base::ImmediateCrash();
+       }
+       break;
++#endif
+     default:
+       break;
+   }
+@@ -214,7 +222,8 @@
+   friend class base::RefCountedThreadSafe<DiskCache>;
+   ~DiskCache();
+ 
+-  void SignalUsingCacheComplete();
++  void SignalUsingCacheComplete(
++      std::optional<persistent_cache::TransactionError> error);
+   void DoStoreToDisk(scoped_refptr<MemoryCacheEntry> entry);
+   void DoDelayedStoreToDisk(scoped_refptr<MemoryCacheEntry> entry,
+                             uint64_t idle_id);
+@@ -239,6 +248,9 @@
+   base::Lock cache_in_use_mutex_;
+   base::ConditionVariable cache_in_use_cond_var_{&cache_in_use_mutex_};
+   bool cache_in_use_ GUARDED_BY(cache_in_use_mutex_) = false;
++#if BUILDFLAG(IS_OHOS)
++  bool backend_failed_ GUARDED_BY(cache_in_use_mutex_) = false;
++#endif
+ };
+ 
+ GpuPersistentCache::DiskCache::DiskCache(
+@@ -255,10 +267,18 @@
+ 
+ GpuPersistentCache::DiskCache::~DiskCache() = default;
+ 
+-void GpuPersistentCache::DiskCache::SignalUsingCacheComplete() {
++void GpuPersistentCache::DiskCache::SignalUsingCacheComplete(
++    std::optional<persistent_cache::TransactionError> error) {
+   {
+     base::AutoLock lock(cache_in_use_mutex_);
+     DCHECK(cache_in_use_);
++#if BUILDFLAG(IS_OHOS)
++    if (error == persistent_cache::TransactionError::kPermanent) {
++      backend_failed_ = true;
++      LOG(ERROR) << "OHOS GPU persistent cache: retiring failed disk backend "
++                 << cache_prefix_ << "; continuing without disk cache";
++    }
++#endif
+     cache_in_use_ = false;
+   }
+ 
+@@ -287,6 +307,10 @@
+       return CacheLoadResult::kMissTimeout;
+     }
+ 
++#if BUILDFLAG(IS_OHOS)
++    if (backend_failed_)
++      return CacheLoadResult::kMissTransactionError;
++#endif
+     cache_in_use_ = true;
+   }
+ 
+@@ -300,11 +324,14 @@
+   }
+ 
+   // Notify other threads
+-  SignalUsingCacheComplete();
++  SignalUsingCacheComplete(result.has_value()
++                               ? std::nullopt
++                               : std::make_optional(result.error()));
+ 
+   ASSIGN_OR_RETURN(
+       auto metadata, result, [&](persistent_cache::TransactionError error) {
+-        HandlePersistentCacheError(&use_shader_cache_shm_count_->data, error);
++        HandlePersistentCacheError(use_shader_cache_shm_count_ ? &use_shader_cache_shm_count_->data
++                                    : nullptr, error);
+         return CacheLoadResult::kMissTransactionError;
+       });
+ 
+@@ -352,6 +379,10 @@
+     while (cache_in_use_) {
+       cache_in_use_cond_var_.Wait();
+     }
++#if BUILDFLAG(IS_OHOS)
++    if (backend_failed_)
++      return;
++#endif
+     cache_in_use_ = true;
+   }
+ 
+@@ -363,10 +394,13 @@
+   }
+ 
+   // Unblock other threads.
+-  SignalUsingCacheComplete();
++  SignalUsingCacheComplete(result.has_value()
++                               ? std::nullopt
++                               : std::make_optional(result.error()));
+ 
+   RETURN_IF_ERROR(result, [&](persistent_cache::TransactionError error) {
+-    HandlePersistentCacheError(&use_shader_cache_shm_count_->data, error);
++    HandlePersistentCacheError(use_shader_cache_shm_count_ ? &use_shader_cache_shm_count_->data
++                                    : nullptr, error);
+   });
+ }
+ 
+@@ -435,7 +469,8 @@
+       persistent_cache::PersistentCache::Bind(
+           persistent_cache::Client::kShaderCache, std::move(pending_backend)),
+       [&](persistent_cache::TransactionError error) {
+-        HandlePersistentCacheError(&use_shader_cache_shm_count->data, error);
++        HandlePersistentCacheError(use_shader_cache_shm_count ? &use_shader_cache_shm_count->data
++                                   : nullptr, error);
+       });
+ 
+   disk_cache_ = base::MakeRefCounted<DiskCache>(
+diff --git a/components/persistent_cache/sqlite/sqlite_backend_impl.cc b/components/persistent_cache/sqlite/sqlite_backend_impl.cc
+--- a/components/persistent_cache/sqlite/sqlite_backend_impl.cc
++++ b/components/persistent_cache/sqlite/sqlite_backend_impl.cc
+@@ -15,6 +15,7 @@
+ #include "base/check_op.h"
+ #include "base/containers/span.h"
+ #include "base/functional/bind.h"
++#include "base/logging.h"
+ #include "base/memory/ptr_util.h"
+ #include "base/memory/ref_counted_memory.h"
+ #include "base/memory/scoped_refptr.h"
+@@ -29,6 +30,7 @@
+ #include "base/trace_event/trace_event.h"
+ #include "base/types/expected.h"
+ #include "base/types/expected_macros.h"
++#include "build/build_config.h"
+ #include "components/persistent_cache/backend_type.h"
+ #include "components/persistent_cache/client.h"
+ #include "components/persistent_cache/metrics_util.h"
+@@ -127,7 +129,13 @@
+   base::AutoLock lock(lock_, base::subtle::LockTracking::kEnabled);
+ 
+   RETURN_IF_ERROR(InitializeImpl(),
+-                  [](int error_code) { return TranslateError(error_code); });
++                  [](int error_code) {
++#if BUILDFLAG(IS_OHOS)
++                    LOG(ERROR) << "OHOS persistent cache: stage=initialize sqlite_error="
++                               << error_code;
++#endif
++                    return TranslateError(error_code);
++                  });
+ 
+   return base::ok();
+ }
+@@ -220,8 +228,12 @@
+ 
+   ASSIGN_OR_RETURN(auto metadata, FindImpl(key, buffer_provider),
+                    [](int error_code) {
+-                     return TranslateError(error_code);
+-                   });
++#if BUILDFLAG(IS_OHOS)
++                    LOG(ERROR) << "OHOS persistent cache: stage=find sqlite_error="
++                               << error_code;
++#endif
++                    return TranslateError(error_code);
++                  });
+   return metadata;
+ }
+ 
+@@ -238,7 +250,13 @@
+   CHECK_EQ(metadata.write_timestamp, 0);
+ 
+   RETURN_IF_ERROR(InsertImpl(key, content, metadata.input_signature),
+-                  [](int error_code) { return TranslateError(error_code); });
++                  [](int error_code) {
++#if BUILDFLAG(IS_OHOS)
++                    LOG(ERROR) << "OHOS persistent cache: stage=insert sqlite_error="
++                               << error_code;
++#endif
++                    return TranslateError(error_code);
++                  });
+ 
+   return base::ok();
+ }
+diff --git a/gpu/command_buffer/service/gpu_persistent_cache_unittest.cc b/gpu/command_buffer/service/gpu_persistent_cache_unittest.cc
+--- a/gpu/command_buffer/service/gpu_persistent_cache_unittest.cc
++++ b/gpu/command_buffer/service/gpu_persistent_cache_unittest.cc
+@@ -24,6 +24,8 @@
+ #include "components/persistent_cache/backend_type.h"
+ #include "components/persistent_cache/client.h"
+ #include "components/persistent_cache/pending_backend.h"
++#include "components/persistent_cache/persistent_cache.h"
++#include "components/persistent_cache/sqlite/sqlite_backend_impl.h"
+ #include "gpu/command_buffer/service/memory_cache.h"
+ #include "testing/gtest/include/gtest/gtest.h"
+ 
+@@ -82,6 +84,33 @@
+   // LoadData() will return zero size since there is no cache yet.
+   EXPECT_EQ(cache_with_no_memory_cache->FindKey(key), 0u);
+ }
++
++#if BUILDFLAG(IS_OHOS)
++// A broken optional disk cache must not take the GPU down. Restore the table
++// after the error to verify that neither reads nor writes reuse that backend.
++TEST_F(GpuPersistentCacheTest, PermanentDiskErrorRetiresBackend) {
++  InitializeCache();
++  auto* backend = static_cast<persistent_cache::SqliteBackendImpl*>(
++      const_cast<persistent_cache::PersistentCache&>(
++          cache_->GetPersistentCacheForTesting()).GetBackendForTesting());
++  ASSERT_OK(backend->ExecuteStatementForTesting("DROP TABLE entries"));
++  EXPECT_EQ(cache_->FindKey("missing"), 0u);
++  ASSERT_OK(backend->ExecuteStatementForTesting(
++      "CREATE TABLE entries(key BLOB PRIMARY KEY UNIQUE NOT NULL, "
++      "content BLOB NOT NULL, input_signature INTEGER, write_timestamp INTEGER)"));
++  const std::string key = "after_failure";
++  const std::string value = "recompiled_shader";
++  cache_->StoreData(key, base::as_byte_span(value));
++  std::vector<uint8_t> buffer(value.size());
++  EXPECT_EQ(cache_->LoadData(key, buffer), value.size());
++  EXPECT_EQ(std::string(buffer.begin(), buffer.end()), value);
++  // Memory remains usable; the retired disk cache was not written again.
++  auto disk_result = backend->Find(base::as_byte_span(key),
++      [](size_t) { return base::span<uint8_t>(); });
++  ASSERT_TRUE(disk_result.has_value());
++  EXPECT_FALSE(disk_result->has_value());
++}
++#endif
+ 
+ // Tests basic store and load functionality on a single thread.
+ TEST_F(GpuPersistentCacheTest, StoreAndLoadData) {
