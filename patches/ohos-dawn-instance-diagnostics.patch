@@ -1563,10 +1563,18 @@ index 9092c65..167d842 100644
          // Reset all query set used on current render pass together before beginning render pass
          // because the reset command must be called outside render pass
 diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/DeviceVk.cpp
-index 41d3d96..d7210c5 100644
+index 41d3d96..9d6c06d 100644
 --- a/src/dawn/native/vulkan/DeviceVk.cpp
 +++ b/src/dawn/native/vulkan/DeviceVk.cpp
-@@ -85,6 +85,69 @@ struct NoopDrawFunction<R(VKAPI_PTR*)(Args...)> {
+@@ -67,6 +67,7 @@
+ #include "src/dawn/native/vulkan/TextureVk.h"
+ #include "src/dawn/native/vulkan/UtilsVulkan.h"
+ #include "src/dawn/native/vulkan/VulkanError.h"
++#include "src/dawn/platform/tracing/TraceEvent.h"
+ #include "src/utils/log.h"
+ #include "src/utils/non_copyable.h"
+ #include "src/utils/numeric.h"
+@@ -85,6 +86,71 @@ struct NoopDrawFunction<R(VKAPI_PTR*)(Args...)> {
  
  }  // namespace
  
@@ -1577,12 +1585,14 @@ index 41d3d96..d7210c5 100644
 +  public:
 +    explicit ZeroColorWriteATCSink(Device* device) : device(device) {}
 +    ~ZeroColorWriteATCSink() {
++        TRACE_EVENT(DAWN_TRACE_CATEGORY(), "OhosZeroColorWriteATCSinkRelease");
 +        if (pool != VK_NULL_HANDLE) {
 +            device->fn.DestroyDescriptorPool(device->GetVkDevice(), pool, nullptr);
 +        }
 +        if (layout != VK_NULL_HANDLE) {
 +            device->fn.DestroyDescriptorSetLayout(device->GetVkDevice(), layout, nullptr);
 +        }
++        buffer = nullptr;
 +    }
 +    MaybeError Initialize() {
 +        BufferDescriptor descriptor;
@@ -1636,7 +1646,7 @@ index 41d3d96..d7210c5 100644
  // static
  ResultOrError<Ref<Device>> Device::Create(AdapterBase* adapter,
                                            const UnpackedPtr<DeviceDescriptor>& descriptor,
-@@ -416,6 +479,43 @@ FramebufferFetchHelper* Device::GetFramebufferFetchHelper() {
+@@ -416,6 +482,44 @@ FramebufferFetchHelper* Device::GetFramebufferFetchHelper() {
      return mFramebufferFetchHelper.get();
  }
  
@@ -1648,6 +1658,7 @@ index 41d3d96..d7210c5 100644
 +        if (!*sink) {
 +            auto candidate = std::make_unique<ZeroColorWriteATCSink>(this);
 +            DAWN_TRY(candidate->Initialize());
++            TRACE_EVENT(DAWN_TRACE_CATEGORY(), "OhosZeroColorWriteATCSinkCreate");
 +            *sink = std::move(candidate);
 +            InfoLog() << "OHOS Vulkan: private zero-color-write alpha-to-coverage sink enabled";
 +        }
@@ -1680,7 +1691,7 @@ index 41d3d96..d7210c5 100644
  Ref<FencedDeleter>& Device::GetFencedDeleter() {
      return mDeleter;
  }
-@@ -1115,6 +1215,9 @@ void Device::DestroyImpl(DestroyReason reason) {
+@@ -1115,6 +1219,9 @@ void Device::DestroyImpl(DestroyReason reason) {
      }
  
      mFramebufferFetchHelper.reset();
