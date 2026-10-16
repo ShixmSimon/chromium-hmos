@@ -129,11 +129,12 @@ diff --git a/components/viz/service/display_embedder/skia_output_device.h b/comp
 diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.cc b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
 --- a/components/viz/service/display_embedder/skia_output_device_vulkan.cc
 +++ b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
-@@ -43,17 +43,41 @@
+@@ -43,17 +43,42 @@
  #include "ui/gl/android/scoped_java_surface.h"
  #endif
  
 +#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 +#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 +#endif
 +
@@ -172,7 +173,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
    if (!output_device->Initialize()) [[unlikely]] {
      return nullptr;
    }
-@@ -111,14 +135,62 @@
+@@ -111,14 +136,62 @@
  #endif
  
  bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
@@ -237,7 +238,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
  }
  
  void SkiaOutputDeviceVulkan::Submit(
-@@ -199,6 +271,13 @@
+@@ -199,6 +272,13 @@
    DCHECK(vulkan_surface_);
    DCHECK(!scoped_write_);
  
@@ -251,7 +252,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
    gpu::VulkanSwapChain::ScopedWrite scoped_write(vulkan_surface_->swap_chain());
    if (!scoped_write.success()) [[unlikely]] {
      // Return nullptr, and then the caller will make context lost.
-@@ -211,8 +290,7 @@
+@@ -211,8 +291,7 @@
    if (!sk_surface) [[unlikely]] {
      SkSurfaceProps surface_props;
      const auto surface_format = vulkan_surface_->surface_format().format;
@@ -261,7 +262,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
      GrVkImageInfo vk_image_info;
      vk_image_info.fImage = scoped_write.image();
      vk_image_info.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
-@@ -240,6 +318,10 @@
+@@ -240,6 +319,10 @@
          kTopLeft_GrSurfaceOrigin, sample_count_, color_type_, color_space_,
          &surface_props);
      if (!sk_surface) [[unlikely]] {
@@ -272,7 +273,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
        return nullptr;
      }
    } else {
-@@ -312,8 +394,57 @@
+@@ -312,8 +395,63 @@
      LOG(ERROR) << "Failed to create vulkan surface.";
      return false;
    }
@@ -281,8 +282,14 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
 +  auto* queue = context_provider_->GetDeviceQueue();
 +  bool result = false;
 +#if BUILDFLAG(IS_OHOS)
-+  output_color_ = requires_alpha_ ? ui::OhosOutputColor{}
-+                                  : ui::GetOhosRequestedOutputColor();
++  // Popup transparency is known by the platform window before Viz sees its
++  // first render pass. RendererSettings alone can still say opaque here.
++  // Match the EGL path: rounded corners and shadows need an 8-bit alpha
++  // channel, not the two alpha bits in an HDR-capable 10-bit swapchain.
++  const bool alpha_window =
++      requires_alpha_ || ui::IsOhosAnchoredWindow(surface_handle_);
++  output_color_ = alpha_window ? ui::OhosOutputColor{}
++                               : ui::GetOhosRequestedOutputColor();
 +  if (output_color_.mode == ui::OhosOutputMode::kHdr10 &&
 +      (!hdr_display_guard_.Validate() ||
 +       !queue->enabled_extensions().contains(
@@ -332,7 +339,7 @@ diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.c
    if (!result) [[unlikely]] {
      LOG(ERROR) << "Failed to initialize vulkan surface.";
      vulkan_surface->Destroy();
-@@ -338,26 +469,42 @@
+@@ -338,26 +476,42 @@
    capabilities_.damage_area_from_skia_output_device = true;
  
    const auto surface_format = vulkan_surface_->surface_format().format;
