@@ -751,3 +751,33 @@ diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_ba
    TexImageStaticBitmapImage(params, static_bitmap_image, allow_copy_via_gpu);
  }
  
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+@@ -10,6 +10,9 @@
+ #include "base/logging.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
++#endif
+ #include "build/chromecast_buildflags.h"
+ #include "components/viz/common/resources/shared_image_format_utils.h"
+ #include "gpu/command_buffer/common/shared_image_usage.h"
+@@ -263,6 +266,16 @@
+       !usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_WEBGPU_WRITE |
+                       SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE |
+                       SHARED_IMAGE_USAGE_WEBGPU_STORAGE_TEXTURE)) {
++    return false;
++  }
++#endif
++
++#if BUILDFLAG(IS_OHOS)
++  // Pad/PC decoder surfaces use their dedicated video backing. Generic
++  // multiplanar pixmaps need per-plane import, which this Vulkan importer
++  // does not provide. Preserve software video's existing conversion path.
++  if (!ui::IsOhosPhoneGpuChild() && format.is_multi_plane() &&
++      gr_context_type == GrContextType::kVulkan) {
+     return false;
+   }
+ #endif

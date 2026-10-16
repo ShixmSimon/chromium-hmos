@@ -1069,8 +1069,51 @@ class VideoVulkanImplementation : public gpu::VulkanImplementationOhos {
     extensions.push_back("VK_OHOS_external_memory");
     return extensions;
   }
-  // Same-process video is registered explicitly by the decoder. Do not
-  // advertise generic NativePixmap import for unrelated GL/WebGPU buffers.
+  // Dawn Canvas and Skia share NativeBuffer allocations on every device.
+  // Keep capability probing conditional on the import and sync extensions.
+  bool CanImportGpuMemoryBuffer(gpu::VulkanDeviceQueue* queue,
+                               gfx::GpuMemoryBufferType type) override {
+    return type == gfx::NATIVE_PIXMAP && CanImportOhosVideoVulkan(queue);
+  }
+  std::unique_ptr<gpu::VulkanImage> CreateImageFromGpuMemoryHandle(
+      gpu::VulkanDeviceQueue* queue,
+      gfx::GpuMemoryBufferHandle handle,
+      gfx::Size size,
+      VkFormat format,
+      const gfx::ColorSpace& color) override {
+    if (format == VK_FORMAT_R8G8B8A8_UNORM ||
+        format == VK_FORMAT_B8G8R8A8_UNORM ||
+        format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+      if (handle.type != gfx::NATIVE_PIXMAP)
+        return nullptr;
+      const auto& prefix = handle.native_pixmap_handle().ohos_buffer_prefix;
+      if (prefix.empty()) {
+        // Pad/PC allocations are owned by the local NativeBuffer registry.
+        // Reacquire the allocation by fd; never reinterpret it as a phone
+        // broker parcel or import a plain dma-buf into the OHOS driver.
+        const auto image_format =
+            format == VK_FORMAT_R16G16B16A16_SFLOAT
+                ? viz::SinglePlaneFormat::kRGBA_F16
+                : format == VK_FORMAT_R8G8B8A8_UNORM
+                      ? viz::SinglePlaneFormat::kRGBA_8888
+                      : viz::SinglePlaneFormat::kBGRA_8888;
+        return ImportOhosOffscreenVulkan(
+            queue, CreateOhosNativePixmapFromHandle(
+                       size, image_format,
+                       std::move(handle).native_pixmap_handle()));
+      }
+      const uint32_t native_format =
+          format == VK_FORMAT_R16G16B16A16_SFLOAT
+              ? phone_gpu::kSharedImageRgba16Float
+              : format == VK_FORMAT_R8G8B8A8_UNORM
+                    ? phone_gpu::kSharedImageRgba8888
+                    : phone_gpu::kSharedImageBgra8888;
+      if (prefix.size() != 14 || prefix[8] != native_format)
+        return nullptr;
+      return ImportOhosOffscreenVulkan(queue, std::move(handle), size);
+    }
+    return ImportOhosVideoVulkan(queue, std::move(handle), size, color);
+  }
 };
 
 class PhoneVulkanImplementation final : public VideoVulkanImplementation {
@@ -1093,34 +1136,6 @@ class PhoneVulkanImplementation final : public VideoVulkanImplementation {
       }
     }
     return optional;
-  }
-  bool CanImportGpuMemoryBuffer(gpu::VulkanDeviceQueue* queue,
-                               gfx::GpuMemoryBufferType type) override {
-    return type == gfx::NATIVE_PIXMAP && CanImportOhosVideoVulkan(queue);
-  }
-  std::unique_ptr<gpu::VulkanImage> CreateImageFromGpuMemoryHandle(
-      gpu::VulkanDeviceQueue* queue,
-      gfx::GpuMemoryBufferHandle handle,
-      gfx::Size size,
-      VkFormat format,
-      const gfx::ColorSpace& color) override {
-    if (format == VK_FORMAT_R8G8B8A8_UNORM ||
-        format == VK_FORMAT_B8G8R8A8_UNORM ||
-        format == VK_FORMAT_R16G16B16A16_SFLOAT) {
-      if (handle.type != gfx::NATIVE_PIXMAP)
-        return nullptr;
-      const auto& prefix = handle.native_pixmap_handle().ohos_buffer_prefix;
-      const uint32_t native_format =
-          format == VK_FORMAT_R16G16B16A16_SFLOAT
-              ? phone_gpu::kSharedImageRgba16Float
-              : format == VK_FORMAT_R8G8B8A8_UNORM
-                    ? phone_gpu::kSharedImageRgba8888
-                    : phone_gpu::kSharedImageBgra8888;
-      if (prefix.size() != 14 || prefix[8] != native_format)
-        return nullptr;
-      return ImportOhosOffscreenVulkan(queue, std::move(handle), size);
-    }
-    return ImportOhosVideoVulkan(queue, std::move(handle), size, color);
   }
   std::unique_ptr<gpu::VulkanSurface> CreateViewSurface(
       gfx::AcceleratedWidget widget) override {
