@@ -52,6 +52,7 @@
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/gpu_fence.h"
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
+#include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 
 namespace media {
 
@@ -636,6 +637,7 @@ void OhosVideoDecoder::DestroyCodec() {
   rendered_output_.reset();
   surface_frames_in_flight_ = 0;
   surface_frame_limit_ = 0;
+  surface_background_.reset();
   surface_queue_size_ = 0;
   pending_conversions_ = 0;
   surface_eos_ = false;
@@ -1009,15 +1011,30 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
     LOG(WARNING) << "OHOS video surface queue: capacity=" << surface_queue_size_
                  << " max_acquired=" << surface_frame_limit_;
   }
-  if (surface_frames_in_flight_ >= surface_frame_limit_) {
+  const bool background = browser_sii_ && !ui::IsOhosApplicationVisible();
+  // Foreground video needs four leases for its rendering pipeline. A hidden
+  // phone can retain three consumer pictures until callbacks resume, so do
+  // not submit a fourth render that may block and be dropped by the codec.
+  // Returning to the foreground does not force a render: actual buffer
+  // returns naturally restart submission with the full foreground budget.
+  const size_t active_limit =
+      background ? std::min(surface_frame_limit_, size_t{3})
+                 : surface_frame_limit_;
+  if (!surface_background_ || *surface_background_ != background) {
+    surface_background_ = background;
+    LOG(WARNING) << "OHOS video surface queue policy: background=" << background
+                 << " limit=" << active_limit
+                 << " acquired=" << surface_frames_in_flight_;
+  }
+  if (surface_frames_in_flight_ >= active_limit) {
     TRACE_EVENT2("media", "OhosVideoDecoder::SurfaceBackpressure", "in_flight",
                  surface_frames_in_flight_, "queued_output",
                  surface_outputs_.size());
     return;
   }
-  TRACE_EVENT2("media", "OhosVideoDecoder::SubmitSurfaceOutput", "in_flight",
-               surface_frames_in_flight_, "queued_output",
-               surface_outputs_.size());
+  TRACE_EVENT("media", "OhosVideoDecoder::SubmitSurfaceOutput", "in_flight",
+              surface_frames_in_flight_, "queued_output",
+              surface_outputs_.size(), "background", background);
   rendered_output_ = std::move(surface_outputs_.front());
   surface_outputs_.pop_front();
   const auto render_started = base::TimeTicks::Now();
@@ -1311,6 +1328,8 @@ void OhosVideoDecoder::EnterErrorState(const char* reason) {
              << " current_surface_queue_capacity="
              << (surface_ ? surface_->GetBufferQueueSize() : 0)
              << " surface_frame_limit=" << surface_frame_limit_
+             << " surface_background=" << surface_background_.value_or(false)
+             << " app_visible=" << ui::IsOhosApplicationVisible()
              << " queued_output=" << surface_outputs_.size()
              << " waiting_surface=" << rendered_output_.has_value()
              << " waiting_flags="

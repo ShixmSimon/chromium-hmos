@@ -2,6 +2,7 @@
 
 #include <native_window/external_window.h>
 #include <algorithm>
+#include <atomic>
 #include <limits>
 #include <map>
 #include <set>
@@ -19,6 +20,8 @@
 
 namespace ui {
 namespace {
+
+std::atomic_bool g_application_visible{true};
 
 constexpr char kAuxiliarySurfacePrefix[] = "aura_aux_";
 constexpr char kPwaSurfacePrefix[] = "aura_pwa_";
@@ -1112,6 +1115,14 @@ int DispatchOhosDragEvent(gfx::AcceleratedWidget widget, OhosDragEvent event) {
 
 void SetOhosDragOutCallback(OhosDragOutCallback callback) {
   GetRegistry().SetDragOutCallback(std::move(callback));
+}
+
+void SetOhosApplicationVisible(bool visible) {
+  g_application_visible.store(visible, std::memory_order_relaxed);
+}
+
+bool IsOhosApplicationVisible() {
+  return g_application_visible.load(std::memory_order_relaxed);
 }
 
 bool StartOhosDragOut(OhosDragOutRequest request) {

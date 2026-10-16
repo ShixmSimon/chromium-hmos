@@ -18,6 +18,11 @@
 
 namespace ui {
 
+// Application/window visibility published by the shell. Safe to query from
+// media sequences without posting back to a UI thread that may be hidden.
+void SetOhosApplicationVisible(bool visible);
+bool IsOhosApplicationVisible();
+
 struct OhosNativeSurface {
   void* window = nullptr;
   gfx::Rect bounds;

@@ -229,6 +229,7 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   base::TimeTicks surface_wait_started_;
   size_t surface_frames_in_flight_ = 0;
   size_t surface_frame_limit_ = 0;
+  std::optional<bool> surface_background_;
   int surface_queue_size_ = 0;
   size_t pending_conversions_ = 0;
   bool surface_eos_ = false;

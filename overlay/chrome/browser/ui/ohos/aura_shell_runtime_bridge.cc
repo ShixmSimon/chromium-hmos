@@ -3799,6 +3799,13 @@ void ApplyWindowStateOnUiThread(gfx::AcceleratedWidget widget, int attempt) {
   }
 
   window->ShowInactive();
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    // Restore the foreground media budget only after the native window can
+    // present again, not while its show task is still waiting on this thread.
+    ui::SetOhosApplicationVisible(state.IsCameraForeground());
+  }
   if (focused) {
     // Regaining focus must not take activation from the browser's own bubble.
     // A desktop window manager hands activation back to whichever of the
@@ -5214,6 +5221,7 @@ void NotifyAuraShellBrowserStarted() {
     pending_shutdown = state.pending_shutdown;
     state.pending_shutdown = false;
     camera_foreground = state.IsCameraForeground();
+    ui::SetOhosApplicationVisible(camera_foreground);
   }
 
   content::MediaCaptureDevices::SetApplicationForegroundForOhos(
@@ -6150,6 +6158,11 @@ void SetAuraShellBrowserVisible(gfx::AcceleratedWidget widget, bool visible) {
     }
     ui_task_runner = state.ui_task_runner;
     const bool is_camera_foreground = state.IsCameraForeground();
+    // Hide is immediate for media. Show is published by ApplyWindowState only
+    // after the platform window resumes presentation.
+    if (!is_camera_foreground) {
+      ui::SetOhosApplicationVisible(false);
+    }
     if (ui_task_runner && was_camera_foreground != is_camera_foreground) {
       // Post in the same order as visibility transitions, before taking any
       // early return while applying a window that has not been created yet.
