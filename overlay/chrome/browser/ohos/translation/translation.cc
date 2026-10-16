@@ -351,10 +351,11 @@ class Page : public content::WebContentsObserver,
               reject("invalidResult");
               return;
             }
-            const auto id = Str(*d, "segmentId");
-            const auto known = it->second.revisions.find(id);
+            const auto segment_id = Str(*d, "segmentId");
+            const auto known = it->second.revisions.find(segment_id);
             if (known == it->second.revisions.end() ||
-                !seen.insert(id).second || Str(*d, "frameId") != navigation_ ||
+                !seen.insert(segment_id).second ||
+                Str(*d, "frameId") != navigation_ ||
                 Str(*d, "frameDocumentId") != navigation_ ||
                 d->FindInt("segmentRevision") != known->second ||
                 !d->FindString("translatedText")) {

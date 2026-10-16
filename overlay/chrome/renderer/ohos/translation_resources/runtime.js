@@ -108,7 +108,7 @@
       }
       if(s.dirty.size && now()-s.scrolled>=180) {
         const a=s.dirty.values().next().value;s.dirty.delete(a);
-        if(a.el.isConnected) refresh(a); else {invalidate(a);s.io.unobserve(a.el);s.anchors.delete(a.id);}
+        if(a.el.isConnected) refresh(a); else {invalidate(a);s.io.unobserve(a.el);s.anchors.delete(a.id);s.visible.delete(a);}
         continue;
       }
       if(!s.walker) {
@@ -160,7 +160,7 @@
   function stop() {
     if(!s)return;
     clearTimeout(s.timer);clearTimeout(s.scrollTimer);s.io.disconnect();s.mo.disconnect();
-    for(const [target,type,fn] of s.listeners)target.removeEventListener(type,fn);
+    for(const [target,type,fn,capture] of s.listeners)target.removeEventListener(type,fn,capture);
     for(const a of s.anchors.values())clean(a);
     s=null;
   }
@@ -169,9 +169,15 @@
     if(!document.documentElement)return {ok:false,reason:'notReady'};
     s={session:c.sessionId,target:c.targetLanguage,style:c.style,prefetch:c.prefetchViewportRatio,show:true,paused:false,error:false,frozen:false,
       units:0,created:0,next:0,limit:false,timer:0,scrollTimer:0,scrolled:-Infinity,anchors:new Map(),byNode:new WeakMap(),own:new WeakSet(),
-      roots:[],walker:null,dirty:new Set(),paint:new Set(),batches:new Map(),invalid:new Set(),listeners:[]};
-    const listen=(target,type,fn)=>{target.addEventListener(type,fn,{passive:true});s.listeners.push([target,type,fn]);};
-    s.io=new IntersectionObserver(entries=>{if(!s)return;for(const e of entries){const a=s.byNode.get(e.target);if(a){a.intersects=e.isIntersecting;s.dirty.add(a);}}schedule();},{rootMargin:`0px 0px ${Math.round(innerHeight*s.prefetch)}px 0px`});
+      roots:[],walker:null,visible:new Set(),dirty:new Set(),paint:new Set(),batches:new Map(),invalid:new Set(),listeners:[]};
+    const listen=(target,type,fn)=>{const capture=type==='scroll';target.addEventListener(type,fn,{passive:true,capture});s.listeners.push([target,type,fn,capture]);};
+    const observeVisibility=()=>{
+      if(s.io)s.io.disconnect();
+      s.visible.clear();
+      s.io=new IntersectionObserver(entries=>{if(!s)return;for(const e of entries){const a=s.byNode.get(e.target);if(a){a.intersects=e.isIntersecting;if(e.isIntersecting){s.visible.add(a);s.dirty.add(a);}else{s.visible.delete(a);a.priority='';if(!a.el.isConnected)s.dirty.add(a);}}}schedule();},{rootMargin:`0px 0px ${Math.round(innerHeight*s.prefetch)}px 0px`});
+      for(const a of s.anchors.values()){a.intersects=false;s.io.observe(a.el);}
+    };
+    observeVisibility();
     s.mo=new MutationObserver(records=>{
       if(!s)return;
       for(const r of records) {
@@ -186,8 +192,8 @@
       schedule();
     });
     s.mo.observe(document.documentElement,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','style','hidden','translate','contenteditable','aria-hidden']});
-    listen(window,'scroll',()=>{s.scrolled=now();clearTimeout(s.scrollTimer);s.scrollTimer=setTimeout(()=>{for(const a of s.anchors.values())s.dirty.add(a);schedule();},180);});
-    listen(window,'resize',()=>{for(const a of s.anchors.values())s.dirty.add(a);schedule();});
+    listen(window,'scroll',()=>{s.scrolled=now();clearTimeout(s.scrollTimer);s.scrollTimer=setTimeout(()=>{for(const a of s.visible)s.dirty.add(a);schedule();},180);});
+    listen(window,'resize',()=>{observeVisibility();schedule();});
     listen(document,'visibilitychange',schedule);
     listen(window,'pagehide',()=>{s.frozen=true;});
     listen(window,'pageshow',()=>{s.frozen=false;schedule();});
@@ -203,7 +209,7 @@
     if(c.op==='take') {
       tick();const segments=[],items=[];let units=0;
       if(paused()||now()-s.scrolled<180||s.batches.size>=2)return {ok:true,segments,...stats()};
-      const ordered=[...s.anchors.values()].filter(a=>a.priority).sort((a,b)=>a.priority===b.priority?(a.el.compareDocumentPosition(b.el)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1):a.priority==='visible'?-1:1);
+      const ordered=[...s.visible].filter(a=>a.priority).sort((a,b)=>a.priority===b.priority?(a.el.compareDocumentPosition(b.el)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1):a.priority==='visible'?-1:1);
       const started=now();
       for(const a of ordered) {
         if(now()-started>=4)break;
