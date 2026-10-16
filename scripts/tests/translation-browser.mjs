@@ -8,6 +8,7 @@ const client=await page.context().newCDPSession(page);
 const source=await fs.readFile('overlay/chrome/renderer/ohos/translation_resources/runtime.js','utf8');
 let contextId;
 async function init(html) {
+ if(contextId)await call({op:'stop'});
  await page.setContent(html);
  const {frameTree}=await client.send('Page.getFrameTree');
  ({executionContextId:contextId}=await client.send('Page.createIsolatedWorld',{frameId:frameTree.frame.id,worldName:'translation-test'}));
@@ -59,5 +60,26 @@ try {
  await start({targetLanguage:'ar',style:'gray'});await page.waitForTimeout(250);b=await take();await apply(b);await page.waitForTimeout(200);
  await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:'artifacts/translation/gray-dark-rtl.png'});
  assert.equal(await evaluate('document.querySelector("p").nextElementSibling.tagName'),'SPAN');ok('strict CSP/Trusted Types text insertion and dark RTL screenshot');
+ await init('<p>Retryable paragraph</p>');await start();await page.waitForTimeout(250);
+ await evaluate('globalThis.clockOffset=0;globalThis.realClock=performance.now.bind(performance);performance.now=()=>realClock()+clockOffset');
+ b=await take('lease');assert(b.segments.length);
+ await evaluate('clockOffset+=46000');let status=await call({op:'status'});assert(status.expired.includes('lease'));ok('45-second lease expires and frees concurrency slot');
+ await evaluate('clockOffset+=3000');b=await take('retry2');assert(b.segments.length);await call({op:'release',batchId:'retry2',reason:'providerError',retryable:true});
+ await evaluate('clockOffset+=5000');b=await take('retry3');assert(b.segments.length);await call({op:'release',batchId:'retry3',reason:'timeout',retryable:true});
+ await evaluate('clockOffset+=60000');assert.equal((await take('retry4')).segments.length,0);ok('at most two additional retries, with backoff');
+ await evaluate('performance.now=realClock');
+ await init('<p>Quota control</p>');await start();await page.waitForTimeout(250);await take('quota');
+ status=await call({op:'release',batchId:'quota',reason:'authentication',retryable:true});assert.equal(status.state,'error');assert.equal((await take('auth')).segments.length,0);ok('authentication failure pauses provider work until explicit new session');
+ await init('<p id="one">First paragraph</p><p id="two">Second paragraph</p>');await start();await page.waitForTimeout(250);b=await take('partial');
+ await page.evaluate(()=>document.querySelector('#two').remove());let result=await apply(b,'partial');assert.equal(result.applied,1);assert.equal(result.rejected,1);ok('removed source partially rejects an otherwise valid batch');
+ await call({op:'stop'});await start();await page.waitForTimeout(250);b=await take('huge');
+ result=await call({op:'apply',batchId:'huge',segments:b.segments.map(s=>({...s,translatedText:'x'.repeat(8001)}))});assert.equal(result.applied,0);assert(result.results.every(r=>r.reason==='tooLarge'));ok('oversized translation is rejected');
+ await init('<p id="a">Dynamic initial</p>');await start();await page.waitForTimeout(250);await apply(await take());await page.waitForTimeout(100);
+ await page.evaluate(()=>document.body.append(Object.assign(document.createElement('p'),{textContent:'Added after translation'})));await page.waitForTimeout(250);b=await take('dynamic');assert.deepEqual(b.segments.map(s=>s.text),['Added after translation']);ok('new visible nodes are discovered without translating existing results');
+ await call({op:'stop'});await page.evaluate(()=>document.body.append(Object.assign(document.createElement('p'),{textContent:'After stop'})));assert.equal((await take()).reason,'sessionEnded');ok('stopped observer does not collect later mutations');
+ await init('<p>First batch one</p><p>Second batch two</p>');await start();await page.waitForTimeout(200);
+ const first=await take('order1',{maxSegments:1}),second=await take('order2',{maxSegments:1});assert.equal(first.segments.length,1);assert.equal(second.segments.length,1);assert.equal((await apply(second,'order2')).applied,1);assert.equal((await apply(first,'order1')).applied,1);ok('two in-flight batches can resolve out of order');
+ await init(`<p>${'x'.repeat(600000)}</p><p>${'y'.repeat(600000)}</p>`);await start();await page.waitForTimeout(500);status=await call({op:'status'});assert.equal(status.limitReached,true);assert(status.retainedTextUnits<=1048576);ok('logical text quota is bounded with limitReached');
+ await init(Array.from({length:6000},(_,i)=>`<p>Row ${i}</p>`).join(''));await start();await page.waitForTimeout(2500);status=await call({op:'status'});assert.equal(status.limitReached,true);assert(status.discovered<=5000);ok('node/segment cap bounds large pages');
  console.log(JSON.stringify({passed,browser:browser.version(),scope:'host isolated-world executor; native IPC not tested'}));
 } finally {await browser.close();}

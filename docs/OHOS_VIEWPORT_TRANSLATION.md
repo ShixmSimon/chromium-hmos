@@ -35,7 +35,7 @@
 
 状态包括 idle/waiting/translating/paused/error/stopped。release reason 只允许 providerError/rateLimited/authentication/quota/cancelled/timeout。鉴权/额度失败将会话置 error 并暂停派发，用户处理后重新 start；不会自动换 provider。其他可重试释放有 2/4/8 秒退避，每片最多 3 次领取。429 外壳须按服务商 Retry-After 延后拉取，内核不解析服务商响应。
 
-固定失败码包括 invalidRequest/invalidTab/unsupportedPage/staleDocument/sessionEnded/busy/paused/concurrencyLimit/batchExpired/invalidResult/tooLarge/staleSegment/rendererGone/rendererTimeout/limitReached。发送成功不是执行成功；busy 时重发同一操作需新 requestId。未知/过期/已结算 batchId 不得重放。原生脚本操作超时 5 秒会结束会话、发失败确认，并拒绝迟到回调；批次租期 45 秒，外壳网络超时应更短。
+固定失败码包括 notReady/invalidRequest/invalidTab/unsupportedPage/staleDocument/sessionEnded/busy/paused/concurrencyLimit/batchExpired/invalidResult/tooLarge/staleSegment/rendererGone/rendererTimeout/limitReached。发送成功不是执行成功；busy 时重发同一操作需新 requestId。未知/过期/已结算 batchId 不得重放。原生脚本操作超时 5 秒会结束会话、发失败确认，并拒绝迟到回调；批次租期 45 秒，外壳网络超时应更短。
 
 ## 调度与内存边界
 
@@ -58,6 +58,8 @@ PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chrome node
 ```
 
 合成页面：`docs/test-pages/viewport-translation/index.html`。用户自行通过已有测试服务器发布，或用 `python3 -m http.server 8110 --directory docs/test-pages`。不自动操作手机，不接真实服务。
+
+可将 `docs/tools/ViewportTranslationProbe.ets` 复制到外壳调试模块，构造时传入 `BrowserCommandChannel.send` 包装函数，将 runtime event 交给 `onEvent()`；由调试按钮调用 start/pump/presentation/stop。该样例没有联网能力，不能作为自动启用的正式 provider。
 
 外壳先接确定性假 provider：把每片译文设为 `【测试译文】` + text；提供延迟 0/2/10/50 秒、逆序片段、丢弃回包、超大结果、鉴权/额度错误开关。只用合成页面，验证 UI 和实际 native 命令。顺序是 capabilities → getState(tabId) → start(返回身份) → take → apply/release；每批确认后再拉。样式不经过 provider。
 

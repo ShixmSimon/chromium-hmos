@@ -36,6 +36,14 @@ std::string Str(const base::DictValue& d, std::string_view key) {
   const auto* value = d.FindString(key);
   return value ? *value : "";
 }
+std::string SafeReason(const base::DictValue& d) {
+  const auto reason = Str(d, "reason");
+  for (auto allowed : {"sessionEnded", "batchExpired", "invalidResult",
+                       "tooLarge", "staleSegment", "notReady"})
+    if (reason == allowed)
+      return reason;
+  return "invalidResult";
+}
 size_t Units(const std::string& s) {
   return base::UTF8ToUTF16(s).size();
 }
@@ -133,7 +141,8 @@ class Page : public content::WebContentsObserver,
       e.Set(k, v.Clone());
     if (!stopped_ &&
         web_contents()->GetVisibility() != content::Visibility::VISIBLE) {
-      e.Set("state", "paused").Set("hasMore", false);
+      e.Set("state", "paused");
+      e.Set("hasMore", false);
     }
     return e;
   }
@@ -160,13 +169,15 @@ class Page : public content::WebContentsObserver,
     if (cleanup && navigation_ == Navigation() &&
         web_contents()->GetPrimaryMainFrame()->IsRenderFrameLive()) {
       base::DictValue c;
-      c.Set("op", "stop").Set("sessionId", session_);
+      c.Set("op", "stop");
+      c.Set("sessionId", session_);
       Execute(std::move(c), base::DoNothing());
     }
     operation_timeout_.Stop();
     ++operation_;
     if (!pending_reply_.empty()) {
-      pending_reply_.Set("ok", false).Set("reason", "sessionEnded");
+      pending_reply_.Set("ok", false);
+      pending_reply_.Set("reason", "sessionEnded");
       Send(pending_widget_, std::move(pending_reply_));
       pending_reply_.clear();
     }
@@ -175,7 +186,8 @@ class Page : public content::WebContentsObserver,
     batches_.clear();
     timer_.Stop();
     state_.clear();
-    state_.Set("state", "stopped").Set("hasMore", false);
+    state_.Set("state", "stopped");
+    state_.Set("hasMore", false);
     Notify("translationSessionEnded", reason);
   }
   void DidStartNavigation(content::NavigationHandle* h) override {
@@ -193,10 +205,10 @@ class Page : public content::WebContentsObserver,
     const int request = ReadRequestId(input);
     auto reject = [&](std::string reason) {
       auto e = State();
-      e.Set("event", event)
-          .Set("requestId", request)
-          .Set("ok", false)
-          .Set("reason", reason);
+      e.Set("event", event);
+      e.Set("requestId", request);
+      e.Set("ok", false);
+      e.Set("reason", reason);
       Send(ctx.widget, std::move(e));
     };
     if (!input.FindInt("requestId")) {
@@ -205,7 +217,9 @@ class Page : public content::WebContentsObserver,
     }
     if (name == "getTranslationState") {
       auto e = State();
-      e.Set("event", event).Set("requestId", request).Set("ok", true);
+      e.Set("event", event);
+      e.Set("requestId", request);
+      e.Set("ok", true);
       // State discovery must always expose the current document after
       // navigation.
       e.Set("navigationId", Navigation());
@@ -240,15 +254,18 @@ class Page : public content::WebContentsObserver,
       stopped_ = false;
       widget_ = ctx.widget;
       state_.clear();
+      state_.Set("sourceLanguage", source);
+      state_.Set("targetLanguage", target);
+      state_.Set("prefetchViewportRatio", prefetch);
       batches_.clear();
       sequence_ = 0;
       source_units_ = 0;
       result_units_ = 0;
       source_attempts_.clear();
-      c.Set("op", "start")
-          .Set("targetLanguage", target)
-          .Set("style", style)
-          .Set("prefetchViewportRatio", prefetch);
+      c.Set("op", "start");
+      c.Set("targetLanguage", target);
+      c.Set("style", style);
+      c.Set("prefetchViewportRatio", prefetch);
       timer_.Start(FROM_HERE, base::Milliseconds(300), this, &Page::Poll);
     } else {
       if (Str(input, "sessionId") != session_ || session_.empty()) {
@@ -258,7 +275,9 @@ class Page : public content::WebContentsObserver,
       if (name == "stopTranslation") {
         End("userStopped", true);
         auto e = State();
-        e.Set("event", event).Set("requestId", request).Set("ok", true);
+        e.Set("event", event);
+        e.Set("requestId", request);
+        e.Set("ok", true);
         Send(ctx.widget, std::move(e));
         return;
       }
@@ -275,9 +294,9 @@ class Page : public content::WebContentsObserver,
           reject("invalidRequest");
           return;
         }
-        c.Set("op", "presentation")
-            .Set("style", Str(input, "style"))
-            .Set("showTranslation", *input.FindBool("showTranslation"));
+        c.Set("op", "presentation");
+        c.Set("style", Str(input, "style"));
+        c.Set("showTranslation", *input.FindBool("showTranslation"));
       } else if (name == "takeTranslationBatch") {
         const int n = input.FindInt("maxSegments").value_or(kMaxSegments),
                   units = input.FindInt("maxTextUnits").value_or(kMaxText);
@@ -294,10 +313,10 @@ class Page : public content::WebContentsObserver,
           reject("paused");
           return;
         }
-        c.Set("op", "take")
-            .Set("batchId", Id())
-            .Set("maxSegments", n)
-            .Set("maxTextUnits", units);
+        c.Set("op", "take");
+        c.Set("batchId", Id());
+        c.Set("maxSegments", n);
+        c.Set("maxTextUnits", units);
       } else {
         const std::string id = Str(input, "batchId");
         auto it = batches_.find(id);
@@ -315,9 +334,9 @@ class Page : public content::WebContentsObserver,
             reject("invalidRequest");
             return;
           }
-          c.Set("op", "release")
-              .Set("retryable", input.FindBool("retryable").value_or(false))
-              .Set("reason", reason);
+          c.Set("op", "release");
+          c.Set("retryable", input.FindBool("retryable").value_or(false));
+          c.Set("reason", reason);
         } else {
           const auto* values = input.FindList("segments");
           if (!values || values->size() > kMaxSegments) {
@@ -350,7 +369,8 @@ class Page : public content::WebContentsObserver,
               return;
             }
           }
-          c.Set("op", "apply").Set("segments", values->Clone());
+          c.Set("op", "apply");
+          c.Set("segments", values->Clone());
         }
       }
     }
@@ -359,7 +379,8 @@ class Page : public content::WebContentsObserver,
     const uint64_t operation = ++operation_;
     pending_widget_ = ctx.widget;
     pending_reply_ = Envelope();
-    pending_reply_.Set("event", event).Set("requestId", request);
+    pending_reply_.Set("event", event);
+    pending_reply_.Set("requestId", request);
     operation_timeout_.Start(FROM_HERE, base::Seconds(5), this,
                              &Page::TimedOut);
     auto parameters = c.Clone();
@@ -401,11 +422,11 @@ class Page : public content::WebContentsObserver,
     operation_timeout_.Stop();
     pending_reply_.clear();
     auto reply = Envelope();
-    reply.Set("sessionId", session)
-        .Set("navigationId", nav)
-        .Set("event", event)
-        .Set("requestId", request)
-        .Set("ok", false);
+    reply.Set("sessionId", session);
+    reply.Set("navigationId", nav);
+    reply.Set("event", event);
+    reply.Set("requestId", request);
+    reply.Set("ok", false);
     if (session != session_ || nav != Navigation() || stopped_) {
       reply.Set("reason", "sessionEnded");
       Send(widget, std::move(reply));
@@ -454,7 +475,8 @@ class Page : public content::WebContentsObserver,
             ok = false;
             break;
           }
-          part->Set("frameId", navigation_).Set("frameDocumentId", navigation_);
+          part->Set("frameId", navigation_);
+          part->Set("frameDocumentId", navigation_);
         }
       if (units > static_cast<size_t>(
                       command.FindInt("maxTextUnits").value_or(kMaxText)) ||
@@ -472,7 +494,8 @@ class Page : public content::WebContentsObserver,
         for (const auto& [sid, rev] : b.revisions)
           ++source_attempts_[sid];
         batches_.emplace(id, std::move(b));
-        reply.Set("batchId", id).Set("leaseMs", 45000);
+        reply.Set("batchId", id);
+        reply.Set("leaseMs", 45000);
       }
       reply.Set("segments", segments->Clone());
     }
@@ -490,11 +513,13 @@ class Page : public content::WebContentsObserver,
     Update(*d);
     for (const auto [k, v] : state_)
       reply.Set(k, v.Clone());
-    reply.Set("sequence", static_cast<double>(++sequence_))
-        .Set("ok", ok)
-        .Set("reason", ok ? "" : Str(*d, "reason"));
+    reply.Set("sequence", static_cast<double>(++sequence_));
+    reply.Set("ok", ok);
+    reply.Set("reason", ok ? "" : SafeReason(*d));
     Send(widget, std::move(reply));
     Notify("translationStateChanged");
+    if (op == "start" && !ok)
+      End("notReady", true);
   }
   void Update(const base::DictValue& data) {
     for (auto key :
@@ -515,7 +540,8 @@ class Page : public content::WebContentsObserver,
   }
   void TimedOut() {
     if (!pending_reply_.empty()) {
-      pending_reply_.Set("ok", false).Set("reason", "rendererTimeout");
+      pending_reply_.Set("ok", false);
+      pending_reply_.Set("reason", "rendererTimeout");
       Send(pending_widget_, std::move(pending_reply_));
       pending_reply_.clear();
     }
@@ -558,6 +584,10 @@ class Page : public content::WebContentsObserver,
     auto* d = value.GetIfDict();
     if (!d) {
       End("rendererGone", false);
+      return;
+    }
+    if (!d->FindBool("ok").value_or(false)) {
+      End("sessionEnded", true);
       return;
     }
     const auto previous = state_.Clone();

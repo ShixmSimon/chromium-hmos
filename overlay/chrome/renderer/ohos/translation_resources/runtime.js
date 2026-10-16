@@ -27,7 +27,7 @@
     return el.isConnected && !s.own.has(el) && !el.closest(exclude) && !el.isContentEditable;
   }
   function priority(el) {
-    if(!validElement(el)) return '';
+    if(!validElement(el) || !s.byNode.get(el)?.intersects) return '';
     const cs=getComputedStyle(el);
     if(cs.visibility!=='visible' || cs.display==='none' || cs.contentVisibility==='hidden') return '';
     const r=el.getBoundingClientRect(), v=window.visualViewport;
@@ -94,7 +94,7 @@
     if(el.querySelector(block)) return;
     if(s.byNode.has(el)) {s.dirty.add(s.byNode.get(el));return;}
     if(s.limit || s.anchors.size>=MAX) {s.limit=true;return;}
-    const a={id:String(++s.next),el,revision:0,source:'',parts:[],priority:'',host:null};
+    const a={id:String(++s.next),el,revision:0,source:'',parts:[],priority:'',intersects:false,host:null};
     s.byNode.set(el,a);s.anchors.set(a.id,a);s.io.observe(el);
   }
   function work() {
@@ -166,11 +166,12 @@
   }
   function start(c) {
     stop();
+    if(!document.documentElement)return {ok:false,reason:'notReady'};
     s={session:c.sessionId,target:c.targetLanguage,style:c.style,prefetch:c.prefetchViewportRatio,show:true,paused:false,error:false,frozen:false,
       units:0,created:0,next:0,limit:false,timer:0,scrollTimer:0,scrolled:-Infinity,anchors:new Map(),byNode:new WeakMap(),own:new WeakSet(),
       roots:[],walker:null,dirty:new Set(),paint:new Set(),batches:new Map(),invalid:new Set(),listeners:[]};
     const listen=(target,type,fn)=>{target.addEventListener(type,fn,{passive:true});s.listeners.push([target,type,fn]);};
-    s.io=new IntersectionObserver(entries=>{if(!s)return;for(const e of entries){const a=s.byNode.get(e.target);if(a)s.dirty.add(a);}schedule();},{rootMargin:`0px 0px ${Math.round(innerHeight*s.prefetch)}px 0px`});
+    s.io=new IntersectionObserver(entries=>{if(!s)return;for(const e of entries){const a=s.byNode.get(e.target);if(a){a.intersects=e.isIntersecting;s.dirty.add(a);}}schedule();},{rootMargin:`0px 0px ${Math.round(innerHeight*s.prefetch)}px 0px`});
     s.mo=new MutationObserver(records=>{
       if(!s)return;
       for(const r of records) {
