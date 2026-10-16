@@ -115,7 +115,9 @@ class OhosVideoDecoder::SurfaceVisibilityObserver final
 
   void OnOhosApplicationVisibilityChanged(bool visible) override {
     if (visible) {
-      resumed_.Run();
+      // A codec error can unregister and destroy this observer during Run().
+      auto resumed = resumed_;
+      resumed.Run();
     }
   }
 
