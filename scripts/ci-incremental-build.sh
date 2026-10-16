@@ -299,6 +299,13 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection-updates.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-rule-sources.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-extension-updates.patch"
+  # Migrate the first translation patch before checking its prerequisites:
+  # that version inserted lines inside their added hunks. The new version
+  # adds separate blocks so every prerequisite remains reverse-checkable.
+  if git -C "$repo_root" show c5d94268:patches/ohos-viewport-translation.patch |
+      git -C "$src" apply -C0 --reverse --check - 2>/dev/null; then
+    apply_incremental_patch "${repo_root}/patches/ohos-viewport-translation.patch"
+  fi
   apply_incremental_patch "${repo_root}/patches/ohos-adblock-rust.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-adblock-execution.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-viewport-translation.patch"
