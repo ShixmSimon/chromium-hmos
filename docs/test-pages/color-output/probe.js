@@ -22,11 +22,12 @@ function run() {
       ctx.fillStyle = hdr ? 'color(display-p3 2 0 0)' : (p3 ? 'color(display-p3 1 0 0)' : '#ff0000'); ctx.fillRect(300,0,300,240);
       report.leftPixel = Array.from(ctx.getImageData(150,120,1,1).data);
     } else {
-      const gl = c.getContext('webgl2', {alpha:false, preserveDrawingBuffer:true, antialias:false});
+      const float = mode.value.endsWith('float');
+      // Chromium requires an alpha channel for drawingBufferStorage().
+      const gl = c.getContext('webgl2', {alpha:float, preserveDrawingBuffer:true, antialias:false});
       if (!gl) throw Error('WebGL2 context unavailable');
       c._gl = gl; report.attributes = gl.getContextAttributes();
       gl.drawingBufferColorSpace = colorSpace;
-      const float = mode.value.endsWith('float');
       if (float) {
         report.floatExtension = !!gl.getExtension('EXT_color_buffer_float');
         if (typeof gl.drawingBufferStorage !== 'function') throw Error('drawingBufferStorage unavailable');

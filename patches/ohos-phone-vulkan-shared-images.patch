@@ -1272,3 +1272,25 @@ diff --git a/gpu/command_buffer/service/gpu_persistent_cache_unittest.cc b/gpu/c
  
  // Tests basic store and load functionality on a single thread.
  TEST_F(GpuPersistentCacheTest, StoreAndLoadData) {
+diff --git a/gpu/command_buffer/service/shared_image/gl_texture_holder.cc b/gpu/command_buffer/service/shared_image/gl_texture_holder.cc
+--- a/gpu/command_buffer/service/shared_image/gl_texture_holder.cc
++++ b/gpu/command_buffer/service/shared_image/gl_texture_holder.cc
+@@ -426,6 +426,18 @@
+     GLint preferred_type = 0;
+     api->glGetIntegervFn(GL_IMPLEMENTATION_COLOR_READ_TYPE, &preferred_type);
+ 
++#if BUILDFLAG(IS_OHOS)
++    // SharedImage's upload descriptor uses the GLES2 half-float token, but
++    // ANGLE's GLES3 read framebuffer reports the core half-float token.
++    // Both describe 16-bit components. Use the driver's read token without
++    // changing the texture upload descriptor or reducing HDR precision.
++    if (format_ == viz::SinglePlaneFormat::kRGBA_F16 &&
++        gl_format == GL_RGBA && preferred_format == GL_RGBA &&
++        gl_type == GL_HALF_FLOAT_OES && preferred_type == GL_HALF_FLOAT) {
++      gl_type = GL_HALF_FLOAT;
++    }
++#endif
++
+     if (gl_format != static_cast<GLenum>(preferred_format) ||
+         gl_type != static_cast<GLenum>(preferred_type)) {
+       if (format_ == viz::SinglePlaneFormat::kBGRA_8888 ||
