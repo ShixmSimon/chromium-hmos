@@ -160,6 +160,7 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   void AdvanceGeneration();
   DecoderStatus CreateCodec();
   void RenderNextSurfaceOutput();
+  void OnSurfacePresentationResumed(uint32_t generation);
   void OnSurfaceFrameAvailable(uint32_t generation);
   bool TryProcessSurfaceFrame(uint32_t generation);
   void OnSurfaceFrameArrivalTimeout(uint32_t generation);
@@ -219,6 +220,8 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   std::optional<OutputLayout> output_layout_;
 
   bool surface_enabled_ = false;
+  class SurfaceVisibilityObserver;
+  std::unique_ptr<SurfaceVisibilityObserver> surface_visibility_observer_;
   scoped_refptr<OhosVideoSurface> surface_;
   base::circular_deque<SurfaceOutput> surface_outputs_;
   // Only one rendered buffer awaits acquisition: consumer FIFO and this entry

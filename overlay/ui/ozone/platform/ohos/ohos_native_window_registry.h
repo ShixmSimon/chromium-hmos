@@ -23,6 +23,21 @@ namespace ui {
 void SetOhosApplicationVisible(bool visible);
 bool IsOhosApplicationVisible();
 
+// Notifications are posted to the sequence on which the observer registers.
+// Remove the observer on that sequence before destroying it. Consumers must
+// recheck IsOhosApplicationVisible(), since a newer transition may be pending.
+class OhosApplicationVisibilityObserver {
+ public:
+  virtual void OnOhosApplicationVisibilityChanged(bool visible) = 0;
+
+ protected:
+  virtual ~OhosApplicationVisibilityObserver() = default;
+};
+void AddOhosApplicationVisibilityObserver(
+    OhosApplicationVisibilityObserver* observer);
+void RemoveOhosApplicationVisibilityObserver(
+    OhosApplicationVisibilityObserver* observer);
+
 struct OhosNativeSurface {
   void* window = nullptr;
   gfx::Rect bounds;

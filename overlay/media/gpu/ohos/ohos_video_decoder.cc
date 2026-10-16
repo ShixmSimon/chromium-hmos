@@ -102,6 +102,27 @@ struct OhosVideoDecoder::CallbackRelay {
   std::atomic<uint32_t> generation;
 };
 
+class OhosVideoDecoder::SurfaceVisibilityObserver final
+    : public ui::OhosApplicationVisibilityObserver {
+ public:
+  explicit SurfaceVisibilityObserver(base::RepeatingClosure resumed)
+      : resumed_(std::move(resumed)) {
+    ui::AddOhosApplicationVisibilityObserver(this);
+  }
+  ~SurfaceVisibilityObserver() override {
+    ui::RemoveOhosApplicationVisibilityObserver(this);
+  }
+
+  void OnOhosApplicationVisibilityChanged(bool visible) override {
+    if (visible) {
+      resumed_.Run();
+    }
+  }
+
+ private:
+  const base::RepeatingClosure resumed_;
+};
+
 OhosVideoDecoder::PendingDecode::PendingDecode(
     scoped_refptr<DecoderBuffer> buffer,
     DecodeCB decode_cb)
@@ -604,6 +625,12 @@ DecoderStatus OhosVideoDecoder::CreateCodec() {
     return {DecoderStatus::Codes::kFailedToCreateDecoder,
             "OH_VideoDecoder_Prepare/Start failed"};
   }
+  if (surface_enabled_ && browser_sii_) {
+    surface_visibility_observer_ =
+        std::make_unique<SurfaceVisibilityObserver>(base::BindRepeating(
+            &OhosVideoDecoder::OnSurfacePresentationResumed,
+            weak_factory_.GetWeakPtr(), generation_));
+  }
   LOG(WARNING) << "OHOS video decoder: selected hardware " << *name
                << " profile=" << GetProfileName(config_.profile())
                << " output=" << (surface_enabled_ ? "surface" : "buffer")
@@ -630,6 +657,7 @@ void OhosVideoDecoder::DestroyCodec() {
   // Invalidate before destroying so that callbacks already posted by this
   // codec are ignored even if a new codec reuses their indices.
   AdvanceGeneration();
+  surface_visibility_observer_.reset();
   surface_timeout_.Stop();
   surface_poll_.Stop();
   free_inputs_.clear();
@@ -1012,14 +1040,12 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
                  << " max_acquired=" << surface_frame_limit_;
   }
   const bool background = browser_sii_ && !ui::IsOhosApplicationVisible();
-  // Foreground video needs four leases for its rendering pipeline. A hidden
-  // phone can retain three consumer pictures until callbacks resume, so do
-  // not submit a fourth render that may block and be dropped by the codec.
-  // Returning to the foreground does not force a render: actual buffer
-  // returns naturally restart submission with the full foreground budget.
-  const size_t active_limit =
-      background ? std::min(surface_frame_limit_, size_t{3})
-                 : surface_frame_limit_;
+  // A hidden phone's native producer can return success without a consumer
+  // buffer, even with only two acquired frames. Keep codec outputs queued
+  // until presentation resumes. Foreground keeps the four-frame budget;
+  // the visibility observer explicitly restarts submission so retained
+  // consumer frames cannot leave the queue waiting for another release.
+  const size_t active_limit = background ? 0 : surface_frame_limit_;
   if (!surface_background_ || *surface_background_ != background) {
     surface_background_ = background;
     LOG(WARNING) << "OHOS video surface queue policy: background=" << background
@@ -1066,6 +1092,18 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
       FROM_HERE, base::Milliseconds(100),
       base::BindRepeating(&OhosVideoDecoder::OnSurfaceFramePoll,
                          weak_factory_.GetWeakPtr(), generation_));
+}
+
+void OhosVideoDecoder::OnSurfacePresentationResumed(uint32_t generation) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (generation != generation_ || !ui::IsOhosApplicationVisible()) {
+    return;
+  }
+  LOG(WARNING) << "OHOS video surface queue resume: acquired="
+               << surface_frames_in_flight_
+               << " queued_output=" << surface_outputs_.size()
+               << " waiting_surface=" << rendered_output_.has_value();
+  RenderNextSurfaceOutput();
 }
 
 void OhosVideoDecoder::OnSurfaceFrameAvailable(uint32_t generation) {

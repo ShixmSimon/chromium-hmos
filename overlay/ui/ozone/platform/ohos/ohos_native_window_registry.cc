@@ -10,7 +10,9 @@
 #include <utility>
 #include <vector>
 
+#include "base/location.h"
 #include "base/no_destructor.h"
+#include "base/observer_list_threadsafe.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/synchronization/condition_variable.h"
@@ -22,6 +24,15 @@ namespace ui {
 namespace {
 
 std::atomic_bool g_application_visible{true};
+
+using ApplicationVisibilityObserverList =
+    base::ObserverListThreadSafe<OhosApplicationVisibilityObserver>;
+
+ApplicationVisibilityObserverList& ApplicationVisibilityObservers() {
+  static base::NoDestructor<scoped_refptr<ApplicationVisibilityObserverList>>
+      observers(base::MakeRefCounted<ApplicationVisibilityObserverList>());
+  return **observers;
+}
 
 constexpr char kAuxiliarySurfacePrefix[] = "aura_aux_";
 constexpr char kPwaSurfacePrefix[] = "aura_pwa_";
@@ -1118,11 +1129,27 @@ void SetOhosDragOutCallback(OhosDragOutCallback callback) {
 }
 
 void SetOhosApplicationVisible(bool visible) {
-  g_application_visible.store(visible, std::memory_order_relaxed);
+  if (g_application_visible.exchange(visible, std::memory_order_relaxed) !=
+      visible) {
+    ApplicationVisibilityObservers().Notify(
+        FROM_HERE,
+        &OhosApplicationVisibilityObserver::OnOhosApplicationVisibilityChanged,
+        visible);
+  }
 }
 
 bool IsOhosApplicationVisible() {
   return g_application_visible.load(std::memory_order_relaxed);
+}
+
+void AddOhosApplicationVisibilityObserver(
+    OhosApplicationVisibilityObserver* observer) {
+  ApplicationVisibilityObservers().AddObserver(observer);
+}
+
+void RemoveOhosApplicationVisibilityObserver(
+    OhosApplicationVisibilityObserver* observer) {
+  ApplicationVisibilityObservers().RemoveObserver(observer);
 }
 
 bool StartOhosDragOut(OhosDragOutRequest request) {
