@@ -199,6 +199,13 @@ int main() {
       if (field == 4) invalid.tail_bytes = 4;
       assert(!p::ValidSharedPacket(invalid, 0));
     }
+    ready.packet.color = {ui::OhosOutputMode::kP3Sdr10};
+    assert(p::SendSharedMessage(s[0], ready));
+    assert(p::ReceiveSharedMessage(s[1], &got, 100));
+    assert(got.packet.color.mode == ui::OhosOutputMode::kP3Sdr10);
+    auto bad_p3 = ready.packet;
+    bad_p3.color.white_millinits = 203000;
+    assert(!p::ValidSharedPacket(bad_p3, 0));
     ready.packet.fd_count = 1;
     assert(!p::ValidSharedPacket(ready.packet, 1));
   }

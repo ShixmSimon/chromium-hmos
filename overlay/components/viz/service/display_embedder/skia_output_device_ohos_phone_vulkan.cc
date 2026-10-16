@@ -102,6 +102,7 @@ struct SkiaOutputDeviceOhosPhoneVulkan::State {
   uint64_t widget;
   ui::OhosOutputColor color;
   bool hdr_capable = false;
+  bool p3_capable = false;
   ui::OhosHdrDisplayGuard display_guard;
   uint64_t color_generation = 0;
   VkFormat imported_format = VK_FORMAT_UNDEFINED;
@@ -329,13 +330,13 @@ SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
       ui::MakeOhosOutputColorSpaces(s.color);
   s.hdr_capable = s.color.mode == ui::OhosOutputMode::kHdr10;
   if (s.hdr_capable) {
-    if (!ui::ReportOhosPhoneHdrOutputReady(s.widget, s.color,
+    if (!ui::ReportOhosPhoneOutputColorReady(s.widget, s.color,
                                           s.color_generation))
       s.ColorFailure("publish verified HDR capability");
     // Wide gamut alone does not make content HDR. Keep both SDR usages out
     // of the system's HDR tone mapper; only kHDR retains the PQ output.
-    // Until a P3 SDR NativeBuffer path is negotiated, WCG is color-converted
-    // to sRGB. The Skia surface and NativeBuffer tags must agree on that gamut.
+    // Start WCG at sRGB; the separate verified P3 probe below may upgrade it.
+    // The Skia surface and NativeBuffer tags must agree on that gamut.
     for (auto usage : {gfx::ContentColorUsage::kSRGB,
                        gfx::ContentColorUsage::kWideColorGamut}) {
       for (bool alpha : {false, true}) {
@@ -345,9 +346,45 @@ SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
       }
     }
   }
+  if (!requires_alpha && s.color.mode != ui::OhosOutputMode::kSdr8) {
+    // Probe a real P3-tagged 10-bit buffer and import it before advertising WCG.
+    // A rejected optional P3 probe leaves the proven SDR/HDR route available.
+    const auto original_color = s.color;
+    ui::phone_gpu::SharedMessage probe;
+    const ui::OhosOutputColor p3{ui::OhosOutputMode::kP3Sdr10};
+    if (ui::ProbeOhosPhoneOutputColor(s.widget, p3, &probe)) {
+      s.color = p3;
+      s.color_generation = probe.packet.color_generation;
+      s.info = SkImageInfo::Make(probe.packet.width, probe.packet.height,
+          s.color_type(), kOpaque_SkAlphaType,
+          gfx::ColorSpace::CreateDisplayP3D65().ToSkColorSpace());
+      s.watchdog.Arm();
+      s.Import(probe, s.imports[probe.packet.prefix[0]]);
+      s.watchdog.Disarm();
+      s.Clear();
+      ui::CancelOhosPhoneGpuBuffer(s.widget, probe.packet.lease);
+      if (!ui::ReportOhosPhoneOutputColorReady(s.widget, p3, s.color_generation))
+        s.ColorFailure("publish verified P3 capability");
+      s.p3_capable = true;
+      for (bool alpha : {false, true}) {
+        capabilities_.ohos_output_color_spaces->SetOutputColorSpaceAndFormat(
+            gfx::ContentColorUsage::kWideColorGamut, alpha,
+            gfx::ColorSpace::CreateDisplayP3D65(),
+            SinglePlaneFormat::kRGBA_1010102);
+      }
+      capabilities_.ohos_output_color_spaces->SetPrimaries(
+          gfx::DisplayColorSpaces(gfx::ColorSpace::CreateDisplayP3D65()).GetPrimaries());
+    } else {
+      // A partially tagged probe may retire old buffers. Re-establish the
+      // previous generation even when P3 cannot be used on this device.
+      if (!ui::ProbeOhosPhoneOutputColor(s.widget, original_color, &probe))
+        s.ColorFailure("restore output after rejected P3 probe");
+      s.color_generation = probe.packet.color_generation;
+      ui::CancelOhosPhoneGpuBuffer(s.widget, probe.packet.lease);
+    }
+  }
   capabilities_.ohos_dynamic_output_luminance =
-      s.color.mode == ui::OhosOutputMode::kHdr10 &&
-      ui::OhosDynamicOutputLuminance();
+      s.hdr_capable && ui::OhosDynamicOutputLuminance();
   capabilities_.uses_default_gl_framebuffer = false;
   capabilities_.pending_swap_params.max_pending_swaps = 1;
   capabilities_.output_surface_origin = gfx::SurfaceOrigin::kTopLeft;
@@ -394,7 +431,8 @@ bool SkiaOutputDeviceOhosPhoneVulkan::Reshape(const ReshapeParams& params) {
     if (!ui::ValidOhosOutputColor(color))
       s.ColorFailure("output brightness contract changed");
     if (color.mode != s.color.mode) {
-      if (!ui::CanSwitchOhosPhoneOutputColor(s.color, color, s.hdr_capable))
+      if (!ui::CanSwitchOhosPhoneOutputColor(s.color, color, s.hdr_capable,
+                                              s.p3_capable))
         s.ColorFailure("unsupported output mode change");
       // Retire imported images before the browser cleans HDR-tagged buffers.
       // This happens on SDR/HDR content transitions, never per ordinary frame.
@@ -414,7 +452,9 @@ bool SkiaOutputDeviceOhosPhoneVulkan::Reshape(const ReshapeParams& params) {
                  << color.white_millinits
                  << " peak_millinits=" << color.peak_millinits;
   }
-  if (params.image_info.colorType() != s.color_type() ||
+  if ((s.color.mode == ui::OhosOutputMode::kP3Sdr10 &&
+       params.color_space != gfx::ColorSpace::CreateDisplayP3D65()) ||
+      params.image_info.colorType() != s.color_type() ||
       params.color_space.IsHDR() !=
           (s.color.mode == ui::OhosOutputMode::kHdr10)) {
     s.ColorFailure("output color contract changed");

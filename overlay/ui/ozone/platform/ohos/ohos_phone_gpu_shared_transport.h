@@ -11,7 +11,7 @@
 #include "ui/ozone/platform/ohos/ohos_output_color.h"
 
 namespace ui::phone_gpu {
-inline constexpr uint32_t kSharedMagic = 0x50475334;
+inline constexpr uint32_t kSharedMagic = 0x50475335;
 inline constexpr size_t kSharedMaxFds = 8;
 // NativeBuffer format values, checked against the SDK by the allocator.
 inline constexpr uint32_t kSharedImageRgba8888 = 12;

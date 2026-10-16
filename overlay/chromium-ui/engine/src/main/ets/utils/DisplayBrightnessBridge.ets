@@ -15,6 +15,7 @@ export class DisplayBrightnessBridge {
   private warned: boolean = false;
   private queryReported: boolean = false;
   private eventReported: boolean = false;
+  private lastReported: string = "";
   private onBrightness = (id: number, info: display.BrightnessInfo): void => {
     if (id !== this.displayId) {
       return;
@@ -87,11 +88,16 @@ export class DisplayBrightnessBridge {
   }
 
   private publish(info: display.BrightnessInfo): void {
+    const signature = `${this.displayId}:${info.sdrNits}:${info.currentHeadroom}:${info.maxHeadroom}`;
+    if (signature !== this.lastReported) {
+      this.report('changed', info);
+    }
     this.port.UpdateDisplayBrightness(this.displayId, info.sdrNits,
       info.currentHeadroom, info.maxHeadroom);
   }
 
   private report(source: string, info: display.BrightnessInfo): void {
+    this.lastReported = `${this.displayId}:${info.sdrNits}:${info.currentHeadroom}:${info.maxHeadroom}`;
     // Chromium's hilog handler is not installed yet during the initial query.
     console.info(`OHOS brightness bridge: source=${source} display=${this.displayId}` +
       ` sdr_nits=${info.sdrNits} current_headroom=${info.currentHeadroom}` +

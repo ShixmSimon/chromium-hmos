@@ -30,6 +30,7 @@ BrightnessState& Brightness() {
 }
 std::atomic<bool> failed{false};
 std::atomic<bool> verified_phone_hdr{false};
+std::atomic<bool> verified_phone_p3{false};
 base::FilePath FailurePath() {
   auto directory = base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
       "user-data-dir");
@@ -70,7 +71,9 @@ bool SetColor(Target* target,
       [&](bool hdr) {
         return success("color-space",
                        set_color(target, hdr ? OH_COLORSPACE_BT2020_PQ_FULL
-                                             : OH_COLORSPACE_SRGB_FULL));
+                                             : (color.mode == OhosOutputMode::kP3Sdr10
+                                                    ? OH_COLORSPACE_P3_FULL
+                                                    : OH_COLORSPACE_SRGB_FULL)));
       },
       [&] {
         uint8_t type = OH_VIDEO_HDR_HDR10;
@@ -138,7 +141,12 @@ void UpdateOhosDisplayBrightness(std::optional<OhosDisplayBrightness> value) {
     LOG(WARNING) << "OHOS brightness: display=" << value->display_id
                  << " white_nits=" << value->hdr.white_millinits / 1000.0
                  << " peak_nits=" << value->hdr.peak_millinits / 1000.0
-                 << " max_headroom=" << value->max_headroom;
+                 << " current_headroom="
+                 << static_cast<double>(value->hdr.peak_millinits) /
+                        value->hdr.white_millinits
+                 << " max_headroom=" << value->max_headroom
+                 << " content_peak_millinits="
+                 << OhosContentOutputColor(*value).peak_millinits;
   }
   if (changed)
     changed.Run();
@@ -152,6 +160,8 @@ void SetOhosDisplayBrightnessChangedCallback(base::RepeatingClosure callback) {
   Brightness().changed = std::move(callback);
 }
 void SetOhosVerifiedPhoneHdrOutput(bool available) {
+  if (!available)
+    SetOhosVerifiedPhoneP3Output(false);
   if (verified_phone_hdr.exchange(available) == available)
     return;
   base::RepeatingClosure changed;
@@ -165,6 +175,41 @@ void SetOhosVerifiedPhoneHdrOutput(bool available) {
 }
 bool HasOhosVerifiedPhoneHdrOutput() {
   return verified_phone_hdr.load();
+}
+bool OhosSingleDisplaySupportsP3() {
+  NativeDisplayManager_DisplaysInfo* displays = nullptr;
+  if (OH_NativeDisplayManager_CreateAllDisplays(&displays) != DISPLAY_MANAGER_OK ||
+      !displays)
+    return false;
+  bool supported = false;
+  if (displays->displaysLength == 1 && displays->displaysInfo) {
+    const auto* spaces = displays->displaysInfo[0].colorSpace;
+    if (spaces && spaces->colorSpaces) {
+      for (uint32_t i = 0; i < spaces->colorSpaceLength; ++i) {
+        // Display-manager values use colorSpaceManager.ColorSpace, not the
+        // NativeBuffer enum: DISPLAY_P3 = 3 (sRGB transfer, D65 white).
+        supported |= spaces->colorSpaces[i] == 3;
+      }
+    }
+  }
+  OH_NativeDisplayManager_DestroyAllDisplays(displays);
+  LOG(WARNING) << "OHOS P3 display probe: supported=" << supported;
+  return supported;
+}
+void SetOhosVerifiedPhoneP3Output(bool available) {
+  if (verified_phone_p3.exchange(available) == available)
+    return;
+  base::RepeatingClosure changed;
+  {
+    base::AutoLock lock(Brightness().lock);
+    changed = Brightness().changed;
+  }
+  LOG(WARNING) << "OHOS phone P3 capability: verified=" << available;
+  if (changed)
+    changed.Run();
+}
+bool HasOhosVerifiedPhoneP3Output() {
+  return verified_phone_p3.load();
 }
 void ApplyOhosDisplayBrightness(gfx::DisplayColorSpaces& spaces) {
   if (auto value = GetOhosDisplayBrightness()) {
@@ -278,7 +323,9 @@ bool SetOhosBufferOutputColor(OH_NativeBuffer* buffer,
     return false;
   const auto expected = color.mode == OhosOutputMode::kHdr10
                             ? OH_COLORSPACE_BT2020_PQ_FULL
-                            : OH_COLORSPACE_SRGB_FULL;
+                            : (color.mode == OhosOutputMode::kP3Sdr10
+                                   ? OH_COLORSPACE_P3_FULL
+                                   : OH_COLORSPACE_SRGB_FULL);
   OH_NativeBuffer_ColorSpace actual = OH_COLORSPACE_NONE;
   const int result = OH_NativeBuffer_GetColorSpace(buffer, &actual);
   if (!IsOhosBufferColorReadbackValid(result, expected, actual)) {

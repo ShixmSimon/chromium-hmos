@@ -1,7 +1,7 @@
 diff --git a/components/viz/service/display/direct_renderer.cc b/components/viz/service/display/direct_renderer.cc
 --- a/components/viz/service/display/direct_renderer.cc
 +++ b/components/viz/service/display/direct_renderer.cc
-@@ -364,6 +364,22 @@
+@@ -364,6 +364,24 @@
    reshape_params.device_scale_factor = device_scale_factor;
    reshape_params.color_space = frame_color_space;
    reshape_params.format = frame_si_format;
@@ -16,7 +16,9 @@ diff --git a/components/viz/service/display/direct_renderer.cc b/components/viz/
 +      CHECK(brightness);
 +      color = brightness->hdr;
 +    } else if (frame_si_format == SinglePlaneFormat::kRGBA_1010102) {
-+      color.mode = ui::OhosOutputMode::kSdr10;
++      color.mode = frame_color_space == gfx::ColorSpace::CreateDisplayP3D65()
++                       ? ui::OhosOutputMode::kP3Sdr10
++                       : ui::OhosOutputMode::kSdr10;
 +    }
 +    reshape_params.ohos_output_color = color;
 +  }

@@ -191,9 +191,12 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
                   << " size=" << surface->bounds.width() << "x"
                   << surface->bounds.height();
             }
-            if (!color_valid || !hdr_valid)
+            const bool gamut_valid = !probe ||
+                p.color.mode != OhosOutputMode::kP3Sdr10 ||
+                OhosSingleDisplaySupportsP3();
+            if (!color_valid || !hdr_valid || !gamut_valid)
               reply.result = static_cast<uint32_t>(phone_gpu::Result::kFailed);
-            if (color_valid && hdr_valid && leases.size() < 4 &&
+            if (color_valid && hdr_valid && gamut_valid && leases.size() < 4 &&
                 phone_gpu::SharedBufferAllocatorReady() &&
                 surface->bounds.width() > 0 && surface->bounds.height() > 0 &&
                 surface->bounds.width() <= 8192 &&
@@ -222,7 +225,8 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
                                            surface->window});
                 leases.emplace(reply.lease, Pending{reply, std::move(buffer)});
               } else {
-                if (p.color.mode != OhosOutputMode::kSdr8)
+                if (p.color.mode != OhosOutputMode::kSdr8 &&
+                    p.color.mode != OhosOutputMode::kP3Sdr10)
                   NoteOhosOutputColorFailure(
                       "NativeBuffer allocation or color metadata");
                 response.CloseFds();
@@ -287,7 +291,10 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
                              found->second.generation == p.color_generation &&
                              found->second.color == p.color;
           if (ready) {
-            SetOhosVerifiedPhoneHdrOutput(true);
+            if (p.color.mode == OhosOutputMode::kP3Sdr10)
+              SetOhosVerifiedPhoneP3Output(true);
+            else
+              SetOhosVerifiedPhoneHdrOutput(true);
             reply.result = static_cast<uint32_t>(phone_gpu::Result::kPresented);
           }
         } else if (p.operation == Op::kHdrDisplayQuery) {
@@ -558,7 +565,7 @@ void ReportOhosPhoneOutputColorFailure() {
   request.packet.widget = 1;
   ExchangeShared(&request, &response);
 }
-bool ReportOhosPhoneHdrOutputReady(uint64_t widget,
+bool ReportOhosPhoneOutputColorReady(uint64_t widget,
                                   const OhosOutputColor& color,
                                   uint64_t color_generation) {
   phone_gpu::SharedMessage request, response;

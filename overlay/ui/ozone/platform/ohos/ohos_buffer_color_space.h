@@ -9,13 +9,15 @@
 namespace ui {
 // buffer_common.h explicitly defines these display aliases as equivalent.
 // GetColorSpace may return the alias after SetColorSpace used the full name.
-// Normalize only the two output spaces we request; do not conflate range,
+// Normalize only the output spaces we request; do not conflate range,
 // transfer function or primaries merely because both values describe RGB.
 constexpr OH_NativeBuffer_ColorSpace CanonicalOhosOutputColorSpace(
     OH_NativeBuffer_ColorSpace space) {
   switch (space) {
     case OH_COLORSPACE_DISPLAY_SRGB:
       return OH_COLORSPACE_SRGB_FULL;
+    case OH_COLORSPACE_DISPLAY_P3_SRGB:
+      return OH_COLORSPACE_P3_FULL;
     case OH_COLORSPACE_DISPLAY_BT2020_PQ:
       return OH_COLORSPACE_BT2020_PQ_FULL;
     default:

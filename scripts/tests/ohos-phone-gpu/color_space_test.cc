@@ -29,6 +29,11 @@ int main() {
     assert(!IsOhosBufferColorReadbackValid(-13, OH_COLORSPACE_BT2020_PQ_FULL,
                                            actual));
   }
+  for (auto actual : {OH_COLORSPACE_P3_FULL, OH_COLORSPACE_DISPLAY_P3_SRGB}) {
+    assert(IsOhosBufferColorReadbackValid(0, OH_COLORSPACE_P3_FULL, actual));
+    assert(!IsOhosBufferColorReadbackValid(-1, OH_COLORSPACE_P3_FULL, actual));
+    assert(!IsOhosBufferColorReadbackValid(0, OH_COLORSPACE_SRGB_FULL, actual));
+  }
   // Keep rejecting missing tags, different primaries/transfer/range, and
   // unsupported values. Accepting all successful reads would fail this test.
   for (auto actual :

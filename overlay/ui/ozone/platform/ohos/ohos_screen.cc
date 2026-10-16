@@ -48,7 +48,8 @@ gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
   gfx::DisplayColorSpaces color_spaces(gfx::ColorSpace::CreateSRGB());
   ApplyOhosDisplayBrightness(color_spaces);
   const bool phone_hdr = HasOhosVerifiedPhoneHdrOutput();
-  if (OhosRequiresSdrOutput() && !phone_hdr) {
+  const bool phone_p3 = HasOhosVerifiedPhoneP3Output();
+  if (OhosRequiresSdrOutput() && !phone_hdr && !phone_p3) {
     // The global screen keeps the GL fallback contract. A Vulkan output
     // publishes its own verified format and merges this screen's luminance.
     LOG(WARNING) << "OHOS display: global screen keeps SDR fallback; "
@@ -58,7 +59,7 @@ gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
     return color_spaces;
   }
   const bool hdr = phone_hdr || OhosDisplaySupportsHdr();
-  if (!hdr) {
+  if (!hdr && !phone_p3) {
     return color_spaces;
   }
 
@@ -70,11 +71,19 @@ gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
        {gfx::ContentColorUsage::kSRGB, gfx::ContentColorUsage::kWideColorGamut,
         gfx::ContentColorUsage::kHDR}) {
     const gfx::ColorSpace& space =
-        usage == gfx::ContentColorUsage::kHDR ? hdr_space : srgb;
+        usage == gfx::ContentColorUsage::kHDR && hdr ? hdr_space : srgb;
     color_spaces.SetOutputColorSpaceAndFormat(usage, /*needs_alpha=*/false,
                                               space, ten_bit);
     color_spaces.SetOutputColorSpaceAndFormat(usage, /*needs_alpha=*/true,
                                               space, eight_bit);
+  }
+  if (phone_p3) {
+    const auto p3 = gfx::ColorSpace::CreateDisplayP3D65();
+    for (bool alpha : {false, true})
+      color_spaces.SetOutputColorSpaceAndFormat(
+          gfx::ContentColorUsage::kWideColorGamut, alpha, p3,
+          alpha ? eight_bit : ten_bit);
+    color_spaces.SetPrimaries(gfx::DisplayColorSpaces(p3).GetPrimaries());
   }
   return color_spaces;
 }

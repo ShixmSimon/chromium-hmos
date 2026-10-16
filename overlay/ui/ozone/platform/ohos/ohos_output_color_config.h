@@ -21,6 +21,10 @@ void ApplyOhosDisplayBrightness(gfx::DisplayColorSpaces& spaces);
 // Reset on color/Vulkan failure or replacement of that GPU generation.
 void SetOhosVerifiedPhoneHdrOutput(bool available);
 bool HasOhosVerifiedPhoneHdrOutput();
+void SetOhosVerifiedPhoneP3Output(bool available);
+bool HasOhosVerifiedPhoneP3Output();
+// Browser-side display-service query; never called from a fork GPU.
+bool OhosSingleDisplaySupportsP3();
 bool OhosDynamicOutputLuminance();
 inline constexpr char kOhosOutputColorFailedMarker[] = "GpuOutputColorFailed";
 // Desired mode only. Output devices must validate an actual allocation before
