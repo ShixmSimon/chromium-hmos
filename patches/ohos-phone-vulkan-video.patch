@@ -1306,11 +1306,12 @@ diff --git a/gpu/command_buffer/client/client_shared_image_unittest.cc b/gpu/com
 diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buffer/service/webgpu_decoder_impl.cc
 --- a/gpu/command_buffer/service/webgpu_decoder_impl.cc
 +++ b/gpu/command_buffer/service/webgpu_decoder_impl.cc
-@@ -464,6 +464,14 @@
+@@ -464,6 +464,15 @@
      // Get an unowned reference to the wgpu::Texture for the shared image.
      virtual wgpu::Texture texture() const = 0;
      virtual Mailbox mailbox() const = 0;
 +#if BUILDFLAG(IS_OHOS)
++    virtual WGPUDevice OhosNativeReadDevice() const { return nullptr; }
 +    virtual bool ResumeOhosNativeReadAccess() { return true; }
 +    virtual void SuspendOhosNativeReadAccess() {}
 +    virtual std::unique_ptr<SharedImageRepresentationAndAccess>
@@ -1321,7 +1322,7 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
    };
  
    // Wraps a |DawnImageRepresentation| as a wgpu::Texture.
-@@ -483,6 +491,54 @@
+@@ -483,6 +492,111 @@
      std::unique_ptr<DawnImageRepresentation> representation_;
      std::unique_ptr<DawnImageRepresentation::ScopedAccess> access_;
    };
@@ -1352,6 +1353,9 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
 +    explicit SharedImageRepresentationAndAccessOhosNativeRead(
 +        std::shared_ptr<State> state) : state_(std::move(state)) {}
 +
++    WGPUDevice OhosNativeReadDevice() const override {
++      return state_->device.Get();
++    }
 +    bool ResumeOhosNativeReadAccess() override {
 +      return state_->representation->ResumeOhosNativeReadAccess();
 +    }
@@ -1373,10 +1377,97 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
 +    std::shared_ptr<State> state_;
 +  };
 +#endif
++
++#if BUILDFLAG(IS_OHOS)
++  template <typename Callback>
++  void WithOhosNativeQueueReadAccess(WGPUQueue queue, Callback&& callback) {
++    if (!scope_ohos_native_queue_access_) {
++      std::forward<Callback>(callback)();
++      return;
++    }
++    // Queue objects are validated by Dawn Wire before reaching these procs.
++    // Native video states keep their device alive through the association.
++    static const DawnProcTable native = dawn::native::GetProcs();
++    WGPUDevice device = nullptr;
++    for (const auto& entry : associated_shared_image_map_) {
++      WGPUDevice candidate_device = entry.second->OhosNativeReadDevice();
++      if (!candidate_device)
++        continue;
++      WGPUQueue candidate_queue = native.deviceGetQueue(candidate_device);
++      const bool matches = candidate_queue == queue;
++      if (candidate_queue)
++        native.queueRelease(candidate_queue);
++      if (matches) {
++        device = candidate_device;
++        break;
++      }
++    }
++    if (!device) {
++      std::forward<Callback>(callback)();
++      return;
++    }
++    auto suspend = [this, device] {
++      for (const auto& entry : associated_shared_image_map_) {
++        if (entry.second->OhosNativeReadDevice() == device)
++          entry.second->SuspendOhosNativeReadAccess();
++      }
++    };
++    for (const auto& entry : associated_shared_image_map_) {
++      if (entry.second->OhosNativeReadDevice() == device &&
++          !entry.second->ResumeOhosNativeReadAccess()) {
++        suspend();
++        // Every backing was checked before consuming any wire commands.
++        // On this GPU sequence a new conflict cannot be retried by replaying
++        // a partly consumed batch. Fail closed rather than drop a submit.
++        LOG(ERROR) << "OHOS native video access failed within a wire batch";
++        current_decoder_error_ = error::kLostContext;
++        return;
++      }
++    }
++    TRACE_EVENT_INSTANT("gpu", "OhosNativeVideoQueueScope");
++    std::forward<Callback>(callback)();
++    suspend();
++  }
++
++  bool scope_ohos_native_queue_access_ = false;
++#endif
  
    // Wraps a |SkiaImageRepresentation| and exposes
    // it as a wgpu::Texture by performing CPU readbacks/uploads.
-@@ -1299,6 +1355,10 @@
+@@ -1180,6 +1294,32 @@
+     return parent_decoder->RequestDeviceImpl(
+         std::forward<decltype(args)>(args)...);
+   };
++
++#if BUILDFLAG(IS_OHOS)
++  // A batch may submit work for two devices importing the same decoder
++  // frame. Those devices need sequential ownership, not simultaneous locks.
++  wire_procs.queueSubmit = [](auto queue, auto... args) {
++    DCHECK(parent_decoder);
++    parent_decoder->WithOhosNativeQueueReadAccess(queue, [&] {
++      static const DawnProcTable native = dawn::native::GetProcs();
++      native.queueSubmit(queue, args...);
++    });
++  };
++  wire_procs.queueCopyExternalTextureForBrowser = [](auto queue, auto... args) {
++    DCHECK(parent_decoder);
++    parent_decoder->WithOhosNativeQueueReadAccess(queue, [&] {
++      static const DawnProcTable native = dawn::native::GetProcs();
++      native.queueCopyExternalTextureForBrowser(queue, args...);
++    });
++  };
++  wire_procs.queueCopyTextureForBrowser = [](auto queue, auto... args) {
++    DCHECK(parent_decoder);
++    parent_decoder->WithOhosNativeQueueReadAccess(queue, [&] {
++      static const DawnProcTable native = dawn::native::GetProcs();
++      native.queueCopyTextureForBrowser(queue, args...);
++    });
++  };
++#endif
+ 
+   use_spontaneous_wire_server_ = features::kWebGPUSpontaneousWireServer.Get();
+   wire_server_ = DawnWireServer::Create(
+@@ -1299,6 +1439,10 @@
      case wgpu::FeatureName::DualSourceBlending:
      case wgpu::FeatureName::Subgroups:
      case wgpu::FeatureName::DawnMultiPlanarFormats:
@@ -1387,7 +1478,7 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
      case wgpu::FeatureName::TextureFormatsTier1:
      case wgpu::FeatureName::TextureFormatsTier2:
      case wgpu::FeatureName::PrimitiveIndex:
-@@ -1505,6 +1565,11 @@
+@@ -1505,6 +1649,11 @@
        wgpu::FeatureName::SharedFenceSyncFD,
  #endif
  
@@ -1399,7 +1490,7 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
        wgpu::FeatureName::SharedTextureMemoryD3D11Texture2D,
        wgpu::FeatureName::SharedTextureMemoryDXGISharedHandle,
        wgpu::FeatureName::SharedFenceDXGISharedHandle,
-@@ -1980,12 +2045,36 @@
+@@ -1980,12 +2129,58 @@
    TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("gpu.dawn"),
                 "WebGPUDecoderImpl::HandleDawnCommands", "bytes", size);
  
@@ -1408,6 +1499,16 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
 +    for (const auto& entry : associated_shared_image_map_)
 +      entry.second->SuspendOhosNativeReadAccess();
 +  };
++  WGPUDevice first_native_device = nullptr;
++  bool multiple_native_devices = false;
++  for (const auto& entry : associated_shared_image_map_) {
++    WGPUDevice device = entry.second->OhosNativeReadDevice();
++    if (!device)
++      continue;
++    if (first_native_device && device != first_native_device)
++      multiple_native_devices = true;
++    first_native_device = device;
++  }
 +  for (const auto& entry : associated_shared_image_map_) {
 +    if (!entry.second->ResumeOhosNativeReadAccess()) {
 +      suspend_native_reads();
@@ -1417,10 +1518,22 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
 +                 ? error::kLostContext
 +                 : error::kDeferCommandUntilLater;
 +    }
++    if (multiple_native_devices) {
++      // Preflight each acquire independently before consuming the batch.
++      // Skia accesses run on this same GPU sequence, so each queue proc can
++      // then acquire its own device's reads without a new intervening reader.
++      entry.second->SuspendOhosNativeReadAccess();
++      if (shared_context_state_->context_lost())
++        return error::kLostContext;
++    }
 +  }
 +#endif
 +  bool handled;
    {
++#if BUILDFLAG(IS_OHOS)
++    const base::AutoReset<bool> scope_native_queues(
++        &scope_ohos_native_queue_access_, multiple_native_devices);
++#endif
      const auto resetter = ScopedParentDecoder(this);
 -    if (!wire_server_->HandleCommands(*shm_commands)) {
 -      return error::kLostContext;
@@ -1440,7 +1553,7 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
  
    // TODO(crbug.com/40167398): This is O(N) where N is the number of devices.
    // Multiple submits would be O(N*M). We should find a way to more
-@@ -2075,6 +2164,13 @@
+@@ -2075,6 +2270,13 @@
      wgpu::TextureUsage usage,
      wgpu::TextureUsage internal_usage,
      std::vector<wgpu::TextureFormat> view_formats) {
@@ -1454,7 +1567,7 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
    std::unique_ptr<DawnImageRepresentation> shared_image =
        shared_image_representation_factory_->ProduceDawn(
            mailbox, device, backendType, std::move(view_formats),
-@@ -2086,11 +2182,24 @@
+@@ -2086,11 +2288,24 @@
    }
  
  #if !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_APPLE) && \
@@ -1480,7 +1593,7 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
    }
  #endif
  
-@@ -2102,6 +2211,16 @@
+@@ -2102,6 +2317,16 @@
      DLOG(ERROR) << "AssociateMailbox: Couldn't begin shared image access";
      return nullptr;
    }
