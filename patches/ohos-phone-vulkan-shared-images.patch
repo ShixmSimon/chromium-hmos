@@ -719,17 +719,24 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
  #include "gpu/config/gpu_finch_features.h"
  #include "third_party/blink/renderer/bindings/core/v8/v8_canvas_tone_mapping.h"
  #include "third_party/blink/renderer/bindings/core/v8/v8_canvas_tone_mapping_mode.h"
-@@ -205,6 +206,10 @@
+@@ -205,6 +206,9 @@
      return SnapshotInternal(swap_texture_->GetHandle());
    }
  
 +#if BUILDFLAG(IS_OHOS)
 +  return PaintRenderingResultsToSnapshot(kFrontBuffer);
-+#endif
-+
++#else
    // If there is no current texture, return a snapshot of the front buffer if
    // possible.
    auto front_buffer_texture = GetFrontBufferMailboxTexture();
+@@ -213,6 +217,7 @@
+   }
+ 
+   return SnapshotInternal(front_buffer_texture->GetTexture());
++#endif
+ }
+ 
+ CanvasNon2DResourceProvider*
 @@ -223,10 +228,14 @@
        if (SharedGpuContext::IsGpuCompositingEnabled()) {
          // This code path could be used for compositing so add the necessary
