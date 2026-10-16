@@ -12,6 +12,7 @@
 #include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/ref_counted_delete_on_sequence.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/synchronization/lock.h"
 #include "base/task/sequenced_task_runner.h"
 #include "ui/gfx/geometry/size.h"
 
@@ -25,7 +26,8 @@ class OhosVideoSurface
   static scoped_refptr<OhosVideoSurface> Create(
       scoped_refptr<base::SequencedTaskRunner> task_runner,
       const gfx::Size& size,
-      base::RepeatingClosure frame_available);
+      base::RepeatingClosure frame_available,
+      bool release_on_worker = false);
 
   OHNativeWindow* window() const { return window_; }
   int GetBufferQueueSize() const;
@@ -36,33 +38,39 @@ class OhosVideoSurface
 
   // The returned closure owns the acquired buffer and the surface. Run or
   // destroy it only after GPU reads have completed. It releases on our
-  // sequence.
+  // release sequence. Completion runs only after the native buffer return.
+  // Empty/error results do not run on_released; only a successful acquisition
+  // owns that completion and requires an in-flight count from the caller.
   enum class AcquireResult { kAcquired, kEmpty, kError };
   AcquireResult Acquire(OHNativeWindowBuffer** buffer,
                         base::ScopedFD* acquire_fence,
-                        base::OnceClosure* release);
+                        base::OnceClosure* release,
+                        base::OnceClosure on_released);
 
  private:
   friend class base::RefCountedDeleteOnSequence<OhosVideoSurface>;
   friend class base::DeleteHelper<OhosVideoSurface>;
   OhosVideoSurface(scoped_refptr<base::SequencedTaskRunner> task_runner,
-                   base::RepeatingClosure frame_available);
+                   base::RepeatingClosure frame_available,
+                   bool release_on_worker);
   ~OhosVideoSurface();
   static void OnFrameAvailable(void* context);
   struct BufferToRelease {
     RAW_PTR_EXCLUSION OHNativeWindowBuffer* buffer;
     base::ScopedFD producer_fence;
   };
-  void ReleaseBuffer(BufferToRelease acquired);
+  void ReleaseBuffer(BufferToRelease acquired, base::OnceClosure on_released);
 
   const scoped_refptr<base::SequencedTaskRunner> task_runner_;
+  const scoped_refptr<base::SequencedTaskRunner> release_task_runner_;
   // Immutable: the native callback may run on another thread until Destroy.
   const base::RepeatingClosure frame_available_;
   RAW_PTR_EXCLUSION OH_NativeImage* image_ = nullptr;
   // Borrowed from image_; NativeImage_Destroy releases it.
   RAW_PTR_EXCLUSION OHNativeWindow* window_ = nullptr;
   bool listening_ = false;
-  bool retired_ = false;
+  base::Lock release_lock_;
+  bool retired_ GUARDED_BY(release_lock_) = false;
 };
 
 }  // namespace media

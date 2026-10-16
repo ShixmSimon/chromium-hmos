@@ -61,12 +61,6 @@ namespace {
 // only bounds how far the demuxer can run ahead of free codec input slots.
 constexpr int kMaxDecodeRequests = 4;
 constexpr size_t kMaxSurfaceFramesInFlight = 4;
-// Allow the current picture and two replacements for the phone's Viz/Dawn
-// pipeline. Two acquired frames starve visible video when both consumers are
-// active; four can submit a blocking render while three leases are held.
-// Queue capacity alone is not a count of free producer buffers: the codec can
-// hold its other output slots too.
-constexpr size_t kMaxPhoneSurfaceFramesInFlight = 3;
 
 BASE_FEATURE(kOhosZeroCopyVideo,
              "OhosZeroCopyVideo",
@@ -583,7 +577,8 @@ DecoderStatus OhosVideoDecoder::CreateCodec() {
         base::BindPostTask(
             task_runner_,
             base::BindRepeating(&OhosVideoDecoder::OnSurfaceFrameAvailable,
-                                weak_factory_.GetWeakPtr(), generation_)));
+                                weak_factory_.GetWeakPtr(), generation_)),
+        /*release_on_worker=*/static_cast<bool>(browser_sii_));
     if (!surface_ || OH_VideoDecoder_SetSurface(
                          codec_.get(), surface_->window()) != AV_ERR_OK) {
       return {DecoderStatus::Codes::kFailedToCreateDecoder,
@@ -996,9 +991,9 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
   if (!surface_frame_limit_) {
     // Query after codec startup: the producer can configure the queue during
     // Prepare/Start. Keep one slot free for its next render. NativeImage
-    // releases run on this sequence too, so a blocking RenderOutputBuffer
-    // cannot wait for us to return an acquired buffer. On a three-buffer
-    // queue the previous four-frame bound could therefore exhaust the queue.
+    // releases on the phone use an independent sequence so RenderOutputBuffer
+    // can wait for a return without preventing it. Also reserve producer room
+    // when the platform exposes a smaller queue.
     surface_queue_size_ = surface_->GetBufferQueueSize();
     if (surface_queue_size_ == 1) {
       EnterErrorState("surface queue cannot retain a frame and render the next");
@@ -1006,12 +1001,9 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
     }
     // If the optional capacity query fails, reserve one of the platform's
     // three default slots rather than assuming the old four-frame capacity.
-    const size_t max_acquired = browser_sii_
-                                   ? kMaxPhoneSurfaceFramesInFlight
-                                   : kMaxSurfaceFramesInFlight;
     surface_frame_limit_ =
         surface_queue_size_ > 1
-            ? std::min(max_acquired,
+            ? std::min(kMaxSurfaceFramesInFlight,
                        static_cast<size_t>(surface_queue_size_ - 1))
             : 2;
     LOG(WARNING) << "OHOS video surface queue: capacity=" << surface_queue_size_
@@ -1105,7 +1097,11 @@ bool OhosVideoDecoder::TryProcessSurfaceFrame(uint32_t generation) {
   OHNativeWindowBuffer* buffer = nullptr;
   base::ScopedFD acquire_fence;
   base::OnceClosure release;
-  const auto acquired = surface_->Acquire(&buffer, &acquire_fence, &release);
+  auto released = base::BindPostTask(
+      task_runner_, base::BindOnce(&OhosVideoDecoder::OnSurfaceFrameReleased,
+                                   weak_factory_.GetWeakPtr(), generation));
+  const auto acquired = surface_->Acquire(
+      &buffer, &acquire_fence, &release, std::move(released));
   if (acquired == OhosVideoSurface::AcquireResult::kEmpty) {
     // Availability is a notification, not a reservation. A delayed callback
     // may follow a timeout-side acquire. The outstanding render keeps its
@@ -1122,19 +1118,11 @@ bool OhosVideoDecoder::TryProcessSurfaceFrame(uint32_t generation) {
   SurfaceOutput output = std::move(*rendered_output_);
   rendered_output_.reset();
   ++surface_frames_in_flight_;
-  auto released = base::BindPostTask(
-      task_runner_, base::BindOnce(&OhosVideoDecoder::OnSurfaceFrameReleased,
-                                   weak_factory_.GetWeakPtr(), generation));
-  // Both callbacks run even if conversion is cancelled before import.
+  // Surface release owns the completion callback. Its worker posts the
+  // in-flight decrement only after returning the buffer to the native queue.
+  // The lease also runs if conversion is cancelled before GPU import.
   auto pixmap = ui::CreateOhosVideoNativePixmap(
-      buffer, &output.color_space,
-      base::BindOnce(
-          [](base::ScopedClosureRunner lease, base::ScopedClosureRunner done) {
-            lease.RunAndReset();
-            done.RunAndReset();
-          },
-          base::ScopedClosureRunner(std::move(release)),
-          base::ScopedClosureRunner(std::move(released))));
+      buffer, &output.color_space, std::move(release));
   if (!pixmap) {
     EnterErrorState("unsupported decoder NativeBuffer");
     return false;
