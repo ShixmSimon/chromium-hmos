@@ -130,23 +130,6 @@ index a7ed1ef..51ef7dc 100644
      // Video frames and WebGPU textures arrive as OH_NativeBuffers; with
      // VK_OHOS_external_memory they are imported instead of uploaded.
      outExtensions->imageNativeBufferOHOS = getRenderer()->supportsOhosNativeBuffer();
-diff --git a/src/libANGLE/renderer/vulkan/SurfaceVk.cpp b/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
-index 7be4489..4a9c861 100644
---- a/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
-+++ b/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
-@@ -1477,6 +1477,12 @@ angle::Result WindowSurfaceVk::initializeImpl(DisplayVk *displayVk, bool *anyMat
- 
-     ANGLE_TRY(prepareSwapchainForAcquireNextImage(displayVk));
-     ASSERT(mSwapchain != VK_NULL_HANDLE);
-+#if defined(ANGLE_PLATFORM_OHOS)
-+    WARN() << "OHOS ANGLE WSI allocated: vk_format=" << imageFormat
-+           << " vk_colorspace=" << mSurfaceColorSpace
-+           << " rgba_bits=" << mState.config->redSize << "/" << mState.config->greenSize
-+           << "/" << mState.config->blueSize << "/" << mState.config->alphaSize;
-+#endif
- 
-     // Create the semaphores that will be used for vkAcquireNextImageKHR.
-     for (vk::Semaphore &semaphore : mAcquireOperation.unlockedAcquireData.acquireImageSemaphores)
 diff --git a/src/libANGLE/renderer/vulkan/vk_renderer.cpp b/src/libANGLE/renderer/vulkan/vk_renderer.cpp
 index 0dd3692..8fe3224 100644
 --- a/src/libANGLE/renderer/vulkan/vk_renderer.cpp
@@ -195,3 +178,99 @@ index e9d4443..0731c19 100644
  
      outExtensions->bufferAgeEXT = true;
  
+diff --git a/src/libANGLE/renderer/vulkan/CommandQueue.cpp b/src/libANGLE/renderer/vulkan/CommandQueue.cpp
+index 6175f00..73b0267 100644
+--- a/src/libANGLE/renderer/vulkan/CommandQueue.cpp
++++ b/src/libANGLE/renderer/vulkan/CommandQueue.cpp
+@@ -770,6 +770,22 @@ angle::Result CommandQueue::waitIdle(ErrorContext *context, uint64_t timeout)
+     return finishResourceUse(context, use, timeout);
+ }
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++angle::Result CommandQueue::waitForPresentIdle(ErrorContext *context)
++{
++    ANGLE_TRACE_EVENT0("gpu.angle", "CommandQueue::waitForPresentIdle");
++    VkResult result;
++    {
++        std::lock_guard<angle::SimpleMutex> lock(mQueueSubmitMutex);
++        result = VK_CALL(vkDeviceWaitIdle, context->getDevice());
++    }
++    // Report errors after releasing the submission lock: device-loss cleanup
++    // takes that same lock while draining the queue.
++    ANGLE_VK_TRY(context, result);
++    return angle::Result::Continue;
++}
++#endif
++
+ angle::Result CommandQueue::waitForResourceUseToFinishWithUserTimeout(ErrorContext *context,
+                                                                       const ResourceUse &use,
+                                                                       uint64_t timeout,
+diff --git a/src/libANGLE/renderer/vulkan/CommandQueue.h b/src/libANGLE/renderer/vulkan/CommandQueue.h
+index 0bec821..9183b36 100644
+--- a/src/libANGLE/renderer/vulkan/CommandQueue.h
++++ b/src/libANGLE/renderer/vulkan/CommandQueue.h
+@@ -432,6 +432,10 @@ class CommandQueue : angle::NonCopyable
+                                     const QueueSerial &queueSerial,
+                                     uint64_t timeout);
+     angle::Result waitIdle(ErrorContext *context, uint64_t timeout);
++#if defined(ANGLE_PLATFORM_OHOS)
++    // Teardown only. Serialize with both queue submission and presentation.
++    angle::Result waitForPresentIdle(ErrorContext *context);
++#endif
+     angle::Result waitForResourceUseToFinishWithUserTimeout(ErrorContext *context,
+                                                             const ResourceUse &use,
+                                                             uint64_t timeout,
+diff --git a/src/libANGLE/renderer/vulkan/SurfaceVk.cpp b/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
+index 7be4489..64a5ce2 100644
+--- a/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
++++ b/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
+@@ -1100,6 +1100,19 @@ void WindowSurfaceVk::destroy(const egl::Display *display)
+     // flush the pipe.
+     (void)finish(displayVk);
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++    // Resource fences retire rendering, not the presentation engine's wait on
++    // the swap semaphore. OHOS recreates this surface for P3/PQ transitions.
++    // Without maintenance1 present fences, use the legacy device-idle teardown
++    // fallback before destroying the old swapchain and its semaphores. This is
++    // not the precise present-completion guarantee maintenance1 would provide.
++    if (!renderer->getFeatures().supportsSwapchainMaintenance1.enabled &&
++        !mPresentHistory.empty())
++    {
++        (void)renderer->waitForPresentIdle(displayVk);
++    }
++#endif
++
+     if (mAcquireOperation.state == ImageAcquireState::Ready)
+     {
+         // swapchain image doesn't own ANI semaphore. Release ANI semaphore from image so that it
+@@ -1477,6 +1490,12 @@ angle::Result WindowSurfaceVk::initializeImpl(DisplayVk *displayVk, bool *anyMat
+ 
+     ANGLE_TRY(prepareSwapchainForAcquireNextImage(displayVk));
+     ASSERT(mSwapchain != VK_NULL_HANDLE);
++#if defined(ANGLE_PLATFORM_OHOS)
++    WARN() << "OHOS ANGLE WSI allocated: vk_format=" << imageFormat
++           << " vk_colorspace=" << mSurfaceColorSpace
++           << " rgba_bits=" << mState.config->redSize << "/" << mState.config->greenSize
++           << "/" << mState.config->blueSize << "/" << mState.config->alphaSize;
++#endif
+ 
+     // Create the semaphores that will be used for vkAcquireNextImageKHR.
+     for (vk::Semaphore &semaphore : mAcquireOperation.unlockedAcquireData.acquireImageSemaphores)
+diff --git a/src/libANGLE/renderer/vulkan/vk_renderer.h b/src/libANGLE/renderer/vulkan/vk_renderer.h
+index aa1bcea..9c853f9 100644
+--- a/src/libANGLE/renderer/vulkan/vk_renderer.h
++++ b/src/libANGLE/renderer/vulkan/vk_renderer.h
+@@ -302,6 +302,12 @@ class Renderer : angle::NonCopyable
+     }
+ 
+     VkQueue getQueue(egl::ContextPriority priority) { return mCommandQueue.getQueue(priority); }
++#if defined(ANGLE_PLATFORM_OHOS)
++    angle::Result waitForPresentIdle(vk::ErrorContext *context)
++    {
++        return mCommandQueue.waitForPresentIdle(context);
++    }
++#endif
+     // Helpers to implement the functionality of EGL_ANGLE_device_vulkan
+     void lockVulkanQueueForExternalAccess() { mCommandQueue.lockVulkanQueueForExternalAccess(); }
+     void unlockVulkanQueueForExternalAccess()
