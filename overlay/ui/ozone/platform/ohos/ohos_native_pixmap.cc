@@ -871,6 +871,12 @@ scoped_refptr<gfx::NativePixmap> ImportOhosOffscreenPixmap(
     gfx::Size size,
     viz::SharedImageFormat format,
     gfx::NativePixmapHandle handle) {
+  const auto fail = [&](const char* step) -> scoped_refptr<gfx::NativePixmap> {
+    LOG(ERROR) << "OHOS shared image: step=" << step
+               << " size=" << size.ToString() << " format=" << format.ToString()
+               << " fds=" << handle.ohos_buffer_fds.size();
+    return nullptr;
+  };
   const auto native_format = OhosFormatFor(format);
   if (size.IsEmpty() || !native_format ||
       !phone_gpu::IsSharedImageFormat(*native_format) ||
@@ -878,7 +884,7 @@ scoped_refptr<gfx::NativePixmap> ImportOhosOffscreenPixmap(
       handle.ohos_buffer_prefix.size() != 14 ||
       handle.ohos_buffer_tail.size() > 1044 ||
       handle.ohos_buffer_fds.size() >= phone_gpu::kSharedMaxFds)
-    return nullptr;
+    return fail("import-handle");
   phone_gpu::SharedMessage message;
   auto& p = message.packet;
   p.operation = phone_gpu::SharedOp::kImage;
@@ -893,37 +899,40 @@ scoped_refptr<gfx::NativePixmap> ImportOhosOffscreenPixmap(
             p.tail.begin());
   if (p.prefix[8] != static_cast<uint32_t>(*native_format) ||
       !phone_gpu::ValidSharedPacket(p, handle.ohos_buffer_fds.size()))
-    return nullptr;
+    return fail("import-packet");
   for (const auto& fd : handle.ohos_buffer_fds) {
     if (!fd.is_valid())
-      return nullptr;
+      return fail("import-fd");
     int copy = HANDLE_EINTR(dup(fd.get()));
-    if (copy < 0)
-      return nullptr;
+    if (copy < 0) {
+      PLOG(ERROR) << "OHOS shared image: import parcel fd duplication";
+      return fail("import-dup");
+    }
     message.fds.push_back(copy);
   }
   auto* native = phone_gpu::ImportSharedBuffer(message);
   if (!native)
-    return nullptr;
+    return fail("import-parcel");
   OH_NativeBuffer_Config config{};
   OH_NativeBuffer_GetConfig(native, &config);
   if (config.width != size.width() || config.height != size.height() ||
       config.format != *native_format) {
     OH_NativeBuffer_Unreference(native);
-    return nullptr;
+    return fail("import-config");
   }
   auto* window =
       OH_NativeWindow_CreateNativeWindowBufferFromNativeBuffer(native);
   OH_NativeBuffer_Unreference(native);
   if (!window)
-    return nullptr;
+    return fail("import-window");
   // Normalize the generic plane description from the validated native parcel.
   // This is a GPU image; its actual allocation size can exclude linear padding.
   handle.planes.clear();
   base::ScopedFD plane_fd(HANDLE_EINTR(dup(handle.ohos_buffer_fds[0].get())));
   if (!plane_fd.is_valid()) {
+    PLOG(ERROR) << "OHOS shared image: import plane fd duplication";
     OH_NativeWindow_DestroyNativeWindowBuffer(window);
-    return nullptr;
+    return fail("import-plane-dup");
   }
   handle.planes.emplace_back(p.prefix[5], 0, p.prefix[7], std::move(plane_fd));
   return base::MakeRefCounted<OhosNativePixmap>(window, size, format,

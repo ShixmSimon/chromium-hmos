@@ -531,10 +531,20 @@ bool AllocateOhosPhoneGpuImage(uint32_t width,
   request.packet.width = width;
   request.packet.height = height;
   request.packet.prefix[8] = native_format;
-  return ExchangeShared(&request, response) &&
-         response->packet.operation == phone_gpu::SharedOp::kImage &&
-         response->packet.width == width && response->packet.height == height &&
-         response->packet.prefix[8] == native_format;
+  const bool exchanged = ExchangeShared(&request, response);
+  const bool valid =
+      exchanged && response->packet.operation == phone_gpu::SharedOp::kImage &&
+      response->packet.width == width && response->packet.height == height &&
+      response->packet.prefix[8] == native_format;
+  if (!valid) {
+    LOG(ERROR) << "OHOS shared image: step=allocate-exchange exchanged="
+               << exchanged << " sequence=" << request.packet.sequence
+               << " operation=" << static_cast<uint32_t>(response->packet.operation)
+               << " requested=" << width << "x" << height << "/" << native_format
+               << " received=" << response->packet.width << "x"
+               << response->packet.height << "/" << response->packet.prefix[8];
+  }
+  return valid;
 }
 bool QueryOhosPhoneHdrDisplay(uint64_t* display_id) {
   if (!IsOhosPhoneGpuChild())

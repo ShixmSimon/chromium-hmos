@@ -183,8 +183,12 @@ bool AllocateSharedImage(uint32_t width,
   config.usage = NATIVEBUFFER_USAGE_MEM_DMA | NATIVEBUFFER_USAGE_HW_RENDER |
                  NATIVEBUFFER_USAGE_HW_TEXTURE;
   auto* native = OH_NativeBuffer_Alloc(&config);
-  if (!native)
+  if (!native) {
+    LOG(ERROR) << "OHOS shared image: step=allocate size=" << width << "x"
+               << height << " format=" << native_format
+               << " sequence=" << request.sequence;
     return false;
+  }
   response->packet = request;
   response->packet.operation = SharedOp::kImage;
   const bool exported = Encode(native, response);
