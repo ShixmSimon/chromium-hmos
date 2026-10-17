@@ -147,3 +147,34 @@ index 7be4489..4a9c861 100644
  
      // Create the semaphores that will be used for vkAcquireNextImageKHR.
      for (vk::Semaphore &semaphore : mAcquireOperation.unlockedAcquireData.acquireImageSemaphores)
+diff --git a/src/libANGLE/renderer/vulkan/vk_renderer.cpp b/src/libANGLE/renderer/vulkan/vk_renderer.cpp
+index 0dd3692..8fe3224 100644
+--- a/src/libANGLE/renderer/vulkan/vk_renderer.cpp
++++ b/src/libANGLE/renderer/vulkan/vk_renderer.cpp
+@@ -5756,7 +5756,10 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+         &mFeatures, supportsExternalFenceFd,
+         ExtensionFound(VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME, deviceExtensionNames));
+ 
+-#if defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX)
++// OHOS also exchanges Linux sync_file FDs between ANGLE and Dawn. Keep
++    // the same import/export property checks; absence must still disable it.
++#if defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX) || \
++    defined(ANGLE_PLATFORM_OHOS)
+     if (mFeatures.supportsExternalFenceCapabilities.enabled &&
+         mFeatures.supportsExternalSemaphoreCapabilities.enabled)
+     {
+@@ -5801,7 +5804,13 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+                                 (mFeatures.supportsExternalFenceFd.enabled &&
+                                  mFeatures.supportsExternalSemaphoreFd.enabled));
+     }
+-#endif  // defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX)
++#endif  // ANDROID || LINUX || OHOS
++#if defined(ANGLE_PLATFORM_OHOS)
++    WARN() << "OHOS ANGLE native fence: external_fence_fd="
++           << mFeatures.supportsExternalFenceFd.enabled
++           << " external_semaphore_fd=" << mFeatures.supportsExternalSemaphoreFd.enabled
++           << " sync_fd_verified=" << mFeatures.supportsAndroidNativeFenceSync.enabled;
++#endif
+ 
+     // Disabled on SwiftShader due to http://crbug.com/40942995
+     ANGLE_FEATURE_CONDITION(
