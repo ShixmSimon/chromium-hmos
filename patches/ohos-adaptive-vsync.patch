@@ -40,7 +40,7 @@ index 610248d..c413ae7 100644
      base::UmaHistogramEnumeration("Viz.FrameIntervalDecider.ResultMatcherType",
                                    matcher_type);
 diff --git a/components/viz/service/display/frame_interval_decider_unittest.cc b/components/viz/service/display/frame_interval_decider_unittest.cc
-index a59e5dc..a45d1bf 100644
+index a59e5dc..8d1ecb2 100644
 --- a/components/viz/service/display/frame_interval_decider_unittest.cc
 +++ b/components/viz/service/display/frame_interval_decider_unittest.cc
 @@ -4,6 +4,8 @@
@@ -74,12 +74,12 @@ index a59e5dc..a45d1bf 100644
    void InitializeDecider() {
      frame_.metadata.frame_interval_inputs.frame_time = kNow;
  
-@@ -208,6 +225,175 @@ class FrameIntervalDeciderTest : public testing::Test,
+@@ -208,6 +225,170 @@ class FrameIntervalDeciderTest : public testing::Test,
    std::optional<FrameIntervalMatcherType> matcher_type_;
  };
  
 +// Exercise the real matchers with the OHOS native request range. In particular,
-+// 1000/1001 intervals retain the requested integer cadence and video headroom.
++// 1000/1001 video intervals must not accidentally select an extra cadence.
 +TEST_F(FrameIntervalDeciderTest, OhosVideoCadences) {
 +  struct TestCase {
 +    double video_hz;
@@ -88,12 +88,7 @@ index a59e5dc..a45d1bf 100644
 +  constexpr TestCase cases[] = {
 +      {24, 72}, {24000.0 / 1001, 72}, {25, 75},
 +      {30, 60}, {30000.0 / 1001, 60}, {50, 100},
-+#if BUILDFLAG(IS_OHOS)
-+      {60, 120}, {60000.0 / 1001, 120},
-+#else
-+      {60, 60}, {60000.0 / 1001, 60},
-+#endif
-+      {90, 90}, {120, 120}, {240, 120}};
++      {60, 60}, {60000.0 / 1001, 60}, {120, 120}, {240, 120}};
 +  uint32_t sink_id = 1;
 +  for (const auto& test : cases) {
 +    SCOPED_TRACE(test.video_hz);
@@ -197,7 +192,7 @@ index a59e5dc..a45d1bf 100644
 +    UpdateFrame(surface, inputs);
 +    DrawSurfaces({surface}, inputs.frame_time);
 +  };
-+  draw_at(501, base::Hertz(30));
++  draw_at(501, base::Hertz(60));
 +  ExpectResult(TakeLastResult(), base::Hertz(60));
 +  draw_at(600, base::TimeDelta());
 +  EXPECT_FALSE(has_result());
@@ -214,7 +209,7 @@ index a59e5dc..a45d1bf 100644
 +  inputs.frame_time = kNow;
 +  inputs.has_only_content_frame_interval_updates = true;
 +  inputs.content_interval_info.push_back(
-+      {ContentFrameIntervalType::kVideo, base::Hertz(30)});
++      {ContentFrameIntervalType::kVideo, base::Hertz(60)});
 +  Surface* surface = CreateSurface(FrameSinkId(0, 1), inputs);
 +  DrawSurfaces({surface}, kNow);
 +  ExpectResult(TakeLastResult(), base::Hertz(60));
@@ -233,7 +228,7 @@ index a59e5dc..a45d1bf 100644
 +  inputs.frame_time = kNow;
 +  inputs.has_only_content_frame_interval_updates = true;
 +  inputs.content_interval_info.push_back(
-+      {ContentFrameIntervalType::kVideo, base::Hertz(30)});
++      {ContentFrameIntervalType::kVideo, base::Hertz(60)});
 +  Surface* surface = CreateSurface(FrameSinkId(0, 1), inputs);
 +  DrawSurfaces({surface}, kNow);
 +  ExpectResult(TakeLastResult(), base::Hertz(60));
@@ -251,7 +246,7 @@ index a59e5dc..a45d1bf 100644
    settings_.increase_frame_interval_timeout = base::Milliseconds(50);
    InitializeDecider();
 diff --git a/components/viz/service/display/frame_interval_matchers.cc b/components/viz/service/display/frame_interval_matchers.cc
-index 4951232..dc89d0f 100644
+index 4951232..dcdd1fd 100644
 --- a/components/viz/service/display/frame_interval_matchers.cc
 +++ b/components/viz/service/display/frame_interval_matchers.cc
 @@ -11,6 +11,7 @@
@@ -277,25 +272,6 @@ index 4951232..dc89d0f 100644
    base::TimeDelta interval = std::visit(
        absl::Overload(
            [&](const std::monostate& monostate) {
-@@ -116,6 +125,18 @@ std::optional<FrameIntervalMatcher::Result> MatchContentIntervalType(
-               return cadence_interval >= range_min ? cadence_interval
-                                                    : range_max;
-             }
-+#if BUILDFLAG(IS_OHOS)
-+            // Decoder frames cross the native producer, media and compositor
-+            // sequences. At one display tick per video frame, a late arrival
-+            // misses the whole frame. Keep a second scheduling opportunity
-+            // when it fits the advertised request range (60/59.94 -> 120 Hz).
-+            // Slower videos already take the integer cadence above; faster
-+            // videos keep their own rate when doubling exceeds the maximum.
-+            if (type == ContentFrameIntervalType::kVideo &&
-+                content_interval.value() / 2 >= range_min) {
-+              return content_interval.value() / 2;
-+            }
-+#endif
-             // Content falls within the supported range and can be used
-             // directly.
-             return content_interval.value();
 diff --git a/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.cc b/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.cc
 --- a/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.cc
 +++ b/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.cc
