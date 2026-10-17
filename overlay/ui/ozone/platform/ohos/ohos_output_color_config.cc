@@ -6,6 +6,7 @@
 #include <native_window/external_window.h>
 #include <window_manager/oh_display_manager.h>
 #include <atomic>
+#include <map>
 #include "base/command_line.h"
 #include "base/files/file_util.h"
 #include "base/logging.h"
@@ -22,6 +23,7 @@ namespace {
 struct BrightnessState {
   base::Lock lock;
   std::optional<OhosDisplayBrightness> value GUARDED_BY(lock);
+  std::map<gfx::AcceleratedWidget, std::pair<bool, bool>> wsi_outputs GUARDED_BY(lock);
   base::RepeatingClosure changed GUARDED_BY(lock);
 };
 BrightnessState& Brightness() {
@@ -31,6 +33,8 @@ BrightnessState& Brightness() {
 std::atomic<bool> failed{false};
 std::atomic<bool> verified_phone_hdr{false};
 std::atomic<bool> verified_phone_p3{false};
+std::atomic<bool> verified_wsi_hdr{false};
+std::atomic<bool> verified_wsi_p3{false};
 base::FilePath FailurePath() {
   auto directory = base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
       "user-data-dir");
@@ -214,6 +218,46 @@ void SetOhosVerifiedPhoneP3Output(bool available) {
 bool HasOhosVerifiedPhoneP3Output() {
   return verified_phone_p3.load();
 }
+void SetOhosVerifiedWsiOutput(gfx::AcceleratedWidget widget, bool hdr, bool p3) {
+  base::RepeatingClosure changed;
+  {
+    base::AutoLock lock(Brightness().lock);
+    auto& outputs = Brightness().wsi_outputs;
+    if (hdr || p3)
+      outputs[widget] = {hdr, p3};
+    else
+      outputs.erase(widget);
+    bool any_hdr = false;
+    bool any_p3 = false;
+    for (const auto& [key, capabilities] : outputs) {
+      any_hdr |= capabilities.first;
+      any_p3 |= capabilities.second;
+    }
+    const bool old_hdr = verified_wsi_hdr.exchange(any_hdr);
+    const bool old_p3 = verified_wsi_p3.exchange(any_p3);
+    if (old_hdr != any_hdr || old_p3 != any_p3)
+      changed = Brightness().changed;
+  }
+  LOG(WARNING) << "OHOS WSI browser capability: widget=" << widget
+               << " hdr=" << hdr << " p3=" << p3;
+  if (changed)
+    changed.Run();
+}
+void ResetOhosVerifiedWsiOutputs() {
+  base::RepeatingClosure changed;
+  {
+    base::AutoLock lock(Brightness().lock);
+    Brightness().wsi_outputs.clear();
+    const bool hdr = verified_wsi_hdr.exchange(false);
+    const bool p3 = verified_wsi_p3.exchange(false);
+    if (hdr || p3)
+      changed = Brightness().changed;
+  }
+  if (changed)
+    changed.Run();
+}
+bool HasOhosVerifiedWsiHdrOutput() { return verified_wsi_hdr.load(); }
+bool HasOhosVerifiedWsiP3Output() { return verified_wsi_p3.load(); }
 void ApplyOhosDisplayBrightness(gfx::DisplayColorSpaces& spaces) {
   if (auto value = GetOhosDisplayBrightness()) {
     const auto color = OhosContentOutputColor(*value);
@@ -233,6 +277,7 @@ bool OhosOutputColorFailed() {
 void NoteOhosOutputColorFailure(const char* reason) {
   failed = true;
   SetOhosVerifiedPhoneHdrOutput(false);
+  ResetOhosVerifiedWsiOutputs();
   auto path = FailurePath();
   if (!path.empty() && !base::WriteFile(path, "SDR8"))
     LOG(ERROR) << "OHOS output color: could not persist session fallback";
@@ -303,8 +348,11 @@ bool OhosHdrDisplayGuard::Validate() {
 gfx::DisplayColorSpaces MakeOhosOutputColorSpaces(
     const OhosOutputColor& color) {
   const bool hdr = color.mode == OhosOutputMode::kHdr10;
-  gfx::DisplayColorSpaces spaces(hdr ? gfx::ColorSpace::CreateHDR10()
-                                     : gfx::ColorSpace::CreateSRGB());
+  gfx::DisplayColorSpaces spaces(
+      hdr ? gfx::ColorSpace::CreateHDR10()
+          : color.mode == OhosOutputMode::kP3Sdr10
+                ? gfx::ColorSpace::CreateDisplayP3D65()
+                : gfx::ColorSpace::CreateSRGB());
   const auto format = color.mode == OhosOutputMode::kSdr8
                           ? viz::SinglePlaneFormat::kRGBA_8888
                           : viz::SinglePlaneFormat::kRGBA_1010102;

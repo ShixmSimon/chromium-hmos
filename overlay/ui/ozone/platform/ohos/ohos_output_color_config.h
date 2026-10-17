@@ -9,6 +9,7 @@
 #include "ui/gfx/display_color_spaces.h"
 #include "ui/ozone/platform/ohos/ohos_display_brightness.h"
 #include "ui/ozone/platform/ohos/ohos_output_color.h"
+#include "ui/gfx/native_ui_types.h"
 struct OH_NativeBuffer;
 namespace ui {
 // Browser-side state, populated before ChromeMain and updated by ArkTS events.
@@ -23,6 +24,12 @@ void SetOhosVerifiedPhoneHdrOutput(bool available);
 bool HasOhosVerifiedPhoneHdrOutput();
 void SetOhosVerifiedPhoneP3Output(bool available);
 bool HasOhosVerifiedPhoneP3Output();
+// Browser-side ordinary WSI capabilities, scoped to live opaque outputs.
+// The native-child channel validates its GPU generation before updating these.
+void SetOhosVerifiedWsiOutput(gfx::AcceleratedWidget widget, bool hdr, bool p3);
+void ResetOhosVerifiedWsiOutputs();
+bool HasOhosVerifiedWsiHdrOutput();
+bool HasOhosVerifiedWsiP3Output();
 // Browser-side display-service query; never called from a fork GPU.
 bool OhosSingleDisplaySupportsP3();
 bool OhosDynamicOutputLuminance();

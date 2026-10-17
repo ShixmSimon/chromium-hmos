@@ -747,3 +747,185 @@ diff --git a/gpu/vulkan/vulkan_swap_chain.h b/gpu/vulkan/vulkan_swap_chain.h
    // Present the current buffer.
    gfx::SwapResult PostSubBuffer(const gfx::Rect& rect);
    using PostSubBufferCompletionCallback =
+diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.cc b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
+index 91b5f4d..744026a 100644
+--- a/components/viz/service/display_embedder/skia_output_device_vulkan.cc
++++ b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
+@@ -46,6 +46,7 @@
+ #if BUILDFLAG(IS_OHOS)
+ #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
+ #include "ui/ozone/platform/ohos/ohos_output_color_config.h"
++#include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
+ #endif
+ 
+ namespace viz {
+@@ -100,6 +101,10 @@ SkiaOutputDeviceVulkan::SkiaOutputDeviceVulkan(
+ 
+ SkiaOutputDeviceVulkan::~SkiaOutputDeviceVulkan() {
+   DCHECK(!scoped_write_);
++#if BUILDFLAG(IS_OHOS)
++  if (capabilities_published_)
++    ui::ReportOhosWsiOutputCapabilities(surface_handle_, false, false);
++#endif
+ 
+   for (const auto& sk_surface_size_pair : sk_surface_size_pairs_) {
+     memory_type_tracker_->TrackMemFree(sk_surface_size_pair.bytes_allocated);
+@@ -135,6 +140,14 @@ void SkiaOutputDeviceVulkan::SetPreferredFrameInterval(
+ }
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++void SkiaOutputDeviceVulkan::OhosColorFailure(const char* reason) {
++  ui::ReportOhosWsiOutputCapabilities(gfx::kNullAcceleratedWidget, false, false);
++  capabilities_published_ = false;
++  ui::NoteOhosOutputColorFailure(reason);
++}
++#endif
++
+ bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
+   if (!vulkan_surface_)
+     return false;
+@@ -143,16 +156,18 @@ bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
+     const auto color = *params.ohos_output_color;
+     if (!ui::ValidOhosOutputColor(color) ||
+         (color.mode != output_color_.mode &&
+-         !ui::CanSwitchOhosPhoneOutputColor(output_color_, color, hdr_capable_))) {
+-      ui::NoteOhosOutputColorFailure("WSI output color contract changed");
++         !ui::CanSwitchOhosPhoneOutputColor(output_color_, color, hdr_capable_, p3_capable_))) {
++      OhosColorFailure("WSI output color contract changed");
+       return false;
+     }
+     if (color.mode != output_color_.mode) {
+       const auto space = color.mode == ui::OhosOutputMode::kHdr10
+                              ? VK_COLOR_SPACE_HDR10_ST2084_EXT
+-                             : VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
++                             : color.mode == ui::OhosOutputMode::kP3Sdr10
++                                   ? VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT
++                                   : VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+       if (!vulkan_surface_->SetOhosColorSpace(space)) {
+-        ui::NoteOhosOutputColorFailure("WSI content color-space transition");
++        OhosColorFailure("WSI content color-space transition");
+         return false;
+       }
+       LOG(WARNING) << "OHOS Vulkan: content output transition "
+@@ -170,7 +185,7 @@ bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
+       metadata.maxContentLightLevel = metadata.maxLuminance;
+       metadata.maxFrameAverageLightLevel = metadata.maxLuminance;
+       if (!vulkan_surface_->SetHdrMetadata(metadata)) {
+-        ui::NoteOhosOutputColorFailure("WSI HDR luminance metadata");
++        OhosColorFailure("WSI HDR luminance metadata");
+         return false;
+       }
+       LOG(WARNING) << "OHOS Vulkan: HDR luminance updated white_millinits="
+@@ -189,7 +204,16 @@ bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
+                                         params.transform);
+ #if BUILDFLAG(IS_OHOS)
+   if (!result && output_color_.mode != ui::OhosOutputMode::kSdr8)
+-    ui::NoteOhosOutputColorFailure("WSI reshape");
++    OhosColorFailure("WSI reshape");
++  if (result && !capabilities_published_ && !requires_alpha_ &&
++      !ui::IsOhosAnchoredWindow(surface_handle_) &&
++      !ui::OhosOutputColorFailed() && (hdr_capable_ || p3_capable_)) {
++    // A real SDR swapchain now exists; both optional color spaces have also
++    // passed exact same-format WSI enumeration. Actual HDR/P3 presentation is
++    // still validated by Reshape and failure revokes this GPU generation.
++    capabilities_published_ = ui::ReportOhosWsiOutputCapabilities(
++        surface_handle_, hdr_capable_, p3_capable_);
++  }
+ #endif
+   return result;
+ }
+@@ -275,7 +299,7 @@ SkSurface* SkiaOutputDeviceVulkan::BeginPaint(
+ #if BUILDFLAG(IS_OHOS)
+   if (output_color_.mode == ui::OhosOutputMode::kHdr10 &&
+       !hdr_display_guard_.Validate()) {
+-    ui::NoteOhosOutputColorFailure("HDR display changed or unavailable");
++    OhosColorFailure("HDR display changed or unavailable");
+     return nullptr;
+   }
+ #endif
+@@ -321,7 +345,7 @@ SkSurface* SkiaOutputDeviceVulkan::BeginPaint(
+     if (!sk_surface) [[unlikely]] {
+ #if BUILDFLAG(IS_OHOS)
+       if (output_color_.mode != ui::OhosOutputMode::kSdr8)
+-        ui::NoteOhosOutputColorFailure("WSI Skia wrap");
++        OhosColorFailure("WSI Skia wrap");
+ #endif
+       return nullptr;
+     }
+@@ -414,6 +438,7 @@ bool SkiaOutputDeviceVulkan::Initialize() {
+     output_color_ = {};
+   }
+   hdr_capable_ = false;
++  p3_capable_ = false;
+   const auto requested_color = output_color_;
+   if (output_color_.mode != ui::OhosOutputMode::kSdr8) {
+     const VkColorSpaceKHR space =
+@@ -438,13 +463,25 @@ bool SkiaOutputDeviceVulkan::Initialize() {
+       hdr_capable_ = true;
+       output_color_ = {ui::OhosOutputMode::kSdr10};
+     }
++    if (result && !alpha_window && ui::OhosSingleDisplaySupportsP3()) {
++      p3_capable_ = vulkan_surface->SetOhosColorSpace(
++          VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT);
++      // An optional unsupported P3 pair does not invalidate proven SDR/HDR.
++      if (p3_capable_ && !vulkan_surface->SetOhosColorSpace(
++                              VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)) {
++        vulkan_surface->Destroy();
++        OhosColorFailure("WSI P3 probe could not restore SDR");
++        return Initialize();
++      }
++      LOG(WARNING) << "OHOS Vulkan: native P3 SDR WSI pair=" << p3_capable_;
++    }
+     // Native popup surfaces can still be 0x0 here. Match the SDR8 path and
+     // create buffers in Reshape(), once Viz supplies the first frame size.
+     // A real allocation failure there records the session fallback before
+     // context recreation; an unlaid-out popup is not a format failure.
+     if (!result) {
+       vulkan_surface->Destroy();
+-      ui::NoteOhosOutputColorFailure("WSI 10-bit/PQ format pair");
++      OhosColorFailure("WSI 10-bit/PQ format pair");
+       return Initialize();  // Marker forces SDR8; exactly one bounded retry.
+     }
+   }
+@@ -488,8 +525,8 @@ bool SkiaOutputDeviceVulkan::Initialize() {
+       ui::MakeOhosOutputColorSpaces(hdr_capable_ ? requested_color
+                                                : output_color_);
+   if (hdr_capable_) {
+-    // Display capability does not make ordinary web content HDR. P3 SDR is
+-    // converted to sRGB until a native P3 SDR WSI contract is implemented.
++    // Display capability does not make ordinary web content HDR. Keep SDR
++    // usages separate; upgrade WCG below only for a proven native P3 pair.
+     for (auto usage : {gfx::ContentColorUsage::kSRGB,
+                        gfx::ContentColorUsage::kWideColorGamut}) {
+       for (bool alpha : {false, true}) {
+@@ -499,6 +536,15 @@ bool SkiaOutputDeviceVulkan::Initialize() {
+       }
+     }
+   }
++  if (p3_capable_) {
++    const auto p3 = gfx::ColorSpace::CreateDisplayP3D65();
++    for (bool alpha : {false, true})
++      capabilities_.ohos_output_color_spaces->SetOutputColorSpaceAndFormat(
++          gfx::ContentColorUsage::kWideColorGamut, alpha, p3,
++          SinglePlaneFormat::kRGBA_1010102);
++    capabilities_.ohos_output_color_spaces->SetPrimaries(
++        gfx::DisplayColorSpaces(p3).GetPrimaries());
++  }
+   capabilities_.ohos_dynamic_output_luminance =
+       hdr_capable_ &&
+       ui::OhosDynamicOutputLuminance();
+diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.h b/components/viz/service/display_embedder/skia_output_device_vulkan.h
+index c22ef97..9c2c8f5 100644
+--- a/components/viz/service/display_embedder/skia_output_device_vulkan.h
++++ b/components/viz/service/display_embedder/skia_output_device_vulkan.h
+@@ -81,6 +81,9 @@ class SkiaOutputDeviceVulkan final : public SkiaOutputDevice {
+ #if BUILDFLAG(IS_OHOS)
+   bool requires_alpha_ = true;
+   bool hdr_capable_ = false;
++  bool p3_capable_ = false;
++  bool capabilities_published_ = false;
++  void OhosColorFailure(const char* reason);
+   ui::OhosOutputColor output_color_;
+   ui::OhosHdrDisplayGuard hdr_display_guard_;
+ #endif

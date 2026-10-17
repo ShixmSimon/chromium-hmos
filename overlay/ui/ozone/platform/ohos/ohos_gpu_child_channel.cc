@@ -35,6 +35,7 @@
 #include "native_window/external_window.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
+#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 #include "vulkan/vulkan_core.h"
 
 namespace ui {
@@ -49,6 +50,8 @@ constexpr char kStubDescriptor[] = "chromium.ohos.GpuChild";
 // Request codes, browser to GPU process.
 constexpr uint32_t kBootstrap = 1;
 constexpr uint32_t kWidgetState = 2;
+// GPU to browser, on the callback stub sent with its bootstrap.
+constexpr uint32_t kOutputCapabilities = 1;
 
 // What a request callback may return besides success is limited to the user
 // range; anything else comes back to the sender as a generic error.
@@ -80,6 +83,9 @@ bool SameState(const OhosGpuChildWidgetState& a,
 
 struct BrowserSide {
   base::Lock lock;
+  uint64_t output_generation GUARDED_BY(lock) = 0;
+  bool output_failed GUARDED_BY(lock) = false;
+  OHIPCDeathRecipient* death_recipient GUARDED_BY(lock) = nullptr;
   // The GPU child most recently started. Replaced when the GPU process is
   // restarted; a request to a dead one fails and is ignored.
   OHIPCRemoteProxy* proxy GUARDED_BY(lock) = nullptr;
@@ -99,6 +105,52 @@ struct BrowserSide {
 BrowserSide& Browser() {
   static base::NoDestructor<BrowserSide> side;
   return *side;
+}
+
+int OnOutputCapabilities(uint32_t code, const OHIPCParcel* data,
+                         OHIPCParcel*, void*) {
+  int64_t generation = 0, widget = 0;
+  int32_t hdr = 0, p3 = 0;
+  if (code != kOutputCapabilities ||
+      OH_IPCParcel_ReadInt64(data, &generation) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt64(data, &widget) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(data, &hdr) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt32(data, &p3) != OH_IPC_SUCCESS ||
+      (hdr != 0 && hdr != 1) || (p3 != 0 && p3 != 1))
+    return kBadRequest;
+  auto& side = Browser();
+  base::AutoLock lock(side.lock);
+  if (generation <= 0 || static_cast<uint64_t>(generation) != side.output_generation)
+    return kBadRequest;
+  if (widget == 0 && !hdr && !p3) {
+    side.output_failed = true;
+    ResetOhosVerifiedWsiOutputs();
+    return OH_IPC_SUCCESS;
+  }
+  const auto key = static_cast<gfx::AcceleratedWidget>(widget);
+  if ((hdr || p3) && (side.output_failed || !side.death_recipient ||
+                      !GetOhosNativeSurface(key) || IsOhosAnchoredWindow(key)))
+    return kBadRequest;
+  SetOhosVerifiedWsiOutput(key, hdr != 0, p3 != 0);
+  return OH_IPC_SUCCESS;
+}
+OHIPCRemoteStub* OutputCapabilityReceiver() {
+  static OHIPCRemoteStub* receiver = OH_IPCRemoteStub_Create(
+      "chromium.ohos.OutputCapabilities", &OnOutputCapabilities, nullptr, nullptr);
+  return receiver;
+}
+void OnGpuOutputDied(void* context) {
+  const uint64_t generation = *static_cast<uint64_t*>(context);
+  auto& side = Browser();
+  base::AutoLock lock(side.lock);
+  if (generation == side.output_generation) {
+    ++side.output_generation;
+    side.output_failed = true;
+    ResetOhosVerifiedWsiOutputs();
+  }
+}
+void DestroyGpuOutputContext(void* context) {
+  delete static_cast<uint64_t*>(context);
 }
 
 void OnGpuChildStarted(int error, OHIPCRemoteProxy* proxy) {
@@ -233,6 +285,13 @@ void ClearGpuChildDoubtIfSettled(uint64_t generation) {
 base::ProcessId StartGpuChild(const std::string& encoded_params,
                               const std::vector<std::pair<int, int>>& fds) {
   BrowserSide& side = Browser();
+  uint64_t output_generation;
+  {
+    base::AutoLock lock(side.lock);
+    output_generation = ++side.output_generation;
+    side.output_failed = false;
+    ResetOhosVerifiedWsiOutputs();
+  }
   OHIPCRemoteProxy* proxy = nullptr;
   {
     base::AutoLock start_lock(side.start_lock);
@@ -286,8 +345,11 @@ base::ProcessId StartGpuChild(const std::string& encoded_params,
   const bool wants_vulkan =
       base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
           "use-vulkan") == "native";
-  written = written &&
-            OH_IPCParcel_WriteInt32(data.get(), wants_vulkan) == OH_IPC_SUCCESS;
+  auto* receiver = OutputCapabilityReceiver();
+  written = written && receiver &&
+            OH_IPCParcel_WriteInt32(data.get(), wants_vulkan) == OH_IPC_SUCCESS &&
+            OH_IPCParcel_WriteInt64(data.get(), static_cast<int64_t>(output_generation)) == OH_IPC_SUCCESS &&
+            OH_IPCParcel_WriteRemoteStub(data.get(), receiver) == OH_IPC_SUCCESS;
   const OH_IPC_MessageOption option = SyncOption();
   int32_t pid = 0;
   if (!written ||
@@ -300,15 +362,36 @@ base::ProcessId StartGpuChild(const std::string& encoded_params,
     return base::kNullProcessId;
   }
 
+  auto* context = new uint64_t(output_generation);
+  auto* recipient = OH_IPCDeathRecipient_Create(
+      &OnGpuOutputDied, &DestroyGpuOutputContext, context);
+  if (!recipient) {
+    delete context;
+  } else if (OH_IPCRemoteProxy_AddDeathRecipient(proxy, recipient) != OH_IPC_SUCCESS) {
+    OH_IPCDeathRecipient_Destroy(recipient);
+    recipient = nullptr;
+  }
+  OHIPCRemoteProxy* old_proxy;
+  OHIPCDeathRecipient* old_recipient;
   {
     base::AutoLock lock(side.lock);
-    if (side.proxy) {
-      OH_IPCRemoteProxy_Destroy(side.proxy);
-    }
+    old_proxy = side.proxy;
+    old_recipient = side.death_recipient;
     side.proxy = proxy;
-    // A new GPU process knows nothing yet.
+    side.death_recipient = recipient;
     side.sent.clear();
   }
+  // Recipient operations may invoke callbacks. Never perform them while
+  // holding Browser::lock, which the death callback itself acquires.
+  if (old_proxy) {
+    if (old_recipient) {
+      OH_IPCRemoteProxy_RemoveDeathRecipient(old_proxy, old_recipient);
+      OH_IPCDeathRecipient_Destroy(old_recipient);
+    }
+    OH_IPCRemoteProxy_Destroy(old_proxy);
+  }
+  if (!recipient)
+    LOG(ERROR) << "OHOS WSI: no death observer; browser capabilities remain SDR";
   LOG(WARNING) << "OHOS GPU child: started pid=" << pid;
   ForwardOhosSurfacesToGpuChild();
   return pid;
@@ -363,6 +446,8 @@ struct ChildSide {
   bool is_child GUARDED_BY(lock) = false;
   bool bootstrapped GUARDED_BY(lock) = false;
   bool wants_vulkan GUARDED_BY(lock) = false;
+  OHIPCRemoteProxy* output_receiver GUARDED_BY(lock) = nullptr;
+  uint64_t output_generation GUARDED_BY(lock) = 0;
   std::string encoded_params GUARDED_BY(lock);
   std::vector<std::pair<int, int>> fds GUARDED_BY(lock);
   std::map<gfx::AcceleratedWidget, MirrorRecord> mirror GUARDED_BY(lock);
@@ -391,10 +476,23 @@ int HandleBootstrap(const OHIPCParcel* data, OHIPCParcel* reply) {
     fds.emplace_back(destination_fd, fd);
   }
   int32_t wants_vulkan = 0;
-  OH_IPCParcel_ReadInt32(data, &wants_vulkan);
+  int64_t output_generation = 0;
+  if (OH_IPCParcel_ReadInt32(data, &wants_vulkan) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_ReadInt64(data, &output_generation) != OH_IPC_SUCCESS ||
+      output_generation <= 0)
+    return kBadRequest;
+  auto* receiver = OH_IPCParcel_ReadRemoteProxy(data);
+  if (!receiver)
+    return kBadRequest;
   ChildSide& side = Child();
   {
     base::AutoLock lock(side.lock);
+    if (side.bootstrapped) {
+      OH_IPCRemoteProxy_Destroy(receiver);
+      return kBadRequest;
+    }
+    side.output_receiver = receiver;
+    side.output_generation = static_cast<uint64_t>(output_generation);
     side.wants_vulkan = wants_vulkan != 0;
     side.encoded_params = params;
     side.fds = std::move(fds);
@@ -478,6 +576,40 @@ int OnRemoteRequest(uint32_t code,
 }
 
 }  // namespace
+
+bool ReportOhosWsiOutputCapabilities(gfx::AcceleratedWidget widget,
+                                    bool hdr, bool p3) {
+  if (IsOhosPhoneGpuChild())
+    return false;
+  if (!IsOhosGpuChildProcess()) {
+    if (widget == gfx::kNullAcceleratedWidget)
+      ResetOhosVerifiedWsiOutputs();
+    else
+      SetOhosVerifiedWsiOutput(widget, hdr, p3);
+    return true;
+  }
+  OHIPCRemoteProxy* receiver;
+  uint64_t generation;
+  {
+    auto& side = Child();
+    base::AutoLock lock(side.lock);
+    receiver = side.output_receiver;
+    generation = side.output_generation;
+  }
+  // Bootstrap is immutable. Do not hold Child::lock during reverse IPC:
+  // the browser may be forwarding a window update in the other direction.
+  ScopedParcel data(OH_IPCParcel_Create());
+  ScopedParcel reply(OH_IPCParcel_Create());
+  if (!receiver || !data || !reply ||
+      OH_IPCParcel_WriteInt64(data.get(), static_cast<int64_t>(generation)) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_WriteInt64(data.get(), static_cast<int64_t>(widget)) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_WriteInt32(data.get(), hdr) != OH_IPC_SUCCESS ||
+      OH_IPCParcel_WriteInt32(data.get(), p3) != OH_IPC_SUCCESS)
+    return false;
+  const auto option = SyncOption();
+  return OH_IPCRemoteProxy_SendRequest(receiver, kOutputCapabilities, data.get(),
+                                        reply.get(), &option) == OH_IPC_SUCCESS;
+}
 
 void InstallOhosGpuChildLauncher() {
   base::internal::SetOhosGpuChildLauncher(&LaunchGpuChild);
