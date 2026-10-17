@@ -1,5 +1,6 @@
 #include "ui/ozone/platform/ohos/ohos_platform_window.h"
 
+#include "base/debug/stack_trace.h"
 #include "base/logging.h"
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
@@ -231,6 +232,15 @@ void OhosPlatformWindow::Deactivate() {
 void OhosPlatformWindow::SetFullscreen(bool fullscreen,
                                        int64_t target_display_id) {
   (void)target_display_id;
+  if (!fullscreen) {
+    // Capture the initiator, not only the later page-fullscreen notification.
+    // On phones an exit during rotation can otherwise look like a renderer or
+    // GPU failure even though both processes and the native video stay alive.
+    LOG(WARNING) << "OHOS fullscreen exit native stack: widget="
+                 << adapter_.GetAcceleratedWidget()
+                 << " state=" << static_cast<int>(window_state_) << "\n"
+                 << base::debug::StackTrace().ToString();
+  }
   const OhosWindowAction action = fullscreen
                                       ? OhosWindowAction::kEnterFullscreen
                                       : OhosWindowAction::kExitFullscreen;
