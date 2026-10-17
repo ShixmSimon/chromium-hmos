@@ -87,3 +87,46 @@ index d1315e6c..057f7eb0 100644
      // Currently we enable cube map arrays based on the imageCubeArray Vk feature.
      // TODO: Check device caps for full cube map array support. http://anglebug.com/42263705
      ANGLE_FEATURE_CONDITION(&mFeatures, supportsImageCubeArray,
+diff --git a/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp b/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp
+index a7ed1ef..51ef7dc 100644
+--- a/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp
++++ b/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp
+@@ -10,6 +10,7 @@
+ #include "libANGLE/renderer/vulkan/ohos/DisplayVkOhos.h"
+ 
+ #include <vulkan/vulkan_ohos.h>
++#include <cstring>
+ 
+ #include "libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.h"
+ #include "libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.h"
+@@ -42,7 +43,7 @@ egl::ConfigSet DisplayVkOhos::generateConfigs()
+     // others are what this port's UI and video paths ask for, and a config
+     // whose format the device does not support is dropped by
+     // checkConfigSupport below rather than advertised and then failed.
+-    constexpr GLenum kColorFormats[] = {GL_RGBA8, GL_RGB8, GL_RGB565};
++    constexpr GLenum kColorFormats[] = {GL_RGBA8, GL_RGB8, GL_RGB565, GL_RGB10_A2};
+ 
+     return egl_vk::GenerateConfigs(kColorFormats, egl_vk::kConfigDepthStencilFormats,
+                                    this);
+@@ -64,6 +65,21 @@ const char *DisplayVkOhos::getWSIExtension() const
+ void DisplayVkOhos::generateExtensions(egl::DisplayExtensions *outExtensions) const
+ {
+     DisplayVk::generateExtensions(outExtensions);
++    // OHOS cannot query formats with a null VkSurfaceKHR. These extensions
++    // expose the EGL attribute API, not a promise about every native window.
++    // WindowSurfaceVk validates the exact format/colorspace pair against the
++    // real surface and allocates its swapchain before eglCreateWindowSurface
++    // succeeds. Chromium publishes display capability only after that probe.
++    for (const char *extension : getRenderer()->getEnabledInstanceExtensions())
++    {
++        if (std::strcmp(extension, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME) == 0)
++        {
++            outExtensions->glColorspaceDisplayP3 = true;
++            outExtensions->glColorspaceDisplayP3Passthrough = true;
++            outExtensions->glColorspaceBt2020Pq = true;
++            break;
++        }
++    }
+     // Video frames and WebGPU textures arrive as OH_NativeBuffers; with
+     // VK_OHOS_external_memory they are imported instead of uploaded.
+     outExtensions->imageNativeBufferOHOS = getRenderer()->supportsOhosNativeBuffer();

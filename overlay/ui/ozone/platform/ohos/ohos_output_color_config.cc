@@ -24,6 +24,7 @@ struct BrightnessState {
   base::Lock lock;
   std::optional<OhosDisplayBrightness> value GUARDED_BY(lock);
   std::map<gfx::AcceleratedWidget, std::pair<bool, bool>> wsi_outputs GUARDED_BY(lock);
+  std::map<const void*, gfx::DisplayColorSpaces> egl_outputs GUARDED_BY(lock);
   base::RepeatingClosure changed GUARDED_BY(lock);
 };
 BrightnessState& Brightness() {
@@ -366,6 +367,52 @@ gfx::DisplayColorSpaces MakeOhosOutputColorSpaces(
                                       color.white_millinits);
   }
   return spaces;
+}
+void SetOhosEglOutputColorSpaces(
+    const void* surface, std::optional<gfx::DisplayColorSpaces> spaces) {
+  base::AutoLock lock(Brightness().lock);
+  if (spaces)
+    Brightness().egl_outputs.insert_or_assign(surface, *spaces);
+  else
+    Brightness().egl_outputs.erase(surface);
+}
+std::optional<gfx::DisplayColorSpaces> GetOhosEglOutputColorSpaces(
+    const void* surface) {
+  base::AutoLock lock(Brightness().lock);
+  const auto it = Brightness().egl_outputs.find(surface);
+  return it == Brightness().egl_outputs.end()
+             ? std::nullopt
+             : std::make_optional(it->second);
+}
+bool SetOhosWindowOutputColor(OHNativeWindow* window,
+                              const OhosOutputColor& color) {
+  if (!SetColor(window, color, OH_NativeWindow_SetColorSpace,
+                OH_NativeWindow_SetMetadataValue))
+    return false;
+  if (color.mode != OhosOutputMode::kHdr10) {
+    // NativeWindow accepts NONE as a byte, unlike NativeBuffer. EGL destroys
+    // the old swapchain on every color transition before new buffers draw.
+    uint8_t type = static_cast<uint8_t>(OH_VIDEO_NONE);
+    const auto result = OH_NativeWindow_SetMetadataValue(
+        window, OH_HDR_METADATA_TYPE, sizeof(type), &type);
+    if (result != 0) {
+      LOG(ERROR) << "OHOS EGL output: clearing HDR type failed: " << result;
+      return false;
+    }
+  }
+  OH_NativeBuffer_ColorSpace actual = OH_COLORSPACE_NONE;
+  const auto expected = color.mode == OhosOutputMode::kHdr10
+                            ? OH_COLORSPACE_BT2020_PQ_FULL
+                            : color.mode == OhosOutputMode::kP3Sdr10
+                                  ? OH_COLORSPACE_P3_FULL
+                                  : OH_COLORSPACE_SRGB_FULL;
+  const auto result = OH_NativeWindow_GetColorSpace(window, &actual);
+  if (!IsOhosBufferColorReadbackValid(result, expected, actual)) {
+    LOG(ERROR) << "OHOS EGL color readback: result=" << result
+               << " expected=" << expected << " actual=" << actual;
+    return false;
+  }
+  return true;
 }
 bool SetOhosBufferOutputColor(OH_NativeBuffer* buffer,
                               const OhosOutputColor& color) {

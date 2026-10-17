@@ -627,44 +627,51 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
       arguments.push_back("--use-vulkan=native");
       AppendToListSwitch(&arguments, "enable-features", "Vulkan");
       AURA_LOG_I("AuraShell Skia on Vulkan by config");
-      if (config.vulkan_output_mode == "sdr10" ||
-          config.vulkan_output_mode == "hdr10" ||
-          config.vulkan_output_mode == "auto") {
-        arguments.push_back("--ohos-vulkan-output=" +
-                            config.vulkan_output_mode);
-        auto brightness = ui::GetOhosDisplayBrightness();
-        auto color = brightness ? ui::OhosContentOutputColor(*brightness)
-                                : ui::OhosOutputColor{};
-        const bool fixed = config.vulkan_hdr_white_nits != 0 ||
-                           config.vulkan_hdr_peak_nits != 0;
-        if (fixed) {
-          auto override = ui::MakeOhosDisplayBrightness(
-              0, config.vulkan_hdr_white_nits,
-              config.vulkan_hdr_peak_nits / config.vulkan_hdr_white_nits,
-              config.vulkan_hdr_peak_nits / config.vulkan_hdr_white_nits);
-          color = override ? override->hdr : ui::OhosOutputColor{};
-          arguments.push_back("--ohos-hdr-fixed-luminance");
-        }
-        if (color.mode == ui::OhosOutputMode::kHdr10) {
-          arguments.push_back("--ohos-hdr-white-millinits=" +
-                              std::to_string(color.white_millinits));
-          arguments.push_back("--ohos-hdr-peak-millinits=" +
-                              std::to_string(color.peak_millinits));
-        }
-        // This snapshot predates ForwardChromiumLogToHilog. Use the native
-        // startup logger so a successful initial query is not invisible.
-        AURA_LOG_I(
-            "OHOS HDR startup: requested=%{public}s "
-            "system_brightness=%{public}d "
-            "fixed=%{public}d white_millinits=%{public}u "
-            "peak_millinits=%{public}u",
-            config.vulkan_output_mode.c_str(), brightness.has_value(), fixed,
-            color.white_millinits, color.peak_millinits);
-      }
     } else {
       AURA_LOG_E(
           "AuraShell ignored skiaBackend vulkan: the GPU is not in a "
           "separate GPU process");
+    }
+  }
+
+  // Native EGL WSI needs the same user output mode and trusted luminance
+  // snapshot as Skia Vulkan. This does not change the phone fork's GL route.
+  if ((config.skia_backend == "vulkan" && gpu_in_own_process) ||
+      (!config.headless && config.angle_backend == "vulkan" &&
+       !(config.experimental_phone_fork && config.gpu_process == "separate"))) {
+    if (config.vulkan_output_mode == "sdr10" ||
+        config.vulkan_output_mode == "hdr10" ||
+        config.vulkan_output_mode == "auto") {
+      arguments.push_back("--ohos-vulkan-output=" +
+                          config.vulkan_output_mode);
+      auto brightness = ui::GetOhosDisplayBrightness();
+      auto color = brightness ? ui::OhosContentOutputColor(*brightness)
+                              : ui::OhosOutputColor{};
+      const bool fixed = config.vulkan_hdr_white_nits != 0 ||
+                         config.vulkan_hdr_peak_nits != 0;
+      if (fixed) {
+        auto override = ui::MakeOhosDisplayBrightness(
+            0, config.vulkan_hdr_white_nits,
+            config.vulkan_hdr_peak_nits / config.vulkan_hdr_white_nits,
+            config.vulkan_hdr_peak_nits / config.vulkan_hdr_white_nits);
+        color = override ? override->hdr : ui::OhosOutputColor{};
+        arguments.push_back("--ohos-hdr-fixed-luminance");
+      }
+      if (color.mode == ui::OhosOutputMode::kHdr10) {
+        arguments.push_back("--ohos-hdr-white-millinits=" +
+                            std::to_string(color.white_millinits));
+        arguments.push_back("--ohos-hdr-peak-millinits=" +
+                            std::to_string(color.peak_millinits));
+      }
+      // This snapshot predates ForwardChromiumLogToHilog. Use the native
+      // startup logger so a successful initial query is not invisible.
+      AURA_LOG_I(
+          "OHOS HDR startup: requested=%{public}s "
+          "system_brightness=%{public}d "
+          "fixed=%{public}d white_millinits=%{public}u "
+          "peak_millinits=%{public}u",
+          config.vulkan_output_mode.c_str(), brightness.has_value(), fixed,
+          color.white_millinits, color.peak_millinits);
     }
   }
 

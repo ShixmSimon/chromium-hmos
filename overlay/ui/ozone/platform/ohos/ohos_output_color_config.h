@@ -11,6 +11,8 @@
 #include "ui/ozone/platform/ohos/ohos_output_color.h"
 #include "ui/gfx/native_ui_types.h"
 struct OH_NativeBuffer;
+struct NativeWindow;
+typedef struct NativeWindow OHNativeWindow;
 namespace ui {
 // Browser-side state, populated before ChromeMain and updated by ArkTS events.
 void UpdateOhosDisplayBrightness(
@@ -30,6 +32,16 @@ void SetOhosVerifiedWsiOutput(gfx::AcceleratedWidget widget, bool hdr, bool p3);
 void ResetOhosVerifiedWsiOutputs();
 bool HasOhosVerifiedWsiHdrOutput();
 bool HasOhosVerifiedWsiP3Output();
+// GPU-local capabilities of the live native EGL output (not phone pbuffers).
+// Keyed by GLSurface address so transparent popups keep their own SDR contract.
+void SetOhosEglOutputColorSpaces(
+    const void* surface, std::optional<gfx::DisplayColorSpaces> spaces);
+std::optional<gfx::DisplayColorSpaces> GetOhosEglOutputColorSpaces(
+    const void* surface);
+// A recreated EGL swapchain gets new buffers. Explicitly restore native SDR
+// tags before it allocates them, so former HDR metadata is not reused.
+bool SetOhosWindowOutputColor(OHNativeWindow* window,
+                              const OhosOutputColor& color);
 // Browser-side display-service query; never called from a fork GPU.
 bool OhosSingleDisplaySupportsP3();
 bool OhosDynamicOutputLuminance();

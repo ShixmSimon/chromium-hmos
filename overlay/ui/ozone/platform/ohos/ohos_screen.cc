@@ -130,10 +130,9 @@ bool OhosRequiresSdrOutput() {
   const auto* command_line = base::CommandLine::ForCurrentProcess();
   return command_line->HasSwitch("ohos-sdr-output") ||
          command_line->GetSwitchValueASCII("use-vulkan") == "native" ||
-         // ANGLE's Vulkan EGL display does not expose the P3/PQ EGL surface
-         // extensions. Tagging its sRGB swapchain's native window as PQ is
-         // not an HDR output contract. The Skia Vulkan WSI path publishes
-         // its separately verified P3/HDR capabilities above.
+         // Vulkan WSI and ANGLE EGL publish actual per-window allocations.
+         // Keep bootstrap SDR until those probes succeed, instead of
+         // promoting the physical panel capability to rendering support.
          command_line->GetSwitchValueASCII("use-angle") == "vulkan" ||
          IsOhosPhoneGpuChild() ||
          (command_line->HasSwitch(base::internal::kOhosPhoneFork) &&
