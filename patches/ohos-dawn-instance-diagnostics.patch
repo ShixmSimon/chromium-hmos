@@ -2041,22 +2041,22 @@ index 6c8b1cb..a593ed5 100644
          core::ir::transform::RobustnessConfig config;
          if (options.extensions.disable_image_robustness) {
 diff --git a/src/dawn/native/Toggles.cpp b/src/dawn/native/Toggles.cpp
-index 01de9d8..352c63f 100644
+index 01de9d8..0bc57ba 100644
 --- a/src/dawn/native/Toggles.cpp
 +++ b/src/dawn/native/Toggles.cpp
-@@ -789,6 +789,12 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
-       "Enables RenderDoc process injection. If RenderDoc is used to inject into the GPU process, "
-       "send RenderDoc frame capture info.",
-       "https://crbug.com/449708316", ToggleStage::Device}},
+@@ -966,6 +966,12 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
+       "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
+ 
+     // Comment to separate the }} so it is clearer what to copy-paste to add a toggle.
 +    {Toggle::OhosMaleoonPointSplitRenderPassProbe,
 +     {"ohos_maleoon_point_split_render_pass_probe",
 +      "Diagnostic only: bound direct point draw instances per native render pass on Maleoon920. "
 +      "Only single-sampled stored color attachments without queries, depth, resolve or PLS. "
 +      "Does not change indirect draws and is never enabled by default.",
-+      "https://crbug.com/dawn/0000", ToggleStage::Device}},
-     {Toggle::VulkanUseDynamicRendering,
-      {"vulkan_use_dynamic_rendering",
-       "Makes use of VK_KHR_dynamic_rendering to implement WebGPU RenderPass.",
++      "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
+ }};
+ 
+ }  // anonymous namespace
 diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
 index eb9542a..325b648 100644
 --- a/src/dawn/native/Toggles.h
@@ -2213,23 +2213,3 @@ index 167d842..375316b 100644
                      DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
                                                    VkCommandBuffer commands) {
                          vk.CmdDrawIndexed(commands, draw->indexCount, draw->instanceCount,
-diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
---- a/src/dawn/native/Toggles.h
-+++ b/src/dawn/native/Toggles.h
-@@ -187,6 +187,7 @@
-     CollapseSubgroupMinMax,
-     VulkanEnableF16OnNvidia,
-     EnableRenderDocProcessInjection,
-+    OhosMaleoonPointSplitRenderPassProbe,
-     VulkanUseDynamicRendering,
-     EnableSpirvValidation,
-     VulkanUseCreateRenderPass2,
-@@ -235,8 +236,6 @@
-     OhosNativeYuvLinearChromaProbe,
-     OhosAtcNoWriteDisableOptimizationProbe,
- 
--    OhosMaleoonPointSplitRenderPassProbe,
--
-     EnumCount,
-     InvalidEnum = EnumCount,
- };
