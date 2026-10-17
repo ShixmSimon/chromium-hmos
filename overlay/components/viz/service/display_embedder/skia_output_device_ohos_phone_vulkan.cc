@@ -486,8 +486,8 @@ SkSurface* SkiaOutputDeviceOhosPhoneVulkan::BeginPaint(
         message.packet.result !=
             static_cast<uint32_t>(ui::phone_gpu::Result::kDropped))
       s.ColorFailure("acquire shared buffer");
-    // Surface registration/rotation can temporarily precede the native window.
-    // Keep Viz alive and drop this frame; retry the real queue next frame.
+    // Surface registration/rotation and a busy consumer can temporarily leave
+    // no available buffer. Keep Viz alive and retry the real queue next frame.
     if (!s.scratch)
       s.scratch = SkSurfaces::RenderTarget(
           s.provider->GetGrContext(), skgpu::Budgeted::kYes, s.info, s.samples,

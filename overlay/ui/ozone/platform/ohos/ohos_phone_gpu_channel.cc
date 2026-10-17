@@ -214,9 +214,13 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
               reply.color_generation = probe ? p.sequence : p.color_generation;
               reply.lease = p.sequence;
               auto buffer = std::make_unique<phone_gpu::SharedBufferLease>();
-              if (buffer_colors.Prepare(surface->window, p.widget, p.color,
-                                        no_pending) &&
-                  buffer->Acquire(surface->window, &response)) {
+              using AcquireResult = phone_gpu::SharedBufferLease::AcquireResult;
+              const auto acquired =
+                  buffer_colors.Prepare(surface->window, p.widget, p.color,
+                                        no_pending)
+                      ? buffer->Acquire(surface->window, &response)
+                      : AcquireResult::kFailed;
+              if (acquired == AcquireResult::kAcquired) {
                 // A same-format HDR luminance update is bound to this newly
                 // acquired lease. Prior queued buffers keep their own metadata.
                 if (probe || p.color_generation)
@@ -225,7 +229,12 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
                                            surface->window});
                 leases.emplace(reply.lease, Pending{reply, std::move(buffer)});
               } else {
-                if (p.color.mode != OhosOutputMode::kSdr8 &&
+                // Normal frame backpressure must not poison verified HDR/P3
+                // capabilities or force GPU restart. Startup/color probes still
+                // require an actual allocation before advertising support.
+                const bool retry_frame =
+                    !probe && acquired == AcquireResult::kUnavailable;
+                if (!retry_frame && p.color.mode != OhosOutputMode::kSdr8 &&
                     p.color.mode != OhosOutputMode::kP3Sdr10)
                   NoteOhosOutputColorFailure(
                       "NativeBuffer allocation or color metadata");
@@ -235,10 +244,11 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
                 reply.widget = p.widget;
                 reply.operation = Op::kUnavailable;
                 reply.result = static_cast<uint32_t>(
-                    p.color.mode != OhosOutputMode::kSdr8 ||
-                            !phone_gpu::SharedBufferAllocatorReady()
-                        ? phone_gpu::Result::kFailed
-                        : phone_gpu::Result::kDropped);
+                    retry_frame ? phone_gpu::Result::kDropped
+                                : (p.color.mode != OhosOutputMode::kSdr8 ||
+                                           !phone_gpu::SharedBufferAllocatorReady()
+                                       ? phone_gpu::Result::kFailed
+                                       : phone_gpu::Result::kDropped));
               }
             }
             OH_NativeWindow_NativeObjectUnreference(surface->window);

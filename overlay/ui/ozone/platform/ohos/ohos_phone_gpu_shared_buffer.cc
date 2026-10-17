@@ -5,6 +5,7 @@
 #include <IPCKit/ipc_cparcel.h>
 #include <dlfcn.h>
 #include <native_buffer/native_buffer.h>
+#include <native_image/graphic_error_code.h>
 #include <native_window/external_window.h>
 #include <unistd.h>
 #include <atomic>
@@ -299,13 +300,13 @@ SharedBufferLease::~SharedBufferLease() {
   if (window)
     OH_NativeWindow_NativeObjectUnreference(window);
 }
-bool SharedBufferLease::Acquire(void* target, SharedMessage* m) {
+SharedBufferLease::AcquireResult SharedBufferLease::Acquire(void* target, SharedMessage* m) {
   if (!target || window_ || !ready.load()) {
     LOG(ERROR) << "OHOS shared buffer: step=acquire-state target="
                << (target != nullptr)
                << " already_acquired=" << (window_ != nullptr)
                << " allocator_ready=" << ready.load();
-    return false;
+    return AcquireResult::kFailed;
   }
   auto* window = static_cast<OHNativeWindow*>(target);
   const auto& p = m->packet;
@@ -327,13 +328,24 @@ bool SharedBufferLease::Acquire(void* target, SharedMessage* m) {
       !BufferStep(p, "set-timeout",
                   OH_NativeWindow_NativeWindowHandleOpt(window, SET_TIMEOUT,
                                                         int32_t{200})))
-    return false;
+    return AcquireResult::kFailed;
   OHNativeWindowBuffer* buffer = nullptr;
   int fence = -1;
-  if (!BufferStep(
-          p, "request-buffer",
-          OH_NativeWindow_NativeWindowRequestBuffer(window, &buffer, &fence)))
-    return false;
+  const int request_result =
+      OH_NativeWindow_NativeWindowRequestBuffer(window, &buffer, &fence);
+  if (request_result == NATIVE_ERROR_NO_BUFFER) {
+    // A busy consumer can hold every buffer beyond SET_TIMEOUT. This says
+    // nothing about the requested format or color metadata. No lease exists,
+    // so let the caller drop this frame and retry the queue on the next one.
+    if (fence >= 0)
+      close(fence);
+    LOG(WARNING) << "OHOS shared buffer: queue temporarily unavailable widget="
+                 << p.widget << " sequence=" << p.sequence
+                 << " mode=" << static_cast<uint32_t>(p.color.mode);
+    return AcquireResult::kUnavailable;
+  }
+  if (!BufferStep(p, "request-buffer", request_result))
+    return AcquireResult::kFailed;
   window_ = window;
   buffer_ = buffer;
   OH_NativeWindow_NativeObjectReference(window);
@@ -361,13 +373,13 @@ bool SharedBufferLease::Acquire(void* target, SharedMessage* m) {
     // Rejecting a 10-bit allocation must not disable the proven SDR allocator.
     if (m->packet.color.mode == OhosOutputMode::kSdr8)
       ready.store(false);
-    return false;
+    return AcquireResult::kFailed;
   }
   if (fence >= 0) {
     m->packet.has_fence = 1;
     m->fds.push_back(fence);
   }
-  return true;
+  return AcquireResult::kAcquired;
 }
 bool SharedBufferLease::Present(int completion_fd) {
   if (!window_ || !buffer_ || resolved_ || completion_fd < -1) {

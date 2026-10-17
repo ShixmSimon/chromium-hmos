@@ -51,7 +51,8 @@ class SharedBufferLease {
   ~SharedBufferLease();
   SharedBufferLease(const SharedBufferLease&) = delete;
   SharedBufferLease& operator=(const SharedBufferLease&) = delete;
-  bool Acquire(void* window, SharedMessage* message);
+  enum class AcquireResult { kAcquired, kUnavailable, kFailed };
+  AcquireResult Acquire(void* window, SharedMessage* message);
   // Consumes completion_fd. Flush failure does not return an in-flight buffer
   // to the queue; a disconnected lease is detached instead.
   bool Present(int completion_fd);
