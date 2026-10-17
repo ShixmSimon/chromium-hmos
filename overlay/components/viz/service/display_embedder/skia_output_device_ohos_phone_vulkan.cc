@@ -12,6 +12,7 @@
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/threading/watchdog.h"
+#include "base/trace_event/trace_event.h"
 #include "components/viz/common/gpu/vulkan_context_provider.h"
 #include "gpu/command_buffer/service/memory_tracking.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
@@ -596,8 +597,21 @@ void SkiaOutputDeviceOhosPhoneVulkan::Present(
           ? gfx::PresentationFeedback(base::TimeTicks::Now(), interval, 0)
           : gfx::PresentationFeedback::Failure();
   const gfx::Size size(s.info.width(), s.info.height());
+  // A temporary surface/size mismatch rendered only to scratch. An ACK would
+  // consume its damage even though nothing reached the native window. Static
+  // auxiliary windows can then stop drawing after their opening animation,
+  // leaving successful-presentation callbacks pending. Ask Viz for full damage
+  // and another frame; retain failed presentation feedback until a real buffer
+  // is submitted. This also keeps fullscreen's presentation watchdog effective.
+  const auto swap_result = result == ui::phone_gpu::Result::kPresented
+                               ? gfx::SwapResult::SWAP_ACK
+                               : gfx::SwapResult::SWAP_NAK_RECREATE_BUFFERS;
+  if (result != ui::phone_gpu::Result::kPresented) {
+    TRACE_EVENT_INSTANT("gpu", "OhosPhoneVulkanPresentationDropped", "widget",
+                        s.widget, "width", size.width(), "height", size.height());
+  }
   StartSwapBuffers({});
-  FinishSwapBuffers(gfx::SwapCompletionResult(gfx::SwapResult::SWAP_ACK), size,
+  FinishSwapBuffers(gfx::SwapCompletionResult(swap_result), size,
                     std::move(frame));
   std::move(feedback).Run(presentation);
 }
