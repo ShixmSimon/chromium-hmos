@@ -1,7 +1,58 @@
+diff --git a/components/viz/service/display/frame_interval_decider.cc b/components/viz/service/display/frame_interval_decider.cc
+index 610248d..c413ae7 100644
+--- a/components/viz/service/display/frame_interval_decider.cc
++++ b/components/viz/service/display/frame_interval_decider.cc
+@@ -15,6 +15,7 @@
+ #include "base/trace_event/trace_event.h"
+ #include "base/trace_event/typed_macros.h"
+ #include "base/tracing/protos/chrome_track_event.pbzero.h"
++#include "build/build_config.h"
+ #include "components/viz/common/quads/frame_interval_inputs.h"
+ #include "components/viz/service/surfaces/surface.h"
+ #include "components/viz/service/surfaces/surface_manager.h"
+@@ -135,6 +136,28 @@ void FrameIntervalDecider::Decide(
+     }
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (matcher_type == FrameIntervalMatcherType::kOnlyVideo && match_result) {
++    const auto* video = std::get_if<ResultInterval>(&*match_result);
++    if (video && !video->interval.is_positive()) {
++      // Decoder cadence metadata can be temporarily unknown even while video
++      // keeps updating. Do not alternate 60/120 Hz on those isolated frames.
++      // Reuse a recent result without refreshing its age; a long unknown
++      // cadence returns to the normal default. Input/non-video matchers retain
++      // their immediate high-rate response.
++      const auto* previous = current_result_
++          ? std::get_if<ResultInterval>(&*current_result_) : nullptr;
++      if (previous && previous->interval.is_positive() &&
++          frame_time - current_result_frame_time_ <=
++              settings_.ignore_frame_sink_timeout) {
++        return;
++      }
++      match_result.reset();
++      matcher_type = FrameIntervalMatcherType::kNone;
++    }
++  }
++#endif
++
+   if (base::ShouldRecordSubsampledMetric(0.001)) {
+     base::UmaHistogramEnumeration("Viz.FrameIntervalDecider.ResultMatcherType",
+                                   matcher_type);
 diff --git a/components/viz/service/display/frame_interval_decider_unittest.cc b/components/viz/service/display/frame_interval_decider_unittest.cc
+index a59e5dc..8d1ecb2 100644
 --- a/components/viz/service/display/frame_interval_decider_unittest.cc
 +++ b/components/viz/service/display/frame_interval_decider_unittest.cc
-@@ -149,6 +149,21 @@ class FrameIntervalDeciderTest : public testing::Test,
+@@ -4,6 +4,8 @@
+ 
+ #include "components/viz/service/display/frame_interval_decider.h"
+ 
++#include "build/build_config.h"
++
+ #include <memory>
+ #include <optional>
+ #include <utility>
+@@ -149,6 +151,21 @@ class FrameIntervalDeciderTest : public testing::Test,
      }
    }
  
@@ -23,7 +74,7 @@ diff --git a/components/viz/service/display/frame_interval_decider_unittest.cc b
    void InitializeDecider() {
      frame_.metadata.frame_interval_inputs.frame_time = kNow;
  
-@@ -208,6 +223,102 @@ class FrameIntervalDeciderTest : public testing::Test,
+@@ -208,6 +225,170 @@ class FrameIntervalDeciderTest : public testing::Test,
    std::optional<FrameIntervalMatcherType> matcher_type_;
  };
  
@@ -123,9 +174,104 @@ diff --git a/components/viz/service/display/frame_interval_decider_unittest.cc b
 +  EXPECT_EQ(FrameIntervalMatcherType::kOnlyVideo, TakeLastMatcherType());
 +}
 +
++#if BUILDFLAG(IS_OHOS)
++TEST_F(FrameIntervalDeciderTest, OhosUnknownVideoCadenceHasBoundedGrace) {
++  InitializeOhosVideoDecider();
++  FrameIntervalInputs inputs;
++  inputs.frame_time = kNow;
++  inputs.has_only_content_frame_interval_updates = true;
++  inputs.content_interval_info.push_back(
++      {ContentFrameIntervalType::kVideo, base::TimeDelta()});
++  Surface* surface = CreateSurface(FrameSinkId(0, 1), inputs);
++  DrawSurfaces({surface}, kNow);
++  ExpectResult(TakeLastResult(), base::Hertz(120));
++
++  auto draw_at = [&](int milliseconds, base::TimeDelta cadence) {
++    inputs.frame_time = kNow + base::Milliseconds(milliseconds);
++    inputs.content_interval_info[0].frame_interval = cadence;
++    UpdateFrame(surface, inputs);
++    DrawSurfaces({surface}, inputs.frame_time);
++  };
++  draw_at(501, base::Hertz(60));
++  ExpectResult(TakeLastResult(), base::Hertz(60));
++  draw_at(600, base::TimeDelta());
++  EXPECT_FALSE(has_result());
++  draw_at(750, -base::Microseconds(1));
++  EXPECT_FALSE(has_result());
++  // The missing frames do not extend the last valid cadence's lifetime.
++  draw_at(752, base::TimeDelta());
++  ExpectResult(TakeLastResult(), base::Hertz(120));
++}
++
++TEST_F(FrameIntervalDeciderTest, OhosUnknownVideoDoesNotBlockInputBoost) {
++  InitializeOhosVideoDecider();
++  FrameIntervalInputs inputs;
++  inputs.frame_time = kNow;
++  inputs.has_only_content_frame_interval_updates = true;
++  inputs.content_interval_info.push_back(
++      {ContentFrameIntervalType::kVideo, base::Hertz(60)});
++  Surface* surface = CreateSurface(FrameSinkId(0, 1), inputs);
++  DrawSurfaces({surface}, kNow);
++  ExpectResult(TakeLastResult(), base::Hertz(60));
++  inputs.frame_time = kNow + base::Milliseconds(100);
++  inputs.content_interval_info[0].frame_interval = base::TimeDelta();
++  inputs.has_input = true;
++  UpdateFrame(surface, inputs);
++  DrawSurfaces({surface}, inputs.frame_time);
++  ExpectResult(TakeLastResult(), base::Hertz(120) - base::Microseconds(50));
++  EXPECT_EQ(FrameIntervalMatcherType::kInputBoost, TakeLastMatcherType());
++}
++
++TEST_F(FrameIntervalDeciderTest, OhosUnknownVideoDoesNotBlockOtherDamage) {
++  InitializeOhosVideoDecider();
++  FrameIntervalInputs inputs;
++  inputs.frame_time = kNow;
++  inputs.has_only_content_frame_interval_updates = true;
++  inputs.content_interval_info.push_back(
++      {ContentFrameIntervalType::kVideo, base::Hertz(60)});
++  Surface* surface = CreateSurface(FrameSinkId(0, 1), inputs);
++  DrawSurfaces({surface}, kNow);
++  ExpectResult(TakeLastResult(), base::Hertz(60));
++  inputs.frame_time = kNow + base::Milliseconds(100);
++  inputs.content_interval_info[0].frame_interval = base::TimeDelta();
++  inputs.has_only_content_frame_interval_updates = false;
++  UpdateFrame(surface, inputs);
++  DrawSurfaces({surface}, inputs.frame_time);
++  ExpectResult(TakeLastResult(), base::Hertz(120));
++  EXPECT_EQ(FrameIntervalMatcherType::kNone, TakeLastMatcherType());
++}
++#endif
++
  TEST_F(FrameIntervalDeciderTest, Basics) {
    settings_.increase_frame_interval_timeout = base::Milliseconds(50);
    InitializeDecider();
+diff --git a/components/viz/service/display/frame_interval_matchers.cc b/components/viz/service/display/frame_interval_matchers.cc
+index 4951232..dcdd1fd 100644
+--- a/components/viz/service/display/frame_interval_matchers.cc
++++ b/components/viz/service/display/frame_interval_matchers.cc
+@@ -11,6 +11,7 @@
+ #include "base/containers/adapters.h"
+ #include "base/strings/stringprintf.h"
+ #include "base/trace_event/typed_macros.h"
++#include "build/build_config.h"
+ #include "components/viz/common/quads/frame_interval_inputs.h"
+ #include "media/filters/video_cadence_estimator.h"
+ #include "third_party/abseil-cpp/absl/functional/overload.h"
+@@ -57,6 +58,14 @@ std::optional<FrameIntervalMatcher::Result> MatchContentIntervalType(
+     return std::nullopt;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Unknown video cadence is not a request for an infinite refresh rate.
++  // Keep its sentinel for the decider, without dividing the range by zero.
++  if (!content_interval->is_positive()) {
++    return FrameIntervalMatcher::ResultInterval{base::TimeDelta(), interval_type};
++  }
++#endif
++
+   base::TimeDelta interval = std::visit(
+       absl::Overload(
+           [&](const std::monostate& monostate) {
 diff --git a/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.cc b/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.cc
 --- a/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.cc
 +++ b/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.cc
