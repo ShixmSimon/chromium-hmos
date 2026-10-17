@@ -119,10 +119,13 @@ OhosVSyncProvider::OhosVSyncProvider(int32_t window_id, bool polling)
   }
   ApplyFrameRate(kMaxFrameRate);
 
-  // Decoupled VSync lets the system drive animation frames early, which it
-  // documents as smoother for self-drawn content.
-  if (OH_NativeVSync_DVSyncSwitch(native_vsync_, true) != 0) {
-    LOG(WARNING) << "OHOS NativeVSync refused DVSync";
+  // This provider samples hardware timing independently of frame completion.
+  // DVSync instead requires requesting the next callback after the preceding
+  // frame completes, and presenting that frame with the callback's timestamp.
+  // Our EGL/WSI outputs do not implement that contract. Future DVSync ticks
+  // must not be used as the hardware timebase for Chromium's own scheduler.
+  if (OH_NativeVSync_DVSyncSwitch(native_vsync_, false) != 0) {
+    LOG(WARNING) << "OHOS NativeVSync could not select normal VSync";
   }
 
   const base::TimeDelta hardware_interval = ReadHardwareInterval();
