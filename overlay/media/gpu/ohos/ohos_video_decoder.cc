@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 
+#include "base/command_line.h"
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
 #include "base/feature_list.h"
@@ -1033,9 +1034,27 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
     }
     // If the optional capacity query fails, reserve one of the platform's
     // three default slots rather than assuming the old four-frame capacity.
+    size_t max_acquired = kMaxSurfaceFramesInFlight;
+    if (browser_sii_) {
+      // Diagnostic A/B control for the browser-owned native-buffer path. Keep
+      // the production budget until sustained playback measurements justify a
+      // change. Never consume the producer's final slot or alter hidden policy.
+      const std::string budget_override =
+          base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+              "ohos-video-surface-max-acquired");
+      unsigned requested = 0;
+      if (!budget_override.empty()) {
+        if (base::StringToUint(budget_override, &requested) && requested >= 4 &&
+            requested <= 8) {
+          max_acquired = requested;
+        } else {
+          LOG(WARNING) << "OHOS video surface: invalid diagnostic frame budget";
+        }
+      }
+    }
     surface_frame_limit_ =
         surface_queue_size_ > 1
-            ? std::min(kMaxSurfaceFramesInFlight,
+            ? std::min(max_acquired,
                        static_cast<size_t>(surface_queue_size_ - 1))
             : 2;
     LOG(WARNING) << "OHOS video surface queue: capacity=" << surface_queue_size_
