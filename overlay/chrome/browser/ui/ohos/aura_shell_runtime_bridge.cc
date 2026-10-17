@@ -3795,6 +3795,12 @@ void ApplyWindowStateOnUiThread(gfx::AcceleratedWidget widget, int attempt) {
   if (!visible) {
     window->Deactivate();
     window->Hide();
+    TabStripModel* tabs = browser->GetTabStripModel();
+    content::WebContents* active = tabs ? tabs->GetActiveWebContents() : nullptr;
+    LOG(WARNING) << "OHOS host visibility: hidden widget=" << widget
+                 << " native_visible=" << window->IsVisible()
+                 << " active_visibility="
+                 << (active ? static_cast<int>(active->GetVisibility()) : -1);
     return;
   }
 
@@ -6156,6 +6162,8 @@ void SetAuraShellBrowserVisible(gfx::AcceleratedWidget widget, bool visible) {
         state.window_focus[widget] = false;
       }
     }
+    LOG(WARNING) << "OHOS host visibility: requested widget=" << widget
+                 << " visible=" << visible;
     ui_task_runner = state.ui_task_runner;
     const bool is_camera_foreground = state.IsCameraForeground();
     // Hide is immediate for media. Show is published by ApplyWindowState only
