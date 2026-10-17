@@ -1841,12 +1841,13 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/t
 index 92edefd..faf22b2 100644
 --- a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
 +++ b/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
-@@ -7,6 +7,7 @@
+@@ -7,6 +7,8 @@
  #include "base/metrics/histogram_functions.h"
  #include "components/viz/common/resources/shared_image_format_utils.h"
  #include "gpu/command_buffer/client/raster_interface.h"
 +#include "gpu/command_buffer/client/shared_image_interface.h"
  #include "gpu/command_buffer/common/capabilities.h"
++#include "gpu/command_buffer/common/shared_image_capabilities.h"
  #include "gpu/config/gpu_finch_features.h"
  #include "third_party/blink/renderer/bindings/core/v8/v8_canvas_tone_mapping.h"
 @@ -549,17 +550,23 @@ void GPUCanvasContext::configure(const GPUCanvasConfiguration* descriptor,
