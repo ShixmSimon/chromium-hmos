@@ -2058,7 +2058,7 @@ index 01de9d8..0bc57ba 100644
  
  }  // anonymous namespace
 diff --git a/src/dawn/native/vulkan/CommandBufferVk.cpp b/src/dawn/native/vulkan/CommandBufferVk.cpp
-index 167d842..375316b 100644
+index 167d842..7f88fd6 100644
 --- a/src/dawn/native/vulkan/CommandBufferVk.cpp
 +++ b/src/dawn/native/vulkan/CommandBufferVk.cpp
 @@ -31,6 +31,7 @@
@@ -2069,7 +2069,7 @@ index 167d842..375316b 100644
  #include <type_traits>
  #include <utility>
  #include <vector>
-@@ -1800,6 +1801,79 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+@@ -1800,6 +1801,81 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
          state.immediates.SetClampFragDepth(0.0, 1.0);
      }
  
@@ -2086,7 +2086,8 @@ index 167d842..375316b 100644
 +            renderPassCmd->attachmentState->GetSampleCount() != 1 ||
 +            renderPassCmd->attachmentState->HasDepthStencilAttachment() ||
 +            renderPassCmd->occlusionQuerySet || usage.usesFramebufferFetch ||
-+            renderPassCmd->timestampWrites.querySet) {
++            renderPassCmd->timestampWrites.querySet || renderPassCmd->msaaRenderToSingleSampled ||
++            renderPassCmd->attachmentState->GetExpandResolveInfo().attachmentsToExpandResolve.any()) {
 +            return false;
 +        }
 +        if (renderPassCmd->attachmentState->GetColorAttachmentsMask().none()) {
@@ -2127,9 +2128,10 @@ index 167d842..375316b 100644
 +            continuation.colorAttachments[i].loadOp = wgpu::LoadOp::Load;
 +        }
 +        DAWN_TRY(RecordBeginRenderPass(recordingContext, device, &continuation));
-+        // Vulkan viewport, scissor, vertex/index bindings and other dynamic
-+        // values persist. Reapply Dawn's cached pipeline, groups and immediates.
-+        state.DirtyAll();
++        // These compatible native passes preserve Vulkan pipeline, descriptor
++        // bindings and dynamic state. Keep Dawn's matching cache intact:
++        // DirtyAll() would also dirty unused bind-group slots, which Apply()
++        // dereferences even when only group 0 is bound by the application.
 +        pointWorkInNativePass = 0;
 +        device->EmitWarningOnce("OHOS Maleoon native point render pass split probe used");
 +        return {};
@@ -2149,7 +2151,7 @@ index 167d842..375316b 100644
      // Tracks the number of commands that do significant GPU work (a draw or query write) this pass.
      uint32_t workCommandCount = 0;
  
-@@ -1810,6 +1884,24 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+@@ -1810,6 +1886,24 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
                  DrawCmd* draw = iter->NextCommand<DrawCmd>();
  
                  if (draw->vertexCount > 0 && draw->instanceCount > 0) {
@@ -2174,7 +2176,7 @@ index 167d842..375316b 100644
                      DAWN_TRY(
                          state.SyncAndRun([&](const VulkanFunctions& vk, VkCommandBuffer commands) {
                              vk.CmdDraw(commands, draw->vertexCount, draw->instanceCount,
-@@ -1824,6 +1916,25 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+@@ -1824,6 +1918,25 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
                  DrawIndexedCmd* draw = iter->NextCommand<DrawIndexedCmd>();
  
                  if (draw->indexCount > 0 && draw->instanceCount > 0) {
