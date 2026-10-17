@@ -1344,25 +1344,19 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_external_texture.cc b
  }
  
  void GPUExternalTexture::Destroy() {
-@@ -342,9 +352,18 @@
-   // One copy path finished video frame access after GPUExternalTexture
+@@ -343,6 +353,12 @@
    // construction. Zero copy path needs to ensure all gpu commands
    // execution finished before destroy.
-+#if !BUILDFLAG(IS_OHOS)
    if (isZeroCopy() && IsReadLockFenceEnabled()) {
++#if BUILDFLAG(IS_OHOS)
++    // End native access now so paused/hidden playback cannot pin an exclusive
++    // cross-queue reader. Keep the VideoFrame's producer-side SharedImage alive
++    // separately until the already submitted GPU commands have completed.
++    mailbox_texture_->Dissociate();
++#endif
      device()->queue()->ReferenceUntilGPUIsFinished(std::move(mailbox_texture_));
    }
-+#else
-+  // OHOS native backings export all Dawn completion fences in EndAccess and
-+  // retain the decoder allocation through Vulkan fence-helper cleanup (or
-+  // quarantine it on failure). Dissociate the mailbox now, before another
-+  // task tries to import the same frame. Waiting for a renderer-side queue
-+  // callback here unnecessarily holds exclusive backing access and can pin
-+  // every buffer needed by the decoder after background/seek transitions.
-+#endif
  
-   status_ = Status::Destroyed;
-   mailbox_texture_.reset();
 diff --git a/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc b/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
 --- a/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
 +++ b/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
@@ -1587,4 +1581,85 @@ diff --git a/third_party/blink/renderer/platform/graphics/canvas_resource_dispat
 +
    const viz::ResourceId resource_id = id_generator_.GenerateNextId();
    resource.id = resource_id;
+ 
+diff --git a/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h b/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h
+--- a/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h
++++ b/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h
+@@ -8,6 +8,7 @@
+ #include "base/functional/callback.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "base/memory/weak_ptr.h"
++#include "build/build_config.h"
+ #include "gpu/command_buffer/client/client_shared_image.h"
+ #include "gpu/command_buffer/common/sync_token.h"
+ #include "third_party/blink/renderer/platform/graphics/gpu/dawn_control_client_holder.h"
+@@ -99,6 +100,11 @@
+   scoped_refptr<DawnControlClientHolder> dawn_control_client_;
+   wgpu::Device device_;
+   scoped_refptr<gpu::ClientSharedImage> shared_image_;
++#if BUILDFLAG(IS_OHOS)
++  // Dissociate ends access, but the producer's mailbox registration must remain
++  // alive until GPUQueue's completion callback releases this wrapper.
++  scoped_refptr<media::VideoFrame> ohos_video_frame_;
++#endif
+   std::unique_ptr<gpu::WebGPUTextureScopedAccess> scoped_access_;
+   FinishedAccessCallback finished_access_callback_;
+   scoped_refptr<WebGPUTextureAlphaClearer> alpha_clearer_;
+diff --git a/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.cc b/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.cc
+--- a/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.cc
++++ b/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.cc
+@@ -5,6 +5,8 @@
+ #include "third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h"
+ 
+ #include "base/numerics/safe_conversions.h"
++#include "base/trace_event/trace_event.h"
++#include "build/build_config.h"
+ #include "cc/paint/paint_image.h"
+ #include "components/viz/common/resources/shared_image_format.h"
+ #include "gpu/command_buffer/client/client_shared_image.h"
+@@ -223,10 +225,17 @@
+   wgpu::TextureDescriptor desc = {
+       .usage = wgpu::TextureUsage::TextureBinding,
+   };
+-  return base::AdoptRef(new WebGPUMailboxTexture(
++  auto texture = base::AdoptRef(new WebGPUMailboxTexture(
+       std::move(dawn_control_client), device, desc, video_frame->shared_image(),
+       video_frame->acquire_sync_token(), gpu::webgpu::WEBGPU_MAILBOX_NONE,
+       wgpu::TextureUsage::None, std::move(finished_access_callback)));
++#if BUILDFLAG(IS_OHOS)
++  TRACE_EVENT_INSTANT("gpu", "OhosWebGPUVideoMailboxImport", "mailbox",
++                      video_frame->shared_image()->mailbox().ToDebugString(),
++                      "timestamp_us", video_frame->timestamp().InMicroseconds());
++  texture->ohos_video_frame_ = std::move(video_frame);
++#endif
++  return texture;
+ }
+ 
+ WebGPUMailboxTexture::WebGPUMailboxTexture(
+@@ -322,6 +331,13 @@
+ WebGPUMailboxTexture::~WebGPUMailboxTexture() {
+   dawn_control_client_->UntrackMailboxTexture(weak_ptr_factory_.GetWeakPtr());
+   Dissociate();
++#if BUILDFLAG(IS_OHOS)
++  if (ohos_video_frame_) {
++    TRACE_EVENT_INSTANT("gpu", "OhosWebGPUVideoMailboxRetire", "mailbox",
++                        ohos_video_frame_->shared_image()->mailbox().ToDebugString(),
++                        "timestamp_us", ohos_video_frame_->timestamp().InMicroseconds());
++  }
++#endif
+ }
+ 
+ const wgpu::Texture& WebGPUMailboxTexture::GetTexture() {
+diff --git a/gpu/command_buffer/service/shared_image/shared_image_manager.cc b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
+--- a/gpu/command_buffer/service/shared_image/shared_image_manager.cc
++++ b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
+@@ -294,7 +294,8 @@
+   auto* backing = GetBacking(mailbox);
+   if (!backing) {
+     LOG(ERROR) << "SharedImageManager::ProduceDawn: Trying to Produce a "
+-                  "Dawn representation from a non-existent mailbox.";
++                  "Dawn representation from a non-existent mailbox: "
++               << mailbox.ToDebugString();
+     return nullptr;
+   }
  
