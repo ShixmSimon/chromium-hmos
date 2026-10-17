@@ -65,7 +65,7 @@ index 6b32843..3d44e36 100644
    virtual bool InitializeNativeWindow();
  
 diff --git a/components/viz/service/display_embedder/skia_output_device_gl.cc b/components/viz/service/display_embedder/skia_output_device_gl.cc
-index a459db4..870cd49 100644
+index a459db4..17ffae1 100644
 --- a/components/viz/service/display_embedder/skia_output_device_gl.cc
 +++ b/components/viz/service/display_embedder/skia_output_device_gl.cc
 @@ -30,6 +30,9 @@
@@ -108,7 +108,7 @@ index a459db4..870cd49 100644
    const bool has_alpha = !params.image_info.isOpaque();
  
    if (!gl_surface_->Resize(size, params.device_scale_factor, params.color_space,
-@@ -205,6 +222,18 @@ bool SkiaOutputDeviceGL::Reshape(const ReshapeParams& params) {
+@@ -205,6 +222,21 @@ bool SkiaOutputDeviceGL::Reshape(const ReshapeParams& params) {
      base::debug::Alias(nullptr);
      return false;
    }
@@ -116,12 +116,15 @@ index a459db4..870cd49 100644
 +  // A queued SDR8 reshape must not describe a ten-bit default framebuffer
 +  // as RGBA8 while the browser handles the new display capability event.
 +  if (!gl_surface_->GetBackingFramebufferObject()) {
-+    int red_bits = 0;
-+    int alpha_bits = 0;
-+    glGetIntegerv(GL_RED_BITS, &red_bits);
-+    glGetIntegerv(GL_ALPHA_BITS, &alpha_bits);
-+    if (red_bits == 10 && alpha_bits == 2)
++    // Copy-output may leave an offscreen FBO bound. Its GL_RED_BITS does not
++    // describe framebuffer zero; use the live native EGL window contract.
++    const auto native_spaces =
++        ui::GetOhosEglOutputColorSpaces(gl_surface_.get());
++    if (native_spaces &&
++        native_spaces->GetOutputFormat(gfx::ContentColorUsage::kSRGB, false) ==
++            SinglePlaneFormat::kRGBA_1010102) {
 +      color_type = kRGBA_1010102_SkColorType;
++    }
 +  }
 +#endif
    SkSurfaceProps surface_props;
