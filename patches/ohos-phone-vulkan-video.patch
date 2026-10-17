@@ -1916,3 +1916,17 @@ index 79ec0b6..c0653f3 100644
    return true;
  }
  
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.h b/gpu/command_buffer/service/shared_image/ozone_image_backing.h
+index 983db87..e1322b5 100644
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing.h
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.h
+@@ -99,6 +99,9 @@ class GPU_GLES2_EXPORT OzoneImageBacking final
+  private:
+   friend class GLTexturePassthroughOzoneImageRepresentation;
+   friend class DawnOzoneImageRepresentation;
++#if BUILDFLAG(IS_OHOS)
++  friend class OhosNativeVideoDawnRepresentation;
++#endif
+   friend class SkiaVkOzoneImageRepresentation;
+   friend class VulkanOzoneImageRepresentation;
+   class OverlayOzoneImageRepresentation;
