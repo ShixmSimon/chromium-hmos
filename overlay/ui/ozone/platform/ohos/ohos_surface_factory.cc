@@ -263,6 +263,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
   bool Initialize(gl::GLSurfaceFormat format) override {
     GetConfig();
     if (angle_vulkan_ && ten_bit_ && !probed_) {
+      const OhosOutputColor content_color = output_color_;
       probed_ = true;
       // No GL context is current during initialization/recreation. Probe real
       // swapchains on this window, never infer support from the panel alone.
@@ -295,10 +296,17 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
                      hdr_color_.mode == OhosOutputMode::kHdr10 &&
                      ValidOhosOutputColor(hdr_color_) &&
                      OhosSingleDisplaySupportsHdr10() && probe(hdr_color_);
-      // Probes never present content. The first page must be sRGB even on an
-      // HDR-capable panel; each later content transition recreates the EGL
-      // surface with the corresponding immutable colorspace attribute.
-      output_color_ = {OhosOutputMode::kSdr10};
+      // Bootstrap is SDR. A replacement native window may already have HDR
+      // or P3 content queued: restore that exact contract after probing, so
+      // its first frame is never interpreted as sRGB by the new swapchain.
+      if (initialized_ &&
+          ((content_color.mode == OhosOutputMode::kHdr10 && !hdr_capable_) ||
+           (content_color.mode == OhosOutputMode::kP3Sdr10 && !p3_capable_))) {
+        FailEglOutput("replacement EGL window lost requested color support");
+        return false;
+      }
+      output_color_ = initialized_ ? content_color
+                                  : OhosOutputColor{OhosOutputMode::kSdr10};
     }
     if (gl::NativeViewGLSurfaceEGL::Initialize(format)) {
       initialized_ = true;
