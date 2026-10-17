@@ -200,7 +200,19 @@ void OhosPlatformWindow::SetBoundsInPixels(const gfx::Rect& requested) {
 }
 
 gfx::Rect OhosPlatformWindow::GetBoundsInPixels() const {
-  return adapter_.GetBounds();
+  gfx::Rect bounds = adapter_.GetBounds();
+  if (anchored_) {
+    // Keep requested anchor bounds in the logical-window registry so the shell
+    // can place and resize this popup. Rendering must use its actual surface:
+    // fractional display scales and shell vp rounding can differ by one pixel.
+    // Reusing the requested extent made Vulkan reject every subsequent frame
+    // (for example, 176 requested rows for a 175-row XComponent).
+    const auto surface = GetOhosNativeSurface(adapter_.GetAcceleratedWidget());
+    if (surface && surface->window && !surface->bounds.IsEmpty()) {
+      bounds.set_size(surface->bounds.size());
+    }
+  }
+  return bounds;
 }
 
 void OhosPlatformWindow::SetBoundsInDIP(const gfx::Rect& bounds) {
@@ -209,7 +221,7 @@ void OhosPlatformWindow::SetBoundsInDIP(const gfx::Rect& bounds) {
 
 gfx::Rect OhosPlatformWindow::GetBoundsInDIP() const {
   auto* window = const_cast<OhosPlatformWindow*>(this);
-  return window->delegate()->ConvertRectToDIP(adapter_.GetBounds());
+  return window->delegate()->ConvertRectToDIP(GetBoundsInPixels());
 }
 
 void OhosPlatformWindow::Activate() {
