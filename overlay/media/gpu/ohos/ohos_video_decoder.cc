@@ -1249,7 +1249,10 @@ void OhosVideoDecoder::ConvertBrowserFrame(
     return;
   }
   base::ScopedFD receiver(endpoints[0]), sender(endpoints[1]);
-  auto handle = ui::ExportOhosVideoNativePixmap(*pixmap, std::move(sender));
+  auto handle = [&] {
+    TRACE_EVENT0("media", "OhosVideoDecoder::ExportBrowserNativePixmap");
+    return ui::ExportOhosVideoNativePixmap(*pixmap, std::move(sender));
+  }();
   if (handle.ohos_buffer_prefix.empty()) {
     OnSurfaceFrameConverted(generation, nullptr);
     return;
@@ -1268,8 +1271,11 @@ void OhosVideoDecoder::ConvertBrowserFrame(
                                   pixmap->GetBufferSize(), output.color_space,
                                   kTopLeft_GrSurfaceOrigin, kOpaque_SkAlphaType,
                                   usage, "OhosPhoneVideo");
-  auto image = browser_sii_->CreateSharedImage(
-      info, gfx::GpuMemoryBufferHandle(std::move(handle)));
+  auto image = [&] {
+    TRACE_EVENT0("media", "OhosVideoDecoder::CreateBrowserSharedImage");
+    return browser_sii_->CreateSharedImage(
+        info, gfx::GpuMemoryBufferHandle(std::move(handle)));
+  }();
   // This independent lease survives VideoFrame release and decode reset. The
   // GPU VulkanImage keeps its endpoint through fence-helper deferred cleanup.
   // Consequently EOF means no import can still read the decoder allocation.
@@ -1277,6 +1283,8 @@ void OhosVideoDecoder::ConvertBrowserFrame(
       FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
       base::BindOnce(
           [](base::ScopedFD receiver, scoped_refptr<gfx::NativePixmap> lease) {
+            TRACE_EVENT1("media", "OhosVideoDecoder::AwaitBrowserGpuLeaseEOF",
+                         "buffer_id", lease->GetUniqueId());
             pollfd pfd{receiver.get(), POLLIN | POLLHUP, 0};
             int result = HANDLE_EINTR(poll(&pfd, 1, -1));
             // A wait failure must never return a buffer still used by the GPU
@@ -1290,19 +1298,28 @@ void OhosVideoDecoder::ConvertBrowserFrame(
     return;
   }
   gpu::SyncToken ready = image->creation_sync_token();
-  if (!fence.is_null())
+  if (!fence.is_null()) {
+    TRACE_EVENT0("media", "OhosVideoDecoder::AttachBrowserAcquireFence");
     ready = image->BackingWasExternallyUpdated(
         std::make_unique<gfx::GpuFence>(std::move(fence)));
-  browser_sii_->VerifySyncToken(ready);
+  }
+  {
+    TRACE_EVENT0("media", "OhosVideoDecoder::VerifyBrowserReadyToken");
+    browser_sii_->VerifySyncToken(ready);
+  }
   auto frame = VideoFrame::WrapSharedImage(
       *pixel_format, image, ready,
       base::BindOnce(
           [](scoped_refptr<gpu::SharedImageInterface> sii,
              scoped_refptr<gpu::ClientSharedImage> image,
              const gpu::SyncToken& token) {
+            TRACE_EVENT0("media", "OhosVideoDecoder::ReleaseBrowserSharedImage");
             image->UpdateDestructionSyncToken(token);
             image.reset();
-            sii->VerifyFlush();
+            {
+              TRACE_EVENT0("media", "OhosVideoDecoder::VerifyBrowserReleaseFlush");
+              sii->VerifyFlush();
+            }
           },
           browser_sii_, image),
       output.visible_rect, output.natural_size, output.timestamp);
