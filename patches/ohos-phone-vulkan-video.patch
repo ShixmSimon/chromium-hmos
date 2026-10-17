@@ -1726,3 +1726,61 @@ diff --git a/gpu/command_buffer/service/shared_image/compound_image_backing.cc b
    CompoundImageBacking* compound_backing() {
      return static_cast<CompoundImageBacking*>(backing());
    }
+diff --git a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc b/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
+index d67c677..92799ab 100644
+--- a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
++++ b/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
+@@ -25,6 +25,7 @@
+ #undef Success
+ 
+ #include "base/logging.h"
++#include "base/trace_event/trace_event.h"
+ #include "base/memory/ref_counted.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "gpu/command_buffer/service/memory_tracking.h"
+@@ -284,6 +285,16 @@ wgpu::Texture DawnOzoneImageRepresentation::BeginAccess(
+     texture_ = nullptr;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (texture_ && ozone_backing()->format().is_single_plane() &&
++      (usage & kWriteUsage) != 0) {
++    TRACE_EVENT_INSTANT("gpu", "OhosCanvasDawnNativeWrite", "buffer_id",
++                        pixmap_->GetUniqueId(), "format",
++                        ozone_backing()->format().ToString(), "width",
++                        size().width(), "height", size().height(), "usage",
++                        static_cast<uint32_t>(usage));
++  }
++#endif
+   return texture_;
+ }
+ 
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+index 8b012aa..265a30c 100644
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+@@ -15,6 +15,7 @@
+ #include "base/memory/scoped_refptr.h"
+ #include "base/notimplemented.h"
+ #include "base/numerics/checked_math.h"
++#include "base/trace_event/trace_event.h"
+ #include "build/build_config.h"
+ #include "components/viz/common/gpu/vulkan_context_provider.h"
+ #include "components/viz/common/resources/shared_image_format_utils.h"
+@@ -906,6 +907,16 @@ bool OzoneImageBacking::BeginAccess(bool readonly,
+     need_end_fence = true;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (readonly && access_stream == AccessStream::kVulkan && pixmap_ &&
++      format().is_single_plane() &&
++      usage().HasAny(SHARED_IMAGE_USAGE_WEBGPU_WRITE |
++                     SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE)) {
++    TRACE_EVENT_INSTANT("gpu", "OhosCanvasSkiaNativeRead", "buffer_id",
++                        pixmap_->GetUniqueId(), "format", format().ToString(),
++                        "width", size().width(), "height", size().height());
++  }
++#endif
+   return true;
+ }
+ 
