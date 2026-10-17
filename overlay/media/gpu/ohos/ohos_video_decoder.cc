@@ -1284,7 +1284,8 @@ void OhosVideoDecoder::ConvertBrowserFrame(
       base::BindOnce(
           [](base::ScopedFD receiver, scoped_refptr<gfx::NativePixmap> lease) {
             TRACE_EVENT1("media", "OhosVideoDecoder::AwaitBrowserGpuLeaseEOF",
-                         "buffer_id", lease->GetUniqueId());
+                         "buffer_id",
+                         ui::GetOhosVideoNativePixmapId(*lease).value_or(0));
             pollfd pfd{receiver.get(), POLLIN | POLLHUP, 0};
             int result = HANDLE_EINTR(poll(&pfd, 1, -1));
             // A wait failure must never return a buffer still used by the GPU
