@@ -1035,8 +1035,9 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
     // If the optional capacity query fails, reserve one of the platform's
     // three default slots rather than assuming the old four-frame capacity.
     size_t max_acquired = kMaxSurfaceFramesInFlight;
-    if (browser_sii_) {
-      // Diagnostic A/B control for the browser-owned native-buffer path. Keep
+    {
+      // Diagnostic A/B control for native-buffer paths, including in-process
+      // Pad GL. Keep
       // the production budget until sustained playback measurements justify a
       // change. Never consume the producer's final slot or alter hidden policy.
       const std::string budget_override =
