@@ -2040,3 +2040,49 @@ index 6c8b1cb..a593ed5 100644
      if (!options.disable_robustness) {
          core::ir::transform::RobustnessConfig config;
          if (options.extensions.disable_image_robustness) {
+diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
+--- a/src/dawn/native/Toggles.h
++++ b/src/dawn/native/Toggles.h
+@@ -234,6 +234,7 @@
+     OhosNativeYuvHardwareProbe,
+     OhosNativeYuvLinearChromaProbe,
+     OhosAtcNoWriteDisableOptimizationProbe,
++    OhosMaleoonPointDisableOptimizationProbe,
+ 
+     EnumCount,
+     InvalidEnum = EnumCount,
+diff --git a/src/dawn/native/Toggles.cpp b/src/dawn/native/Toggles.cpp
+--- a/src/dawn/native/Toggles.cpp
++++ b/src/dawn/native/Toggles.cpp
+@@ -965,6 +965,12 @@
+       "alpha-to-coverage pipelines with no color or depth writes.",
+       "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
+ 
++    {Toggle::OhosMaleoonPointDisableOptimizationProbe,
++     {"ohos_maleoon_point_disable_optimization_probe",
++      "Diagnostic only: disable Vulkan pipeline optimization for OHOS Maleoon "
++      "point-list pipelines to isolate large-draw driver failures.",
++      "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
++
+     // Comment to separate the }} so it is clearer what to copy-paste to add a toggle.
+ }};
+ 
+diff --git a/src/dawn/native/vulkan/RenderPipelineVk.cpp b/src/dawn/native/vulkan/RenderPipelineVk.cpp
+--- a/src/dawn/native/vulkan/RenderPipelineVk.cpp
++++ b/src/dawn/native/vulkan/RenderPipelineVk.cpp
+@@ -764,6 +764,15 @@
+     createInfo.pNext = nullptr;
+     createInfo.flags = 0;
+ #if defined(__OHOS__)
++    if (device->IsToggleEnabled(Toggle::OhosMaleoonPointDisableOptimizationProbe) &&
++        gpu_info::IsHuaweiMaleoon(device->GetDeviceInfo().properties.vendorID,
++                                 device->GetDeviceInfo().properties.deviceID) &&
++        GetPrimitiveTopology() == wgpu::PrimitiveTopology::PointList) {
++        // Opt-in diagnostic only. The draw arguments, render-pass boundaries,
++        // shader side effects and queries keep their normal behavior.
++        createInfo.flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
++        device->EmitWarningOnce("OHOS Maleoon point pipeline optimization probe enabled");
++    }
+     if (device->IsToggleEnabled(Toggle::OhosAtcNoWriteDisableOptimizationProbe) &&
+         gpu_info::IsHuaweiMaleoon(device->GetDeviceInfo().properties.vendorID,
+                                  device->GetDeviceInfo().properties.deviceID) &&
