@@ -345,11 +345,14 @@ base::ProcessId StartGpuChild(const std::string& encoded_params,
   const bool wants_vulkan =
       base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
           "use-vulkan") == "native";
-  auto* receiver = OutputCapabilityReceiver();
-  written = written && receiver &&
-            OH_IPCParcel_WriteInt32(data.get(), wants_vulkan) == OH_IPC_SUCCESS &&
-            OH_IPCParcel_WriteInt64(data.get(), static_cast<int64_t>(output_generation)) == OH_IPC_SUCCESS &&
-            OH_IPCParcel_WriteRemoteStub(data.get(), receiver) == OH_IPC_SUCCESS;
+  written = written &&
+            OH_IPCParcel_WriteInt32(data.get(), wants_vulkan) == OH_IPC_SUCCESS;
+  if (wants_vulkan) {
+    auto* receiver = OutputCapabilityReceiver();
+    written = written && receiver &&
+              OH_IPCParcel_WriteInt64(data.get(), static_cast<int64_t>(output_generation)) == OH_IPC_SUCCESS &&
+              OH_IPCParcel_WriteRemoteStub(data.get(), receiver) == OH_IPC_SUCCESS;
+  }
   const OH_IPC_MessageOption option = SyncOption();
   int32_t pid = 0;
   if (!written ||
@@ -362,14 +365,17 @@ base::ProcessId StartGpuChild(const std::string& encoded_params,
     return base::kNullProcessId;
   }
 
-  auto* context = new uint64_t(output_generation);
-  auto* recipient = OH_IPCDeathRecipient_Create(
-      &OnGpuOutputDied, &DestroyGpuOutputContext, context);
-  if (!recipient) {
-    delete context;
-  } else if (OH_IPCRemoteProxy_AddDeathRecipient(proxy, recipient) != OH_IPC_SUCCESS) {
-    OH_IPCDeathRecipient_Destroy(recipient);
-    recipient = nullptr;
+  OHIPCDeathRecipient* recipient = nullptr;
+  if (wants_vulkan) {
+    auto* context = new uint64_t(output_generation);
+    recipient = OH_IPCDeathRecipient_Create(
+        &OnGpuOutputDied, &DestroyGpuOutputContext, context);
+    if (!recipient) {
+      delete context;
+    } else if (OH_IPCRemoteProxy_AddDeathRecipient(proxy, recipient) != OH_IPC_SUCCESS) {
+      OH_IPCDeathRecipient_Destroy(recipient);
+      recipient = nullptr;
+    }
   }
   OHIPCRemoteProxy* old_proxy;
   OHIPCDeathRecipient* old_recipient;
@@ -390,7 +396,7 @@ base::ProcessId StartGpuChild(const std::string& encoded_params,
     }
     OH_IPCRemoteProxy_Destroy(old_proxy);
   }
-  if (!recipient)
+  if (wants_vulkan && !recipient)
     LOG(ERROR) << "OHOS WSI: no death observer; browser capabilities remain SDR";
   LOG(WARNING) << "OHOS GPU child: started pid=" << pid;
   ForwardOhosSurfacesToGpuChild();
@@ -477,18 +483,23 @@ int HandleBootstrap(const OHIPCParcel* data, OHIPCParcel* reply) {
   }
   int32_t wants_vulkan = 0;
   int64_t output_generation = 0;
-  if (OH_IPCParcel_ReadInt32(data, &wants_vulkan) != OH_IPC_SUCCESS ||
-      OH_IPCParcel_ReadInt64(data, &output_generation) != OH_IPC_SUCCESS ||
-      output_generation <= 0)
+  if (OH_IPCParcel_ReadInt32(data, &wants_vulkan) != OH_IPC_SUCCESS)
     return kBadRequest;
-  auto* receiver = OH_IPCParcel_ReadRemoteProxy(data);
-  if (!receiver)
-    return kBadRequest;
+  OHIPCRemoteProxy* receiver = nullptr;
+  if (wants_vulkan) {
+    if (OH_IPCParcel_ReadInt64(data, &output_generation) != OH_IPC_SUCCESS ||
+        output_generation <= 0)
+      return kBadRequest;
+    receiver = OH_IPCParcel_ReadRemoteProxy(data);
+    if (!receiver)
+      return kBadRequest;
+  }
   ChildSide& side = Child();
   {
     base::AutoLock lock(side.lock);
     if (side.bootstrapped) {
-      OH_IPCRemoteProxy_Destroy(receiver);
+      if (receiver)
+        OH_IPCRemoteProxy_Destroy(receiver);
       return kBadRequest;
     }
     side.output_receiver = receiver;
