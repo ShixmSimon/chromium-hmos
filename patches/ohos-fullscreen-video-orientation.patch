@@ -29,3 +29,105 @@ index 19ae84e..f6e1ed1 100644
  #endif
  
    Profile* profile =
+diff --git a/chrome/browser/ui/exclusive_access/fullscreen_controller.cc b/chrome/browser/ui/exclusive_access/fullscreen_controller.cc
+--- a/chrome/browser/ui/exclusive_access/fullscreen_controller.cc
++++ b/chrome/browser/ui/exclusive_access/fullscreen_controller.cc
+@@ -8,6 +8,7 @@
+ #include "base/command_line.h"
+ #include "base/functional/bind.h"
+ #include "base/location.h"
++#include "base/logging.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/metrics/user_metrics.h"
+@@ -273,6 +274,12 @@
+ }
+ 
+ void FullscreenController::ExitFullscreenModeForTab(WebContents* web_contents) {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS fullscreen transition: ExitFullscreenModeForTab"
++               << " tab=" << IsTabFullscreen()
++               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++#endif
++
+   if (MaybeToggleFullscreenWithinTab(web_contents, false)) {
+     // During tab capture of fullscreen-within-tab views, the browser window
+     // fullscreen state is unchanged, so return now.
+@@ -382,6 +389,12 @@
+ }
+ 
+ void FullscreenController::WindowFullscreenStateChanged() {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS fullscreen transition: WindowFullscreenStateChanged"
++               << " tab=" << IsTabFullscreen()
++               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++#endif
++
+   ExclusiveAccessContext* const exclusive_access_context =
+       exclusive_access_manager()->context();
+   bool exiting_fullscreen = !exclusive_access_context->IsFullscreen();
+@@ -450,6 +463,12 @@
+ }
+ 
+ bool FullscreenController::HandleUserPressedEscape() {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS fullscreen transition: HandleUserPressedEscape"
++               << " tab=" << IsTabFullscreen()
++               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++#endif
++
+   WebContents* const active_web_contents =
+       exclusive_access_manager()->context()->GetWebContentsForExclusiveAccess();
+   if (IsFullscreenWithinTab(active_web_contents)) {
+@@ -487,6 +506,12 @@
+ }
+ 
+ void FullscreenController::ExitExclusiveAccessToPreviousState() {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS fullscreen transition: ExitExclusiveAccessToPreviousState"
++               << " tab=" << IsTabFullscreen()
++               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++#endif
++
+   if (IsWindowFullscreenForTabOrPending()) {
+     ExitFullscreenModeForTab(exclusive_access_tab());
+   } else if (IsFullscreenForBrowser()) {
+@@ -507,6 +532,12 @@
+ }
+ 
+ void FullscreenController::ExitExclusiveAccessIfNecessary() {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS fullscreen transition: ExitExclusiveAccessIfNecessary"
++               << " tab=" << IsTabFullscreen()
++               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++#endif
++
+   if (IsWindowFullscreenForTabOrPending()) {
+     ExitFullscreenModeForTab(exclusive_access_tab());
+   } else {
+@@ -525,6 +556,12 @@
+ }
+ 
+ void FullscreenController::NotifyTabExclusiveAccessLost() {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS fullscreen transition: NotifyTabExclusiveAccessLost"
++               << " tab=" << IsTabFullscreen()
++               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++#endif
++
+   if (exclusive_access_tab()) {
+     WebContents* web_contents = exclusive_access_tab();
+     SetTabWithExclusiveAccess(nullptr);
+@@ -631,6 +668,12 @@
+ }
+ 
+ void FullscreenController::ExitFullscreenModeInternal() {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS fullscreen transition: ExitFullscreenModeInternal"
++               << " tab=" << IsTabFullscreen()
++               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++#endif
++
+   // In kiosk mode, we always want to be fullscreen.
+   if (IsRunningInAppMode()) {
+     return;
