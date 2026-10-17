@@ -1795,7 +1795,15 @@ diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/g
 index f29feed..287447a 100644
 --- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
 +++ b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
-@@ -46,6 +46,10 @@
+@@ -6,6 +6,7 @@
+ #include <inttypes.h>
+ 
+ #include <memory>
++#include <string_view>
+ 
+ #include "base/debug/crash_logging.h"
+ #include "base/debug/dump_without_crashing.h"
+@@ -46,6 +47,10 @@
  #include "ui/gfx/gpu_memory_buffer_handle.h"
  #include "ui/gl/gl_display.h"
  #include "ui/gl/gl_implementation.h"

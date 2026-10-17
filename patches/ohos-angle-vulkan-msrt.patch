@@ -178,3 +178,20 @@ index 0dd3692..8fe3224 100644
  
      // Disabled on SwiftShader due to http://crbug.com/40942995
      ANGLE_FEATURE_CONDITION(
+diff --git a/src/libANGLE/renderer/vulkan/DisplayVk.cpp b/src/libANGLE/renderer/vulkan/DisplayVk.cpp
+index e9d4443..0731c19 100644
+--- a/src/libANGLE/renderer/vulkan/DisplayVk.cpp
++++ b/src/libANGLE/renderer/vulkan/DisplayVk.cpp
+@@ -566,9 +566,10 @@ void DisplayVk::generateExtensions(egl::DisplayExtensions *outExtensions) const
+     outExtensions->contextPriority = !getFeatures().allocateNonZeroMemory.enabled;
+     outExtensions->noConfigContext = true;
+ 
+-#if defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX)
++#if defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX) || \
++    defined(ANGLE_PLATFORM_OHOS)
+     outExtensions->nativeFenceSyncANDROID = getFeatures().supportsAndroidNativeFenceSync.enabled;
+-#endif  // defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX)
++#endif  // ANDROID || LINUX || OHOS
+ 
+     outExtensions->bufferAgeEXT = true;
+ 
