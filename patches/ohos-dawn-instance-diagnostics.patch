@@ -565,15 +565,15 @@ diff --git a/src/dawn/native/vulkan/SamplerVk.cpp b/src/dawn/native/vulkan/Sampl
 diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
 --- a/src/dawn/native/Toggles.h
 +++ b/src/dawn/native/Toggles.h
-@@ -231,6 +231,10 @@
-     AutoMapBackendBuffer,
-     MetalPolyfillBoolVecDynamicStore,
- 
+@@ -234,3 +234,9 @@
+-    EnumCount,
 +    OhosNativeYuvHardwareProbe,
 +    OhosNativeYuvLinearChromaProbe,
 +    OhosAtcNoWriteDisableOptimizationProbe,
 +
-     EnumCount,
++    OhosMaleoonPointSplitRenderPassProbe,
++
++    EnumCount,
      InvalidEnum = EnumCount,
  };
 diff --git a/src/dawn/native/Toggles.cpp b/src/dawn/native/Toggles.cpp
@@ -2057,19 +2057,6 @@ index 01de9d8..0bc57ba 100644
  }};
  
  }  // anonymous namespace
-diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
-index eb9542a..325b648 100644
---- a/src/dawn/native/Toggles.h
-+++ b/src/dawn/native/Toggles.h
-@@ -235,6 +235,8 @@ enum class Toggle {
-     OhosNativeYuvLinearChromaProbe,
-     OhosAtcNoWriteDisableOptimizationProbe,
- 
-+    OhosMaleoonPointSplitRenderPassProbe,
-+
-     EnumCount,
-     InvalidEnum = EnumCount,
- };
 diff --git a/src/dawn/native/vulkan/CommandBufferVk.cpp b/src/dawn/native/vulkan/CommandBufferVk.cpp
 index 167d842..375316b 100644
 --- a/src/dawn/native/vulkan/CommandBufferVk.cpp
