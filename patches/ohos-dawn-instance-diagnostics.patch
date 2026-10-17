@@ -2050,9 +2050,9 @@ index 01de9d8..0bc57ba 100644
      // Comment to separate the }} so it is clearer what to copy-paste to add a toggle.
 +    {Toggle::OhosMaleoonPointSplitRenderPassProbe,
 +     {"ohos_maleoon_point_split_render_pass_probe",
-+      "Diagnostic only: bound direct point draw instances per native render pass on Maleoon920. "
++      "Bound direct and GPU-generated indirect point instances per native render pass on OHOS Maleoon920. "
 +      "Only single-sampled stored color attachments without queries, depth, resolve or PLS. "
-+      "Does not change indirect draws and is never enabled by default.",
++      "Enabled by default only on the verified Maleoon920 profile; retains explicit opt-out.",
 +      "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
  }};
  
@@ -2073,10 +2073,10 @@ index 167d842..7f88fd6 100644
          state.immediates.SetClampFragDepth(0.0, 1.0);
      }
  
-+    // Opt-in driver diagnostic. Splitting complete instances preserves vertex,
++    // Driver workaround. Splitting complete instances preserves vertex,
 +    // instance and primitive indices. Do not split vertices within an instance.
 +    // Queries, depth/stencil, resolves, framebuffer fetch and PLS need their own
-+    // continuation protocols and are deliberately outside this diagnostic.
++    // continuation protocols and are deliberately outside this workaround.
 +    const bool splitPointPassProbe = [&] {
 +#if defined(__OHOS__)
 +        const auto& properties = device->GetDeviceInfo().properties;
@@ -2422,7 +2422,7 @@ index 9d6c06d..4f37a0c 100644
 +#if defined(__OHOS__)
 +    // Public validation still rejects nonzero user firstInstance without the
 +    // requested feature. This only enables the supported Vulkan feature for
-+    // the private GPU-generated slices in the opt-in diagnostic.
++    // the private GPU-generated slices in the guarded point workaround.
 +    internalPointFirstInstance =
 +        IsToggleEnabled(Toggle::OhosMaleoonPointSplitRenderPassProbe) &&
 +        mDeviceInfo.properties.vendorID == 0x19e5 &&
@@ -2433,3 +2433,34 @@ index 9d6c06d..4f37a0c 100644
          DAWN_CHECK(mDeviceInfo.features.drawIndirectFirstInstance == VK_TRUE);
          usedKnobs.features.drawIndirectFirstInstance = VK_TRUE;
      }
+diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+--- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
++++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+@@ -1058,6 +1058,16 @@
+ 
+ void PhysicalDevice::SetupBackendDeviceToggles(dawn::platform::Platform* platform,
+                                                TogglesState* deviceToggles) const {
++#if defined(__OHOS__)
++    // The verified Maleoon 920 path bounds point work per native render pass.
++    // CommandBufferVk excludes queries, depth, MSAA, resolves and PLS. Keep the
++    // existing toggle name/ordinal for compatibility and explicit opt-out.
++    if (mDeviceInfo.properties.vendorID == 0x19e5 &&
++        std::string_view(mDeviceInfo.properties.deviceName) == "Maleoon 920" &&
++        mDeviceInfo.features.drawIndirectFirstInstance == VK_TRUE) {
++        deviceToggles->Default(Toggle::OhosMaleoonPointSplitRenderPassProbe, true);
++    }
++#endif
+     // TODO(crbug.com/dawn/857): tighten this workaround when this issue is fixed in both
+     // Vulkan SPEC and drivers.
+     deviceToggles->Default(Toggle::UseTemporaryBufferInCompressedTextureToTextureCopy, true);
+diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+--- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
++++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+@@ -30,6 +30,7 @@
+ #include <algorithm>
+ #include <cstdint>
+ #include <string>
++#include <string_view>
+ #include <utility>
+ #include <vector>
+ 
