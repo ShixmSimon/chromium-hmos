@@ -2040,3 +2040,176 @@ index 6c8b1cb..a593ed5 100644
      if (!options.disable_robustness) {
          core::ir::transform::RobustnessConfig config;
          if (options.extensions.disable_image_robustness) {
+diff --git a/src/dawn/native/Toggles.cpp b/src/dawn/native/Toggles.cpp
+index 01de9d8..352c63f 100644
+--- a/src/dawn/native/Toggles.cpp
++++ b/src/dawn/native/Toggles.cpp
+@@ -789,6 +789,12 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
+       "Enables RenderDoc process injection. If RenderDoc is used to inject into the GPU process, "
+       "send RenderDoc frame capture info.",
+       "https://crbug.com/449708316", ToggleStage::Device}},
++    {Toggle::OhosMaleoonPointSplitRenderPassProbe,
++     {"ohos_maleoon_point_split_render_pass_probe",
++      "Diagnostic only: bound direct point draw instances per native render pass on Maleoon920. "
++      "Only single-sampled stored color attachments without queries, depth, resolve or PLS. "
++      "Does not change indirect draws and is never enabled by default.",
++      "https://crbug.com/dawn/0000", ToggleStage::Device}},
+     {Toggle::VulkanUseDynamicRendering,
+      {"vulkan_use_dynamic_rendering",
+       "Makes use of VK_KHR_dynamic_rendering to implement WebGPU RenderPass.",
+diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
+index eb9542a..325b648 100644
+--- a/src/dawn/native/Toggles.h
++++ b/src/dawn/native/Toggles.h
+@@ -235,6 +235,8 @@ enum class Toggle {
+     OhosNativeYuvLinearChromaProbe,
+     OhosAtcNoWriteDisableOptimizationProbe,
+ 
++    OhosMaleoonPointSplitRenderPassProbe,
++
+     EnumCount,
+     InvalidEnum = EnumCount,
+ };
+diff --git a/src/dawn/native/vulkan/CommandBufferVk.cpp b/src/dawn/native/vulkan/CommandBufferVk.cpp
+index 167d842..375316b 100644
+--- a/src/dawn/native/vulkan/CommandBufferVk.cpp
++++ b/src/dawn/native/vulkan/CommandBufferVk.cpp
+@@ -31,6 +31,7 @@
+ #include <concepts>
+ #include <limits>
+ #include <memory>
++#include <string_view>
+ #include <type_traits>
+ #include <utility>
+ #include <vector>
+@@ -1800,6 +1801,79 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+         state.immediates.SetClampFragDepth(0.0, 1.0);
+     }
+ 
++    // Opt-in driver diagnostic. Splitting complete instances preserves vertex,
++    // instance and primitive indices. Do not split vertices within an instance.
++    // Queries, depth/stencil, resolves, framebuffer fetch and PLS need their own
++    // continuation protocols and are deliberately outside this diagnostic.
++    const bool splitPointPassProbe = [&] {
++#if defined(__OHOS__)
++        const auto& properties = device->GetDeviceInfo().properties;
++        if (!device->IsToggleEnabled(Toggle::OhosMaleoonPointSplitRenderPassProbe) ||
++            properties.vendorID != 0x19e5 ||
++            std::string_view(properties.deviceName) != "Maleoon 920" ||
++            renderPassCmd->attachmentState->GetSampleCount() != 1 ||
++            renderPassCmd->attachmentState->HasDepthStencilAttachment() ||
++            renderPassCmd->occlusionQuerySet || usage.usesFramebufferFetch ||
++            renderPassCmd->timestampWrites.querySet) {
++            return false;
++        }
++        if (renderPassCmd->attachmentState->GetColorAttachmentsMask().none()) {
++            return false;
++        }
++        for (auto i : renderPassCmd->attachmentState->GetColorAttachmentsMask()) {
++            const auto& attachment = renderPassCmd->colorAttachments[i];
++            if (attachment.resolveTarget || attachment.storeOp != wgpu::StoreOp::Store) {
++                return false;
++            }
++        }
++        for (const auto& attachment : renderPassCmd->storageAttachments) {
++            if (attachment.storage) {
++                return false;
++            }
++        }
++        return true;
++#else
++        return false;
++#endif
++    }();
++    constexpr uint64_t kPointWorkPerNativePass = uint64_t{1} << 24;
++    uint64_t pointWorkInNativePass = 0;
++    auto ContinuePointPass = [&]() -> MaybeError {
++        RecordEndRenderPass(recordingContext, device);
++        // Complete attachment writes before a new LOAD, and preserve storage
++        // shader effects across the hardware boundary. No readback or upload.
++        VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
++        barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
++        barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
++                                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT |
++                                VK_ACCESS_SHADER_WRITE_BIT;
++        device->fn.CmdPipelineBarrier(commands, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
++                                      VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, 0, 1, &barrier, 0,
++                                      nullptr, 0, nullptr);
++        BeginRenderPassCmd continuation = *renderPassCmd;
++        for (auto i : continuation.attachmentState->GetColorAttachmentsMask()) {
++            continuation.colorAttachments[i].loadOp = wgpu::LoadOp::Load;
++        }
++        DAWN_TRY(RecordBeginRenderPass(recordingContext, device, &continuation));
++        // Vulkan viewport, scissor, vertex/index bindings and other dynamic
++        // values persist. Reapply Dawn's cached pipeline, groups and immediates.
++        state.DirtyAll();
++        pointWorkInNativePass = 0;
++        device->EmitWarningOnce("OHOS Maleoon native point render pass split probe used");
++        return {};
++    };
++    auto PointInstanceChunk = [&](uint32_t count, uint32_t remaining) -> ResultOrError<uint32_t> {
++        if (pointWorkInNativePass >= kPointWorkPerNativePass ||
++            count > kPointWorkPerNativePass - pointWorkInNativePass) {
++            DAWN_TRY(ContinuePointPass());
++        }
++        const uint32_t chunk = static_cast<uint32_t>(
++            std::min<uint64_t>(remaining,
++                               (kPointWorkPerNativePass - pointWorkInNativePass) / count));
++        pointWorkInNativePass += uint64_t{count} * chunk;
++        return chunk;
++    };
++
+     // Tracks the number of commands that do significant GPU work (a draw or query write) this pass.
+     uint32_t workCommandCount = 0;
+ 
+@@ -1810,6 +1884,24 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+                 DrawCmd* draw = iter->NextCommand<DrawCmd>();
+ 
+                 if (draw->vertexCount > 0 && draw->instanceCount > 0) {
++                    if (splitPointPassProbe &&
++                        state.lastPipeline->GetPrimitiveTopology() ==
++                            wgpu::PrimitiveTopology::PointList &&
++                        draw->vertexCount <= kPointWorkPerNativePass) {
++                        uint32_t first = 0;
++                        while (first < draw->instanceCount) {
++                            uint32_t chunk;
++                            DAWN_TRY_ASSIGN(chunk, PointInstanceChunk(
++                                draw->vertexCount, draw->instanceCount - first));
++                            DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
++                                                         VkCommandBuffer commands) {
++                                vk.CmdDraw(commands, draw->vertexCount, chunk,
++                                           draw->firstVertex, draw->firstInstance + first);
++                            }));
++                            first += chunk;
++                        }
++                        break;
++                    }
+                     DAWN_TRY(
+                         state.SyncAndRun([&](const VulkanFunctions& vk, VkCommandBuffer commands) {
+                             vk.CmdDraw(commands, draw->vertexCount, draw->instanceCount,
+@@ -1824,6 +1916,25 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+                 DrawIndexedCmd* draw = iter->NextCommand<DrawIndexedCmd>();
+ 
+                 if (draw->indexCount > 0 && draw->instanceCount > 0) {
++                    if (splitPointPassProbe &&
++                        state.lastPipeline->GetPrimitiveTopology() ==
++                            wgpu::PrimitiveTopology::PointList &&
++                        draw->indexCount <= kPointWorkPerNativePass) {
++                        uint32_t first = 0;
++                        while (first < draw->instanceCount) {
++                            uint32_t chunk;
++                            DAWN_TRY_ASSIGN(chunk, PointInstanceChunk(
++                                draw->indexCount, draw->instanceCount - first));
++                            DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
++                                                         VkCommandBuffer commands) {
++                                vk.CmdDrawIndexed(commands, draw->indexCount, chunk,
++                                                  draw->firstIndex, draw->baseVertex,
++                                                  draw->firstInstance + first);
++                            }));
++                            first += chunk;
++                        }
++                        break;
++                    }
+                     DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
+                                                   VkCommandBuffer commands) {
+                         vk.CmdDrawIndexed(commands, draw->indexCount, draw->instanceCount,
