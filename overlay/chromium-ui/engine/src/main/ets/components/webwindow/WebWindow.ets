@@ -128,6 +128,12 @@ export struct WebWindow {
   private componentWidthPx: number = 0;
   private componentHeightPx: number = 0;
   private focusRecoveryTimers: number[] = [];
+  // Native window events arrive even when the shell's reactive appVisible
+  // update is deferred in the background. Both gates must allow presentation.
+  private hostWindowVisible: boolean = true;
+  private readonly hostWindowEvent = (event: window.WindowEventType): void => {
+    this.handleWindowEvent(event);
+  };
   private rotationSyncTimer: number = -1;
   private lastExecutedBrowserCommandRevision: number = 0;
   // For commands from a BrowserCommandChannel: which channel, and the last
@@ -191,9 +197,10 @@ export struct WebWindow {
       return;
     }
 
-    this.nativeContext.OnVisibilityChanged(this.appVisible);
-    this.nativeContext.OnFocusChanged(this.appVisible);
-    if (this.appVisible) {
+    const visible = this.isHostVisible();
+    this.nativeContext.OnVisibilityChanged(visible);
+    this.nativeContext.OnFocusChanged(visible);
+    if (visible) {
       this.notifyCurrentBounds();
       // Let the activating pointer sequence finish before restoring focus.
       this.restoreXComponentFocus(80);
@@ -264,7 +271,7 @@ export struct WebWindow {
           this.destroyNativeContext();
         })
         .onFocus(() => {
-          this.nativeContext?.OnFocusChanged(this.appVisible);
+          this.nativeContext?.OnFocusChanged(this.isHostVisible());
         })
         .onBlur(() => {
           this.nativeContext?.OnFocusChanged(false);
@@ -341,8 +348,8 @@ export struct WebWindow {
       this.nativeContext.OnSurfaceCreated();
       this.notifyWindowId();
       this.nativeContext.OnThemeFontChanged(this.themeFontId);
-      this.nativeContext.OnVisibilityChanged(this.appVisible);
-      this.nativeContext.OnFocusChanged(this.appVisible);
+      this.nativeContext.OnVisibilityChanged(this.isHostVisible());
+      this.nativeContext.OnFocusChanged(this.isHostVisible());
       this.notifyCurrentBounds();
       this.requestXComponentFocus();
       const swallowed = this.nativeContext.takeLastError();
@@ -371,6 +378,9 @@ export struct WebWindow {
   }
 
   private requestXComponentFocus(): void {
+    if (!this.isHostVisible()) {
+      return;
+    }
     try {
       this.getUIContext().getFocusController().requestFocus(this.xComponentId);
     } catch (error) {
@@ -378,13 +388,13 @@ export struct WebWindow {
   }
 
   private restoreXComponentFocus(delayMs: number = 0): void {
-    if (!this.nativeContext || !this.appVisible) {
+    if (!this.nativeContext || !this.isHostVisible()) {
       return;
     }
 
     this.clearFocusRecoveryTimers();
     this.focusRecoveryTimers.push(setTimeout((): void => {
-      if (!this.nativeContext || !this.appVisible) {
+      if (!this.nativeContext || !this.isHostVisible()) {
         return;
       }
       this.requestXComponentFocus();
@@ -394,7 +404,7 @@ export struct WebWindow {
   }
 
   private requestNativeInputRecovery(): void {
-    if (!this.nativeContext || !this.appVisible) {
+    if (!this.nativeContext || !this.isHostVisible()) {
       return;
     }
     const command: BrowserCommandPayload = {
@@ -619,9 +629,12 @@ export struct WebWindow {
         win.on('windowSizeChange', (size: window.Size) => {
           this.handleWindowSizeChange(size);
         });
-        win.on('windowEvent', (event: window.WindowEventType) => {
-          this.handleWindowEvent(event);
-        });
+        win.on('windowEvent', this.hostWindowEvent);
+        try {
+          this.hostWindowVisible = win.isWindowShowing();
+          this.nativeContext?.OnVisibilityChanged(this.isHostVisible());
+        } catch (visibilityError) {
+        }
         try {
           win.on('windowStatusChange', (status: window.WindowStatusType): void => {
             this.onWindowStatus?.(Number(status));
@@ -696,7 +709,7 @@ export struct WebWindow {
     } catch (error) {
     }
     try {
-      this.activeWindow.off('windowEvent');
+      this.activeWindow.off('windowEvent', this.hostWindowEvent);
     } catch (error) {
     }
     try {
@@ -823,7 +836,22 @@ export struct WebWindow {
       Number(options.rect.height)));
   }
 
+  private isHostVisible(): boolean {
+    return this.appVisible && this.hostWindowVisible;
+  }
+
   private handleWindowEvent(event: window.WindowEventType): void {
+    if (event === window.WindowEventType.WINDOW_HIDDEN) {
+      this.hostWindowVisible = false;
+      this.clearFocusRecoveryTimers();
+      this.nativeContext?.OnVisibilityChanged(false);
+      this.nativeContext?.OnFocusChanged(false);
+      return;
+    }
+    if (event === window.WindowEventType.WINDOW_SHOWN) {
+      this.hostWindowVisible = true;
+      this.nativeContext?.OnVisibilityChanged(this.isHostVisible());
+    }
     if (!this.nativeContext) {
       return;
     }
@@ -834,8 +862,8 @@ export struct WebWindow {
       this.restoreXComponentFocus(80);
       return;
     }
-    if (event === window.WindowEventType.WINDOW_INACTIVE ||
-      event === window.WindowEventType.WINDOW_HIDDEN) {
+    if (event === window.WindowEventType.WINDOW_INACTIVE) {
+      this.clearFocusRecoveryTimers();
       this.nativeContext.OnFocusChanged(false);
     }
   }
