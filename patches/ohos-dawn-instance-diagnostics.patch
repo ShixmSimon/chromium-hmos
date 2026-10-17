@@ -2213,3 +2213,23 @@ index 167d842..375316b 100644
                      DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
                                                    VkCommandBuffer commands) {
                          vk.CmdDrawIndexed(commands, draw->indexCount, draw->instanceCount,
+diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
+--- a/src/dawn/native/Toggles.h
++++ b/src/dawn/native/Toggles.h
+@@ -187,6 +187,7 @@
+     CollapseSubgroupMinMax,
+     VulkanEnableF16OnNvidia,
+     EnableRenderDocProcessInjection,
++    OhosMaleoonPointSplitRenderPassProbe,
+     VulkanUseDynamicRendering,
+     EnableSpirvValidation,
+     VulkanUseCreateRenderPass2,
+@@ -235,8 +236,6 @@
+     OhosNativeYuvLinearChromaProbe,
+     OhosAtcNoWriteDisableOptimizationProbe,
+ 
+-    OhosMaleoonPointSplitRenderPassProbe,
+-
+     EnumCount,
+     InvalidEnum = EnumCount,
+ };

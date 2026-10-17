@@ -18,6 +18,7 @@
 #include "base/synchronization/condition_variable.h"
 #include "base/synchronization/lock.h"
 #include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 
 namespace ui {
@@ -1131,6 +1132,8 @@ void SetOhosDragOutCallback(OhosDragOutCallback callback) {
 void SetOhosApplicationVisible(bool visible) {
   if (g_application_visible.exchange(visible, std::memory_order_relaxed) !=
       visible) {
+    TRACE_EVENT_INSTANT("media", "OhosApplicationVisibilityChanged", "visible",
+                        visible);
     ApplicationVisibilityObservers().Notify(
         FROM_HERE,
         &OhosApplicationVisibilityObserver::OnOhosApplicationVisibilityChanged,
