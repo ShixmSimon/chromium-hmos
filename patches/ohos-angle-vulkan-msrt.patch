@@ -130,3 +130,20 @@ index a7ed1ef..51ef7dc 100644
      // Video frames and WebGPU textures arrive as OH_NativeBuffers; with
      // VK_OHOS_external_memory they are imported instead of uploaded.
      outExtensions->imageNativeBufferOHOS = getRenderer()->supportsOhosNativeBuffer();
+diff --git a/src/libANGLE/renderer/vulkan/SurfaceVk.cpp b/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
+index 7be4489..4a9c861 100644
+--- a/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
++++ b/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
+@@ -1477,6 +1477,12 @@ angle::Result WindowSurfaceVk::initializeImpl(DisplayVk *displayVk, bool *anyMat
+ 
+     ANGLE_TRY(prepareSwapchainForAcquireNextImage(displayVk));
+     ASSERT(mSwapchain != VK_NULL_HANDLE);
++#if defined(ANGLE_PLATFORM_OHOS)
++    WARN() << "OHOS ANGLE WSI allocated: vk_format=" << imageFormat
++           << " vk_colorspace=" << mSurfaceColorSpace
++           << " rgba_bits=" << mState.config->redSize << "/" << mState.config->greenSize
++           << "/" << mState.config->blueSize << "/" << mState.config->alphaSize;
++#endif
+ 
+     // Create the semaphores that will be used for vkAcquireNextImageKHR.
+     for (vk::Semaphore &semaphore : mAcquireOperation.unlockedAcquireData.acquireImageSemaphores)

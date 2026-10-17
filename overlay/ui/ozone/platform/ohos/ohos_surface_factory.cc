@@ -223,7 +223,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
   ~OhosNativeViewGLSurfaceEGL() override {
     if (angle_vulkan_) {
       ReportOhosWsiOutputCapabilities(widget_, false, false);
-      SetOhosEglOutputColorSpaces(this, std::nullopt);
+      SetOhosEglOutputColorSpaces(static_cast<const gl::GLSurface*>(this), std::nullopt);
     }
     Destroy();
     HoldWindow(0);
@@ -393,6 +393,8 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
         color_changed) {
       size_ = size;
       if (!Recreate()) {
+        if (angle_vulkan_ && ten_bit_)
+          FailEglOutput("EGL recreation or make-current failed");
         return false;
       }
       HoldWindow(window_);
@@ -413,8 +415,11 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
       std::move(callback).Run(gfx::PresentationFeedback::Failure());
       return gfx::SwapResult::SWAP_FAILED;
     }
-    return gl::NativeViewGLSurfaceEGL::SwapBuffers(std::move(callback),
-                                                   std::move(data));
+    const auto result = gl::NativeViewGLSurfaceEGL::SwapBuffers(
+        std::move(callback), std::move(data));
+    if (result == gfx::SwapResult::SWAP_FAILED && angle_vulkan_ && ten_bit_)
+      FailEglOutput("ten-bit EGL swap failed");
+    return result;
   }
 
   gfx::SwapResult PostSubBuffer(int x,
@@ -430,8 +435,11 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
       std::move(callback).Run(gfx::PresentationFeedback::Failure());
       return gfx::SwapResult::SWAP_FAILED;
     }
-    return gl::NativeViewGLSurfaceEGL::PostSubBuffer(
+    const auto result = gl::NativeViewGLSurfaceEGL::PostSubBuffer(
         x, y, width, height, std::move(callback), std::move(data));
+    if (result == gfx::SwapResult::SWAP_FAILED && angle_vulkan_ && ten_bit_)
+      FailEglOutput("ten-bit EGL partial swap failed");
+    return result;
   }
 
  private:
@@ -440,7 +448,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
   void FailEglOutput(const char* reason) {
     p3_capable_ = hdr_capable_ = false;
     ReportOhosWsiOutputCapabilities(widget_, false, false);
-    SetOhosEglOutputColorSpaces(this, std::nullopt);
+    SetOhosEglOutputColorSpaces(static_cast<const gl::GLSurface*>(this), std::nullopt);
     NoteOhosOutputColorFailure(reason);
   }
 
@@ -468,7 +476,7 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
             gfx::ContentColorUsage::kWideColorGamut, alpha, p3, format);
       spaces.SetPrimaries(gfx::DisplayColorSpaces(p3).GetPrimaries());
     }
-    SetOhosEglOutputColorSpaces(this, spaces);
+    SetOhosEglOutputColorSpaces(static_cast<const gl::GLSurface*>(this), spaces);
     ReportOhosWsiOutputCapabilities(widget_, hdr_capable_, p3_capable_);
     LOG(WARNING) << "OHOS EGL output verified: window=" << widget_
                  << " ten_bit=" << ten_bit_ << " p3=" << p3_capable_
@@ -485,7 +493,9 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
       tagged_color_ = output_color_;
       LOG(WARNING) << "OHOS EGL native color: window=" << widget_
                    << " mode=" << static_cast<uint32_t>(output_color_.mode)
-                   << " egl_colorspace=" << GetEGLColorSpace();
+                   << " egl_colorspace=" << GetEGLColorSpace()
+                   << " white_millinits=" << output_color_.white_millinits
+                   << " peak_millinits=" << output_color_.peak_millinits;
       return true;
     }
     if (!native_window || (tagged_pq_ && pq_output_ == *tagged_pq_))
@@ -576,6 +586,8 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
     }
     if (refresh == WindowRefreshResult::kChanged) {
       if (!Recreate()) {
+        if (angle_vulkan_ && ten_bit_)
+          FailEglOutput("EGL recreation or make-current failed");
         return false;
       }
       HoldWindow(window_);
