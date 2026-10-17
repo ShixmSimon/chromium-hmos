@@ -40,92 +40,113 @@ diff --git a/chrome/browser/ui/exclusive_access/fullscreen_controller.cc b/chrom
  #include "base/memory/raw_ptr.h"
  #include "base/metrics/histogram_functions.h"
  #include "base/metrics/user_metrics.h"
-@@ -273,6 +274,12 @@
+@@ -273,6 +274,13 @@
  }
  
  void FullscreenController::ExitFullscreenModeForTab(WebContents* web_contents) {
 +#if BUILDFLAG(IS_OHOS)
 +  LOG(WARNING) << "OHOS fullscreen transition: ExitFullscreenModeForTab"
-+               << " tab=" << IsTabFullscreen()
-+               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++               << " tab=" << tab_fullscreen_
++               << " exclusive_tab=" << (exclusive_access_tab() != nullptr)
++               << " transition=" << started_fullscreen_transition_;
 +#endif
 +
    if (MaybeToggleFullscreenWithinTab(web_contents, false)) {
      // During tab capture of fullscreen-within-tab views, the browser window
      // fullscreen state is unchanged, so return now.
-@@ -382,6 +389,12 @@
+@@ -382,6 +390,13 @@
  }
  
  void FullscreenController::WindowFullscreenStateChanged() {
 +#if BUILDFLAG(IS_OHOS)
 +  LOG(WARNING) << "OHOS fullscreen transition: WindowFullscreenStateChanged"
-+               << " tab=" << IsTabFullscreen()
-+               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++               << " tab=" << tab_fullscreen_
++               << " exclusive_tab=" << (exclusive_access_tab() != nullptr)
++               << " transition=" << started_fullscreen_transition_;
 +#endif
 +
    ExclusiveAccessContext* const exclusive_access_context =
        exclusive_access_manager()->context();
    bool exiting_fullscreen = !exclusive_access_context->IsFullscreen();
-@@ -450,6 +463,12 @@
+@@ -450,6 +465,13 @@
  }
  
  bool FullscreenController::HandleUserPressedEscape() {
 +#if BUILDFLAG(IS_OHOS)
 +  LOG(WARNING) << "OHOS fullscreen transition: HandleUserPressedEscape"
-+               << " tab=" << IsTabFullscreen()
-+               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++               << " tab=" << tab_fullscreen_
++               << " exclusive_tab=" << (exclusive_access_tab() != nullptr)
++               << " transition=" << started_fullscreen_transition_;
 +#endif
 +
    WebContents* const active_web_contents =
        exclusive_access_manager()->context()->GetWebContentsForExclusiveAccess();
    if (IsFullscreenWithinTab(active_web_contents)) {
-@@ -487,6 +506,12 @@
+@@ -468,6 +490,13 @@
+ }
+ 
+ void FullscreenController::HandleUserHeldEscape() {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS fullscreen transition: HandleUserHeldEscape"
++               << " tab=" << tab_fullscreen_
++               << " exclusive_tab=" << (exclusive_access_tab() != nullptr)
++               << " transition=" << started_fullscreen_transition_;
++#endif
++
+   CHECK(exclusive_access_manager());
+   CHECK(exclusive_access_manager()->context());
+   ExclusiveAccessContext* const exclusive_access_context =
+@@ -487,6 +516,13 @@
  }
  
  void FullscreenController::ExitExclusiveAccessToPreviousState() {
 +#if BUILDFLAG(IS_OHOS)
 +  LOG(WARNING) << "OHOS fullscreen transition: ExitExclusiveAccessToPreviousState"
-+               << " tab=" << IsTabFullscreen()
-+               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++               << " tab=" << tab_fullscreen_
++               << " exclusive_tab=" << (exclusive_access_tab() != nullptr)
++               << " transition=" << started_fullscreen_transition_;
 +#endif
 +
    if (IsWindowFullscreenForTabOrPending()) {
      ExitFullscreenModeForTab(exclusive_access_tab());
    } else if (IsFullscreenForBrowser()) {
-@@ -507,6 +532,12 @@
+@@ -507,6 +543,13 @@
  }
  
  void FullscreenController::ExitExclusiveAccessIfNecessary() {
 +#if BUILDFLAG(IS_OHOS)
 +  LOG(WARNING) << "OHOS fullscreen transition: ExitExclusiveAccessIfNecessary"
-+               << " tab=" << IsTabFullscreen()
-+               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++               << " tab=" << tab_fullscreen_
++               << " exclusive_tab=" << (exclusive_access_tab() != nullptr)
++               << " transition=" << started_fullscreen_transition_;
 +#endif
 +
    if (IsWindowFullscreenForTabOrPending()) {
      ExitFullscreenModeForTab(exclusive_access_tab());
    } else {
-@@ -525,6 +556,12 @@
+@@ -525,6 +568,13 @@
  }
  
  void FullscreenController::NotifyTabExclusiveAccessLost() {
 +#if BUILDFLAG(IS_OHOS)
 +  LOG(WARNING) << "OHOS fullscreen transition: NotifyTabExclusiveAccessLost"
-+               << " tab=" << IsTabFullscreen()
-+               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++               << " tab=" << tab_fullscreen_
++               << " exclusive_tab=" << (exclusive_access_tab() != nullptr)
++               << " transition=" << started_fullscreen_transition_;
 +#endif
 +
    if (exclusive_access_tab()) {
      WebContents* web_contents = exclusive_access_tab();
      SetTabWithExclusiveAccess(nullptr);
-@@ -631,6 +668,12 @@
+@@ -631,6 +681,13 @@
  }
  
  void FullscreenController::ExitFullscreenModeInternal() {
 +#if BUILDFLAG(IS_OHOS)
 +  LOG(WARNING) << "OHOS fullscreen transition: ExitFullscreenModeInternal"
-+               << " tab=" << IsTabFullscreen()
-+               << " window=" << exclusive_access_manager()->context()->IsFullscreen();
++               << " tab=" << tab_fullscreen_
++               << " exclusive_tab=" << (exclusive_access_tab() != nullptr)
++               << " transition=" << started_fullscreen_transition_;
 +#endif
 +
    // In kiosk mode, we always want to be fullscreen.
