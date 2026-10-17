@@ -152,3 +152,33 @@ diff --git a/chrome/browser/ui/exclusive_access/fullscreen_controller.cc b/chrom
    // In kiosk mode, we always want to be fullscreen.
    if (IsRunningInAppMode()) {
      return;
+diff --git a/chrome/browser/ui/views/exclusive_access/exclusive_access_bubble_views.cc b/chrome/browser/ui/views/exclusive_access/exclusive_access_bubble_views.cc
+--- a/chrome/browser/ui/views/exclusive_access/exclusive_access_bubble_views.cc
++++ b/chrome/browser/ui/views/exclusive_access/exclusive_access_bubble_views.cc
+@@ -8,6 +8,7 @@
+ 
+ #include "base/i18n/case_conversion.h"
+ #include "base/location.h"
++#include "base/logging.h"
+ #include "base/strings/utf_string_conversions.h"
+ #include "base/task/single_thread_task_runner.h"
+ #include "build/build_config.h"
+@@ -461,6 +462,9 @@
+ 
+ void ExclusiveAccessBubbleViews::OnFirstPresentation(
+     const viz::FrameTimingDetails& details) {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS fullscreen presentation: bubble successful";
++#endif
+   presentation_watchdog_timer_.Stop();
+   StartHideTimer();
+ }
+@@ -473,5 +477,8 @@
+ }
+ 
+ void ExclusiveAccessBubbleViews::OnPresentationTimeout() {
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS fullscreen presentation: bubble timeout";
++#endif
+   bubble_view_context_->GetExclusiveAccessManager()->ExitExclusiveAccess();
+ }
