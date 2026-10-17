@@ -385,6 +385,19 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
         next = {OhosOutputMode::kP3Sdr10};
       }
       color_changed = next.mode != output_color_.mode;
+      if (color_changed) {
+        // Retire this context's rendering and readbacks before replacing its
+        // default framebuffer. ANGLE's surface destruction only waits for
+        // uses tracked by the old window image, which need not include the
+        // copy-output conversion/readback submitted after its last present.
+        // This is a colorspace transition barrier, never a per-frame wait.
+        glFinish();
+        auto* context = gl::GLContext::GetCurrent();
+        if (!context || context->CheckStickyGraphicsResetStatus() != GL_NO_ERROR) {
+          FailEglOutput("GL context lost before EGL color transition");
+          return false;
+        }
+      }
       output_color_ = next;
     } else {
       pq_output_ = color_space.GetTransferID() ==
