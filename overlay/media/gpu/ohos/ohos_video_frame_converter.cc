@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/task/bind_post_task.h"
@@ -26,6 +27,7 @@
 #include "ui/gfx/gpu_fence.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_fence.h"
+#include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_surface_egl.h"
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
 
@@ -194,12 +196,21 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
     fail("unsupported VideoFrame pixel format");
     return;
   }
-  // Read-only GPU uses. Native Vulkan YUV can also be sampled by Dawn.
+  // ANGLE Vulkan can hand its native YUV allocation to Dawn as well. Keep
+  // GLES and the opt-out path on their existing imports/cache policy.
+  const bool webgpu_native_video =
+      !workarounds_.disable_webgpu_shared_images &&
+      (use_vulkan_ ||
+       (gl::GetANGLEImplementation() == gl::ANGLEImplementation::kVulkan &&
+        gl::GLFence::IsGpuFenceSupported() &&
+        base::CommandLine::ForCurrentProcess()->HasSwitch("enable-unsafe-webgpu")));
+  // Read-only GPU uses. Each API still takes exclusive queue ownership.
   gpu::SharedImageUsageSet usage = gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
                                    gpu::SHARED_IMAGE_USAGE_RASTER_READ;
-  if (use_vulkan_ && !workarounds_.disable_webgpu_shared_images) {
+  if (webgpu_native_video) {
     usage |= gpu::SHARED_IMAGE_USAGE_WEBGPU_READ;
-  } else if (!use_vulkan_) {
+  }
+  if (!use_vulkan_) {
     usage |= gpu::SHARED_IMAGE_USAGE_GLES2_READ;
   }
   const gpu::SharedImageInfo info(pixmap->GetSharedImageFormat(),
@@ -207,11 +218,12 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
                                   kTopLeft_GrSurfaceOrigin, kOpaque_SkAlphaType,
                                   usage,
                                   "OhosVideoDecoder");
-  // Vulkan retains the original Surface lease in VkImage. Caching that image
-  // would pin decoder queue slots; use one import per frame until a separate
-  // cache/lease protocol is implemented for Vulkan.
+  // Native Vulkan and Dawn retain the original Surface lease through GPU
+  // completion. Do not detach it into the GL import cache: that cache keeps
+  // allocations but deliberately has no authority over a decoder queue slot.
   std::optional<uint32_t> reusable_buffer_id =
-      use_vulkan_ ? std::nullopt : ui::GetOhosVideoNativePixmapId(*pixmap);
+      (use_vulkan_ || webgpu_native_video)
+          ? std::nullopt : ui::GetOhosVideoNativePixmapId(*pixmap);
   scoped_refptr<gpu::ClientSharedImage> shared_image;
   gpu::SyncToken ready_token;
   const bool had_acquire_fence = !acquire_fence.is_null();

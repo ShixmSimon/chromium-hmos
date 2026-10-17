@@ -1617,31 +1617,6 @@ diff --git a/gpu/command_buffer/service/webgpu_decoder_impl.cc b/gpu/command_buf
  
    return std::make_unique<SharedImageRepresentationAndAccessDawn>(
        std::move(shared_image), std::move(scoped_access));
-diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
---- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
-+++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
-@@ -162,13 +162,15 @@
- 
- #if BUILDFLAG(USE_DAWN)
- #if BUILDFLAG(IS_OHOS)
--  // Video frames prefer the external sampler, which ToDawnFormat does not
--  // know about; Dawn samples them plane by plane (importExternalTexture).
--  viz::SharedImageFormat dawn_format = format();
--  if (dawn_format.is_multi_plane() && dawn_format.PrefersExternalSampler()) {
-+  // OH_NativeBuffer YUV images are imported whole, with hardware chroma
-+  // sampling. The external-texture shader supplies range/matrix conversion.
-+  auto dawn_format = format();
-+  if (dawn_format.is_multi_plane())
-     dawn_format.ClearPrefersExternalSampler();
--  }
--  wgpu::TextureFormat webgpu_format = ToDawnFormat(dawn_format);
-+  const bool native_yuv = dawn_format == viz::MultiPlaneFormat::kNV12 ||
-+                          dawn_format == viz::MultiPlaneFormat::kP010;
-+  wgpu::TextureFormat webgpu_format = native_yuv
-+      ? wgpu::TextureFormat::OpaqueYCbCrAndroid : ToDawnFormat(dawn_format);
- #else
-   wgpu::TextureFormat webgpu_format = ToDawnFormat(format());
- #endif
 diff --git a/gpu/vulkan/vulkan_util.cc b/gpu/vulkan/vulkan_util.cc
 --- a/gpu/vulkan/vulkan_util.cc
 +++ b/gpu/vulkan/vulkan_util.cc
@@ -1762,35 +1737,6 @@ index d67c677..92799ab 100644
    return texture_;
  }
  
-diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
-index 8b012aa..265a30c 100644
---- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
-+++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
-@@ -15,6 +15,7 @@
- #include "base/memory/scoped_refptr.h"
- #include "base/notimplemented.h"
- #include "base/numerics/checked_math.h"
-+#include "base/trace_event/trace_event.h"
- #include "build/build_config.h"
- #include "components/viz/common/gpu/vulkan_context_provider.h"
- #include "components/viz/common/resources/shared_image_format_utils.h"
-@@ -906,6 +907,16 @@ bool OzoneImageBacking::BeginAccess(bool readonly,
-     need_end_fence = true;
-   }
- 
-+#if BUILDFLAG(IS_OHOS)
-+  if (readonly && access_stream == AccessStream::kVulkan && pixmap_ &&
-+      format().is_single_plane() &&
-+      usage().HasAny(SHARED_IMAGE_USAGE_WEBGPU_WRITE |
-+                     SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE)) {
-+    TRACE_EVENT_INSTANT("gpu", "OhosCanvasSkiaNativeRead", "buffer_id",
-+                        pixmap_->GetUniqueId(), "format", format().ToString(),
-+                        "width", size().width(), "height", size().height());
-+  }
-+#endif
-   return true;
- }
- 
 diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
 index f29feed..287447a 100644
 --- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
@@ -1890,3 +1836,83 @@ index 92edefd..faf22b2 100644
          texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float) {
        swap_texture_descriptor_.format = wgpu::TextureFormat::RGBA16Float;
      }
+diff --git a/gpu/command_buffer/service/BUILD.gn b/gpu/command_buffer/service/BUILD.gn
+index 219716e..ad31c1a 100644
+--- a/gpu/command_buffer/service/BUILD.gn
++++ b/gpu/command_buffer/service/BUILD.gn
+@@ -439,6 +439,9 @@ target(link_target_type, "gles2_sources") {
+ 
+   if (is_ohos) {
+     deps += [ "//ui/ozone/platform/ohos:native_window_registry" ]
++    if (use_dawn) {
++      sources += [ "shared_image/ohos_native_video_dawn_representation.h" ]
++    }
+   }
+ 
+   if (enable_vulkan) {
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+index 79ec0b6..c0653f3 100644
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+@@ -15,6 +15,7 @@
+ #include "base/memory/scoped_refptr.h"
+ #include "base/notimplemented.h"
+ #include "base/numerics/checked_math.h"
++#include "base/trace_event/trace_event.h"
+ #include "build/build_config.h"
+ #include "components/viz/common/gpu/vulkan_context_provider.h"
+ #include "components/viz/common/resources/shared_image_format_utils.h"
+@@ -59,6 +60,9 @@
+ #include "gpu/command_buffer/service/dawn_context_provider.h"
+ #include "gpu/command_buffer/service/graphite_utils.h"
+ #include "gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.h"
++#if BUILDFLAG(IS_OHOS)
++#include "gpu/command_buffer/service/shared_image/ohos_native_video_dawn_representation.h"
++#endif
+ #include "gpu/command_buffer/service/shared_image/skia_graphite_dawn_image_representation.h"
+ #include "third_party/skia/include/gpu/graphite/Context.h"
+ #include "third_party/skia/include/gpu/graphite/Image.h"
+@@ -165,13 +169,20 @@ std::unique_ptr<DawnImageRepresentation> OzoneImageBacking::ProduceDawn(
+ 
+ #if BUILDFLAG(USE_DAWN)
+ #if BUILDFLAG(IS_OHOS)
+-  // Video frames prefer the external sampler, which ToDawnFormat does not
+-  // know about; Dawn samples them plane by plane (importExternalTexture).
+-  viz::SharedImageFormat dawn_format = format();
+-  if (dawn_format.is_multi_plane() && dawn_format.PrefersExternalSampler()) {
++  // OH_NativeBuffer YUV images are imported whole, with hardware chroma
++  // sampling. The external-texture shader supplies range/matrix conversion.
++  auto dawn_format = format();
++  if (dawn_format.is_multi_plane())
+     dawn_format.ClearPrefersExternalSampler();
+-  }
+-  wgpu::TextureFormat webgpu_format = ToDawnFormat(dawn_format);
++  const bool native_yuv = dawn_format == viz::MultiPlaneFormat::kNV12 ||
++                          dawn_format == viz::MultiPlaneFormat::kP010;
++  if (native_yuv && backend_type == wgpu::BackendType::Vulkan &&
++      context_state && context_state->GrContextIsGL()) {
++    return OhosNativeVideoDawnRepresentation::Create(
++        manager, this, tracker, device, pixmap_, std::move(context_state));
++  }
++  wgpu::TextureFormat webgpu_format = native_yuv
++      ? wgpu::TextureFormat::OpaqueYCbCrAndroid : ToDawnFormat(dawn_format);
+ #else
+   wgpu::TextureFormat webgpu_format = ToDawnFormat(format());
+ #endif
+@@ -904,6 +915,16 @@ bool OzoneImageBacking::BeginAccess(bool readonly,
+     need_end_fence = true;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (readonly && access_stream == AccessStream::kVulkan && pixmap_ &&
++      format().is_single_plane() &&
++      usage().HasAny(SHARED_IMAGE_USAGE_WEBGPU_WRITE |
++                     SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE)) {
++    TRACE_EVENT_INSTANT("gpu", "OhosCanvasSkiaNativeRead", "buffer_id",
++                        pixmap_->GetUniqueId(), "format", format().ToString(),
++                        "width", size().width(), "height", size().height());
++  }
++#endif
+   return true;
+ }
+ 
