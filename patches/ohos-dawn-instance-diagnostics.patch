@@ -2202,3 +2202,234 @@ index 167d842..7f88fd6 100644
                      DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
                                                    VkCommandBuffer commands) {
                          vk.CmdDrawIndexed(commands, draw->indexCount, draw->instanceCount,
+diff --git a/src/dawn/native/IndirectDrawMetadata.cpp b/src/dawn/native/IndirectDrawMetadata.cpp
+index db9eaac..11881d7 100644
+--- a/src/dawn/native/IndirectDrawMetadata.cpp
++++ b/src/dawn/native/IndirectDrawMetadata.cpp
+@@ -179,7 +179,8 @@ IndirectDrawMetadata::GetIndirectMultiDraws() const {
+ 
+ void IndirectDrawMetadata::SetValidatedIndirectDrawArgs(const IndirectDraw& draw,
+                                                         BufferBase* indirectBuffer,
+-                                                        uint64_t indirectOffset) {
++                                                        uint64_t indirectOffset,
++                                                        uint64_t pointSplitOffset) {
+     // The first time validated args are set ensure the array of args is large enough to store all
+     // of the args that will be needed.
+     if (mValidatedIndirectDraws.size() < mNextIndirectDrawIndex) {
+@@ -191,6 +192,7 @@ void IndirectDrawMetadata::SetValidatedIndirectDrawArgs(const IndirectDraw& draw
+         mValidatedIndirectDraws[draw.validatedDrawIndex];
+     validatedDraw.indirectBuffer = indirectBuffer;
+     validatedDraw.indirectOffset = indirectOffset;
++    validatedDraw.pointSplitOffset = pointSplitOffset;
+ 
+     // TODO(crbug.com/495489174): Currently running without validation does not populate the
+     // validated indirect draws array. Setting the indirectBuffer of the command to null is used as
+diff --git a/src/dawn/native/IndirectDrawMetadata.h b/src/dawn/native/IndirectDrawMetadata.h
+index 63aa76b..0a52fe0 100644
+--- a/src/dawn/native/IndirectDrawMetadata.h
++++ b/src/dawn/native/IndirectDrawMetadata.h
+@@ -84,6 +84,7 @@ class IndirectDrawMetadata : public NonCopyable {
+     struct ValidatedIndirectDraw {
+         Ref<BufferBase> indirectBuffer = nullptr;
+         uint64_t indirectOffset = 0;
++        uint64_t pointSplitOffset = 0;  // Zero means no internal GPU slices.
+     };
+ 
+     struct IndirectValidationBatch {
+@@ -209,7 +210,8 @@ class IndirectDrawMetadata : public NonCopyable {
+ 
+     void SetValidatedIndirectDrawArgs(const IndirectDraw& draw,
+                                       BufferBase* indirectBuffer,
+-                                      uint64_t indirectOffset);
++                                      uint64_t indirectOffset,
++                                      uint64_t pointSplitOffset = 0);
+     ValidatedIndirectDraw GetValidatedIndirectDraw(DrawIndirectCmd* cmd,
+                                                    IndirectDrawIndex indirectDrawIndex) const;
+ 
+diff --git a/src/dawn/native/IndirectDrawValidationEncoder.cpp b/src/dawn/native/IndirectDrawValidationEncoder.cpp
+index 89fb324..baa6cd4 100644
+--- a/src/dawn/native/IndirectDrawValidationEncoder.cpp
++++ b/src/dawn/native/IndirectDrawValidationEncoder.cpp
+@@ -65,6 +65,7 @@ constexpr uint32_t kValidationEnabled = 4;
+ constexpr uint32_t kIndirectFirstInstanceEnabled = 8;
+ constexpr uint32_t kUseFirstIndexToEmulateIndexBufferOffset = 16;
+ constexpr uint32_t kIndirectDrawCountBuffer = 32;
++constexpr uint32_t kOhosPointSplitProbe = 64;
+ 
+ // Equivalent to the IndirectDraw struct defined in the shader below.
+ struct IndirectDraw {
+@@ -112,6 +113,7 @@ static const char sRenderValidationShaderSource[] = DAWN_MULTILINE(
+     const kValidationEnabled = 4u;
+     const kIndirectFirstInstanceEnabled = 8u;
+     const kUseFirstIndexToEmulateIndexBufferOffset = 16u;
++    const kOhosPointSplitProbe = 64u;
+     const kIndirectDrawCountBuffer = 32u;  // if set, drawCount is read from a buffer
+ 
+     struct MultiDrawConstants {
+@@ -164,6 +166,9 @@ static const char sRenderValidationShaderSource[] = DAWN_MULTILINE(
+         if (bool(flags & kDuplicateBaseVertexInstance)) {
+             numParams = numParams + 2u;
+         }
++        if (bool(flags & kOhosPointSplitProbe)) {
++            numParams = numParams * 5u;
++        }
+         return numParams;
+     }
+ 
+@@ -198,6 +203,31 @@ static const char sRenderValidationShaderSource[] = DAWN_MULTILINE(
+         if (bool(batch.flags & kUseFirstIndexToEmulateIndexBufferOffset)) {
+             outputParams.data[outIndex + kFirstIndexEntry] += batch.draws[drawIndex].indexOffsetAsNumElements;
+         }
++
++        if (bool(batch.flags & kOhosPointSplitProbe)) {
++            // Keep the original record for all unmodified backend paths. Four
++            // additional records are generated on GPU after normal validation.
++            // No CPU readback, shadow arguments, truncation or reduced work.
++            let pointCount = outputParams.data[outIndex];
++            let maxInstances = max(1u, 16777216u / max(1u, pointCount));
++            let originalFirst = outputParams.data[outIndex + numInputParams - 1u];
++            var remaining = outputParams.data[outIndex + 1u];
++            var consumed = 0u;
++            for (var chunk = 0u; chunk < 4u; chunk++) {
++                let dst = outIndex + (chunk + 1u) * numInputParams;
++                for (var parameter = 0u; parameter < numInputParams; parameter++) {
++                    outputParams.data[dst + parameter] = outputParams.data[outIndex + parameter];
++                }
++                var instances = min(remaining, maxInstances);
++                // Preserve all remaining work even beyond the diagnostic's
++                // four-window budget; that final job can still exceed budget.
++                if (chunk == 3u) { instances = remaining; }
++                outputParams.data[dst + 1u] = instances;
++                outputParams.data[dst + numInputParams - 1u] = originalFirst + consumed;
++                remaining -= instances;
++                consumed += instances;
++            }
++        }
+     }
+ 
+     fn set_pass_multi(drawIndex: u32) {
+@@ -506,6 +536,12 @@ MaybeError EncodeIndirectDrawValidationCommands(DeviceBase* device,
+ 
+         uint64_t outputIndirectSize =
+             GetOutputIndirectDrawSize(config.drawType, config.duplicateBaseVertexInstance);
++        const bool splitPointIndirect =
++            device->IsToggleEnabled(Toggle::OhosMaleoonPointSplitRenderPassProbe) &&
++            !config.duplicateBaseVertexInstance;
++        if (splitPointIndirect) {
++            outputIndirectSize *= 5;
++        }
+ 
+         for (const IndirectDrawMetadata::IndirectValidationBatch& batch :
+              validationInfo.GetBatches()) {
+@@ -553,7 +589,7 @@ MaybeError EncodeIndirectDrawValidationCommands(DeviceBase* device,
+             newPass.drawType = config.drawType;
+             newPass.batchDataSize = newBatch.dataSize;
+             newPass.batches.push_back(newBatch);
+-            newPass.flags = 0;
++            newPass.flags = splitPointIndirect ? kOhosPointSplitProbe : 0;
+             if (config.duplicateBaseVertexInstance) {
+                 newPass.flags |= kDuplicateBaseVertexInstance;
+             }
+@@ -677,7 +713,13 @@ MaybeError EncodeIndirectDrawValidationCommands(DeviceBase* device,
+ 
+                 // Save the args that point to the validated values in the indirectDrawMetadata.
+                 indirectDrawMetadata->SetValidatedIndirectDrawArgs(
+-                    draw, outputParamsBuffer.GetBuffer(), outputParamsOffset);
++                    draw, outputParamsBuffer.GetBuffer(), outputParamsOffset,
++                    (pass.flags & kOhosPointSplitProbe)
++                        ? outputParamsOffset + GetOutputIndirectDrawSize(pass.drawType, false)
++                        : 0);
++                if (pass.flags & kOhosPointSplitProbe) {
++                    outputParamsOffset += 4 * GetOutputIndirectDrawSize(pass.drawType, false);
++                }
+                 if (pass.flags & kIndexedDraw) {
+                     outputParamsOffset += kDrawIndexedIndirectSize;
+                 } else {
+diff --git a/src/dawn/native/vulkan/CommandBufferVk.cpp b/src/dawn/native/vulkan/CommandBufferVk.cpp
+index 375316b..33f3afc 100644
+--- a/src/dawn/native/vulkan/CommandBufferVk.cpp
++++ b/src/dawn/native/vulkan/CommandBufferVk.cpp
+@@ -1954,6 +1954,25 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+                 Buffer* indirectBuffer = ToBackend(validatedDraw.indirectBuffer.Get());
+                 DAWN_ASSERT(indirectBuffer != nullptr);
+ 
++                if (splitPointPassProbe && validatedDraw.pointSplitOffset != 0 &&
++                    device->GetDeviceInfo().features.drawIndirectFirstInstance == VK_TRUE &&
++                    state.lastPipeline->GetPrimitiveTopology() == wgpu::PrimitiveTopology::PointList) {
++                    for (uint32_t chunk = 0; chunk < 4; ++chunk) {
++                        if (chunk != 0 || pointWorkInNativePass != 0) {
++                            DAWN_TRY(ContinuePointPass());
++                        }
++                        DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
++                                                     VkCommandBuffer commands) {
++                            vk.CmdDrawIndirect(commands, indirectBuffer->GetHandle(),
++                                validatedDraw.pointSplitOffset + uint64_t{chunk} * kDrawIndirectSize,
++                                1, 0);
++                        }));
++                    }
++                    // Counts are GPU-owned. Conservatively start the next
++                    // point draw in a fresh native pass without reading them.
++                    pointWorkInNativePass = kPointWorkPerNativePass;
++                    break;
++                }
+                 DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk, VkCommandBuffer commands) {
+                     vk.CmdDrawIndirect(commands, indirectBuffer->GetHandle(),
+                                        validatedDraw.indirectOffset, 1, 0);
+@@ -1971,6 +1990,25 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+                 Buffer* indirectBuffer = ToBackend(validatedDraw.indirectBuffer.Get());
+                 DAWN_ASSERT(indirectBuffer != nullptr);
+ 
++                if (splitPointPassProbe && validatedDraw.pointSplitOffset != 0 &&
++                    device->GetDeviceInfo().features.drawIndirectFirstInstance == VK_TRUE &&
++                    state.lastPipeline->GetPrimitiveTopology() == wgpu::PrimitiveTopology::PointList) {
++                    for (uint32_t chunk = 0; chunk < 4; ++chunk) {
++                        if (chunk != 0 || pointWorkInNativePass != 0) {
++                            DAWN_TRY(ContinuePointPass());
++                        }
++                        DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
++                                                     VkCommandBuffer commands) {
++                            vk.CmdDrawIndexedIndirect(commands, indirectBuffer->GetHandle(),
++                                validatedDraw.pointSplitOffset + uint64_t{chunk} * kDrawIndexedIndirectSize,
++                                1, 0);
++                        }));
++                    }
++                    // Counts are GPU-owned. Conservatively start the next
++                    // point draw in a fresh native pass without reading them.
++                    pointWorkInNativePass = kPointWorkPerNativePass;
++                    break;
++                }
+                 DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk, VkCommandBuffer commands) {
+                     vk.CmdDrawIndexedIndirect(commands, indirectBuffer->GetHandle(),
+                                               validatedDraw.indirectOffset, 1, 0);
+diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/DeviceVk.cpp
+index 9d6c06d..4f37a0c 100644
+--- a/src/dawn/native/vulkan/DeviceVk.cpp
++++ b/src/dawn/native/vulkan/DeviceVk.cpp
+@@ -28,6 +28,7 @@
+ #include "src/dawn/native/vulkan/DeviceVk.h"
+ 
+ #include <algorithm>
++#include <string_view>
+ #include <utility>
+ 
+ #include "dawn/dawn_version.h"
+@@ -716,7 +717,18 @@ ResultOrError<VulkanDeviceKnobs> Device::CreateDevice(VkPhysicalDevice vkPhysica
+         usedKnobs.features.geometryShader = VK_TRUE;
+     }
+ 
+-    if (HasFeature(Feature::IndirectFirstInstance)) {
++    bool internalPointFirstInstance = false;
++#if defined(__OHOS__)
++    // Public validation still rejects nonzero user firstInstance without the
++    // requested feature. This only enables the supported Vulkan feature for
++    // the private GPU-generated slices in the opt-in diagnostic.
++    internalPointFirstInstance =
++        IsToggleEnabled(Toggle::OhosMaleoonPointSplitRenderPassProbe) &&
++        mDeviceInfo.properties.vendorID == 0x19e5 &&
++        std::string_view(mDeviceInfo.properties.deviceName) == "Maleoon 920" &&
++        mDeviceInfo.features.drawIndirectFirstInstance == VK_TRUE;
++#endif
++    if (HasFeature(Feature::IndirectFirstInstance) || internalPointFirstInstance) {
+         DAWN_CHECK(mDeviceInfo.features.drawIndirectFirstInstance == VK_TRUE);
+         usedKnobs.features.drawIndirectFirstInstance = VK_TRUE;
+     }
