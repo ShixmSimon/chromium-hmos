@@ -602,6 +602,7 @@ class OhosNativePixmap : public gfx::NativePixmap {
       return handle;
     }
     if (offscreen_buffer_id_) {
+      base::AutoLock export_lock(offscreen_export_lock_);
       // The window buffer already owns the allocation. Keeping both its native
       // descriptors and the received parcel/plane duplicates multiplied FD
       // pressure for thousands of small WebGPU canvases waiting for GC.
@@ -655,6 +656,9 @@ class OhosNativePixmap : public gfx::NativePixmap {
   RAW_PTR_EXCLUSION OHNativeWindowBuffer* video_window_ = nullptr;
   base::ScopedClosureRunner video_release_;
   const std::optional<uint32_t> offscreen_buffer_id_;
+  // NativeBuffer parcel APIs are not thread-safe. ExportHandle can be called
+  // by different GPU representations, so serialize exports of this wrapper.
+  mutable base::Lock offscreen_export_lock_;
   // Borrowed from the window buffer or registry entry, both of which outlive
   // this pixmap's operations. IPC exports always duplicate ownership.
   int fd_ = -1;
