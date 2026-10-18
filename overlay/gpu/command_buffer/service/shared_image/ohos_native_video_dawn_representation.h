@@ -198,6 +198,19 @@ class OhosNativeVideoDawnRepresentation final : public DawnImageRepresentation {
                                 &dependencies, need_end_fence)) {
       return false;
     }
+    // Ozone's stream enum identifies an API, not a particular Dawn device.
+    // Graphite and separate WebGPU devices all use kWebGPU, so its same-stream
+    // optimization must not omit the previous device's completion fence. Even
+    // same-device imports can safely wait on this already-submitted sync file.
+    if (backing_->last_write_stream_ == OzoneImageBacking::AccessStream::kWebGPU &&
+        !backing_->write_fence_.is_null()) {
+      auto previous = backing_->write_fence_.Clone();
+      if (previous.is_null()) {
+        Fail();
+        return false;
+      }
+      dependencies.push_back(std::move(previous));
+    }
     std::vector<wgpu::SharedFence> fences;
     for (const auto& dependency : dependencies) {
       if (dependency.is_null()) {
