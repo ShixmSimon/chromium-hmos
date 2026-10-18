@@ -45,6 +45,26 @@ void RawSend(int socket,
   assert(sendmsg(socket, &msg, MSG_NOSIGNAL) == static_cast<ssize_t>(bytes));
 }
 int main() {
+  {
+    p::SharedPacket control;
+    control.operation = p::SharedOp::kGraphiteState;
+    control.sequence = 1;
+    control.widget = 1;
+    assert(p::ValidSharedPacket(control, 0));
+    auto invalid = control;
+    invalid.lease = 1;
+    assert(!p::ValidSharedPacket(invalid, 0));
+    invalid = control;
+    invalid.width = 64;
+    assert(!p::ValidSharedPacket(invalid, 0));
+    invalid = control;
+    invalid.has_fence = 1;
+    assert(!p::ValidSharedPacket(invalid, 1));
+    invalid = control;
+    invalid.color = {ui::OhosOutputMode::kHdr10, 203000, 1000000};
+    invalid.color_generation = 1;
+    assert(!p::ValidSharedPacket(invalid, 0));
+  }
   int s[2];
   assert(!socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, s));
   int source = open("/dev/null", O_RDONLY | O_CLOEXEC);

@@ -19,6 +19,20 @@
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
 
 namespace ui {
+bool OhosGraphiteFailed() {
+  auto directory = base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
+      "user-data-dir");
+  return !directory.empty() &&
+         base::PathExists(directory.AppendASCII(kOhosGraphiteFailedMarker));
+}
+void NoteOhosGraphiteFailure(const char* reason) {
+  auto directory = base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
+      "user-data-dir");
+  if (directory.empty() ||
+      !base::WriteFile(directory.AppendASCII(kOhosGraphiteFailedMarker), "Ganesh"))
+    LOG(ERROR) << "OHOS Graphite: could not persist fallback marker";
+  LOG(ERROR) << "OHOS Graphite: " << reason << "; use Ganesh Vulkan";
+}
 namespace {
 struct BrightnessState {
   base::Lock lock;

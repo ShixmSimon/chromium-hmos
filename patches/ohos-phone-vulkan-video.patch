@@ -1930,3 +1930,242 @@ index 983db87..e1322b5 100644
    friend class SkiaVkOzoneImageRepresentation;
    friend class VulkanOzoneImageRepresentation;
    class OverlayOzoneImageRepresentation;
+
+diff --git a/components/viz/service/BUILD.gn b/components/viz/service/BUILD.gn
+index 3c7e741..e5ca744 100644
+--- a/components/viz/service/BUILD.gn
++++ b/components/viz/service/BUILD.gn
+@@ -544,6 +544,12 @@ viz_component("service") {
+         "display_embedder/skia_output_device_ohos_phone_vulkan.cc",
+         "display_embedder/skia_output_device_ohos_phone_vulkan.h",
+       ]
++      if (skia_use_dawn) {
++        sources += [
++          "display_embedder/skia_output_device_ohos_graphite.cc",
++          "display_embedder/skia_output_device_ohos_graphite.h",
++        ]
++      }
+       deps += [ "//ui/ozone/platform/ohos:native_window_registry" ]
+     }
+ 
+diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+index f72baba..c9ed1a7 100644
+--- a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
++++ b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+@@ -111,6 +111,9 @@
+ #include "components/viz/service/display_embedder/skia_output_device_vulkan.h"
+ #if BUILDFLAG(IS_OHOS)
+ #include "components/viz/service/display_embedder/skia_output_device_ohos_phone_vulkan.h"
++#if BUILDFLAG(SKIA_USE_DAWN)
++#include "components/viz/service/display_embedder/skia_output_device_ohos_graphite.h"
++#endif
+ #include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
+ #endif
+ #include "gpu/vulkan/vulkan_device_queue.h"
+@@ -2194,6 +2197,15 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
+ 
+ bool SkiaOutputSurfaceImplOnGpu::InitializeForDawn() {
+ #if BUILDFLAG(SKIA_USE_DAWN)
++#if BUILDFLAG(IS_OHOS)
++  if (!dependency_->IsOffscreen()) {
++    output_device_ = std::make_unique<SkiaOutputDeviceOhosGraphite>(
++        context_state_, dependency_->GetSurfaceHandle(),
++        renderer_settings_.requires_alpha_channel,
++        shared_gpu_deps_->memory_tracker(), GetDidSwapBuffersCompleteCallback());
++    return true;
++  }
++#endif
+   if (dependency_->IsOffscreen()) {
+     output_device_ = std::make_unique<SkiaOutputDeviceOffscreen>(
+         context_state_, gfx::SurfaceOrigin::kBottomLeft,
+diff --git a/content/browser/gpu/gpu_data_manager_impl_private.cc b/content/browser/gpu/gpu_data_manager_impl_private.cc
+index c74ab22..22c95ff 100644
+--- a/content/browser/gpu/gpu_data_manager_impl_private.cc
++++ b/content/browser/gpu/gpu_data_manager_impl_private.cc
+@@ -552,6 +552,10 @@ void GpuDataManagerImplPrivate::InitializeGpuModes() {
+               ? features::IsSkiaGraphiteEnabled(command_line)
+               : !command_line->HasSwitch(switches::kDisableSkiaGraphite);
+       const bool can_use_vulkan = features::IsUsingVulkan();
++#if BUILDFLAG(IS_OHOS)
++      if (can_use_graphite && can_use_vulkan)
++        fallback_modes_.push_back(gpu::GpuMode::HARDWARE_VULKAN);
++#endif
+       if (can_use_graphite) {
+         fallback_modes_.push_back(gpu::GpuMode::HARDWARE_GRAPHITE);
+       } else if (can_use_vulkan) {
+@@ -1375,6 +1379,7 @@ void GpuDataManagerImplPrivate::UpdateGpuPreferences(
+     // feature is disabled.
+     // TODO(crbug.com/511049071): add a dedicated
+     // HARDWARE_MODE_GRAPHITE_OR_VULKAN
++#if !BUILDFLAG(IS_OHOS)
+     gpu_preferences->fallback_gr_context_types.push_back(
+         gpu::GrContextType::kVulkan);
+ 
+@@ -1382,6 +1387,7 @@ void GpuDataManagerImplPrivate::UpdateGpuPreferences(
+     // to HARDWARE_VULKAN after a crash.
+     DCHECK(
+         !std::ranges::contains(fallback_modes_, gpu::GpuMode::HARDWARE_VULKAN));
++#endif
+   }
+ 
+   bool has_software_mode = false;
+diff --git a/gpu/command_buffer/service/dawn_context_provider.cc b/gpu/command_buffer/service/dawn_context_provider.cc
+index ddd4e93..76f45d1 100644
+--- a/gpu/command_buffer/service/dawn_context_provider.cc
++++ b/gpu/command_buffer/service/dawn_context_provider.cc
+@@ -263,7 +263,7 @@ std::vector<wgpu::FeatureName> GetRequiredFeatures(
+   };
+ 
+   if (backend_type == wgpu::BackendType::Vulkan) {
+-#if BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+     features.push_back(wgpu::FeatureName::StaticSamplers);
+     features.push_back(wgpu::FeatureName::YCbCrVulkanSamplers);
+ #endif
+diff --git a/gpu/command_buffer/service/shared_context_state.cc b/gpu/command_buffer/service/shared_context_state.cc
+index 7e70e45..710e4c3 100644
+--- a/gpu/command_buffer/service/shared_context_state.cc
++++ b/gpu/command_buffer/service/shared_context_state.cc
+@@ -3,6 +3,9 @@
+ // found in the LICENSE file.
+ 
+ #include "gpu/command_buffer/service/shared_context_state.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
++#endif
+ 
+ #include "base/atomic_sequence_num.h"
+ #include "base/compiler_specific.h"
+@@ -632,6 +635,9 @@ bool SharedContextState::InitializeGraphite(
+   if (!graphite_shared_context) {
+     // Note: the caller will handle this case by exiting the GPU process.
+     LOG(ERROR) << "Skia Graphite disabled: Graphite Context creation failed.";
++#if BUILDFLAG(IS_OHOS)
++    ui::NoteOhosGraphiteFailure("Skia Graphite context creation");
++#endif
+     return false;
+   }
+ 
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+index 7ad7402..3e35b78 100644
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+@@ -263,6 +263,7 @@ bool OzoneImageBackingFactory::IsSupported(
+   // OH_NativeBuffers back video frames (NV12, P010) and WebGPU's textures;
+   // every other single-plane image stays where it was, a GL texture.
+   if (format.is_single_plane() &&
++      gr_context_type != GrContextType::kGraphiteDawn &&
+       !usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_WEBGPU_WRITE |
+                       SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE |
+                       SHARED_IMAGE_USAGE_WEBGPU_STORAGE_TEXTURE)) {
+@@ -285,8 +286,9 @@ bool OzoneImageBackingFactory::IsSupported(
+       SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_DISPLAY_WRITE);
+   bool used_by_vulkan =
+       used_by_skia && gr_context_type == GrContextType::kVulkan;
+-  bool used_by_webgpu = usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ |
+-                                     SHARED_IMAGE_USAGE_WEBGPU_WRITE);
++  bool used_by_webgpu =
++      (used_by_skia && gr_context_type == GrContextType::kGraphiteDawn) ||
++      usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_WEBGPU_WRITE);
+   bool used_by_gl = (HasGLES2ReadOrWriteUsage(usage)) ||
+                     (used_by_skia && gr_context_type == GrContextType::kGL);
+   if (used_by_vulkan && !CanImportNativePixmapToVulkan()) {
+diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
+index 9c19fef..4a074e5 100644
+--- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
++++ b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
+@@ -361,7 +361,8 @@ SharedImageFactory::SharedImageFactory(
+ #endif  // BUILDFLAG(ENABLE_VULKAN) && (BUILDFLAG(IS_LINUX) ||
+         // BUILDFLAG(IS_FUCHSIA))
+ #if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_OHOS)
+-  if (gr_context_type_ == GrContextType::kVulkan) {
++  if (gr_context_type_ == GrContextType::kVulkan ||
++      gr_context_type_ == GrContextType::kGraphiteDawn) {
+     // The phone keeps native-pixmap allocation disabled in renderers, so it
+     // needs explicit GPU-only registration. Pad/PC already register Ozone.
+     if (ui::IsOhosPhoneGpuChild()) {
+@@ -371,8 +372,10 @@ SharedImageFactory::SharedImageFactory(
+     // Canvas and software video also need a Vulkan/GL bridge on Pad/PC.
+     // Otherwise GLES2_READ | RASTER_WRITE has no factory and disconnects the
+     // entire renderer GPU channel, including its native video decoder.
+-    factories_.push_back(std::make_unique<ExternalVkImageBackingFactory>(
+-        context_state_, /*enable_webgpu_on_vk_via_gl_interop=*/false));
++    if (gr_context_type_ == GrContextType::kVulkan) {
++      factories_.push_back(std::make_unique<ExternalVkImageBackingFactory>(
++          context_state_, /*enable_webgpu_on_vk_via_gl_interop=*/false));
++    }
+     LOG(WARNING) << "OHOS Vulkan SharedImage bridge enabled; "
+                  << "external_object_interop="
+                  << context_state_->support_vulkan_external_object()
+diff --git a/gpu/config/gpu_util.cc b/gpu/config/gpu_util.cc
+index fc4baca..ea61259 100644
+--- a/gpu/config/gpu_util.cc
++++ b/gpu/config/gpu_util.cc
+@@ -135,7 +135,11 @@ GpuFeatureStatus GetVulkanFeatureStatus(
+       blocklisted_features.count(GPU_FEATURE_TYPE_VULKAN))
+     return kGpuFeatureStatusBlocklisted;
+ 
+-  if (gpu_preferences.gr_context_type != GrContextType::kVulkan) {
++  if (gpu_preferences.gr_context_type != GrContextType::kVulkan
++#if BUILDFLAG(IS_OHOS)
++      && gpu_preferences.gr_context_type != GrContextType::kGraphiteDawn
++#endif
++  ) {
+     return kGpuFeatureStatusDisabled;
+   }
+ 
+diff --git a/gpu/ipc/service/gpu_init.cc b/gpu/ipc/service/gpu_init.cc
+index fe9b55e..f7ab9c4 100644
+--- a/gpu/ipc/service/gpu_init.cc
++++ b/gpu/ipc/service/gpu_init.cc
+@@ -3,6 +3,10 @@
+ // found in the LICENSE file.
+ 
+ #include "gpu/ipc/service/gpu_init.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
++#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
++#endif
+ 
+ #include <cstdlib>
+ #include <cstring>
+@@ -714,6 +718,15 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
+   // kGraphiteDawn but the GpuFeatureInfo indicates Graphite is blocklisted or
+   // the feature is not enabled, we will fall back to the next context type in
+   // gpu_preferences_.fallback_gr_context_types
++#if BUILDFLAG(IS_OHOS)
++  if (gpu_preferences_.gr_context_type == GrContextType::kGraphiteDawn &&
++      (ui::OhosGraphiteFailed() ||
++       (ui::IsOhosPhoneGpuChild() && !ui::AllowOhosPhoneGraphite()))) {
++    gpu_feature_info_.status_values[GPU_FEATURE_TYPE_SKIA_GRAPHITE] =
++        kGpuFeatureStatusDisabled;
++    LOG(WARNING) << "OHOS Graphite: previous failure; selecting Ganesh Vulkan";
++  }
++#endif
+   if (!TryFallbackGrContextTypesIfNeeded(gpu_feature_info_, gpu_preferences_,
+                                          gpu_info_, command_line)) {
+     VLOG(1) << "All gr_context_type fallbacks exhausted";
+@@ -993,6 +1006,10 @@ bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
+ 
+   if (gpu_preferences_.gr_context_type == GrContextType::kGraphiteDawn) {
+     if (!InitializeDawn()) {
++#if BUILDFLAG(IS_OHOS)
++      ui::NoteOhosGraphiteFailure("Dawn context initialization");
++      return false;
++#endif
+       auto& graphite_feature =
+           gpu_feature_info_.status_values[GPU_FEATURE_TYPE_SKIA_GRAPHITE];
+ #if BUILDFLAG(IS_ANDROID)
+diff --git a/skia/features.gni b/skia/features.gni
+index 1740286..e806bf2 100644
+--- a/skia/features.gni
++++ b/skia/features.gni
+@@ -10,7 +10,7 @@ declare_args() {
+   # the team has verified that at least basic rendering to the screen is
+   # working.
+   skia_use_dawn =
+-      is_mac || is_win ||
++      is_mac || is_win || is_ohos ||
+       (is_android && target_cpu != "x86" && target_cpu != "x64") ||
+       (is_ios && use_blink) || (is_linux && !is_castos) || is_desktop_android
+ }

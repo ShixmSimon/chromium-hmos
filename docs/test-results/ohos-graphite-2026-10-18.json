@@ -1,0 +1,30 @@
+{
+  "request": "Optional Graphite on shared phone/Pad code; retain Ganesh Vulkan as first fallback",
+  "state": "INITIAL_INTEGRATION_NOT_COMPILED_OR_DEVICE_ACCEPTED",
+  "defaultBackend": "Existing Ganesh Vulkan remains selected unless skiaBackend=graphite is explicitly requested",
+  "nativeBuild": "CI push only; CI/workflow/build orchestration unchanged",
+  "implementation": [
+    "Compile upstream Graphite/Dawn on OHOS",
+    "Common NativeBuffer output device; phone broker vs native-child lease acquisition",
+    "Same SDR8/SDR10/P3/HDR color policy; actual import required before capability publication",
+    "Shared fence handoff; no final pixel IPC or CPU blit",
+    "Graphite-specific failure latch and browser Ganesh Vulkan crash fallback",
+    "Native-child mirror window reference acquired under lock"
+  ],
+  "validation": {
+    "hostTransportColorAndLeaseTests": "PASS",
+    "nativeCompilation": "PENDING",
+    "deviceGraphiteFirstFrame": "NOT_RUN",
+    "GaneshRegression": "NOT_RUN",
+    "nativeVideoGraphite": "UNDER_INVESTIGATION",
+    "UISelector": "NOT_ADDED_YET"
+  },
+  "limitations": [
+    "Graphite implementation is not accepted until native compilation and real-device rendering/fallback regression",
+    "No promise of performance improvement before A/B measurement",
+    "Video YCbCr promise texture metadata and lifetime require additional investigation"
+  ],
+  "phoneOperation": "Read-only log inspection earlier; no page switching or media playback for this change",
+  "PadOperation": "Not operated; prior normal sleep preserved",
+  "updatedUTC": "2026-10-18T07:52:22.543565+00:00"
+}

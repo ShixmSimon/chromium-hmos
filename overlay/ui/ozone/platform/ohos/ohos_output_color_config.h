@@ -14,6 +14,9 @@ struct OH_NativeBuffer;
 struct NativeWindow;
 typedef struct NativeWindow OHNativeWindow;
 namespace ui {
+inline constexpr char kOhosGraphiteFailedMarker[] = "GpuGraphiteFailed";
+bool OhosGraphiteFailed();
+void NoteOhosGraphiteFailure(const char* reason);
 // Browser-side state, populated before ChromeMain and updated by ArkTS events.
 void UpdateOhosDisplayBrightness(
     std::optional<OhosDisplayBrightness> brightness);

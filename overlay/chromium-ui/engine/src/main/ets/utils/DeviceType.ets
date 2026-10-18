@@ -164,7 +164,9 @@ export interface AuraStartupConfig {
   // is Vulkan, for comparing the two. Only with gpuProcess 'separate', and
   // ignored otherwise. Phone fork uses shared NativeBuffers (ANGLE stays GLES).
   // Vulkan failure falls back to GL for this app session; cold restart retries.
-  skiaBackend?: 'gl' | 'vulkan';
+  // 'graphite' is experimental Dawn/Vulkan on phone and tablet. Ganesh
+  // Vulkan remains the default Vulkan backend and the first fallback.
+  skiaBackend?: 'gl' | 'vulkan' | 'graphite';
   // Startup-only, defaults to auto: separate Skia Vulkan attempts 10-bit,
   // using HDR10 when the display and system brightness API support it.
   // A failed high-color target falls back to SDR8 for this app session.

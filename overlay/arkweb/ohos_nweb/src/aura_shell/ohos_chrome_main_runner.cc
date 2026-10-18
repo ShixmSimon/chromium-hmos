@@ -280,8 +280,10 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
   }
 
   // Only reset the color failure latch on a genuinely new browser session.
-  if (!config.user_data_dir.empty())
+  if (!config.user_data_dir.empty()) {
     unlink((config.user_data_dir + "/GpuOutputColorFailed").c_str());
+    unlink((config.user_data_dir + "/GpuGraphiteFailed").c_str());
+  }
   startup_config_ = config;
   ApplySystemTimeZone();
   // ANGLE reaches the system EGL and GLES through the HarmonyOS wrapper's
@@ -622,10 +624,18 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   // in a process of its own, so that is the only place it is asked for. If
   // Vulkan cannot be brought up there, Chromium falls back to GL by itself;
   // the GPU process says which step failed (ohos_gpu_child_channel.cc).
-  if (config.skia_backend == "vulkan") {
+  const bool graphite = config.skia_backend == "graphite";
+  if (config.skia_backend == "vulkan" || graphite) {
     if (gpu_in_own_process) {
       arguments.push_back("--use-vulkan=native");
       AppendToListSwitch(&arguments, "enable-features", "Vulkan");
+      if (graphite) {
+        arguments.push_back("--enable-skia-graphite");
+        arguments.push_back("--skia-graphite-dawn-backend=vulkan");
+        AURA_LOG_I("AuraShell experimental Graphite Vulkan; Ganesh fallback");
+      } else {
+        arguments.push_back("--disable-skia-graphite");
+      }
       AURA_LOG_I("AuraShell Skia on Vulkan by config");
     } else {
       AURA_LOG_E(
@@ -636,7 +646,7 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
 
   // Native EGL WSI needs the same user output mode and trusted luminance
   // snapshot as Skia Vulkan. This does not change the phone fork's GL route.
-  if ((config.skia_backend == "vulkan" && gpu_in_own_process) ||
+  if (((config.skia_backend == "vulkan" || graphite) && gpu_in_own_process) ||
       (!config.headless && config.angle_backend == "vulkan" &&
        !(config.experimental_phone_fork && config.gpu_process == "separate"))) {
     if (config.vulkan_output_mode == "sdr10" ||

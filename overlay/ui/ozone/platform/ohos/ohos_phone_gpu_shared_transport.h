@@ -45,7 +45,8 @@ enum class SharedOp : uint32_t {
   // Offscreen images have no window queue or lease. The allocation request
   // carries its native format in prefix[8]; the reply carries the full parcel.
   kAllocateImage,
-  kImage
+  kImage,
+  kGraphiteState
 };
 struct SharedPacket {
   uint32_t magic = kSharedMagic;

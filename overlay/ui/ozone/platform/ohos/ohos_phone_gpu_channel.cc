@@ -35,6 +35,7 @@ struct Connection {
   std::atomic<bool> active{true};
   std::atomic<bool> presented{false};
   std::atomic<bool> vulkan_requested{false};
+  std::atomic<bool> graphite_requested{false};
   std::atomic<bool> color_retry{false};
   std::shared_ptr<Connection> predecessor;
   base::WaitableEvent retired{base::WaitableEvent::ResetPolicy::MANUAL,
@@ -46,6 +47,7 @@ struct BrowserState {
   base::Lock lock;
   std::shared_ptr<Connection> current GUARDED_BY(lock);
   bool vulkan_failed GUARDED_BY(lock) = false;
+  bool graphite_failed GUARDED_BY(lock) = false;
 };
 BrowserState& Browser() {
   static base::NoDestructor<BrowserState> state;
@@ -294,7 +296,8 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
           leases.erase(it);
         } else if (p.operation == Op::kColorReady) {
           const auto found = colors.find(p.widget);
-          const bool ready = connection->vulkan_requested.load() &&
+          const bool ready = (connection->vulkan_requested.load() ||
+                              connection->graphite_requested.load()) &&
                              !Browser().vulkan_failed &&
                              !OhosOutputColorFailed() &&
                              found != colors.end() &&
@@ -317,6 +320,14 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
           reply.result =
               static_cast<uint32_t>(supported ? phone_gpu::Result::kPresented
                                               : phone_gpu::Result::kDropped);
+        } else if (p.operation == Op::kGraphiteState) {
+          const bool allowed = !Browser().graphite_failed &&
+                               !Browser().vulkan_failed &&
+                               phone_gpu::SharedBufferAllocatorReady();
+          if (allowed)
+            connection->graphite_requested = true;
+          reply.result = static_cast<uint32_t>(allowed
+              ? phone_gpu::Result::kPresented : phone_gpu::Result::kDropped);
         } else if (p.operation == Op::kVulkanState) {
           const bool allowed = !Browser().vulkan_failed &&
                                phone_gpu::SharedBufferAllocatorReady();
@@ -401,7 +412,9 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
     base::AutoLock lock(Browser().lock);
     if (Browser().current == connection)
       SetOhosVerifiedPhoneHdrOutput(false);
-    if (connection->vulkan_requested.load() && !connection->color_retry.load())
+    if (connection->graphite_requested.load())
+      Browser().graphite_failed = true;
+    else if (connection->vulkan_requested.load() && !connection->color_retry.load())
       Browser().vulkan_failed = true;
     leases.clear();
     buffer_colors.Reset();
@@ -436,7 +449,9 @@ base::ProcessId LaunchOhosPhoneGpuChild(
     base::AutoLock lock(Browser().lock);
     if (Browser().current) {
       connection->predecessor = Browser().current;
-      if (Browser().current->vulkan_requested.load() &&
+      if (Browser().current->graphite_requested.load())
+        Browser().graphite_failed = true;
+      else if (Browser().current->vulkan_requested.load() &&
           !Browser().current->color_retry.load())
         Browser().vulkan_failed = true;
       Browser().current->active = false;
@@ -568,6 +583,17 @@ bool AllowOhosPhoneVulkan() {
   phone_gpu::SharedMessage request, response;
   request.packet.operation = phone_gpu::SharedOp::kVulkanState;
   request.packet.widget = 1;  // Connection-scoped control request.
+  return ExchangeShared(&request, &response) &&
+         response.packet.operation == phone_gpu::SharedOp::kReply &&
+         response.packet.result ==
+             static_cast<uint32_t>(phone_gpu::Result::kPresented);
+}
+bool AllowOhosPhoneGraphite() {
+  if (!IsOhosPhoneGpuChild())
+    return false;
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kGraphiteState;
+  request.packet.widget = 1;
   return ExchangeShared(&request, &response) &&
          response.packet.operation == phone_gpu::SharedOp::kReply &&
          response.packet.result ==

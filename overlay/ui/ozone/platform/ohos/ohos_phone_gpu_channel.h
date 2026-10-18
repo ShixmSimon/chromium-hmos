@@ -20,6 +20,8 @@ base::ProcessId LaunchOhosPhoneGpuChild(
 bool OhosPhoneGpuHasPresented();
 // Phone GPU only. A failed Vulkan generation stays on GL until app restart.
 bool AllowOhosPhoneVulkan();
+// Registers Graphite separately so a failed Dawn generation preserves Ganesh.
+bool AllowOhosPhoneGraphite();
 void ReportOhosPhoneVulkanFailure();
 void ReportOhosPhoneOutputColorFailure();
 bool ReportOhosPhoneOutputColorReady(uint64_t widget,

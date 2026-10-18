@@ -67,6 +67,9 @@ void AttachOhosGpuChildLogging();
 // GPU process. The mirror's answers to the registry's GPU-side lookups.
 std::optional<OhosNativeSurface> GetOhosGpuChildSurface(
     gfx::AcceleratedWidget widget);
+// Takes a NativeWindow reference while the mirror lock is held.
+std::optional<OhosNativeSurface> AcquireOhosGpuChildSurface(
+    gfx::AcceleratedWidget widget);
 bool IsOhosGpuChildSurfaceExpected(gfx::AcceleratedWidget widget);
 bool IsOhosGpuChildAnchored(gfx::AcceleratedWidget widget);
 std::optional<OhosNativeSurface> WaitForOhosGpuChildSurface(

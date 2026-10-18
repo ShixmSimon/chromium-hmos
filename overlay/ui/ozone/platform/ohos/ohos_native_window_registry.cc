@@ -918,6 +918,8 @@ std::optional<OhosNativeSurface> GetOhosNativeSurface(
 
 std::optional<OhosNativeSurface> AcquireOhosNativeSurfaceForPhoneGpu(
     gfx::AcceleratedWidget widget) {
+  if (IsOhosGpuChildProcess())
+    return AcquireOhosGpuChildSurface(widget);
   return GetRegistry().Get(widget, true);
 }
 

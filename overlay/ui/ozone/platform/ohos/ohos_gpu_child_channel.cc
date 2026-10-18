@@ -703,6 +703,17 @@ std::optional<OhosNativeSurface> GetOhosGpuChildSurface(
   return it->second.surface;
 }
 
+std::optional<OhosNativeSurface> AcquireOhosGpuChildSurface(
+    gfx::AcceleratedWidget widget) {
+  auto& side = Child();
+  base::AutoLock lock(side.lock);
+  const auto it = side.mirror.find(widget);
+  if (it == side.mirror.end() || !it->second.surface.window)
+    return std::nullopt;
+  OH_NativeWindow_NativeObjectReference(it->second.surface.window);
+  return it->second.surface;
+}
+
 bool IsOhosGpuChildSurfaceExpected(gfx::AcceleratedWidget widget) {
   ChildSide& side = Child();
   base::AutoLock lock(side.lock);

@@ -122,6 +122,10 @@ bool ValidSharedPacket(const SharedPacket& p, size_t count) {
     case SharedOp::kDiscard:
     case SharedOp::kCancel:
       return p.lease && !count && !p.tail_bytes;
+    case SharedOp::kGraphiteState:
+      return !count && !p.lease && !p.tail_bytes && !p.width && !p.height &&
+             !p.has_fence && !p.color_generation && !p.display_id &&
+             p.color == OhosOutputColor{};
     case SharedOp::kReply:
     case SharedOp::kUnavailable:
     case SharedOp::kVulkanState:
