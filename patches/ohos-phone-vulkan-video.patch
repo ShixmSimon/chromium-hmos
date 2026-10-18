@@ -1979,7 +1979,7 @@ index f72baba..c9ed1a7 100644
      output_device_ = std::make_unique<SkiaOutputDeviceOffscreen>(
          context_state_, gfx::SurfaceOrigin::kBottomLeft,
 diff --git a/content/browser/gpu/gpu_data_manager_impl_private.cc b/content/browser/gpu/gpu_data_manager_impl_private.cc
-index c74ab22..22c95ff 100644
+index c74ab22..2fd0f79 100644
 --- a/content/browser/gpu/gpu_data_manager_impl_private.cc
 +++ b/content/browser/gpu/gpu_data_manager_impl_private.cc
 @@ -552,6 +552,10 @@ void GpuDataManagerImplPrivate::InitializeGpuModes() {
@@ -1993,7 +1993,39 @@ index c74ab22..22c95ff 100644
        if (can_use_graphite) {
          fallback_modes_.push_back(gpu::GpuMode::HARDWARE_GRAPHITE);
        } else if (can_use_vulkan) {
-@@ -1375,6 +1379,7 @@ void GpuDataManagerImplPrivate::UpdateGpuPreferences(
+@@ -1162,6 +1166,19 @@ void GpuDataManagerImplPrivate::UpdateGpuFeatureInfo(
+   // determined is unsupported, so later FallBackToNextGpuMode() calls don't
+   // relaunch the GPU process into a mode it already rejected.
+   std::erase_if(fallback_modes_, [&](gpu::GpuMode mode) {
++#if BUILDFLAG(IS_OHOS)
++    // An active Graphite/Dawn device deliberately leaves Ganesh Vulkan
++    // disabled, avoiding a second unused VkDevice. That is not a failed
++    // Vulkan probe: retain it until a fallback process evaluates Vulkan.
++    if (mode == gpu::GpuMode::HARDWARE_VULKAN &&
++        gpu_mode_ == gpu::GpuMode::HARDWARE_GRAPHITE &&
++        gpu_feature_info_.status_values[gpu::GPU_FEATURE_TYPE_SKIA_GRAPHITE] ==
++            gpu::kGpuFeatureStatusEnabled &&
++        gpu_feature_info_.status_values[gpu::GPU_FEATURE_TYPE_VULKAN] ==
++            gpu::kGpuFeatureStatusDisabled) {
++      return false;
++    }
++#endif
+     gpu::GrContextType type = gpu::GpuModeToGrContextType(mode);
+     return type != gpu::GrContextType::kNone &&
+            !gpu::IsGrContextTypeSupported(type, gpu_feature_info_);
+@@ -1175,6 +1192,11 @@ void GpuDataManagerImplPrivate::UpdateGpuFeatureInfo(
+       // GPU mode to Vulkan as well.
+       // TODO(crbug.com/511049071): add a dedicated
+       // HARDWARE_MODE_GRAPHITE_OR_VULKAN
++#if BUILDFLAG(IS_OHOS)
++      // The GPU has already selected the retained fallback. Remove it from
++      // the pending stack so a later Vulkan failure proceeds to GL.
++      std::erase(fallback_modes_, gpu::GpuMode::HARDWARE_VULKAN);
++#endif
+       DCHECK(!std::ranges::contains(fallback_modes_,
+                                     gpu::GpuMode::HARDWARE_VULKAN));
+       gpu_mode_ = gpu::GpuMode::HARDWARE_VULKAN;
+@@ -1375,6 +1397,7 @@ void GpuDataManagerImplPrivate::UpdateGpuPreferences(
      // feature is disabled.
      // TODO(crbug.com/511049071): add a dedicated
      // HARDWARE_MODE_GRAPHITE_OR_VULKAN
@@ -2001,7 +2033,7 @@ index c74ab22..22c95ff 100644
      gpu_preferences->fallback_gr_context_types.push_back(
          gpu::GrContextType::kVulkan);
  
-@@ -1382,6 +1387,7 @@ void GpuDataManagerImplPrivate::UpdateGpuPreferences(
+@@ -1382,6 +1405,7 @@ void GpuDataManagerImplPrivate::UpdateGpuPreferences(
      // to HARDWARE_VULKAN after a crash.
      DCHECK(
          !std::ranges::contains(fallback_modes_, gpu::GpuMode::HARDWARE_VULKAN));
