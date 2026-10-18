@@ -1979,7 +1979,7 @@ index f72baba..c9ed1a7 100644
      output_device_ = std::make_unique<SkiaOutputDeviceOffscreen>(
          context_state_, gfx::SurfaceOrigin::kBottomLeft,
 diff --git a/content/browser/gpu/gpu_data_manager_impl_private.cc b/content/browser/gpu/gpu_data_manager_impl_private.cc
-index c74ab22..2fd0f79 100644
+index c74ab22..97cde3c 100644
 --- a/content/browser/gpu/gpu_data_manager_impl_private.cc
 +++ b/content/browser/gpu/gpu_data_manager_impl_private.cc
 @@ -552,6 +552,10 @@ void GpuDataManagerImplPrivate::InitializeGpuModes() {
@@ -2041,6 +2041,21 @@ index c74ab22..2fd0f79 100644
    }
  
    bool has_software_mode = false;
+@@ -1447,6 +1471,14 @@ void GpuDataManagerImplPrivate::AddLogMessage(int level,
+ }
+ 
+ void GpuDataManagerImplPrivate::ProcessCrashed() {
++#if BUILDFLAG(IS_OHOS)
++  // Both native-child and phone GPU launches use the retained Ganesh Vulkan
++  // candidate after an experimental Graphite crash. Do this before observers
++  // can request a new GPU; an earlier crash-limit fallback may have done it.
++  if (gpu_mode_ == gpu::GpuMode::HARDWARE_GRAPHITE) {
++    FallBackToNextGpuModeDueToCrash();
++  }
++#endif
+   observer_list_->Notify(FROM_HERE,
+                          &GpuDataManagerObserver::OnGpuProcessCrashed);
+ }
 diff --git a/gpu/command_buffer/service/dawn_context_provider.cc b/gpu/command_buffer/service/dawn_context_provider.cc
 index ddd4e93..76f45d1 100644
 --- a/gpu/command_buffer/service/dawn_context_provider.cc
@@ -2101,7 +2116,7 @@ index 7ad7402..3e35b78 100644
                      (used_by_skia && gr_context_type == GrContextType::kGL);
    if (used_by_vulkan && !CanImportNativePixmapToVulkan()) {
 diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
-index 9c19fef..3409b86 100644
+index 9c19fef..fe8258d 100644
 --- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
 +++ b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
 @@ -107,6 +107,7 @@
@@ -2150,6 +2165,22 @@ index 9c19fef..3409b86 100644
  #endif
  
  #if BUILDFLAG(IS_WIN)
+@@ -907,6 +919,15 @@ gpu::SharedImageCapabilities SharedImageFactory::MakeCapabilities() {
+       gr_context_type_ == GrContextType::kGraphiteDawn;
+   shared_image_caps.supports_r16_shared_images =
+       is_angle_metal || is_skia_graphite;
++#if BUILDFLAG(IS_OHOS) && BUILDFLAG(SKIA_USE_DAWN)
++  if (context_state_ && context_state_->IsGraphiteDawnVulkan()) {
++    shared_image_caps.supports_r16_shared_images =
++        context_state_->dawn_context_provider()->SupportsFeature(
++            wgpu::FeatureName::Unorm16TextureFormats);
++    LOG(WARNING) << "OHOS Graphite: R16 video upload="
++                 << shared_image_caps.supports_r16_shared_images;
++  }
++#endif
+   shared_image_caps.disable_webgpu_shared_images =
+       workarounds_.disable_webgpu_shared_images;
+ #if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_OHOS)
 diff --git a/gpu/config/gpu_util.cc b/gpu/config/gpu_util.cc
 index fc4baca..a81255d 100644
 --- a/gpu/config/gpu_util.cc
@@ -2227,3 +2258,16 @@ index 1740286..e806bf2 100644
        (is_android && target_cpu != "x86" && target_cpu != "x64") ||
        (is_ios && use_blink) || (is_linux && !is_castos) || is_desktop_android
  }
+diff --git a/components/viz/service/display_embedder/skia_output_surface_impl.cc b/components/viz/service/display_embedder/skia_output_surface_impl.cc
+--- a/components/viz/service/display_embedder/skia_output_surface_impl.cc
++++ b/components/viz/service/display_embedder/skia_output_surface_impl.cc
+@@ -621,7 +621,8 @@
+         graphite_recorder_, gfx::SizeToSkISize(image_context->size()),
+         texture_info, color_info, origin, graphite_use_volatile_promise_images_,
+         FulfillGraphite, CleanUp, ReleaseGraphite, fulfill);
+-    LOG_IF(ERROR, !image) << "Failed to create the promise sk image";
++    LOG_IF(ERROR, !image) << "Failed to create the promise sk image; format="
++                         << format.ToString() << " color_type=" << color_type;
+     image_context->SetImage(std::move(image), {texture_info});
+   } else {
+     CHECK(gr_context_thread_safe_);

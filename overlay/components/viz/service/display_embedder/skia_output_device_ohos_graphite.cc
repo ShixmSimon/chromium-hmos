@@ -260,8 +260,11 @@ SkiaOutputDeviceOhosGraphite::SkiaOutputDeviceOhosGraphite(
   if (!ui::IsOhosPhoneGpuChild() &&
       !ui::phone_gpu::PrepareSharedBufferAllocator())
     Fail("native allocator initialization");
-  s.color = requires_alpha ? ui::OhosOutputColor{}
-                           : ui::GetOhosRequestedOutputColor();
+  // Native anchored windows (including fullscreen controls) are composited
+  // over the main output and must not publish independent HDR capabilities.
+  const bool sdr_only = requires_alpha || ui::IsOhosAnchoredWindow(widget);
+  s.color = sdr_only ? ui::OhosOutputColor{}
+                     : ui::GetOhosRequestedOutputColor();
   if (s.color.mode == ui::OhosOutputMode::kHdr10 && !s.display_guard.Validate())
     s.color = {};
   {
@@ -305,7 +308,7 @@ SkiaOutputDeviceOhosGraphite::SkiaOutputDeviceOhosGraphite(
       }
     }
   }
-  if (!requires_alpha && s.color.mode != ui::OhosOutputMode::kSdr8) {
+  if (!sdr_only && s.color.mode != ui::OhosOutputMode::kSdr8) {
     // Probe a real P3-tagged 10-bit buffer and import it before advertising
     // WCG. A rejected optional P3 probe leaves the proven SDR/HDR route
     // available.
