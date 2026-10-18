@@ -9,6 +9,8 @@
 #include <stdint.h>
 
 #include <memory>
+#include <map>
+#include "base/files/scoped_file.h"
 #include <optional>
 
 #include "base/containers/circular_deque.h"
@@ -152,6 +154,16 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   void OnBrowserGpuInitialized(uint32_t generation,
                                InitCB init_cb,
                                scoped_refptr<gpu::SharedImageInterface> sii);
+  void OnBrowserFrameMetadataReady(uint32_t generation,
+                                   uint64_t ordinal,
+                                   scoped_refptr<VideoFrame> frame);
+  uint64_t browser_metadata_ordinal_ = 0;
+  uint64_t browser_metadata_output_ordinal_ = 0;
+  std::map<uint64_t, scoped_refptr<VideoFrame>> browser_metadata_ready_;
+  void WaitBrowserFrameLease(uint32_t generation,
+                             base::ScopedFD receiver,
+                             scoped_refptr<gfx::NativePixmap> pixmap,
+                             scoped_refptr<VideoFrame> frame);
   void ConvertBrowserFrame(uint32_t generation,
                            scoped_refptr<gfx::NativePixmap> pixmap,
                            gfx::GpuFenceHandle fence,

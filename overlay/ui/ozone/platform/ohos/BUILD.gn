@@ -91,6 +91,7 @@ source_set("ohos") {
     "ohos_native_pixmap.cc",
     "ohos_native_pixmap.h",
     "ohos_video_buffer_parcel.h",
+    "ohos_video_graphite_metadata.h",
     "ohos_native_window_adapter.cc",
     "ohos_native_window_adapter.h",
     "ohos_platform_window.cc",

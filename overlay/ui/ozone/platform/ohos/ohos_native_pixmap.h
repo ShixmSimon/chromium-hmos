@@ -22,6 +22,11 @@ class ColorSpace;
 namespace ui {
 
 class NativePixmapGLBinding;
+struct OhosVideoGraphiteMetadata;
+// Reply through an imported video's independent lease endpoint. Same-process
+// pixmaps have no reply endpoint and require no cross-process metadata.
+bool ReplyOhosVideoGraphiteMetadata(
+    const gfx::NativePixmap& pixmap, const OhosVideoGraphiteMetadata& metadata);
 
 // Native pixmaps on HarmonyOS: OH_NativeBuffers, shared as dma-buf fds.
 //

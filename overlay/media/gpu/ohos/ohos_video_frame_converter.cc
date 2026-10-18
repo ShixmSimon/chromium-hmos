@@ -18,6 +18,10 @@
 #include "gpu/command_buffer/common/sync_token.h"
 #include "gpu/command_buffer/service/scheduler.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
+#include "skia/buildflags.h"
+#if BUILDFLAG(SKIA_USE_DAWN)
+#include "gpu/command_buffer/service/shared_image/ohos_graphite_video_utils.h"
+#endif
 #include "gpu/ipc/service/gpu_channel.h"
 #include "gpu/ipc/service/gpu_channel_shared_image_interface.h"
 #include "gpu/ipc/service/shared_image_stub.h"
@@ -74,9 +78,21 @@ void OhosVideoFrameConverter::Initialize(viz::SharedImageFormat format,
     }
   }
   use_vulkan_ = sis_ && sis_->shared_context_state()->GrContextIsVulkan();
-  bool supported = sis_ && sis_->MakeContextCurrent(/*needs_gl=*/!use_vulkan_) &&
+  use_graphite_ = sis_ && sis_->shared_context_state()->IsGraphiteDawnVulkan();
+  bool supported = sis_ && sis_->MakeContextCurrent(/*needs_gl=*/!use_vulkan_ && !use_graphite_) &&
                    !sis_->shared_context_state()->context_lost() &&
                    ui::IsOhosNativePixmapFormat(format);
+  if (use_graphite_) {
+#if BUILDFLAG(SKIA_USE_DAWN)
+    supported = supported && !is_encrypted &&
+                gpu::SupportsOhosGraphiteVideo(sis_->shared_context_state().get());
+#else
+    supported = false;
+#endif
+    LOG(WARNING) << "OHOS Graphite video: native import/fences available=" << supported;
+    std::move(done).Run(supported);
+    return;
+  }
   if (use_vulkan_) {
 #if BUILDFLAG(ENABLE_VULKAN)
     // Protected imports need a protected VkDevice/queue, which this path
@@ -176,7 +192,7 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
     fail("visible rect outside native allocation");
     return;
   }
-  if (!sis_->MakeContextCurrent(/*needs_gl=*/!use_vulkan_)) {
+  if (!sis_->MakeContextCurrent(/*needs_gl=*/!use_vulkan_ && !use_graphite_)) {
     fail("MakeContextCurrent failed");
     return;
   }
@@ -200,7 +216,7 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
   // GLES and the opt-out path on their existing imports/cache policy.
   const bool webgpu_native_video =
       !workarounds_.disable_webgpu_shared_images &&
-      (use_vulkan_ ||
+      (use_vulkan_ || use_graphite_ ||
        (gl::GetANGLEImplementation() == gl::ANGLEImplementation::kVulkan &&
         gl::GLFence::IsGpuFenceSupported() &&
         base::CommandLine::ForCurrentProcess()->HasSwitch("enable-unsafe-webgpu")));
@@ -210,7 +226,7 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
   if (webgpu_native_video) {
     usage |= gpu::SHARED_IMAGE_USAGE_WEBGPU_READ;
   }
-  if (!use_vulkan_) {
+  if (!use_vulkan_ && !use_graphite_) {
     usage |= gpu::SHARED_IMAGE_USAGE_GLES2_READ;
   }
   const gpu::SharedImageInfo info(pixmap->GetSharedImageFormat(),
@@ -222,10 +238,11 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
   // completion. Do not detach it into the GL import cache: that cache keeps
   // allocations but deliberately has no authority over a decoder queue slot.
   std::optional<uint32_t> reusable_buffer_id =
-      (use_vulkan_ || webgpu_native_video)
+      (use_vulkan_ || use_graphite_ || webgpu_native_video)
           ? std::nullopt : ui::GetOhosVideoNativePixmapId(*pixmap);
   scoped_refptr<gpu::ClientSharedImage> shared_image;
   gpu::SyncToken ready_token;
+  std::optional<gpu::VulkanYCbCrInfo> graphite_info;
   const bool had_acquire_fence = !acquire_fence.is_null();
   if (reusable_buffer_id) {
     shared_image = image_cache_.Take(*reusable_buffer_id,
@@ -264,7 +281,7 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
     shared_image =
         sis_->shared_image_interface()->CreateSharedImageForOhosVideo(
             info, std::move(import_pixmap), std::move(acquire_fence),
-            workarounds_);
+            workarounds_, &graphite_info);
     if (shared_image) {
       ready_token = shared_image->creation_sync_token();
       ++images_created_;
@@ -302,6 +319,7 @@ void OhosVideoFrameConverter::Convert(uint32_t generation,
   if (color_space.IsHDR()) {
     frame->set_hdr_metadata(hdr_metadata);
   }
+  frame->metadata().ycbcr_info = graphite_info;
   frame->metadata().read_lock_fences_enabled = true;
   frame->metadata().power_efficient = true;
   frame->metadata().is_webgpu_compatible =

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
+#include "ui/ozone/platform/ohos/ohos_video_graphite_metadata.h"
 
 #include <IPCKit/ipc_cparcel.h>
 #include <dirent.h>
@@ -563,6 +564,8 @@ class OhosNativePixmap : public gfx::NativePixmap {
   uint64_t key() const { return key_; }
   std::optional<uint32_t> video_buffer_id() const { return video_buffer_id_; }
   bool has_direct_buffer() const { return video_window_ != nullptr; }
+  void SetVideoMetadataFd(int fd) { video_metadata_fd_ = fd; }
+  int video_metadata_fd() const { return video_metadata_fd_; }
 
   bool AreDmaBufFdsValid() const override { return fd_ >= 0; }
   int GetDmaBufFd(size_t plane) const override { return fd_; }
@@ -655,6 +658,8 @@ class OhosNativePixmap : public gfx::NativePixmap {
   // an independent allocation reference used by a cached import.
   RAW_PTR_EXCLUSION OHNativeWindowBuffer* video_window_ = nullptr;
   base::ScopedClosureRunner video_release_;
+  // Borrowed from video_release_; valid for the complete pixmap lifetime.
+  int video_metadata_fd_ = -1;
   const std::optional<uint32_t> offscreen_buffer_id_;
   // NativeBuffer parcel APIs are not thread-safe. ExportHandle can be called
   // by different GPU representations, so serialize exports of this wrapper.
@@ -1200,13 +1205,23 @@ scoped_refptr<gfx::NativePixmap> ImportOhosVideoNativePixmap(
   if (!window)
     return nullptr;
   format.SetPrefersExternalSampler();
-  return base::MakeRefCounted<OhosNativePixmap>(
+  const int metadata_fd = handle.ohos_video_release_fd.get();
+  auto pixmap = base::MakeRefCounted<OhosNativePixmap>(
       window, size, format, id,
       base::BindOnce(
           [](OHNativeWindowBuffer* window, base::ScopedFD release) {
             OH_NativeWindow_DestroyNativeWindowBuffer(window);
           },
           window, std::move(handle.ohos_video_release_fd)));
+  pixmap->SetVideoMetadataFd(metadata_fd);
+  return pixmap;
+}
+
+bool ReplyOhosVideoGraphiteMetadata(
+    const gfx::NativePixmap& pixmap, const OhosVideoGraphiteMetadata& metadata) {
+  const auto& native = static_cast<const OhosNativePixmap&>(pixmap);
+  return native.video_metadata_fd() < 0 ||
+         SendOhosVideoGraphiteMetadata(native.video_metadata_fd(), metadata);
 }
 
 std::unique_ptr<NativePixmapGLBinding> ImportOhosNativePixmap(

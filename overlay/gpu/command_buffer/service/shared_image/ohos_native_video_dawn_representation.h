@@ -49,7 +49,7 @@ inline void Quarantine(scoped_refptr<gfx::NativePixmap> pixmap,
   }
   if (!context->context_lost())
     context->MarkContextLost();
-  LOG(ERROR) << "OHOS Dawn GL video: completion unknown; decoder lease retained";
+  LOG(ERROR) << "OHOS Dawn native video: completion unknown; decoder lease retained";
 }
 
 // Read-lock sync tokens order command submission. Retain the actual decoder
@@ -99,6 +99,7 @@ inline bool Merge(base::ScopedFD& merged, int fd) {
 
 }  // namespace ohos_native_video
 
+// Graphite and GL/WebGPU share this native-video ownership protocol.
 // Ozone's ordinary Dawn representation has planar views and a single access
 // scope. Native decoder YUV instead needs an opaque hardware sampler, and
 // exclusive FOREIGN ownership for each submitted Dawn batch. Keep the wire
@@ -111,9 +112,12 @@ class OhosNativeVideoDawnRepresentation final : public DawnImageRepresentation {
       MemoryTypeTracker* tracker,
       const wgpu::Device& device,
       scoped_refptr<gfx::NativePixmap> pixmap,
-      scoped_refptr<SharedContextState> context) {
-    if (!context || !context->GrContextIsGL() || !pixmap ||
-        !backing->usage().Has(SHARED_IMAGE_USAGE_WEBGPU_READ) ||
+      scoped_refptr<SharedContextState> context,
+      wgpu::SharedTextureMemory imported_memory = nullptr) {
+    const bool graphite = context && context->IsGraphiteDawnVulkan();
+    if (!context || (!context->GrContextIsGL() && !graphite) || !pixmap ||
+        !(backing->usage().Has(SHARED_IMAGE_USAGE_WEBGPU_READ) ||
+          (graphite && backing->usage().Has(SHARED_IMAGE_USAGE_DISPLAY_READ))) ||
         !device.HasFeature(wgpu::FeatureName::SharedTextureMemoryAHardwareBuffer) ||
         !device.HasFeature(wgpu::FeatureName::SharedFenceSyncFD) ||
         !device.HasFeature(wgpu::FeatureName::OpaqueYCbCrAndroidForExternalTexture)) {
@@ -126,7 +130,8 @@ class OhosNativeVideoDawnRepresentation final : public DawnImageRepresentation {
     wgpu::SharedTextureMemoryDescriptor descriptor;
     descriptor.label = "OhosGLDecoderNativeBuffer";
     descriptor.nextInChain = &native;
-    auto memory = device.ImportSharedTextureMemory(&descriptor);
+    auto memory = imported_memory ? std::move(imported_memory)
+                                  : device.ImportSharedTextureMemory(&descriptor);
     wgpu::SharedTextureMemoryProperties properties{};
     if (!memory || memory.GetProperties(&properties) != wgpu::Status::Success ||
         properties.format != wgpu::TextureFormat::OpaqueYCbCrAndroid ||

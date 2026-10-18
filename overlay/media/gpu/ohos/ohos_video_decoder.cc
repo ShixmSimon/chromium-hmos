@@ -53,6 +53,8 @@
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/gpu_fence.h"
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
+#include "ui/ozone/platform/ohos/ohos_video_graphite_metadata.h"
+#include "gpu/vulkan/vulkan_ycbcr_info.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 
 namespace media {
@@ -667,6 +669,9 @@ void OhosVideoDecoder::DestroyCodec() {
   surface_outputs_.clear();
   rendered_output_.reset();
   surface_frames_in_flight_ = 0;
+  browser_metadata_ready_.clear();
+  browser_metadata_ordinal_ = 0;
+  browser_metadata_output_ordinal_ = 0;
   surface_frame_limit_ = 0;
   surface_background_.reset();
   surface_queue_size_ = 0;
@@ -1277,29 +1282,13 @@ void OhosVideoDecoder::ConvertBrowserFrame(
     return browser_sii_->CreateSharedImage(
         info, gfx::GpuMemoryBufferHandle(std::move(handle)));
   }();
-  // This independent lease survives VideoFrame release and decode reset. The
-  // GPU VulkanImage keeps its endpoint through fence-helper deferred cleanup.
-  // Consequently EOF means no import can still read the decoder allocation.
-  base::ThreadPool::PostTask(
-      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
-      base::BindOnce(
-          [](base::ScopedFD receiver, scoped_refptr<gfx::NativePixmap> lease) {
-            TRACE_EVENT1("media", "OhosVideoDecoder::AwaitBrowserGpuLeaseEOF",
-                         "buffer_id",
-                         ui::GetOhosVideoNativePixmapId(*lease).value_or(0));
-            pollfd pfd{receiver.get(), POLLIN | POLLHUP, 0};
-            int result = HANDLE_EINTR(poll(&pfd, 1, -1));
-            // A wait failure must never return a buffer still used by the GPU
-            // to the decoder's reusable queue.
-            PCHECK(result == 1);
-            CHECK(pfd.revents & POLLHUP);
-          },
-          std::move(receiver), std::move(pixmap)));
+  gpu::SyncToken ready;
   if (!image) {
-    OnSurfaceFrameConverted(generation, nullptr);
+    WaitBrowserFrameLease(generation, std::move(receiver), std::move(pixmap),
+                          nullptr);
     return;
   }
-  gpu::SyncToken ready = image->creation_sync_token();
+  ready = image->creation_sync_token();
   if (!fence.is_null()) {
     TRACE_EVENT0("media", "OhosVideoDecoder::AttachBrowserAcquireFence");
     ready = image->BackingWasExternallyUpdated(
@@ -1332,7 +1321,105 @@ void OhosVideoDecoder::ConvertBrowserFrame(
     frame->metadata().read_lock_fences_enabled = true;
     frame->metadata().is_webgpu_compatible = allow_webgpu_native_video_;
   }
-  OnSurfaceFrameConverted(generation, std::move(frame));
+  WaitBrowserFrameLease(generation, std::move(receiver), std::move(pixmap),
+                        std::move(frame));
+}
+
+void OhosVideoDecoder::WaitBrowserFrameLease(
+    uint32_t generation,
+    base::ScopedFD receiver,
+    scoped_refptr<gfx::NativePixmap> pixmap,
+    scoped_refptr<VideoFrame> frame) {
+  const bool graphite = browser_sii_->GetCapabilities()
+                            .supports_ohos_graphite_video_native_buffers;
+  base::OnceCallback<void(scoped_refptr<VideoFrame>)> ready;
+  if (graphite) {
+    ready = base::BindPostTask(
+        task_runner_, base::BindOnce(&OhosVideoDecoder::OnBrowserFrameMetadataReady,
+                                    weak_factory_.GetWeakPtr(), generation,
+                                    browser_metadata_ordinal_++));
+  } else {
+    ready = base::BindPostTask(
+        task_runner_, base::BindOnce(&OhosVideoDecoder::OnSurfaceFrameConverted,
+                                    weak_factory_.GetWeakPtr(), generation));
+  }
+  // Non-Graphite keeps its existing immediate delivery. The worker still owns
+  // a separate decoder lease; neither callback delivery nor reset releases it.
+  if (!graphite)
+    std::move(ready).Run(std::move(frame));
+  base::ThreadPool::PostTask(
+      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
+      base::BindOnce(
+          [](base::ScopedFD receiver, scoped_refptr<gfx::NativePixmap> lease,
+             bool graphite, scoped_refptr<VideoFrame> frame,
+             base::OnceCallback<void(scoped_refptr<VideoFrame>)> ready) {
+            if (graphite) {
+              ui::OhosVideoGraphiteMetadata metadata;
+              const auto size = lease->GetBufferSize();
+              const bool valid = ui::ReceiveOhosVideoGraphiteMetadata(
+                                     receiver.get(), &metadata) &&
+                                 metadata.IsValid(size.width(), size.height());
+              if (valid && frame) {
+                const auto& word = metadata.words;
+                frame->metadata().ycbcr_info = gpu::VulkanYCbCrInfo(
+                    word[4], static_cast<uint64_t>(word[5]) |
+                                 (static_cast<uint64_t>(word[6]) << 32),
+                    word[7], word[8], word[9], word[10], word[11]);
+                TRACE_EVENT_INSTANT("media", "OhosGraphiteVideoMetadataReceived");
+              } else {
+                LOG(ERROR) << "OHOS Graphite video: import metadata missing/invalid";
+                frame.reset();
+              }
+              std::move(ready).Run(std::move(frame));
+            }
+            // Data arrival is NOT decoder release. EOF is authoritative, after
+            // all imported NativePixmap references and GPU retirement fences.
+            pollfd pfd{receiver.get(), POLLIN | POLLHUP, 0};
+            for (;;) {
+              const int result = HANDLE_EINTR(poll(&pfd, 1, -1));
+              PCHECK(result == 1);
+              if (pfd.revents & POLLHUP)
+                break;
+              // Drain a late bounded metadata reply after a timeout. Never
+              // return the lease merely because its metadata was unavailable.
+              if (pfd.revents & POLLIN) {
+                char discarded[64];
+                const ssize_t count = HANDLE_EINTR(recv(
+                    receiver.get(), discarded, sizeof(discarded), MSG_DONTWAIT));
+                if (count == 0)
+                  break;
+                PCHECK(count > 0 || errno == EAGAIN);
+              } else {
+                CHECK(false) << "OHOS video lease socket failed";
+              }
+            }
+          },
+          std::move(receiver), std::move(pixmap), graphite, std::move(frame),
+          std::move(ready)));
+}
+
+void OhosVideoDecoder::OnBrowserFrameMetadataReady(
+    uint32_t generation,
+    uint64_t ordinal,
+    scoped_refptr<VideoFrame> frame) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (generation != generation_ || state_ == State::kError)
+    return;
+  // Independent metadata workers can finish out of order. Preserve decoder
+  // output order, including null failures, before invoking the media pipeline.
+  browser_metadata_ready_.emplace(ordinal, std::move(frame));
+  for (;;) {
+    auto it = browser_metadata_ready_.find(browser_metadata_output_ordinal_);
+    if (it == browser_metadata_ready_.end())
+      return;
+    auto next = std::move(it->second);
+    browser_metadata_ready_.erase(it);
+    ++browser_metadata_output_ordinal_;
+    auto alive = weak_factory_.GetWeakPtr();
+    OnSurfaceFrameConverted(generation, std::move(next));
+    if (!alive || generation != generation_ || state_ == State::kError)
+      return;
+  }
 }
 
 void OhosVideoDecoder::OnSurfaceFrameConverted(

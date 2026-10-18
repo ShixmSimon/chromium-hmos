@@ -84,6 +84,7 @@ class OhosVideoFrameConverter
   const gpu::GpuDriverBugWorkarounds workarounds_;
   bool initialized_ = false;
   bool use_vulkan_ = false;
+  bool use_graphite_ = false;
   raw_ptr<gpu::CommandBufferStub> stub_ = nullptr;
   raw_ptr<gpu::SharedImageStub> sis_ = nullptr;
   gpu::SequenceId wait_sequence_id_;

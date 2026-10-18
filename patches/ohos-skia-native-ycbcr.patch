@@ -17,3 +17,24 @@ diff --git a/src/gpu/ganesh/vk/GrVkSamplerYcbcrConversion.cpp b/src/gpu/ganesh/v
          ycbcrCreateInfo.pNext = &externalFormat;
      }
  #else
+diff --git a/src/gpu/graphite/TextureFormat.cpp b/src/gpu/graphite/TextureFormat.cpp
+--- a/src/gpu/graphite/TextureFormat.cpp
++++ b/src/gpu/graphite/TextureFormat.cpp
+@@ -570,6 +570,17 @@
+ }
+ 
+ bool AreColorTypeAndFormatCompatible(SkColorType targetColorType, TextureFormat format) {
++#if defined(__OHOS__)
++    // External YCbCr images have no RGBA storage encoding. The native buffer's
++    // import validates P010 precision and the hardware sampler returns float
++    // RGBA values; a 10-bit SkImage label must not be rejected just because
++    // kExternal's generic fallback color type is RGBA8. This grants sampling
++    // compatibility only: external images remain non-renderable/non-writable.
++    if (format == TextureFormat::kExternal && targetColorType == kRGBA_1010102_SkColorType) {
++        return true;
++    }
++#endif
++
+     // If the format maps to the color type, they are compatible
+     auto [baseColorType, _] = TextureFormatColorTypeInfo(format);
+     if (baseColorType != kUnknown_SkColorType && baseColorType == targetColorType) {
