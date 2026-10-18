@@ -1,7 +1,7 @@
 {
   "request": "Optional Graphite on shared phone/Pad code; retain Ganesh Vulkan as first fallback",
-  "state": "INITIAL_INTEGRATION_NOT_COMPILED_OR_DEVICE_ACCEPTED",
-  "defaultBackend": "Existing Ganesh Vulkan remains selected unless skiaBackend=graphite is explicitly requested",
+  "state": "PHONE_FUNCTIONAL_VALIDATED_PAD_AWAITING_DEVICE",
+  "defaultBackend": "Ganesh Vulkan; Graphite remains explicit opt-in. Phone Graphite preference restored false after acceptance tests.",
   "nativeBuild": "CI push only; CI/workflow/build orchestration unchanged",
   "implementation": [
     "Compile upstream Graphite/Dawn on OHOS",
@@ -13,20 +13,113 @@
   ],
   "validation": {
     "hostTransportColorAndLeaseTests": "PASS",
-    "nativeCompilation": "PENDING",
-    "deviceGraphiteFirstFrame": "NOT_RUN",
-    "GaneshRegression": "NOT_RUN",
-    "nativeVideoGraphite": "UNDER_INVESTIGATION",
-    "UISelector": "NOT_ADDED_YET"
+    "nativeCompilation": "PASS547c CI39158416470",
+    "deviceGraphiteFirstFrame": "PHONE PASS: native mode1 SDR10, mode3 P3 SDR10, mode2 HDR10; phone_broker1; GPU9438",
+    "GaneshRegression": "PASS547c: default restart,14 color/API cases and native screenshot gates, crashCount0",
+    "nativeVideoGraphite": "Native zero-copy not implemented; buffer playback regression required",
+    "UISelector": "HAP compile and UI toggle PASS; shared phone/tablet routing21/21 PASS",
+    "orderedPinnedPatchReplay": "PASS33 Chromium files after fix",
+    "phoneGraphiteColor": "PASS14 scenes: Canvas2D/WebGL2/WebGPU/Worker; native screenshot pixel gates PASS; Graphite backend/PIDs unchanged",
+    "phoneRetainedCanvas": "PASS2000 distinct retained canvases and background30s resume; pixels exact; GPU stable",
+    "phoneVideos": "PASS bounded H264 SDR, Main10 SDR, Main10 PQ, VP9 HDR; advancing frames and Canvas pixels; not zero-copy acceptance",
+    "phoneFullscreen": "PASS real HDC touch, native landscape screenshot,10s hold, exit; processes stable",
+    "phoneSdrResume": "PASS4 captures; gray patch maxError0",
+    "phoneSustainedPlayback": {
+      "boundedStability": "PASS",
+      "wallSeconds": 666.047,
+      "mediaTimeAdvanceSeconds": 548.842305,
+      "totalFrames": 33075,
+      "droppedFrames": 1298,
+      "performance": "NOT_ACCEPTED; buffer decoding and delayed media-time progress remain",
+      "GPUrestarts": 0,
+      "GPUfdRange": [
+        152,
+        155
+      ],
+      "endBatteryC": 43,
+      "evidence": "out/graphite-20261018/phone0109-graphite-soak.json"
+    },
+    "phoneFallback": {
+      "result": "PASS547c1f3b",
+      "expected": "GaneshVulkan",
+      "actual": "GaneshVulkan",
+      "intentionalGPUcrashes": 1,
+      "browserPID": 27125,
+      "GraphiteGPU": 27371,
+      "GaneshVulkanGPU": 28041,
+      "nativeGrayScreenshot": "PASS",
+      "evidence": "out/graphite-20261018/phone547c-fallback.json"
+    },
+    "padGraphite": "NOT_RUN: only phone listed;192.168.8.136:38905 connection failed; current address requested",
+    "phoneFallbackPrevious": {
+      "result": "FAIL0109b65f",
+      "expected": "GaneshVulkan",
+      "actual": "GaneshGL",
+      "intentionalGPUcrashes": 1,
+      "sourceFix": "547c1f3 retains unprobed Ganesh Vulkan candidate when Graphite intentionally leaves its feature disabled; pending CI/install and same test"
+    },
+    "phoneGraphiteColor547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "evidence": "out/graphite-20261018/phone547c-graphite-retry-color-gates.json"
+    },
+    "phoneRetainedCanvas547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "evidence": "out/graphite-20261018/phone547c-graphite-retained-canvas.json"
+    },
+    "phoneVideos547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "evidence": "out/graphite-20261018/phone547c-graphite-video-gates.json"
+    },
+    "phoneGraphiteColor547cInfrastructureRetry": {
+      "firstAttempt": "No samples executed: fixture18888 HTTP server had exited and page was chrome-error/ERR_CONNECTION_RESET. Native process/backend stable.",
+      "recovery": "Restarted missing local fixture service and verified exact HTML before retry;14 scenes and native screenshot gates PASS",
+      "failedEvidence": "out/graphite-20261018/phone547c-graphite-color.json"
+    },
+    "phoneFullscreen547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "evidence": "out/phone-validation-20261016/phone547c-graphite-fullscreen-fullscreen-native-diagnostic.json"
+    },
+    "phoneSdrResume547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "evidence": "out/phone-validation-20261015/phone547c-graphite-sdr-resume.json"
+    },
+    "phoneGaneshRegression547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "evidence": "out/graphite-20261018/phone547c-ganesh-color-gates.json"
+    },
+    "deviceGraphiteFirstFrame547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "browserPID": 27829,
+      "gpuPID": 28764,
+      "presentedModes": [
+        1,
+        2,
+        3
+      ],
+      "meaning": "1 SDR10;2 HDR10;3 DisplayP3 SDR10",
+      "evidence": "out/graphite-20261018/phone547c-graphite-presented-modes.log"
+    }
   },
   "limitations": [
     "Graphite implementation is not accepted until native compilation and real-device rendering/fallback regression",
     "No promise of performance improvement before A/B measurement",
-    "Video YCbCr promise texture metadata and lifetime require additional investigation"
+    "Video YCbCr promise texture metadata and lifetime require additional investigation",
+    "Pad runtime, native-child buffer/fence path and recovery remain unverified until device connected.",
+    "Graphite video uses hardware buffer-mode decoding, not native-surface zero-copy.",
+    "0109 bounded playback ran666s with548.8s media progress; performance not accepted.547c changes browser fallback selection only; latest functional regressions repeated.",
+    "Native Chromium launch gtest was added but not run separately; host transport and21 shell routing tests passed.",
+    "Screenshots are tone-mapped; no physical HDR luminance/P3 panel photometry or full WebGPU CTS acceptance claimed."
   ],
-  "phoneOperation": "Read-only log inspection earlier; no page switching or media playback for this change",
-  "PadOperation": "Not operated; prior normal sleep preserved",
-  "updatedUTC": "2026-10-18T08:06:50.712304+00:00",
+  "phoneOperation": "Installed CI547c engine + shared Lumie19c UI; normal Graphite regression PASS, deliberate single GPU crash verifies GaneshVulkan fallback. Restored Graphitefalse, full restart, Ganesh color/API14 PASS. Silent and kept awake. Removed only owned test tabs;5 user pages preserved.",
+  "PadOperation": "No installation/control; current wireless endpoint missing. Prepared signed pad547c package shares exact engine SHA with phone.",
+  "updatedUTC": "2026-10-18T19:42:59.008580+00:00",
   "initialCI": {
     "source": "6f62291567601d9fcbbd5a29fca64dc81eeb9a57",
     "run": 39109317498,
@@ -35,16 +128,16 @@
     "adapterResult": "PASS"
   },
   "currentCI": {
-    "source": "2d81b22e0e88db01e3137187b8efb89bea2e0a87",
-    "run": 39109397010,
-    "result": "BUILD_IN_PROGRESS",
-    "adapterRun": 39109397052,
+    "source": "547c1f3bb5c586c107c149dae1acb61ed0c1d643",
+    "run": 39158416470,
+    "result": "PASS",
+    "adapterRun": 39158416423,
     "adapterResult": "PASS"
   },
   "shell": {
     "source": "19c4b84",
     "branch": "codex/pad-fullscreen-restore",
-    "pushed": false,
+    "pushed": true,
     "tests": {
       "processMode": 21,
       "passed": 21
@@ -57,5 +150,51 @@
     "Enable float Canvas presentation only from active Dawn native-memory/sync-fd capabilities",
     "Clear cached imports on native-window replacement; take window reference under mirror lock",
     "Validate real display gamut/HDR support before publishing native-child Graphite capabilities"
-  ]
+  ],
+  "previousCI": [
+    {
+      "source": "2d81b22e",
+      "run": 39109397010,
+      "result": "FAILED"
+    },
+    {
+      "source": "4c06c71c",
+      "run": 39110216315,
+      "result": "FAILED",
+      "diagnostic": "gpu_init.cc:1014 unreachable code after unconditional OHOS return; corrected by #else/#endif around upstream branch",
+      "steps": 33,
+      "failures": 1,
+      "elapsedSeconds": 161,
+      "graphiteOutputObject": "COMPILED; not linked or runtime accepted"
+    }
+  ],
+  "artifact": {
+    "source": "0109b65f",
+    "run": 39156242758,
+    "buildId": "80b0e91b1573d234b3752e60263410e2ad4f0b79",
+    "engineSHA256": "3c07f71cb12a4c75ca2dcfb085c1995a8b45d021b75272e33c2f85dfc371f1c4",
+    "DawnRegistrationCount": 184,
+    "DawnRegistrationCheck": "PASS"
+  },
+  "validatedNativeSource": "547c1f3b",
+  "padPreparedHap": "out/pad-fix-20261015/pad547c-default.hap; engine SHA matches phone547c; device not connected",
+  "artifact547c": {
+    "source": "547c1f3b",
+    "run": 39158416470,
+    "buildId": "56d5bcd4ebb9a6e39c3622c2819ecac522c78ba0",
+    "engineSHA256": "ff0ed468d5cb299a1fd61d8ae95a24fbb327a46a04ebf40f7c88c09dcceca403",
+    "DawnRegistrationCount": 184,
+    "DawnRegistrationCheck": "PASS"
+  },
+  "phoneFinalState": {
+    "nativeSource": "547c1f3b",
+    "backend": "GaneshVulkan",
+    "graphitePreference": false,
+    "inProcessGpu": false,
+    "processCrashCount": 0,
+    "silent": true,
+    "awake": true,
+    "preservedUserPages": 5,
+    "evidence": "out/graphite-20261018/phone547c-final-state.json"
+  }
 }
