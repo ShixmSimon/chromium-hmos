@@ -5,16 +5,19 @@
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
 
 #include <IPCKit/ipc_cparcel.h>
+#include <dirent.h>
 #include <dlfcn.h>
 #include <linux/dma-buf.h>
 #include <native_buffer/native_buffer.h>
 #include <native_window/external_window.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <unistd.h>
 #include "ui/ozone/platform/ohos/ohos_video_buffer_parcel.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <map>
 #include <set>
@@ -51,6 +54,36 @@
 
 namespace ui {
 namespace {
+
+// Sample only allocation churn, outside presentation and video-frame paths.
+// Counts distinguish unreachable-but-not-yet-collected canvases from descriptors
+// that survive their pixmaps. Never log descriptor targets or application data.
+std::atomic<size_t> offscreen_pixmaps_created{0};
+std::atomic<size_t> offscreen_pixmaps_live{0};
+
+void RecordOffscreenPixmapAllocation() {
+  const size_t live = offscreen_pixmaps_live.fetch_add(1) + 1;
+  const size_t created = offscreen_pixmaps_created.fetch_add(1) + 1;
+  if (created != 1 && created % 512 != 0)
+    return;
+  DIR* directory = opendir("/proc/self/fd");
+  if (!directory) {
+    PLOG(ERROR) << "OHOS offscreen resources: cannot sample descriptors; created="
+                << created << " live=" << live;
+    return;
+  }
+  size_t open_fds = 0;
+  while (const dirent* entry = readdir(directory)) {
+    if (entry->d_name[0] >= '0' && entry->d_name[0] <= '9')
+      ++open_fds;
+  }
+  closedir(directory);
+  rlimit limits{};
+  const bool have_limit = getrlimit(RLIMIT_NOFILE, &limits) == 0;
+  LOG(WARNING) << "OHOS offscreen resources: created=" << created
+               << " live=" << live << " open_fds=" << (open_fds ? open_fds - 1 : 0)
+               << " fd_limit=" << (have_limit ? limits.rlim_cur : 0);
+}
 
 // HarmonyOS's EGL target for an OHNativeWindowBuffer
 // (ohos-angle.patch passes it through ANGLE).
@@ -506,6 +539,7 @@ class OhosNativePixmap : public gfx::NativePixmap {
     fd_ = offscreen_handle_->planes[0].fd.get();
     const auto& plane = offscreen_handle_->planes[0];
     planes_.push_back({plane.stride, plane.offset, plane.size});
+    RecordOffscreenPixmapAllocation();
   }
 
   OHNativeWindowBuffer* WindowBuffer(const gfx::ColorSpace& color_space) const {
@@ -584,6 +618,8 @@ class OhosNativePixmap : public gfx::NativePixmap {
 
  private:
   ~OhosNativePixmap() override {
+    if (offscreen_handle_)
+      offscreen_pixmaps_live.fetch_sub(1);
     if (key_) {
       BufferRegistry::Get().Unuse(key_);
     }
