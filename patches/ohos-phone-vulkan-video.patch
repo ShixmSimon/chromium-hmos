@@ -2069,10 +2069,18 @@ index 7ad7402..3e35b78 100644
                      (used_by_skia && gr_context_type == GrContextType::kGL);
    if (used_by_vulkan && !CanImportNativePixmapToVulkan()) {
 diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
-index 9c19fef..4a074e5 100644
+index 9c19fef..3409b86 100644
 --- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
 +++ b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
-@@ -361,7 +361,8 @@ SharedImageFactory::SharedImageFactory(
+@@ -107,6 +107,7 @@
+ #endif  // BUILDFLAG(IS_ANDROID)
+ 
+ #if BUILDFLAG(USE_DAWN)
++#include "gpu/command_buffer/service/dawn_context_provider.h"
+ #include "gpu/command_buffer/service/shared_image/dawn_image_backing_factory.h"
+ #endif  // BUILDFLAG(USE_DAWN)
+ 
+@@ -361,7 +362,8 @@ SharedImageFactory::SharedImageFactory(
  #endif  // BUILDFLAG(ENABLE_VULKAN) && (BUILDFLAG(IS_LINUX) ||
          // BUILDFLAG(IS_FUCHSIA))
  #if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_OHOS)
@@ -2082,7 +2090,7 @@ index 9c19fef..4a074e5 100644
      // The phone keeps native-pixmap allocation disabled in renderers, so it
      // needs explicit GPU-only registration. Pad/PC already register Ozone.
      if (ui::IsOhosPhoneGpuChild()) {
-@@ -371,8 +372,10 @@ SharedImageFactory::SharedImageFactory(
+@@ -371,8 +373,10 @@ SharedImageFactory::SharedImageFactory(
      // Canvas and software video also need a Vulkan/GL bridge on Pad/PC.
      // Otherwise GLES2_READ | RASTER_WRITE has no factory and disconnects the
      // entire renderer GPU channel, including its native video decoder.
@@ -2095,23 +2103,35 @@ index 9c19fef..4a074e5 100644
      LOG(WARNING) << "OHOS Vulkan SharedImage bridge enabled; "
                   << "external_object_interop="
                   << context_state_->support_vulkan_external_object()
+@@ -892,6 +896,14 @@ gpu::SharedImageCapabilities SharedImageFactory::MakeCapabilities() {
+       gl::GetANGLEImplementation() == gl::ANGLEImplementation::kVulkan &&
+       gl::GLFence::IsGpuFenceSupported() &&
+       native_import;
++#if BUILDFLAG(SKIA_USE_DAWN)
++  if (context_state_ && context_state_->IsGraphiteDawnVulkan()) {
++    auto* dawn = context_state_->dawn_context_provider();
++    shared_image_caps.supports_ohos_native_rgba_f16 =
++        dawn->SupportsFeature(wgpu::FeatureName::SharedTextureMemoryAHardwareBuffer) &&
++        dawn->SupportsFeature(wgpu::FeatureName::SharedFenceSyncFD);
++  }
++#endif
+ #endif
+ 
+ #if BUILDFLAG(IS_WIN)
 diff --git a/gpu/config/gpu_util.cc b/gpu/config/gpu_util.cc
-index fc4baca..ea61259 100644
+index fc4baca..a81255d 100644
 --- a/gpu/config/gpu_util.cc
 +++ b/gpu/config/gpu_util.cc
-@@ -135,7 +135,11 @@ GpuFeatureStatus GetVulkanFeatureStatus(
+@@ -135,6 +135,9 @@ GpuFeatureStatus GetVulkanFeatureStatus(
        blocklisted_features.count(GPU_FEATURE_TYPE_VULKAN))
      return kGpuFeatureStatusBlocklisted;
  
--  if (gpu_preferences.gr_context_type != GrContextType::kVulkan) {
-+  if (gpu_preferences.gr_context_type != GrContextType::kVulkan
-+#if BUILDFLAG(IS_OHOS)
-+      && gpu_preferences.gr_context_type != GrContextType::kGraphiteDawn
-+#endif
-+  ) {
++  // Graphite owns a separate Dawn Vulkan device. Keep Ganesh Vulkan disabled
++  // while Graphite is active; fallback recomputes this status for its selected
++  // context instead of creating an unused Ganesh device beside Graphite.
+   if (gpu_preferences.gr_context_type != GrContextType::kVulkan) {
      return kGpuFeatureStatusDisabled;
    }
- 
 diff --git a/gpu/ipc/service/gpu_init.cc b/gpu/ipc/service/gpu_init.cc
 index fe9b55e..f7ab9c4 100644
 --- a/gpu/ipc/service/gpu_init.cc

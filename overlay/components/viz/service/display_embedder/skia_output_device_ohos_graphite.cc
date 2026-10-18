@@ -3,6 +3,15 @@
 // found in the LICENSE file.
 #include "components/viz/service/display_embedder/skia_output_device_ohos_graphite.h"
 
+#include <linux/sync_file.h>
+#include <native_buffer/native_buffer.h>
+#include <native_window/external_window.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include <vulkan/vulkan_core.h>
+#include <cstring>
+#include <map>
+#include <utility>
 #include "base/compiler_specific.h"
 #include "base/files/scoped_file.h"
 #include "base/functional/bind.h"
@@ -24,35 +33,26 @@
 #include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
-#include <cstring>
-#include <linux/sync_file.h>
-#include <map>
-#include <native_buffer/native_buffer.h>
-#include <native_window/external_window.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
-#include <utility>
-#include <vulkan/vulkan_core.h>
 
 namespace viz {
 namespace {
-[[noreturn]] void Fail(const char *stage) {
+[[noreturn]] void Fail(const char* stage) {
   LOG(ERROR) << "OHOS Graphite: " << stage << "; restarting on Ganesh Vulkan";
   ui::NoteOhosGraphiteFailure(stage);
   _exit(77);
 }
 class ImportTimeout final : public base::Watchdog::Delegate {
-public:
+ public:
   void Alarm() override { Fail("native buffer import timed out"); }
 };
 constexpr wgpu::TextureUsage kUsage =
     wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding |
     wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::CopyDst;
-} // namespace
+}  // namespace
 
 struct SkiaOutputDeviceOhosGraphite::State {
   struct Imported {
-    OH_NativeBuffer *native = nullptr;
+    OH_NativeBuffer* native = nullptr;
     wgpu::SharedTextureMemory memory;
     uint64_t bytes = 0;
   };
@@ -68,7 +68,7 @@ struct SkiaOutputDeviceOhosGraphite::State {
     return color.mode == ui::OhosOutputMode::kSdr8 ? kRGBA_8888_SkColorType
                                                    : kRGBA_1010102_SkColorType;
   }
-  [[noreturn]] void ColorFailure(const char *stage) { Fail(stage); }
+  [[noreturn]] void ColorFailure(const char* stage) { Fail(stage); }
   SkImageInfo info;
   int samples = 1;
   std::map<uint32_t, Imported> imports;
@@ -85,6 +85,7 @@ struct SkiaOutputDeviceOhosGraphite::State {
   ui::phone_gpu::SharedBufferColorState local_colors;
   std::unique_ptr<ui::phone_gpu::SharedBufferLease> local_lease;
   uint64_t local_sequence = 0;
+  void* local_window = nullptr;  // Referenced by local_colors after Prepare.
 
   wgpu::Device device() {
     return context->dawn_context_provider()->GetDevice();
@@ -96,23 +97,31 @@ struct SkiaOutputDeviceOhosGraphite::State {
     current.reset();
     texture = nullptr;
     memory = nullptr;
-    for (auto &[key, item] : imports) {
+    for (auto& [key, item] : imports) {
       item.memory = nullptr;
       OH_NativeBuffer_Unreference(item.native);
       tracker->TrackMemFree(item.bytes);
     }
     imports.clear();
   }
-  bool AcquireLocal(const ui::OhosOutputColor &requested, bool probe,
-                    ui::phone_gpu::SharedMessage *message) {
+  bool AcquireLocal(const ui::OhosOutputColor& requested,
+                    bool probe,
+                    ui::phone_gpu::SharedMessage* message) {
     CHECK(!local_lease);
     auto surface = ui::AcquireOhosNativeSurfaceForPhoneGpu(widget);
+    if (!surface && probe && ui::IsOhosNativeSurfaceExpected(widget)) {
+      ui::WaitForOhosNativeSurface(widget, base::Seconds(2));
+      surface = ui::AcquireOhosNativeSurfaceForPhoneGpu(widget);
+    }
     if (!surface || !surface->window)
       return false;
     base::ScopedClosureRunner unref(base::BindOnce(
-        [](void *window) { OH_NativeWindow_NativeObjectUnreference(window); },
+        [](void* window) { OH_NativeWindow_NativeObjectUnreference(window); },
         surface->window));
-    auto &p = message->packet;
+    if (local_window && local_window != surface->window)
+      Clear();  // A same-sized replacement must not reuse old queue imports.
+    local_window = surface->window;
+    auto& p = message->packet;
     p.operation = ui::phone_gpu::SharedOp::kBuffer;
     p.widget = widget;
     p.sequence = ++local_sequence;
@@ -136,14 +145,19 @@ struct SkiaOutputDeviceOhosGraphite::State {
     local_lease = std::move(pending);
     return true;
   }
-  bool Probe(const ui::OhosOutputColor &requested,
-             ui::phone_gpu::SharedMessage *message) {
-    return ui::IsOhosPhoneGpuChild()
-               ? ui::ProbeOhosPhoneOutputColor(widget, requested, message)
-               : AcquireLocal(requested, true, message);
+  bool Probe(const ui::OhosOutputColor& requested,
+             ui::phone_gpu::SharedMessage* message) {
+    if (ui::IsOhosPhoneGpuChild())
+      return ui::ProbeOhosPhoneOutputColor(widget, requested, message);
+    if ((requested.mode == ui::OhosOutputMode::kP3Sdr10 &&
+         !ui::OhosSingleDisplaySupportsP3()) ||
+        (requested.mode == ui::OhosOutputMode::kHdr10 &&
+         !display_guard.Validate()))
+      return false;
+    return AcquireLocal(requested, true, message);
   }
   bool Acquire(ui::phone_gpu::Frame frame,
-               ui::phone_gpu::SharedMessage *message) {
+               ui::phone_gpu::SharedMessage* message) {
     if (ui::IsOhosPhoneGpuChild())
       return ui::AcquireOhosPhoneGpuBuffer(frame, message, color,
                                            color_generation);
@@ -163,7 +177,7 @@ struct SkiaOutputDeviceOhosGraphite::State {
       local_lease.reset();
     }
   }
-  bool Ready(const ui::OhosOutputColor &verified) {
+  bool Ready(const ui::OhosOutputColor& verified) {
     return ui::IsOhosPhoneGpuChild()
                ? ui::ReportOhosPhoneOutputColorReady(widget, verified,
                                                      color_generation)
@@ -191,11 +205,11 @@ struct SkiaOutputDeviceOhosGraphite::State {
     } else if (fd >= 0) {
       close(fd);
     }
-    local_lease.reset(); // Detaches an unfinished/stale window allocation.
+    local_lease.reset();  // Detaches an unfinished/stale window allocation.
     lease = 0;
     return result;
   }
-  void Import(ui::phone_gpu::SharedMessage &message, Imported &item) {
+  void Import(ui::phone_gpu::SharedMessage& message, Imported& item) {
     item.native = ui::phone_gpu::ImportSharedBuffer(message);
     if (!item.native)
       Fail("NativeBuffer parcel import");
@@ -230,12 +244,16 @@ struct SkiaOutputDeviceOhosGraphite::State {
 };
 SkiaOutputDeviceOhosGraphite::SkiaOutputDeviceOhosGraphite(
     scoped_refptr<gpu::SharedContextState> context_state,
-    gpu::SurfaceHandle widget, bool requires_alpha,
-    gpu::MemoryTracker *memory_tracker, DidSwapBufferCompleteCallback callback)
-    : SkiaOutputDevice(nullptr, context_state->graphite_shared_context(),
-                       memory_tracker, callback),
+    gpu::SurfaceHandle widget,
+    bool requires_alpha,
+    gpu::MemoryTracker* memory_tracker,
+    DidSwapBufferCompleteCallback callback)
+    : SkiaOutputDevice(nullptr,
+                       context_state->graphite_shared_context(),
+                       memory_tracker,
+                       callback),
       state_(std::make_unique<State>()) {
-  auto &s = *state_;
+  auto& s = *state_;
   s.context = std::move(context_state);
   s.tracker = memory_type_tracker_.get();
   s.widget = widget;
@@ -361,7 +379,7 @@ SkiaOutputDeviceOhosGraphite::SkiaOutputDeviceOhosGraphite(
 }
 
 SkiaOutputDeviceOhosGraphite::~SkiaOutputDeviceOhosGraphite() {
-  auto &s = *state_;
+  auto& s = *state_;
   if (s.lease) {
     // An interrupted frame may still be in flight. Never return it for reuse.
     if (ui::IsOhosPhoneGpuChild())
@@ -372,8 +390,8 @@ SkiaOutputDeviceOhosGraphite::~SkiaOutputDeviceOhosGraphite() {
   if (!ui::IsOhosPhoneGpuChild())
     ui::ReportOhosWsiOutputCapabilities(s.widget, false, false);
 }
-bool SkiaOutputDeviceOhosGraphite::Reshape(const ReshapeParams &params) {
-  auto &s = *state_;
+bool SkiaOutputDeviceOhosGraphite::Reshape(const ReshapeParams& params) {
+  auto& s = *state_;
   CHECK(!s.lease);
   if (params.ohos_output_color && *params.ohos_output_color != s.color) {
     const auto color = *params.ohos_output_color;
@@ -391,7 +409,7 @@ bool SkiaOutputDeviceOhosGraphite::Reshape(const ReshapeParams &params) {
         s.ColorFailure("content output color probe");
       s.Cancel(probe.packet.lease);
       s.color_generation = probe.packet.color_generation;
-      s.logged = false; // Log the first presented frame of the new mode.
+      s.logged = false;  // Log the first presented frame of the new mode.
       LOG(WARNING) << "OHOS Graphite: content output mode="
                    << static_cast<uint32_t>(color.mode)
                    << " color_generation=" << s.color_generation;
@@ -416,9 +434,9 @@ bool SkiaOutputDeviceOhosGraphite::Reshape(const ReshapeParams &params) {
   s.samples = params.sample_count;
   return !s.info.isEmpty();
 }
-SkSurface *SkiaOutputDeviceOhosGraphite::BeginPaint(
-    std::vector<GrBackendSemaphore> *semaphores) {
-  auto &s = *state_;
+SkSurface* SkiaOutputDeviceOhosGraphite::BeginPaint(
+    std::vector<GrBackendSemaphore>* semaphores) {
+  auto& s = *state_;
   CHECK(!s.lease);
   s.submitted = false;
   if (s.color.mode == ui::OhosOutputMode::kHdr10 && !s.display_guard.Validate())
@@ -493,16 +511,18 @@ SkSurface *SkiaOutputDeviceOhosGraphite::BeginPaint(
 }
 void SkiaOutputDeviceOhosGraphite::EndPaint() {}
 void SkiaOutputDeviceOhosGraphite::Submit(
-    scoped_refptr<gpu::SharedContextState> context_state, bool sync_cpu,
+    scoped_refptr<gpu::SharedContextState> context_state,
+    bool sync_cpu,
     base::OnceClosure callback) {
   state_->submitted = true;
   SkiaOutputDevice::Submit(std::move(context_state), sync_cpu,
                            std::move(callback));
 }
 void SkiaOutputDeviceOhosGraphite::Present(
-    const std::optional<gfx::Rect> &update_rect,
-    BufferPresentedCallback feedback, OutputSurfaceFrame frame) {
-  auto &s = *state_;
+    const std::optional<gfx::Rect>& update_rect,
+    BufferPresentedCallback feedback,
+    OutputSurfaceFrame frame) {
+  auto& s = *state_;
   auto result = ui::phone_gpu::Result::kDropped;
   if (s.lease) {
     CHECK(s.submitted);
@@ -530,7 +550,7 @@ void SkiaOutputDeviceOhosGraphite::Present(
       info.nextInChain = &sync;
       UNSAFE_TODO(end.fences[i]).ExportInfo(&info);
       if (sync.handle == -1)
-        continue; // Already signaled sync fd.
+        continue;  // Already signaled sync fd.
       if (sync.handle < -1)
         Fail("invalid completion fence");
       if (!completion.is_valid()) {
@@ -582,4 +602,4 @@ void SkiaOutputDeviceOhosGraphite::SetPreferredFrameInterval(
   if (ui::IsOhosPhoneGpuChild())
     ui::SetOhosPhoneGpuFrameInterval(state_->widget, interval);
 }
-} // namespace viz
+}  // namespace viz

@@ -238,7 +238,8 @@ struct OhosGpuChildWidgetState {
   int32_t application_window_id = 0;
 };
 
-// Browser frame worker. Takes a native reference under the registry lock.
+// Frame worker. Takes a native reference under the browser registry lock or
+// native GPU child's mirror lock. The fork child must use its broker instead.
 // Caller must OH_NativeWindow_NativeObjectUnreference the returned window.
 std::optional<OhosNativeSurface> AcquireOhosNativeSurfaceForPhoneGpu(
     gfx::AcceleratedWidget widget);

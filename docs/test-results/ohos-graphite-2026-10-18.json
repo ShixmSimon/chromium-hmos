@@ -26,5 +26,36 @@
   ],
   "phoneOperation": "Read-only log inspection earlier; no page switching or media playback for this change",
   "PadOperation": "Not operated; prior normal sleep preserved",
-  "updatedUTC": "2026-10-18T07:52:22.543565+00:00"
+  "updatedUTC": "2026-10-18T08:06:50.712304+00:00",
+  "initialCI": {
+    "source": "6f62291567601d9fcbbd5a29fca64dc81eeb9a57",
+    "run": 39109317498,
+    "result": "PATCH_CONTEXT_FAILURE",
+    "adapterRun": 39109317505,
+    "adapterResult": "PASS"
+  },
+  "currentCI": {
+    "source": "2d81b22e0e88db01e3137187b8efb89bea2e0a87",
+    "run": 39109397010,
+    "result": "BUILD_IN_PROGRESS",
+    "adapterRun": 39109397052,
+    "adapterResult": "PASS"
+  },
+  "shell": {
+    "source": "19c4b84",
+    "branch": "codex/pad-fullscreen-restore",
+    "pushed": false,
+    "tests": {
+      "processMode": 21,
+      "passed": 21
+    },
+    "default": "off",
+    "toggle": "Skia Graphite; requires Skia Vulkan; full restart"
+  },
+  "followup": [
+    "Avoid unused Ganesh VkDevice while Graphite is active; fallback recomputes Vulkan support",
+    "Enable float Canvas presentation only from active Dawn native-memory/sync-fd capabilities",
+    "Clear cached imports on native-window replacement; take window reference under mirror lock",
+    "Validate real display gamut/HDR support before publishing native-child Graphite capabilities"
+  ]
 }
