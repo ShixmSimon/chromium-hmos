@@ -20,6 +20,9 @@ bool AllocateSharedImage(uint32_t width,
                          uint32_t height,
                          uint32_t native_format,
                          SharedMessage* response);
+// Exports an existing offscreen allocation without copying pixels. The caller
+// supplies a kImage packet's dimensions/format/sequence; message owns its FDs.
+bool ExportSharedImage(OH_NativeBuffer* native, SharedMessage* message);
 // Reconstructs only the verified parcel schema; owns a native reference on
 // success.
 OH_NativeBuffer* ImportSharedBuffer(const SharedMessage& message);

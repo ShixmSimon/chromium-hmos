@@ -191,13 +191,23 @@ bool AllocateSharedImage(uint32_t width,
   }
   response->packet = request;
   response->packet.operation = SharedOp::kImage;
-  const bool exported = Encode(native, response);
+  const bool exported = ExportSharedImage(native, response);
   // Parcel FDs own references to the allocation, including while in transit.
   // There is no decoder/window producer that can reuse this offscreen image.
   OH_NativeBuffer_Unreference(native);
   if (!exported)
     response->CloseFds();
   return exported;
+}
+bool ExportSharedImage(OH_NativeBuffer* native, SharedMessage* message) {
+  if (!native || !message || message->packet.operation != SharedOp::kImage ||
+      !IsSharedImageFormat(message->packet.prefix[8]))
+    return false;
+  message->CloseFds();
+  if (Encode(native, message))
+    return true;
+  message->CloseFds();
+  return false;
 }
 SharedBufferColorState::~SharedBufferColorState() {
   Reset();

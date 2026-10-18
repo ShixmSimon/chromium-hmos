@@ -527,18 +527,18 @@ class OhosNativePixmap : public gfx::NativePixmap {
   OhosNativePixmap(OHNativeWindowBuffer* window_buffer,
                    gfx::Size size,
                    viz::SharedImageFormat format,
-                   gfx::NativePixmapHandle handle)
+                   PlaneLayout plane,
+                   uint32_t buffer_id,
+                   int buffer_fd)
       : key_(0),
         size_(size),
         format_(format),
         video_window_(window_buffer),
         video_release_(base::BindOnce(
             &OH_NativeWindow_DestroyNativeWindowBuffer, window_buffer)),
-        offscreen_handle_(
-            std::make_unique<gfx::NativePixmapHandle>(std::move(handle))) {
-    fd_ = offscreen_handle_->planes[0].fd.get();
-    const auto& plane = offscreen_handle_->planes[0];
-    planes_.push_back({plane.stride, plane.offset, plane.size});
+        offscreen_buffer_id_(buffer_id),
+        fd_(buffer_fd) {
+    planes_.push_back(plane);
     RecordOffscreenPixmapAllocation();
   }
 
@@ -577,7 +577,7 @@ class OhosNativePixmap : public gfx::NativePixmap {
   }
   size_t GetNumberOfPlanes() const override { return planes_.size(); }
   bool SupportsZeroCopyWebGPUImport() const override {
-    return offscreen_handle_ != nullptr;
+    return offscreen_buffer_id_.has_value();
   }
   viz::SharedImageFormat GetSharedImageFormat() const override {
     return format_;
@@ -587,8 +587,7 @@ class OhosNativePixmap : public gfx::NativePixmap {
   }
   gfx::Size GetBufferSize() const override { return size_; }
   uint32_t GetUniqueId() const override {
-    return offscreen_handle_ ? offscreen_handle_->ohos_buffer_prefix[0]
-                              : static_cast<uint32_t>(key_);
+    return offscreen_buffer_id_.value_or(static_cast<uint32_t>(key_));
   }
   bool ScheduleOverlayPlane(
       gfx::AcceleratedWidget widget,
@@ -598,11 +597,33 @@ class OhosNativePixmap : public gfx::NativePixmap {
     return false;
   }
   gfx::NativePixmapHandle ExportHandle() const override {
-    if (offscreen_handle_)
-      return gfx::CloneHandleForIPC(*offscreen_handle_);
     gfx::NativePixmapHandle handle;
     if (fd_ < 0) {
       return handle;
+    }
+    if (offscreen_buffer_id_) {
+      // The window buffer already owns the allocation. Keeping both its native
+      // descriptors and the received parcel/plane duplicates multiplied FD
+      // pressure for thousands of small WebGPU canvases waiting for GC.
+      // Serialize only for an actual IPC export; no pixels or fences change.
+      OH_NativeBuffer* native = nullptr;
+      if (OH_NativeBuffer_FromNativeWindowBuffer(video_window_, &native) != 0)
+        return {};
+      phone_gpu::SharedMessage message;
+      auto& packet = message.packet;
+      packet.operation = phone_gpu::SharedOp::kImage;
+      packet.sequence = packet.widget = 1;
+      packet.width = size_.width();
+      packet.height = size_.height();
+      packet.prefix[8] = *OhosFormatFor(format_);
+      if (!phone_gpu::ExportSharedImage(native, &message))
+        return {};
+      handle.ohos_buffer_prefix.assign(packet.prefix.begin(), packet.prefix.end());
+      handle.ohos_buffer_tail.assign(packet.tail.begin(),
+                                     packet.tail.begin() + packet.tail_bytes);
+      for (int fd : message.fds)
+        handle.ohos_buffer_fds.emplace_back(fd);
+      message.fds.clear();
     }
     for (const PlaneLayout& plane : planes_) {
       base::ScopedFD fd(HANDLE_EINTR(dup(fd_)));
@@ -618,7 +639,7 @@ class OhosNativePixmap : public gfx::NativePixmap {
 
  private:
   ~OhosNativePixmap() override {
-    if (offscreen_handle_)
+    if (offscreen_buffer_id_)
       offscreen_pixmaps_live.fetch_sub(1);
     if (key_) {
       BufferRegistry::Get().Unuse(key_);
@@ -633,8 +654,9 @@ class OhosNativePixmap : public gfx::NativePixmap {
   // an independent allocation reference used by a cached import.
   RAW_PTR_EXCLUSION OHNativeWindowBuffer* video_window_ = nullptr;
   base::ScopedClosureRunner video_release_;
-  std::unique_ptr<gfx::NativePixmapHandle> offscreen_handle_;
-  // Owned by the registry entry, which outlives this pixmap.
+  const std::optional<uint32_t> offscreen_buffer_id_;
+  // Borrowed from the window buffer or registry entry, both of which outlive
+  // this pixmap's operations. IPC exports always duplicate ownership.
   int fd_ = -1;
   std::vector<PlaneLayout> planes_;
 };
@@ -961,18 +983,17 @@ scoped_refptr<gfx::NativePixmap> ImportOhosOffscreenPixmap(
   OH_NativeBuffer_Unreference(native);
   if (!window)
     return fail("import-window");
-  // Normalize the generic plane description from the validated native parcel.
-  // This is a GPU image; its actual allocation size can exclude linear padding.
-  handle.planes.clear();
-  base::ScopedFD plane_fd(HANDLE_EINTR(dup(handle.ohos_buffer_fds[0].get())));
-  if (!plane_fd.is_valid()) {
-    PLOG(ERROR) << "OHOS shared image: import plane fd duplication";
+  // NativeWindowBuffer retains the imported NativeBuffer and its descriptors.
+  // Borrow that FD for local Vulkan/Skia users instead of retaining the IPC
+  // descriptors plus another plane duplicate until the canvas is collected.
+  const BufferHandle* buffer_handle =
+      OH_NativeWindow_GetBufferHandleFromNative(window);
+  if (!buffer_handle || buffer_handle->fd < 0) {
     OH_NativeWindow_DestroyNativeWindowBuffer(window);
-    return fail("import-plane-dup");
+    return fail("import-window-handle");
   }
-  handle.planes.emplace_back(p.prefix[5], 0, p.prefix[7], std::move(plane_fd));
   return base::MakeRefCounted<OhosNativePixmap>(window, size, format,
-                                               std::move(handle));
+      PlaneLayout{p.prefix[5], 0, p.prefix[7]}, p.prefix[0], buffer_handle->fd);
 }
 
 scoped_refptr<gfx::NativePixmap> CreateOhosVideoNativePixmap(
