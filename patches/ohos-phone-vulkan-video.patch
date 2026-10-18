@@ -2116,7 +2116,7 @@ index 7ad7402..3e35b78 100644
                      (used_by_skia && gr_context_type == GrContextType::kGL);
    if (used_by_vulkan && !CanImportNativePixmapToVulkan()) {
 diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
-index 9c19fef..fe8258d 100644
+index 9c19fef..2aa8595 100644
 --- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
 +++ b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
 @@ -107,6 +107,7 @@
@@ -2181,6 +2181,20 @@ index 9c19fef..fe8258d 100644
    shared_image_caps.disable_webgpu_shared_images =
        workarounds_.disable_webgpu_shared_images;
  #if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_OHOS)
+@@ -921,6 +942,13 @@ gpu::SharedImageCapabilities SharedImageFactory::MakeCapabilities() {
+         shared_image_manager_->SupportsNV12TextureSampling();
+     shared_image_caps.supports_ycbcr_p010_sampling =
+         shared_image_manager_->SupportsP010TextureSampling();
++#if BUILDFLAG(IS_OHOS) && BUILDFLAG(SKIA_USE_DAWN)
++    if (context_state_->IsGraphiteDawnVulkan()) {
++      // Native video external-sampler representations are Ganesh-only for now.
++      shared_image_caps.supports_ycbcr_nv12_sampling = false;
++      shared_image_caps.supports_ycbcr_p010_sampling = false;
++    }
++#endif
+   }
+   if (!context_state_) {
+     shared_image_caps.is_r16f_supported = false;
 diff --git a/gpu/config/gpu_util.cc b/gpu/config/gpu_util.cc
 index fc4baca..a81255d 100644
 --- a/gpu/config/gpu_util.cc
@@ -2271,3 +2285,32 @@ diff --git a/components/viz/service/display_embedder/skia_output_surface_impl.cc
      image_context->SetImage(std::move(image), {texture_info});
    } else {
      CHECK(gr_context_thread_safe_);
+diff --git a/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc b/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc
+--- a/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc
++++ b/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc
+@@ -18,6 +18,7 @@
+ #include "base/task/sequenced_task_runner.h"
+ #include "base/unguessable_token.h"
+ #include "build/build_config.h"
++#include "gpu/config/gpu_feature_type.h"
+ #include "gpu/ipc/client/command_buffer_proxy_impl.h"
+ #include "gpu/ipc/client/gpu_channel_host.h"
+ #include "media/base/decoder.h"
+@@ -278,6 +279,17 @@
+     return OutputFormat::UNDEFINED;
+   }
+ #endif
++#if BUILDFLAG(IS_OHOS)
++  if (gpu_channel_host_->gpu_feature_info()
++          .status_values[gpu::GPU_FEATURE_TYPE_SKIA_GRAPHITE] ==
++      gpu::kGpuFeatureStatusEnabled) {
++    // The OHOS Graphite display path cannot sample NativeBuffer video external
++    // textures yet. Keep decoder CPU frames intact instead of repacking them
++    // into NV12/P010 native images in MappableSharedImageVideoFramePool. In
++    // particular, falling through to YV12 would discard high-bit-depth data.
++    return OutputFormat::UNDEFINED;
++  }
++#endif
+   const auto& capabilities = context_provider_->ContextCapabilities();
+   const auto& shared_image_capabilities =
+       context_provider_->SharedImageInterface()->GetCapabilities();
