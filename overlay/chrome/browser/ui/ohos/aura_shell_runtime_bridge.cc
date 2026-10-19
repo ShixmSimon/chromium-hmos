@@ -51,6 +51,7 @@
 #include "base/memory/ref_counted_memory.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/no_destructor.h"
+#include "base/ohos_startup_probe.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_number_conversions.h"
@@ -4306,11 +4307,13 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     // The shell's summarizer reads the page's text. An isolated world keeps
     // the page's own scripts from seeing, or tampering with, the read.
     const int request_id = command.FindInt("requestId").value_or(0);
+    OHOS_STARTUP_MARK("PageText.NativeReceive", request_id);
     active->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
         u"(document.body && document.body.innerText || '').slice(0, 20000)",
         base::BindOnce(
             [](gfx::AcceleratedWidget widget, int request_id,
                base::Value result) {
+              OHOS_STARTUP_MARK("PageText.ScriptReply", request_id);
               base::DictValue event;
               event.Set("event", "pageText");
               event.Set("requestId", request_id);

@@ -16,6 +16,7 @@
 #include "base/files/scoped_file.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
+#include "base/ohos_startup_probe.h"
 #include "base/threading/watchdog.h"
 #include "base/trace_event/trace_event.h"
 #include "gpu/command_buffer/service/dawn_context_provider.h"
@@ -573,10 +574,13 @@ void SkiaOutputDeviceOhosGraphite::Present(
     if (result == ui::phone_gpu::Result::kFailed)
       Fail("present native output");
     if (result == ui::phone_gpu::Result::kPresented &&
-        !std::exchange(s.logged, true))
+        !std::exchange(s.logged, true)) {
+      OHOS_STARTUP_MARK("Frame.GraphiteNativeAccepted",
+                        static_cast<int64_t>(s.color.mode));
       LOG(WARNING) << "OHOS Graphite: first native frame presented; mode="
                    << static_cast<uint32_t>(s.color.mode)
                    << " phone_broker=" << ui::IsOhosPhoneGpuChild();
+    }
   }
   s.current.reset();
   if (s.texture)
