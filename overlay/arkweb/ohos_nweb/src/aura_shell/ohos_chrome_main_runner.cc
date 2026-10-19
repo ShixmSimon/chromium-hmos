@@ -27,6 +27,7 @@
 #include "base/process/fork_server_ohos.h"
 #include "base/process/launch_ohos.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+#include "ohos_nweb/src/aura_shell/ohos_startup_bundle_probe.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
@@ -343,6 +344,9 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
     }
     AURA_LOG_I("AuraShell experimental phone fork server ready before ChromeMain; "
                "same UID, no renderer sandbox");
+  }
+  if (startup_command_line.HasSwitch(kStartupBundleProbeSwitch)) {
+    StartStartupBundleProbe("browser");
   }
   started_ = true;
   if (!config.headless) {

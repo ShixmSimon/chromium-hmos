@@ -275,6 +275,10 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
   CommandLine child_command_line(argv);
   const std::string process_type =
       child_command_line.GetSwitchValueASCII("type");
+  if (process_type == "gpu-process") {
+    child_command_line.CopySwitchesFrom(*CommandLine::ForCurrentProcess(),
+                                       {"ohos-startup-bundle-probe"});
+  }
   const bool isolate_renderer =
       CommandLine::ForCurrentProcess()->HasSwitch(kOhosIsolateRenderers) &&
       process_type == "renderer";
