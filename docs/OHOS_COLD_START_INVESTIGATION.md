@@ -131,3 +131,67 @@ native GPU 有 `/dev/binder`。为区分旧连接缓存与新连接权限，探�
 独立记录 `phase=fresh_binder` 的成功与 open_errno。它不发送 ioctl、不构造
 proxy、不替换系统 IPC 单例中的 FD；不能把“打开成功”解释成 SA 查询已修复。
 这是显式诊断开关的一部分，普通包不会执行。
+
+
+## 2026-10-19 手机与 Pad 对照结果
+
+以下为新诊断产物 `2cccb7c37f1360aa7a856fbf9407cc9db19305d8`，
+ARM64 CI `39264709757` 和 adapter CI `39264709479` 均通过。
+HAR 下载后校验发布的 SHA256SUMS；外壳只装配并签名 CI 内核，
+HAP 中两份原生 so 的哈希均与 HAR 一致，没有本地编译内核，也没有改 CI 文件。
+
+| 设备 / 进程 | IsDebugMode 结果 / 耗时 | 延迟 fresh Binder open |
+| --- | --- | --- |
+| 手机 browser PID 14968 | 成功 / 5314 µs | 成功 / 554 µs |
+| 手机 fork GPU PID 15206 | 失败，API errno=9 / 1470887 µs | 成功 / 736 µs |
+| Pad browser PID 58729 | 成功 / 5199 µs | 成功 / 365 µs |
+| Pad native GPU PID 59006 | 成功 / 3152 µs | 成功 / 292 µs |
+
+手机 fork GPU 能重新打开设备节点，排除了该时刻 open 本身被拒绝的解释；
+这不证明随后的 ioctl、SA 查询或远程对象访问得到授权，也不是修复。
+结合先前 FD dump 与系统查询等待，下一步应验证受支持的 fork 后系统 IPC
+初始化方案，而不是直接替换 cached driverFD。当前仍未取得系统私有查询的
+原始 Binder 返回码，不能将 `api_errno=9` 当作该返回码。
+
+本轮安装的 Lumie main `96552edf` 仍只调用 legacy PageText 健康检查。
+因此当前内核中的 window-scoped StartupHandoff / resumed-frame gate
+没有通过该外壳完成验收，不能把视频、恢复或截图通过扩大为该握手已验证。
+
+### 同轮渲染回归验收
+
+测试设备为手机 PLA-AL10 / Maleoon 920 与 Pad GEM-W00 / Maleoon 935。
+61e / b5 / 2ccc 三次提交只增加默认关闭的诊断，不改变渲染实现。
+渲染功能检查从 61e 开始，2ccc 补做最新产物、最低亮度、YouTube 与普通包检查；
+不能将较早产物的每项长测称为在最终产物上完整重跑。
+
+| 范围 | 手机 | Pad |
+| --- | --- | --- |
+| Graphite H264、Main10 SDR/PQ、VP9 软件路径 | 通过，另测 HEVC 4K | 通过；Ganesh 另测 5 种来源含 4K |
+| NativeBuffer / Dawn 导入、metadata、读租约与释放跟踪 | 短跟踪通过；长期跟踪收尾失败不采用 | 短跟踪通过；长期跟踪只有部分尾段 |
+| WebGPU HTMLVideoElement / VideoFrame 外部纹理 | 四种来源通过 | 四种来源通过 |
+| Canvas / WebGL / WebGPU / worker 的 P3、HDR 像素 | 接口、原生截图通过 | 接口、原生截图通过 |
+| 10 分钟固定 PQ1440p60 播放 | 无 GPU / 浏览器重启；4514 / 37848 帧丢失 | 无 GPU / 浏览器重启；228 / 38751 帧丢失 |
+| 全屏、seek、换源、保留 VideoFrame、30 秒后台 | 通过 | 通过；另有真实 HDC 触摸 HDR 全屏保持 15 秒 |
+| 系统亮度下限 1 下 SDR 后台恢复 | 四轮通过 | 四轮通过，HDR 退出后再四轮通过 |
+| 最低亮度 HDR 退出 / SDR 灰阶 | 十轮全屏与后台恢复后截图通过 | 实际触摸 HDR 全屏后截图通过 |
+| TreesInViz 实际活动 | trace 有 update / draw，原设置开启 | 开启后四来源通过，645 次 update / draw；最终恢复关闭 |
+| Graphite GPU 主动崩溃回退 | 同 browser、换 GPU、Ganesh Vulkan、SDR 截图通过 | 同样通过 |
+| YouTube 静音播放与崩溃回归 | Graphite 通过 | GaneshGL / GaneshVulkan / Graphite 均通过 |
+| WebNN float32 Add | 上下文创建成功，但驱动拒绝图，未通过 | 同样未通过；五种形状均被拒绝 |
+
+十分钟观察中 GPU FD 在有限范围内变化；GPU PSS 手机约 351–588 MiB、
+Pad 507–770 MiB，未观察到单调增长。这不是长期无泄漏证明。
+手机电池温度由约 39°C 升至 43°C，达到脚本 44°C 停止线前测试结束。
+用户已允许现阶段 HDR 掉帧；以上通过只针对稳定播放，不是性能验收。
+色彩截图为系统截屏映射结果，不代替屏幕 P3 色度、PQ 曲线或峰值亮度实测。
+YouTube 播放推进不代表该站点分配了 HDR 格式。
+
+WebNN 失败出现在 `OH_NNModel_GetAvailableOperations` 的能力判断阶段，
+不能宣称二十次 dispatch 数值验证通过；该实验保持默认关闭，最终恢复关闭。
+未以 CPU 执行伪装 NPU 成功，也未放宽硬件能力判断。
+
+最低亮度测试的初次错误截图被设置面板遮挡，另有普通包截图被控制中心遮挡；
+这些原始失败记录保留在 out，作为测试工具失效，不作为色彩缺陷结论。
+修正关闭覆盖层后，用独立标识重新执行检查。
+所有原始日志、脚本、逐项 JSON 和安装哈希留在
+`out/pad-validation-20261019/` 与 `out/phone-validation-20261019/`。
