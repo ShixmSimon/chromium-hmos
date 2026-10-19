@@ -356,3 +356,34 @@ navigate，但二十秒时 CDP 仍只有本次 data: 启动令牌页，最终 ph
 这使关键恢复动作随既有重试请求一起送达，无需重新加入诊断探针。
 验收需覆盖故意省略首次 navigate 的恢复、旧内核兼容、窗口/令牌隔离，
 以及正常冷启动和四十秒后台后再次启动的实际后端与持久标记。
+
+## 额外回归发现：Ganesh Vulkan 软件 VP9 的原生 P010 池不受支持
+
+补测 Pad 的 Dawn 外部视频导入时，H.264、HEVC Main10 SDR/PQ 均通过；
+VP9 HDR 在第一帧后 WebGPU device lost，普通视频仍在播放，GPU 进程未崩溃。
+新页面单独复测同样出现，排除了仅连续重建设备的测试顺序问题。
+日志进一步定位到：
+
+```
+Could not find SharedImageBackingFactory
+usage: Gles2Read|RasterRead|DisplayRead|CpuWriteOnly|CpuRead
+format: (Y_UV, 420, 10unorm, ExtSamplerOn), gmb_type: platform
+SharedImageStub: Unable to create shared image
+```
+
+这会断开渲染器 GPU 通道，使 Dawn 实例及设备失效；`Device was destroyed`
+并不代表 GPU 进程崩溃，也不是这轮已证实的 JS 适配器 GC 问题。
+普通视频重建通道后可继续播放，不能据此认定 WebGPU 导入成功。
+初始测试脚本还错误要求 Pad 为 Graphite，已按实际标准 Ganesh Vulkan 修正；
+其失败记录与修正后复现均保留，不把改测试预期当作产品修复。
+
+软件帧池根据 P010 采样能力选了原生 P010 CPU 读写用途，但这组用途没有 backing。
+修复限定在 OHOS 的 Vulkan 高位深软件帧输出选择：保留原始 CPU 高位深平面，
+返回 UNDEFINED 交给上传路径，避免不受支持的可映射 P010 池，也避免 YV12 八位降级。
+Graphite 原有软件帧选择、八位软件路径、GLES 和其他平台保持原有策略。
+解码器直接输出的 HEVC 原生缓冲区仍走既有导入路径，必须另做真机回归确认。
+
+宿主测试取固定 Chromium 源码、实际主补丁和新旧 video 补丁，编译真实
+VideoFrameOutputFormat 方法，确认旧策略在同一能力输入下选择 P010，
+新策略保留十/十二位 Vulkan 软件帧、保留八位 NV12、GLES P010、Graphite 选择
+和其他平台行为。原生编译与实际媒体回归继续走推送触发的 CI。
