@@ -319,3 +319,25 @@ Dawn 的生产视频导入、布局、Tint 修复未改动。
 构建脚本与 workflows 均未改动。Linux 宿主 fork transport 测试 127 项通过，
 包括 RELRO 原始 FD 保留、fstat EACCES、子进程丢失和退出清理；没有本地
 编译 Chromium。清理版本仍需推送触发 CI 后再验证产物和真机。
+
+## 连续启动复核发现：后台首帧使 GPU 失败标记遗留
+
+清理提交等待 CI 时，固定本地页冷启动实测出现 GaneshGL / inProcessGpu=true，
+没有独立 GPU。这轮 1.858s 的 DOM 结果因此被明确判为无效对照，不计入收益。
+进程模式记录仍为 confirmedVulkan=true、starting=false、safeNext=false；
+原生日志明确写出“GPU child failed last run; in process this once”。
+
+追到生产代码：LaunchGpuChild 先写失败保护标记，10 秒后仅检查一次；手机
+尚未成功呈现首帧时直接返回。后台启动等待 40 秒再切回，首次检查时无首帧，
+此后再没有任务清除标记，虽外壳启动确认和后续播放正常，下次仍会强制回退。
+这不是健康启动更快，也不是有效的 EGL 优化样本。
+
+修复：达到十秒稳定期后仍等首帧时，保留保护标记并每秒复核；只有同一代 GPU
+已呈现且未进入禁用 GL / 启动失败状态才清除。代号在新启动写标记之前更新，
+写标记、换代和删除标记由同一锁串行化，防止旧回调删除新尝试的保护记录。
+Pad 不等待手机 broker 的呈现状态，原有行为保留。
+
+新增 Linux 宿主回归直接编译生产 marker/history/settling 代码块，使用手动
+任务队列而非 sleep；覆盖后台四十轮后首帧清理、旧代回调、GL 回退、启动失败
+和 Pad 路径。它不编译 Chromium 或 HarmonyOS 内核。仍需 CI 和连续真机启动
+验收，特别是“后台启动成功 → 再冷启动”必须保持 Graphite 独立 GPU。
