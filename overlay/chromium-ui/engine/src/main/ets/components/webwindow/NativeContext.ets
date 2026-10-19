@@ -203,8 +203,11 @@ export interface ContextMenuMediaFlags {
 }
 
 export interface BrowserRuntimeEvent {
+  startupToken?: string;
+  startupPhase?: 'ready' | 'frame';
+  startupStatus?: 'waiting' | 'ready' | 'presented';
   version: number;
-  event: 'pictureInPictureState' | 'systemPrintReady' | 'systemPrintFailed' | 'shareRequested' |
+  event: 'startupAck' | 'pictureInPictureState' | 'systemPrintReady' | 'systemPrintFailed' | 'shareRequested' |
     'castRequested' | 'filePickerRequested' | 'pwaInstalled' | 'pwaMenuModel' |
     'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
     'permissionsRequested' | 'sitePermissionRequested' |
@@ -480,6 +483,8 @@ export interface DroppedFileRef {
 }
 
 export interface BrowserCommandPayload {
+  startupToken?: string;
+  startupPhase?: 'ready' | 'frame' | 'cancel';
   command: string;
   // Translation v1: use native-issued identities from getTranslationState/start.
   sessionId?: string;

@@ -194,6 +194,7 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_widget_host.h"
+#include "content/public/browser/weak_document_ptr.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -211,6 +212,7 @@
 #include "ui/base/pointer/touch_ui_controller.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/window_open_disposition.h"
+#include "ui/compositor/compositor.h"
 #include "ui/compositor/layer.h"
 #include "ui/display/screen.h"
 #include "ui/gfx/geometry/insets.h"
@@ -3207,6 +3209,163 @@ class TabStateWatcher : public content::WebContentsObserver {
   }
 };
 
+// A startup transaction belongs to one tab strip/window and one shell token.
+// Retries replace only the reply ID; they do not enqueue more renderer work.
+// Document changes invalidate both script and presentation callbacks.
+class StartupHandoff {
+ public:
+  explicit StartupHandoff(TabStripModel* tabs) : tabs_(tabs) {}
+
+  void Invalidate() {
+    weak_factory_.InvalidateWeakPtrs();
+    pending_ = false;
+  }
+
+  void Request(gfx::AcceleratedWidget widget, const base::DictValue& command) {
+    const std::string* token = command.FindString("startupToken");
+    const std::string* phase = command.FindString("startupPhase");
+    if (!token || token->empty() || token->size() > 128 || !phase ||
+        widget == gfx::kNullAcceleratedWidget) {
+      return;
+    }
+    if (*phase == "cancel") {
+      if (*token == token_) {
+        Invalidate();
+        token_.clear();
+        probe_url_ = GURL();
+      }
+      return;
+    }
+    if (*phase != "ready" && *phase != "frame") {
+      return;
+    }
+    if (*token != token_) {
+      if (*phase != "ready") {
+        return;
+      }
+      Invalidate();
+      token_ = *token;
+      probe_url_ = GURL();
+    }
+    widget_ = widget;
+    request_id_ = command.FindInt("requestId").value_or(0);
+    if (request_id_ <= 0) {
+      return;
+    }
+    if (pending_ && phase_ == *phase &&
+        base::TimeTicks::Now() - started_ < base::Seconds(4)) {
+      return;
+    }
+    Invalidate();
+    phase_ = *phase;
+    content::WebContents* contents = tabs_->GetActiveWebContents();
+    if (!contents || contents->GetVisibility() != content::Visibility::VISIBLE ||
+        contents->GetController().GetPendingEntry()) {
+      Reply("waiting");
+      return;
+    }
+    content::RenderFrameHost* frame = contents->GetPrimaryMainFrame();
+    if (!frame || !frame->IsRenderFrameLive()) {
+      Reply("waiting");
+      return;
+    }
+    document_ = frame->GetWeakDocumentPtr();
+    if (phase_ == "frame") {
+      // A successful probe must precede this phase. Never expose the probe
+      // document, including a restored copy of it in another tab.
+      if (probe_url_.is_empty() || frame->GetLastCommittedURL() == probe_url_) {
+        Reply("waiting");
+        return;
+      }
+      pending_ = true;
+      started_ = base::TimeTicks::Now();
+      frame->InsertVisualStateCallback(base::BindOnce(
+          &StartupHandoff::OnSubmitted, weak_factory_.GetWeakPtr()));
+      return;
+    }
+    pending_ = true;
+    started_ = base::TimeTicks::Now();
+    OHOS_STARTUP_MARK("Startup.ReadyReceive", request_id_);
+    frame->ExecuteJavaScriptInIsolatedWorld(
+        u"document.documentElement && "
+        u"document.documentElement.getAttribute('data-lumie-startup') || ''",
+        base::BindOnce(&StartupHandoff::OnReady, weak_factory_.GetWeakPtr()),
+        ISOLATED_WORLD_ID_CHROME_INTERNAL);
+  }
+
+ private:
+  bool Matches() const {
+    auto* browser = FindBrowserForWidget(widget_);
+    auto* frame = document_.AsRenderFrameHostIfValid();
+    auto* contents = tabs_->GetActiveWebContents();
+    return browser && browser->GetTabStripModel() == tabs_ && frame &&
+           contents && contents->GetPrimaryMainFrame() == frame &&
+           contents->GetVisibility() == content::Visibility::VISIBLE &&
+           !contents->GetController().GetPendingEntry();
+  }
+
+  void OnReady(base::Value value) {
+    pending_ = false;
+    if (!Matches() || !value.is_string() || value.GetString() != token_) {
+      Reply("waiting");
+      return;
+    }
+    probe_url_ = document_.AsRenderFrameHostIfValid()->GetLastCommittedURL();
+    OHOS_STARTUP_MARK("Startup.ReadyAck", request_id_);
+    Reply("ready");
+  }
+
+  void OnSubmitted(bool success) {
+    if (!success || !Matches()) {
+      pending_ = false;
+      Reply("waiting");
+      return;
+    }
+    auto* host = aura::WindowTreeHost::GetForAcceleratedWidget(widget_);
+    if (!host || !host->compositor()) {
+      pending_ = false;
+      Reply("waiting");
+      return;
+    }
+    OHOS_STARTUP_MARK("Startup.DocumentSubmitted", request_id_);
+    host->compositor()->RequestSuccessfulPresentationTimeForNextFrame(
+        base::BindOnce(&StartupHandoff::OnPresented, weak_factory_.GetWeakPtr()));
+    // Static/blank/error pages may have no further damage of their own.
+    host->compositor()->ScheduleFullRedraw();
+  }
+
+  void OnPresented(const viz::FrameTimingDetails&) {
+    pending_ = false;
+    if (!Matches()) {
+      Reply("waiting");
+      return;
+    }
+    OHOS_STARTUP_MARK("Startup.WindowPresented", request_id_);
+    Reply("presented");
+  }
+
+  void Reply(std::string_view status) {
+    base::DictValue event;
+    event.Set("event", "startupAck");
+    event.Set("startupToken", token_);
+    event.Set("startupPhase", phase_);
+    event.Set("startupStatus", status);
+    event.Set("requestId", request_id_);
+    DispatchRuntimeEvent(widget_, std::move(event));
+  }
+
+  const raw_ptr<TabStripModel> tabs_;
+  gfx::AcceleratedWidget widget_ = gfx::kNullAcceleratedWidget;
+  std::string token_;
+  std::string phase_;
+  GURL probe_url_;
+  content::WeakDocumentPtr document_;
+  int request_id_ = 0;
+  bool pending_ = false;
+  base::TimeTicks started_;
+  base::WeakPtrFactory<StartupHandoff> weak_factory_{this};
+};
+
 // Watches one window's tab strip, and the active tab in it, for anything the
 // browser state reports.
 class BrowserStateWatcher : public TabStripModelObserver,
@@ -3214,7 +3373,7 @@ class BrowserStateWatcher : public TabStripModelObserver,
                             public zoom::ZoomObserver,
                             public dom_distiller::DistillabilityObserver {
  public:
-  explicit BrowserStateWatcher(TabStripModel* tabs) : tabs_(tabs) {
+  explicit BrowserStateWatcher(TabStripModel* tabs) : tabs_(tabs), startup_(tabs) {
     tabs_->AddObserver(this);
     Follow(tabs_->GetActiveWebContents());
     WatchEveryTab();
@@ -3222,6 +3381,11 @@ class BrowserStateWatcher : public TabStripModelObserver,
   BrowserStateWatcher(const BrowserStateWatcher&) = delete;
   BrowserStateWatcher& operator=(const BrowserStateWatcher&) = delete;
   ~BrowserStateWatcher() override { Follow(nullptr); }
+
+  void RequestStartup(gfx::AcceleratedWidget widget,
+                      const base::DictValue& command) {
+    startup_.Request(widget, command);
+  }
 
   // TabStripModelObserver:
   void OnTabStripModelChanged(TabStripModel* tab_strip_model,
@@ -3246,10 +3410,19 @@ class BrowserStateWatcher : public TabStripModelObserver,
   void LoadProgressChanged(double progress) override {
     RequestBrowserStateUpdate();
   }
+  void DidStartNavigation(content::NavigationHandle* handle) override {
+    if (handle->IsInPrimaryMainFrame()) {
+      startup_.Invalidate();
+    }
+  }
   void DidFinishNavigation(content::NavigationHandle* handle) override {
+    if (handle->IsInPrimaryMainFrame()) {
+      startup_.Invalidate();
+    }
     RequestBrowserStateUpdate();
   }
   void PrimaryPageChanged(content::Page& page) override {
+    startup_.Invalidate();
     RequestBrowserStateUpdate();
   }
   void RenderViewHostChanged(content::RenderViewHost* old_host,
@@ -3273,6 +3446,7 @@ class BrowserStateWatcher : public TabStripModelObserver,
     RequestBrowserStateUpdate();
   }
   void WebContentsDestroyed() override {
+    startup_.Invalidate();
     // Not through Follow(): the distiller's driver may already be gone, and
     // asking to remove an observer from it would make a new one.
     if (zoom_) {
@@ -3302,6 +3476,7 @@ class BrowserStateWatcher : public TabStripModelObserver,
     if (contents == web_contents()) {
       return;
     }
+    startup_.Invalidate();
     if (content::WebContents* previous = web_contents()) {
       if (zoom_) {
         zoom_->RemoveObserver(this);
@@ -3340,6 +3515,7 @@ class BrowserStateWatcher : public TabStripModelObserver,
   }
 
   const raw_ptr<TabStripModel> tabs_;
+  StartupHandoff startup_;
   raw_ptr<zoom::ZoomController> zoom_ = nullptr;
   std::map<content::WebContents*, std::unique_ptr<TabStateWatcher>>
       tab_watchers_;
@@ -4207,6 +4383,13 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
 
   BrowserWindowInterface* browser = FindBrowserForWidget(widget);
   TabStripModel* tabs = browser ? browser->GetTabStripModel() : nullptr;
+  if (*name == "startupProbe") {
+    if (tabs && widget != gfx::kNullAcceleratedWidget) {
+      WatchBrowserState(tabs);
+      GetBrowserStateWatchers().at(tabs)->RequestStartup(widget, command);
+    }
+    return;
+  }
   if (*name == "pictureInPictureAction") {
     const double target = command.FindDouble("pipWidget").value_or(0);
     const std::string* action = command.FindString("pipAction");
@@ -5422,6 +5605,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "findInPage",
       "stopFind",
       "getPageText",
+      "startupProbe",
       "contextMenuAction",
       "contextMenuDismissed",
   };

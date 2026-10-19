@@ -410,6 +410,7 @@ Chromium 自己的安装确认框,用户确认后才装。
 | `pwaInstalled`、`pwaMenuModel`、`pwaMenuClosed` | 否 | PWA 相关,需要时参考 `entry/` 的实现。 |
 | `systemPrintFailed`、`inputRecovered` | 否 | 记日志即可。 |
 | `findResult` | 否 | `matches` 匹配总数，`activeMatch` 当前是第几个（从 1 开始，0 表示没有），`finalUpdate` 为 true 时计数已定 |
+| `startupAck` | 否 | 启动专用应答：`startupToken`、`requestId`、`startupPhase`（`ready` / `frame`）、`startupStatus`（`waiting` / `ready` / `presented`）。只回请求对应的窗口，不能用于通用页面内容读取 |
 | `pageText` | 否 | 回复 `getPageText`：`requestId`、`text` |
 | `contextMenuRequested` | **是**(手机) | 长按网页元素。引擎这时不弹自己的菜单，由外壳画，见下文"长按菜单"。**每次都要回一条命令**：选了某项发 `contextMenuAction`，没选就关掉发 `contextMenuDismissed`。 |
 | `browserControlsRatio` | 否 | 用了 `setBrowserControls` 才会有。`ratio` 为顶栏当前露出的比例（1 全部显示，0 完全滑走），外壳把顶栏往上移 `(1 - ratio) × 顶栏高度`；传了 `bottom` 时，底栏按归一化的比例 `n = (ratio - minTop/top) / (1 - minTop/top)`（`minTop` 为 0 时 `n = ratio`）往下移 `(1 - n) × bottom`：两栏同时开始、同时收完，底栏完全收起。传了 `minTop` 时，比例的下限是 `minTop / top`（顶栏收起到 `minTop` 就不会再往上滑了）。 |
@@ -493,6 +494,7 @@ function report() {
 | `setBrowserControlsState` | `state`: `'shown' \| 'hidden' \| 'both'`, `animate?` | 主动把顶栏收起或展开，而不是等网页滚动触发。`'shown'` 强制展开、`'hidden'` 强制收起（收到 `minTop`）、`'both'`（默认）交还给滚动控制。`animate` 默认 true |
 | `findInPage` | `text`, `forward?` | 在当前标签页查找，同一段文字再发一次即跳到下一个（`forward: false` 为上一个）。结果通过 `findResult` 事件返回 |
 | `stopFind` | | 结束查找，清除高亮 |
+| `startupProbe` | `startupToken`、`requestId`、`startupPhase` | `ready` 在 renderer 独立世界核对离线探针的 `data-lumie-startup` 属性；`frame` 必须在 ready 后、恢复页导航及标签选择完成后请求，等待当前文档 VisualState 提交和窗口成功 presentation 反馈；`cancel` 取消该 token。外壳应短超时重试，按 token/phase/requestId 匹配，后台不确认；原生去重在途工作，标签/导航变化会使旧回调失效 |
 | `getPageText` | `requestId` | 读取当前网页的可见文字（最多 20000 字），在独立的脚本环境里执行，网页自己的脚本看不到。结果通过 `pageText` 事件返回 |
 | `contextMenuAction` | `requestId`, `action` | 回复 `contextMenuRequested`：执行选中的项。`action` 必须是事件 `supportedActions` 里的一项 |
 | `contextMenuDismissed` | `requestId` | 回复 `contextMenuRequested`：用户没选任何项就关掉了菜单 |
