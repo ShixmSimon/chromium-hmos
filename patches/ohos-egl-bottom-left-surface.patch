@@ -1,29 +1,25 @@
-Keep the EGL window surface bottom-left on OHOS.
+Keep OHOS EGL orientation and negotiate native window color spaces.
 
-ANGLE's Vulkan backend reports EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE as
-the optimal orientation, so NativeViewGLSurfaceEGL created a top-left
-surface. Drawing to it was right, but copies out of it were upside down:
-backdrop-filter and the touch selection magnifier, which read their
-backdrop from the framebuffer, showed the page mirrored about the middle
-of the screen (the magnifier showed the blank area at the bottom as an
-opaque capsule). On OHOS the surface keeps the usual bottom-left origin and
-ANGLE flips it when presenting.
-
-It also carries the OHOS copy of Android's PowerVR ASTC rule (id 971 in
-gpu/config/gpu_driver_bug_list.json) up to Chromium 154.0.8037.97, which
-renamed reset_base_level_for_astc_sub_image to reset_base_level_for_astc_image;
-the old name failed gpu/config/process_json.py. The main patch, which adds
-the rule, has the new version for fresh trees.
-
-Generated against Chromium 154.0.8037.51 with chromium-154-harmonyos.patch
-applied. Apply with:
-  git apply ohos-egl-bottom-left-surface.patch
+The EGL color-space hook preserves the upstream default on other platforms.
+OHOS validates and allocates P3/PQ surfaces before publishing their capability;
+the GL output device wraps the actual default framebuffer during bootstrap.
 
 diff --git a/ui/gl/gl_surface_egl.cc b/ui/gl/gl_surface_egl.cc
-index 6f03a4e..e32a267 100644
+index 6f03a4e..620147d 100644
 --- a/ui/gl/gl_surface_egl.cc
 +++ b/ui/gl/gl_surface_egl.cc
-@@ -388,6 +388,12 @@ bool NativeViewGLSurfaceEGL::Initialize(GLSurfaceFormat format) {
+@@ -349,6 +349,10 @@ EGLConfig NativeViewGLSurfaceEGL::GetConfig() {
+ }
+ #endif  // BUILDFLAG(IS_ANDROID)
+ 
++EGLint NativeViewGLSurfaceEGL::GetEGLColorSpace() const {
++  return EGL_GL_COLORSPACE_LINEAR_KHR;
++}
++
+ bool NativeViewGLSurfaceEGL::Initialize(GLSurfaceFormat format) {
+   DCHECK(!surface_);
+   format_ = format;
+@@ -388,6 +392,12 @@ bool NativeViewGLSurfaceEGL::Initialize(GLSurfaceFormat format) {
      egl_window_attributes.push_back(EGL_TRUE);
    }
  
@@ -36,7 +32,7 @@ index 6f03a4e..e32a267 100644
    if (display_->ext->b_EGL_ANGLE_surface_orientation) {
      EGLint attrib;
      eglGetConfigAttrib(display_->GetDisplay(), GetConfig(),
-@@ -396,6 +402,7 @@ bool NativeViewGLSurfaceEGL::Initialize(GLSurfaceFormat format) {
+@@ -396,6 +406,7 @@ bool NativeViewGLSurfaceEGL::Initialize(GLSurfaceFormat format) {
                            ? gfx::SurfaceOrigin::kTopLeft
                            : gfx::SurfaceOrigin::kBottomLeft;
    }
@@ -44,6 +40,96 @@ index 6f03a4e..e32a267 100644
  
    if (surface_origin_ == gfx::SurfaceOrigin::kTopLeft) {
      egl_window_attributes.push_back(EGL_SURFACE_ORIENTATION_ANGLE);
+@@ -412,7 +423,7 @@ bool NativeViewGLSurfaceEGL::Initialize(GLSurfaceFormat format) {
+ #endif
+   ) {
+     egl_window_attributes.push_back(EGL_GL_COLORSPACE_KHR);
+-    egl_window_attributes.push_back(EGL_GL_COLORSPACE_LINEAR_KHR);
++    egl_window_attributes.push_back(GetEGLColorSpace());
+   }
+ 
+   egl_window_attributes.push_back(EGL_NONE);
+diff --git a/ui/gl/gl_surface_egl.h b/ui/gl/gl_surface_egl.h
+index 6b32843..3d44e36 100644
+--- a/ui/gl/gl_surface_egl.h
++++ b/ui/gl/gl_surface_egl.h
+@@ -123,6 +123,10 @@ class GL_EXPORT NativeViewGLSurfaceEGL : public GLSurfaceEGL,
+   void SetPresentationTimestamp(base::TimeTicks presentation_time);
+ #endif
+ 
++  // Color space used when creating (or recreating) the native EGL window.
++  // The default preserves sRGB values without enabling framebuffer sRGB.
++  virtual EGLint GetEGLColorSpace() const;
++
+   // Takes care of the platform dependant bits, of any, for creating the window.
+   virtual bool InitializeNativeWindow();
+ 
+diff --git a/components/viz/service/display_embedder/skia_output_device_gl.cc b/components/viz/service/display_embedder/skia_output_device_gl.cc
+index a459db4..17ffae1 100644
+--- a/components/viz/service/display_embedder/skia_output_device_gl.cc
++++ b/components/viz/service/display_embedder/skia_output_device_gl.cc
+@@ -30,6 +30,9 @@
+ #include "ui/gl/gl_features.h"
+ #include "ui/gl/gl_implementation.h"
+ #include "ui/gl/gl_surface.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
++#endif
+ 
+ namespace viz {
+ 
+@@ -158,6 +161,20 @@ SkiaOutputDeviceGL::SkiaOutputDeviceGL(
+       color_type = kRGBA_8888_SkColorType;
+     }
+   }
++#if BUILDFLAG(IS_OHOS)
++  // Capability publication may reach the browser after the first frame was
++  // scheduled. Always wrap the actual default framebuffer format, including
++  // that initial SDR frame on a successfully negotiated ten-bit EGL config.
++  int red_bits = 0;
++  glGetIntegerv(GL_RED_BITS, &red_bits);
++  if (red_bits == 10 && alpha_bits == 2)
++    color_type = kRGBA_1010102_SkColorType;
++  capabilities_.ohos_output_color_spaces =
++      ui::GetOhosEglOutputColorSpaces(gl_surface_.get());
++  capabilities_.ohos_dynamic_output_luminance =
++      capabilities_.ohos_output_color_spaces.has_value() &&
++      ui::OhosDynamicOutputLuminance();
++#endif
+   // SRGB
+   capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBA_8888] = color_type;
+   capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBX_8888] = color_type;
+@@ -195,7 +212,7 @@ bool SkiaOutputDeviceGL::Reshape(const ReshapeParams& params) {
+ #endif  // !BUILDFLAG(IS_CHROMEOS)
+ 
+   const gfx::Size size = params.GfxSize();
+-  const SkColorType color_type = params.image_info.colorType();
++  SkColorType color_type = params.image_info.colorType();
+   const bool has_alpha = !params.image_info.isOpaque();
+ 
+   if (!gl_surface_->Resize(size, params.device_scale_factor, params.color_space,
+@@ -205,6 +222,21 @@ bool SkiaOutputDeviceGL::Reshape(const ReshapeParams& params) {
+     base::debug::Alias(nullptr);
+     return false;
+   }
++#if BUILDFLAG(IS_OHOS)
++  // A queued SDR8 reshape must not describe a ten-bit default framebuffer
++  // as RGBA8 while the browser handles the new display capability event.
++  if (!gl_surface_->GetBackingFramebufferObject()) {
++    // Copy-output may leave an offscreen FBO bound. Its GL_RED_BITS does not
++    // describe framebuffer zero; use the live native EGL window contract.
++    const auto native_spaces =
++        ui::GetOhosEglOutputColorSpaces(gl_surface_.get());
++    if (native_spaces &&
++        native_spaces->GetOutputFormat(gfx::ContentColorUsage::kSRGB, false) ==
++            SinglePlaneFormat::kRGBA_1010102) {
++      color_type = kRGBA_1010102_SkColorType;
++    }
++  }
++#endif
+   SkSurfaceProps surface_props;
+ 
+   GrGLFramebufferInfo framebuffer_info = {0};
 diff --git a/gpu/config/gpu_driver_bug_list.json b/gpu/config/gpu_driver_bug_list.json
 --- a/gpu/config/gpu_driver_bug_list.json
 +++ b/gpu/config/gpu_driver_bug_list.json

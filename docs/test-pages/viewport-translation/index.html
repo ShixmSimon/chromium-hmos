@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Viewport bilingual translation — synthetic fixture</title>
+<style>html{color-scheme:light dark}body{font:18px/1.7 system-ui;max-width:48rem;margin:auto;padding:1rem}article>p{min-height:8rem}button{font:inherit}code,pre{white-space:pre-wrap}</style>
+<h1>Viewport translation synthetic test</h1>
+<p>All text on this page is synthetic. Use the shell test provider to return a deterministic prefix. This page cannot call the native translation API.</p>
+<div translate="no"><button onclick="document.querySelector('#dynamic').textContent='Changed source revision '+Date.now()">Change source</button> <button onclick="document.querySelector('#article').append(Object.assign(document.createElement('p'),{textContent:'Newly added final paragraph.'}))">Append paragraph</button> <button onclick="scrollTo(0,document.body.scrollHeight)">Jump to tail</button></div>
+<p id="dynamic">Dynamic source paragraph. Delay a batch, change this text, then apply the old result. It must be rejected.</p>
+<p>Original <a href="#tail">link remains clickable</a> and <strong>emphasis remains intact</strong>.</p>
+<div translate="no">EXCLUDED_TRANSLATE_NO</div><pre>EXCLUDED_CODE</pre><p contenteditable="true">EXCLUDED_EDITABLE</p>
+<form><input value="EXCLUDED_FORM_VALUE"><p>EXCLUDED_FORM_TEXT</p></form><p hidden>EXCLUDED_HIDDEN</p>
+<article id="article"></article><p id="tail">TAIL_MARKER: this text must not be requested on first screen.</p>
+<script>for(let i=0;i<100;i++){const p=document.createElement('p');p.textContent=`Paragraph ${i}. Synthetic article text for viewport scheduling, result reuse, scroll stability and bilingual style validation.`;document.querySelector('#article').append(p);}</script>
+</html>

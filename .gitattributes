@@ -14,3 +14,6 @@
 # NUL, so git's own binary sniffing misses it and a CRLF checkout on Windows
 # shifts every offset in its xref table.
 /docs/test-pages/*.pdf binary
+
+# Preserve upstream rule snapshots byte-for-byte for recorded hashes.
+/overlay/third_party/adblock_rust/lists/*.txt -whitespace

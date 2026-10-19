@@ -10,12 +10,14 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <cmath>
 #include <limits>
 #include <utility>
 
 #include "base/base_paths.h"
 #include "base/command_line.h"
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/files/memory_mapped_file.h"
 #include "base/functional/callback.h"
 #include "base/i18n/icu_util.h"
@@ -27,8 +29,9 @@
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
-#include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
+#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
 
 extern "C" int ChromeMain(int argc, const char** argv);
 
@@ -263,7 +266,10 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
 
   std::lock_guard<std::mutex> lock(mutex_);
   if (started_) {
-    if (startup_config_.experimental_phone_fork !=
+    if (startup_config_.vulkan_output_mode != config.vulkan_output_mode ||
+        startup_config_.vulkan_hdr_white_nits != config.vulkan_hdr_white_nits ||
+        startup_config_.vulkan_hdr_peak_nits != config.vulkan_hdr_peak_nits ||
+        startup_config_.experimental_phone_fork !=
             config.experimental_phone_fork ||
         (config.experimental_phone_fork &&
          startup_config_.gpu_process != config.gpu_process)) {
@@ -273,6 +279,11 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
     return true;
   }
 
+  // Only reset the color failure latch on a genuinely new browser session.
+  if (!config.user_data_dir.empty()) {
+    unlink((config.user_data_dir + "/GpuOutputColorFailed").c_str());
+    unlink((config.user_data_dir + "/GpuGraphiteFailed").c_str());
+  }
   startup_config_ = config;
   ApplySystemTimeZone();
   // ANGLE reaches the system EGL and GLES through the HarmonyOS wrapper's
@@ -304,6 +315,15 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
                  "already initialized; startup refused");
       return false;
     }
+    const base::FilePath trace_directory(config.user_data_dir);
+    const bool fd_trace =
+        !trace_directory.empty() && base::CreateDirectory(trace_directory) &&
+        base::internal::ConfigureOhosForkFdTrace(
+            trace_directory.AppendASCII("PhoneForkFdTrace.log").value());
+    AURA_LOG_I(
+        "AuraShell phone FD trace enabled=%{public}d file=PhoneForkFdTrace.log "
+        "in user-data-dir",
+        fd_trace);
     if (config.gpu_process == "separate") {
       const bool prepared = ui::phone_gpu::PrepareSharedBufferAllocator();
       AURA_LOG_I("AuraShell phone GPU shared-buffer allocator prepared=%{public}d", prepared);
@@ -604,15 +624,64 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
   // in a process of its own, so that is the only place it is asked for. If
   // Vulkan cannot be brought up there, Chromium falls back to GL by itself;
   // the GPU process says which step failed (ohos_gpu_child_channel.cc).
-  if (config.skia_backend == "vulkan") {
+  const bool graphite = config.skia_backend == "graphite";
+  if (config.skia_backend == "vulkan" || graphite) {
     if (gpu_in_own_process) {
       arguments.push_back("--use-vulkan=native");
       AppendToListSwitch(&arguments, "enable-features", "Vulkan");
+      if (graphite) {
+        arguments.push_back("--enable-skia-graphite");
+        arguments.push_back("--skia-graphite-dawn-backend=vulkan");
+        AURA_LOG_I("AuraShell experimental Graphite Vulkan; Ganesh fallback");
+      } else {
+        arguments.push_back("--disable-skia-graphite");
+      }
       AURA_LOG_I("AuraShell Skia on Vulkan by config");
     } else {
       AURA_LOG_E(
           "AuraShell ignored skiaBackend vulkan: the GPU is not in a "
           "separate GPU process");
+    }
+  }
+
+  // Native EGL WSI needs the same user output mode and trusted luminance
+  // snapshot as Skia Vulkan. This does not change the phone fork's GL route.
+  if (((config.skia_backend == "vulkan" || graphite) && gpu_in_own_process) ||
+      (!config.headless && config.angle_backend == "vulkan" &&
+       !(config.experimental_phone_fork && config.gpu_process == "separate"))) {
+    if (config.vulkan_output_mode == "sdr10" ||
+        config.vulkan_output_mode == "hdr10" ||
+        config.vulkan_output_mode == "auto") {
+      arguments.push_back("--ohos-vulkan-output=" +
+                          config.vulkan_output_mode);
+      auto brightness = ui::GetOhosDisplayBrightness();
+      auto color = brightness ? ui::OhosContentOutputColor(*brightness)
+                              : ui::OhosOutputColor{};
+      const bool fixed = config.vulkan_hdr_white_nits != 0 ||
+                         config.vulkan_hdr_peak_nits != 0;
+      if (fixed) {
+        auto override = ui::MakeOhosDisplayBrightness(
+            0, config.vulkan_hdr_white_nits,
+            config.vulkan_hdr_peak_nits / config.vulkan_hdr_white_nits,
+            config.vulkan_hdr_peak_nits / config.vulkan_hdr_white_nits);
+        color = override ? override->hdr : ui::OhosOutputColor{};
+        arguments.push_back("--ohos-hdr-fixed-luminance");
+      }
+      if (color.mode == ui::OhosOutputMode::kHdr10) {
+        arguments.push_back("--ohos-hdr-white-millinits=" +
+                            std::to_string(color.white_millinits));
+        arguments.push_back("--ohos-hdr-peak-millinits=" +
+                            std::to_string(color.peak_millinits));
+      }
+      // This snapshot predates ForwardChromiumLogToHilog. Use the native
+      // startup logger so a successful initial query is not invisible.
+      AURA_LOG_I(
+          "OHOS HDR startup: requested=%{public}s "
+          "system_brightness=%{public}d "
+          "fixed=%{public}d white_millinits=%{public}u "
+          "peak_millinits=%{public}u",
+          config.vulkan_output_mode.c_str(), brightness.has_value(), fixed,
+          color.white_millinits, color.peak_millinits);
     }
   }
 

@@ -1,0 +1,3463 @@
+{
+  "startedUTC": "2026-10-17T23:13:30.434137+00:00",
+  "installedNativeSource": "573379da",
+  "nativeCandidate": "573379da76cc5a41b2b7a5e7d86e876aedd7cdb1",
+  "nativeCI": 39083095284,
+  "adapterCI": 39083095448,
+  "nativeCandidateStatus": "573379da CIbuiltandinstalled. FD6→3perlivepixmapmeasured;2000heldgreen/distinct/backgroundcanvasesPASS.2foregroundCanvascopyrounds1120PASS240SKIPeach;Canvasoutput438PASS52SKIP;Worker3PASS;functional15stepsPASS.GPUindependentGaneshVulkan,crashcount0,phoneSILENTandAWAKE.",
+  "ciCodeModified": false,
+  "localNativeCompile": false,
+  "officialCtsCorrection": {
+    "base": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+    "officialSource": "https://chromium.googlesource.com/external/github.com/gpuweb/cts/+/cc11994e92512d0a3715e9d28876ec48accb971a/src/webgpu/web_platform/canvas/configure.spec.ts",
+    "change": "Onlyofficialconfiguretestcorrection, importedhasFeature; no othermodule changes",
+    "sourceSha256": "0f2a384b1172312d578113b85d1fb7b2adf553c16be95d5c972b1faa5b513d2f",
+    "compiledSha256": "c5402cd30316a517f634d62200e8d993e2cf95a328a5d59086fbed286c0ff46b",
+    "nativeEngineChanged": false,
+    "ciCodeChanged": false
+  },
+  "largeDrawOriginal": {
+    "query": "webgpu:api,operation,rendering,basic:large_draw:*",
+    "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d",
+    "start": 1792277983259,
+    "context": {
+      "url": "http://127.0.0.1:18080/",
+      "secure": true,
+      "webgpu": true
+    },
+    "done": true,
+    "counts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0,
+      "warn": 0
+    },
+    "completed": 4,
+    "current": "webgpu:api,operation,rendering,basic:large_draw:indexed=false;indirect=false",
+    "stop": false,
+    "caseStart": 1792277989535,
+    "end": 1792277991305,
+    "pass": true
+  },
+  "officialGroups": {
+    "canvas": {
+      "state": {
+        "query": "webgpu:web_platform,canvas,*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792278302642,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 438,
+          "fail": 0,
+          "skip": 52,
+          "warn": 0
+        },
+        "completed": 490,
+        "current": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:transferToImageBitmap_huge_size:",
+        "stop": false,
+        "caseStart": 1792278312295,
+        "end": 1792278312297,
+        "pass": true
+      },
+      "hostPass": true,
+      "processesStable": true,
+      "record": "out/phone-validation-20261016/phone15a-cts-canvas-corrected-fresh-host.json",
+      "skipReasons": {
+        "SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'r16snorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'rg16snorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'rgba16snorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'bc1-rgba-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc1-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc2-rgba-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc2-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc3-rgba-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc3-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc4-r-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc4-r-snorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc5-rg-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc5-rg-snorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc6h-rgb-ufloat' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc6h-rgb-float' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc7-rgba-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc7-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 2,
+        "(in subcase: viewFormat=\"r16unorm\") SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 6,
+        "(in subcase: viewFormat=\"bc1-rgba-unorm\") SKIP: texture format 'bc1-rgba-unorm' requires feature: 'texture-compression-bc'": 6
+      }
+    },
+    "occlusion": {
+      "state": {
+        "query": "webgpu:api,operation,command_buffer,queries,occlusionQuery:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792278564532,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 244,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 244,
+        "current": "webgpu:api,operation,command_buffer,queries,occlusionQuery:occlusion_query,multi_resolve:",
+        "stop": false,
+        "caseStart": 1792278569222,
+        "end": 1792278569238,
+        "pass": true
+      },
+      "hostPass": true,
+      "processesStable": true,
+      "record": "out/phone-validation-20261016/phone15a-cts-occlusion-adjacent-host.json"
+    },
+    "renderBundle": {
+      "state": {
+        "query": "webgpu:api,operation,command_buffer,render,render_bundle:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792278714125,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 4,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 4,
+        "current": "webgpu:api,operation,command_buffer,render,render_bundle:one_bundle_used_multiple_times_same_executeBundles:",
+        "stop": false,
+        "caseStart": 1792278714921,
+        "end": 1792278714934,
+        "pass": true
+      },
+      "hostPass": true,
+      "processesStable": true,
+      "record": "out/phone-validation-20261016/phone15a-cts-render-bundle-host.json"
+    }
+  },
+  "realCanvasCleanupBug": {
+    "baselineSource": "15a51962",
+    "cases": 16,
+    "failed": 8,
+    "gpuStable": true,
+    "record": "out/phone-validation-20261016/phone15a-baseline-negative-canvas-error-cleanup.json",
+    "cause": "OHOS storage presentation workaround creates a regular error texture for invalid descriptors and its destroy callback blits it, producing an additional validation error after the original error is handled.",
+    "fix": "Retain Dawn descriptor validation and configuration metadata, skip presentation provider allocation for known invalid usage, disabled BGRAstorage or incompatible view formats.",
+    "status": "16/16 phonecasesPASS; noextradestroyerrors, recoverygreenpixelsverified; GPUstable",
+    "fixedSource": "97abe6d7",
+    "fixedRecord": "out/phone-validation-20261016/phone97a-fixed-negative-canvas-error-cleanup.json",
+    "fixedPass": true
+  },
+  "invalidOrSupersededCtsRuns": [
+    {
+      "record": "out/phone-validation-20261016/phone15a-cts-canvas-all-host.json",
+      "classification": "PinnedCTS knownbgra storage expectation error; originalretained."
+    },
+    {
+      "record": "out/phone-validation-20261016/phone15a-cts-canvas-corrected-host.json",
+      "classification": "Stale cachedoriginalmodule actuallyran; revisionproof stillc354; invalidasofficialcorrectedrun."
+    }
+  ],
+  "officialGroupsNativeSource": "15a51962",
+  "nativeArtifact": {
+    "source": "97abe6d758da345fbcc74e62a5bc27b1f49b8c8b",
+    "nativeCI": 39077859952,
+    "adapterCI": 39077859956,
+    "harSha256": "d5d3d1ff956c318943a9c0e53da28fc5611c1cd2a4229edaf25ac74bea54c974",
+    "engineSha256": "a51b30f71055e3c1b3d4e33288d21dfdb530242eec333896a58ec47e897fac7e",
+    "buildId": "39928332013ce7e9f1780a1c52d823314b6ac98b",
+    "dawnTableEntries": 184,
+    "tableAndBuildIdsMatch": true,
+    "package": {
+      "native_source": "97abe6d7",
+      "native_ci": "39077859952",
+      "engine_sha256": "a51b30f71055e3c1b3d4e33288d21dfdb530242eec333896a58ec47e897fac7e",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/phone-validation-20261016/phone97a-default.hap",
+      "hap_sha256": "e93f04a074993f9b6350eaf39bff2adc5eefb547518b3b2953c363d69669265e",
+      "existing_phone_signing": true,
+      "native_compile": false
+    }
+  },
+  "cpuComparison": {
+    "source": "15a51962",
+    "report": "out/phone-validation-20261016/phone15a-native-dual-proc-aba-cpu-aba.json",
+    "cpuClockTicks": 100,
+    "pass": true,
+    "phases": [
+      {
+        "name": "A1-native-only",
+        "appCpuOneCorePercent": 83.61344537815125,
+        "byType": {
+          "browser": 30.413703943115706,
+          "renderer": 16.61279896574014,
+          "GPU": 36.58694246929541
+        },
+        "wallSeconds": 30.94,
+        "videoProgress": 30.889215999999998,
+        "totalFrames": 1853,
+        "droppedFrames": 42,
+        "temperatureStart": {
+          "Battery": 34,
+          "ambient": 24.472,
+          "charger": 43.312,
+          "modem": 0,
+          "pa_s": 40.352,
+          "rfboard": 31.1,
+          "shell_back": 39.086,
+          "shell_frame": 38.086,
+          "shell_front": 38.081,
+          "soc_thermal": 60,
+          "system_h": 43.375
+        },
+        "temperatureEnd": {
+          "Battery": 35,
+          "ambient": 23.964,
+          "charger": 44.5,
+          "modem": 0,
+          "pa_s": 42.176,
+          "rfboard": 31.35,
+          "shell_back": 41.592,
+          "shell_frame": 40.592,
+          "shell_front": 31.953,
+          "soc_thermal": 60,
+          "system_h": 44.875
+        }
+      },
+      {
+        "name": "B-native-plus-webgpu",
+        "appCpuOneCorePercent": 122.75545795116909,
+        "byType": {
+          "browser": 29.711923524092494,
+          "renderer": 33.167549412220644,
+          "GPU": 59.87598501485596
+        },
+        "wallSeconds": 30.964,
+        "videoProgress": 30.794168,
+        "totalFrames": 1847,
+        "droppedFrames": 44,
+        "temperatureStart": {
+          "Battery": 35,
+          "ambient": 24.018,
+          "charger": 47.285,
+          "modem": 0,
+          "pa_s": 42.47,
+          "rfboard": 31.45,
+          "shell_back": 41.187,
+          "shell_frame": 40.187,
+          "shell_front": 31.296,
+          "soc_thermal": 60,
+          "system_h": 46.933
+        },
+        "temperatureEnd": {
+          "Battery": 36,
+          "ambient": 24.09,
+          "charger": 51.769,
+          "modem": 0,
+          "pa_s": 45.125,
+          "rfboard": 31.75,
+          "shell_back": 44.579,
+          "shell_frame": 43.579,
+          "shell_front": 28.97,
+          "soc_thermal": 60,
+          "system_h": 50.785
+        }
+      },
+      {
+        "name": "A2-native-only",
+        "appCpuOneCorePercent": 59.76403842434402,
+        "byType": {
+          "browser": 22.210044484559347,
+          "renderer": 11.121139836245247,
+          "GPU": 26.432854103539423
+        },
+        "wallSeconds": 31.022,
+        "videoProgress": 30.782546999999994,
+        "totalFrames": 1846,
+        "droppedFrames": 17,
+        "temperatureStart": {
+          "Battery": 36,
+          "ambient": 24.099,
+          "charger": 48.333,
+          "modem": 0,
+          "pa_s": 44.937,
+          "rfboard": 31.8,
+          "shell_back": 43.862,
+          "shell_frame": 42.862,
+          "shell_front": 27.866,
+          "soc_thermal": 60,
+          "system_h": 48.466
+        },
+        "temperatureEnd": {
+          "Battery": 36,
+          "ambient": 24.175,
+          "charger": 48.2,
+          "modem": 0,
+          "pa_s": 45.562,
+          "rfboard": 32.1,
+          "shell_back": 43.268,
+          "shell_frame": 42.268,
+          "shell_front": 31.439,
+          "soc_thermal": 60,
+          "system_h": 48.866
+        }
+      }
+    ],
+    "scope": "Sequential exploratoryA/B/A on one continuousPQ1440p60 source,30sperphase; appCPU only (not externaldecoder/compositor or totalGPU/power). Temperature carryover/charging are recorded, not controlled; no causal thermal or electrical-power claim.",
+    "earlierCdpOnlyMeasurement": "out/phone-validation-20261016/phone15a-native-dual-aba-cpu-aba.json childGPU/rendererCPUsreported0; not validforwholeappCPU; retainedasdiagnostic."
+  },
+  "postFixGroupsNativeSource": "97abe6d7",
+  "postFixGroups": {
+    "canvas": {
+      "state": {
+        "query": "webgpu:web_platform,canvas,*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792279218141,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 438,
+          "fail": 0,
+          "skip": 52,
+          "warn": 0
+        },
+        "completed": 490,
+        "current": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:transferToImageBitmap_huge_size:",
+        "stop": false,
+        "caseStart": 1792279227107,
+        "end": 1792279227111,
+        "pass": true
+      },
+      "hostPass": true,
+      "processesStable": true,
+      "record": "out/phone-validation-20261016/phone97a-cts-canvas-all-host.json"
+    },
+    "textureDestroy": {
+      "state": {
+        "query": "webgpu:api,validation,texture,destroy:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792279244024,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 30,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 30,
+        "current": "webgpu:api,validation,texture,destroy:submit_a_destroyed_texture_as_attachment:depthStencilTextureAspect=\"stencil-only\";colorTextureState=\"destroyedAfterEncode\";depthStencilTextureState=\"destroyedAfterEncode\"",
+        "stop": false,
+        "caseStart": 1792279244800,
+        "end": 1792279244803,
+        "pass": true
+      },
+      "hostPass": true,
+      "processesStable": true,
+      "record": "out/phone-validation-20261016/phone97a-cts-texture-destroy-host.json"
+    },
+    "largeDraw": {
+      "state": {
+        "query": "webgpu:api,operation,rendering,basic:large_draw:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792279395772,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 4,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 4,
+        "current": "webgpu:api,operation,rendering,basic:large_draw:indexed=false;indirect=false",
+        "stop": false,
+        "caseStart": 1792279402177,
+        "end": 1792279404048,
+        "pass": true
+      },
+      "hostPass": true,
+      "processesStable": true,
+      "record": "out/phone-validation-20261016/phone97a-cts-large-original-host.json"
+    }
+  },
+  "normalRegression": {
+    "source": "97abe6d7",
+    "transport3Pass": true,
+    "nativeColor3Pass": true,
+    "webgpu5Pass": true,
+    "worker2Pass": true,
+    "fullscreen": {
+      "pass": true,
+      "touchReceiverVerified": true,
+      "holdSeconds": 11.463,
+      "nativePresentationSuccess": false,
+      "processesStable": true,
+      "earlyScreenshot": "/data/dev/chromium-hmos-sdr-web/out/phone-validation-20261016/phone97a-fullscreen-fullscreen-early.jpeg",
+      "visualInspection": "Visible native full-screen colorbar material and controls; screenshot inspected, noblankcanvas. Notpanelphotometry."
+    },
+    "background": {
+      "label": "phone97a-background",
+      "browserPid": 11095,
+      "lifecyclePass": true,
+      "nativeTransitions": 2,
+      "windows": [
+        {
+          "start": 226851293440,
+          "end": 226882202124,
+          "durationSeconds": 30.908684,
+          "interiorSubmissions": 0
+        }
+      ],
+      "submissions": 773,
+      "backgroundFlagSubmissions": 0,
+      "nativeImports": 753,
+      "externalTextures": 754,
+      "zeroCopyExternalTextures": 754,
+      "errors": [],
+      "scope": "Native same-process trace timestamps; ignores1ms at transition boundaries to avoid atomic-store/trace ordering ambiguity. No host epoch conversion or CDP calls required while hidden.",
+      "pass": true
+    },
+    "queueProbes": [
+      {
+        "cycle": 1,
+        "elapsed": 1,
+        "destroy": false,
+        "time": 668.660466,
+        "rendered": 1109
+      }
+    ],
+    "sdrBackground4Pass": true,
+    "sdrMaxErrors": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "lastUpdatedUTC": "2026-10-17T23:28:53.993544+00:00",
+  "additionalWebPlatform": {
+    "phone97a-cts-canvas-all": {
+      "query": "webgpu:web_platform,canvas,*",
+      "record": "out/phone-validation-20261016/phone97a-cts-canvas-all-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,canvas,*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792279218141,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 438,
+          "fail": 0,
+          "skip": 52,
+          "warn": 0
+        },
+        "completed": 490,
+        "current": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:transferToImageBitmap_huge_size:",
+        "stop": false,
+        "caseStart": 1792279227107,
+        "end": 1792279227111,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {
+        "SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'r16snorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'rg16snorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'rgba16snorm' requires feature: 'texture-formats-tier1'": 2,
+        "SKIP: texture format 'bc1-rgba-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc1-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc2-rgba-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc2-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc3-rgba-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc3-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc4-r-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc4-r-snorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc5-rg-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc5-rg-snorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc6h-rgb-ufloat' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc6h-rgb-float' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc7-rgba-unorm' requires feature: 'texture-compression-bc'": 2,
+        "SKIP: texture format 'bc7-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 2,
+        "(in subcase: viewFormat=\"r16unorm\") SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 6,
+        "(in subcase: viewFormat=\"r16snorm\") SKIP: subcase skipped: texture format 'r16snorm' requires feature: 'texture-formats-tier1'": 6,
+        "(in subcase: viewFormat=\"rg16unorm\") SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 6,
+        "(in subcase: viewFormat=\"rg16snorm\") SKIP: subcase skipped: texture format 'rg16snorm' requires feature: 'texture-formats-tier1'": 6,
+        "(in subcase: viewFormat=\"rgba16unorm\") SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 6,
+        "(in subcase: viewFormat=\"rgba16snorm\") SKIP: subcase skipped: texture format 'rgba16snorm' requires feature: 'texture-formats-tier1'": 6,
+        "SKIP: all subcases were skipped": 12,
+        "(in subcase: viewFormat=\"bc1-rgba-unorm\") SKIP: texture format 'bc1-rgba-unorm' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc1-rgba-unorm-srgb\") SKIP: subcase skipped: texture format 'bc1-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc2-rgba-unorm\") SKIP: subcase skipped: texture format 'bc2-rgba-unorm' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc2-rgba-unorm-srgb\") SKIP: subcase skipped: texture format 'bc2-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc3-rgba-unorm\") SKIP: subcase skipped: texture format 'bc3-rgba-unorm' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc3-rgba-unorm-srgb\") SKIP: subcase skipped: texture format 'bc3-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc4-r-unorm\") SKIP: subcase skipped: texture format 'bc4-r-unorm' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc4-r-snorm\") SKIP: subcase skipped: texture format 'bc4-r-snorm' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc5-rg-unorm\") SKIP: subcase skipped: texture format 'bc5-rg-unorm' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc5-rg-snorm\") SKIP: subcase skipped: texture format 'bc5-rg-snorm' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc6h-rgb-ufloat\") SKIP: subcase skipped: texture format 'bc6h-rgb-ufloat' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc6h-rgb-float\") SKIP: subcase skipped: texture format 'bc6h-rgb-float' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc7-rgba-unorm\") SKIP: subcase skipped: texture format 'bc7-rgba-unorm' requires feature: 'texture-compression-bc'": 6,
+        "(in subcase: viewFormat=\"bc7-rgba-unorm-srgb\") SKIP: subcase skipped: texture format 'bc7-rgba-unorm-srgb' requires feature: 'texture-compression-bc'": 6
+      },
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-worker": {
+      "query": "webgpu:web_platform,worker,worker:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-worker-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,worker,worker:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792279952241,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 3,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 3,
+        "current": "webgpu:web_platform,worker,worker:service_worker:",
+        "stop": false,
+        "caseStart": 1792279953344,
+        "end": 1792279953931,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {},
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-imagedata": {
+      "query": "webgpu:web_platform,copyToTexture,ImageData:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-imagedata-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,copyToTexture,ImageData:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792279960500,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 60,
+          "fail": 0,
+          "skip": 12,
+          "warn": 0
+        },
+        "completed": 72,
+        "current": "webgpu:web_platform,copyToTexture,ImageData:copy_subrect_from_ImageData:srcDoFlipYDuringCopy=false;dstPremultiplied=false",
+        "stop": false,
+        "caseStart": 1792280003070,
+        "end": 1792280003087,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {
+        "(in subcase: width=1;height=1) SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "SKIP: all subcases were skipped": 12,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4
+      },
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-image": {
+      "query": "webgpu:web_platform,copyToTexture,image:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-image-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,copyToTexture,image:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280009137,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 62,
+          "fail": 0,
+          "skip": 12,
+          "warn": 0
+        },
+        "completed": 74,
+        "current": "webgpu:web_platform,copyToTexture,image:copy_subrect_from_2D_Canvas:srcDoFlipYDuringCopy=false;dstPremultiplied=false",
+        "stop": false,
+        "caseStart": 1792280076360,
+        "end": 1792280076429,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {
+        "(in subcase: width=1;height=1) SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "SKIP: all subcases were skipped": 12,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 4
+      },
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-image-file": {
+      "query": "webgpu:web_platform,copyToTexture,image_file:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-image-file-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,copyToTexture,image_file:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280082348,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 40,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 40,
+        "current": "webgpu:web_platform,copyToTexture,image_file:from_multiple_formats:imageName=\"four-colors.svg\";srcDoFlipYDuringCopy=false",
+        "stop": false,
+        "caseStart": 1792280085320,
+        "end": 1792280085336,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {},
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-video-copy": {
+      "query": "webgpu:web_platform,copyToTexture,video:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-video-copy-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,copyToTexture,video:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280089996,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 112,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 112,
+        "current": "webgpu:web_platform,copyToTexture,video:copy_from_video:videoName=\"four-colors-vp9-bt601-vflip.mp4\";sourceType=\"VideoFrame\";srcDoFlipYDuringCopy=false;dstColorSpace=\"srgb\"",
+        "stop": false,
+        "caseStart": 1792280100637,
+        "end": 1792280100745,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {},
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-external-sample": {
+      "query": "webgpu:web_platform,external_texture,video:importExternalTexture,sample:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-external-sample-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,external_texture,video:importExternalTexture,sample:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280105770,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 56,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 56,
+        "current": "webgpu:web_platform,external_texture,video:importExternalTexture,sample:videoName=\"four-colors-vp9-bt601-vflip.mp4\";sourceType=\"VideoFrame\";dstColorSpace=\"srgb\"",
+        "stop": false,
+        "caseStart": 1792280112901,
+        "end": 1792280113047,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {},
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-external-sample-non-yuv-video-frame": {
+      "query": "webgpu:web_platform,external_texture,video:importExternalTexture,sample_non_YUV_video_frame:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-external-sample-non-yuv-video-frame-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,external_texture,video:importExternalTexture,sample_non_YUV_video_frame:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280117309,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 4,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 4,
+        "current": "webgpu:web_platform,external_texture,video:importExternalTexture,sample_non_YUV_video_frame:videoFrameFormat=\"BGRX\"",
+        "stop": false,
+        "caseStart": 1792280118021,
+        "end": 1792280118050,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {},
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-external-video-frame-display-size-diff-with-coded-size": {
+      "query": "webgpu:web_platform,external_texture,video:importExternalTexture,video_frame_display_size_diff_with_coded_size:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-external-video-frame-display-size-diff-with-coded-size-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,external_texture,video:importExternalTexture,video_frame_display_size_diff_with_coded_size:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280122646,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 3,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 3,
+        "current": "webgpu:web_platform,external_texture,video:importExternalTexture,video_frame_display_size_diff_with_coded_size:displayScale=\"larger\"",
+        "stop": false,
+        "caseStart": 1792280123258,
+        "end": 1792280123289,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {},
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-external-video-frame-display-size-from-texturedimensions": {
+      "query": "webgpu:web_platform,external_texture,video:importExternalTexture,video_frame_display_size_from_textureDimensions:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-external-video-frame-display-size-from-texturedimensions-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,external_texture,video:importExternalTexture,video_frame_display_size_from_textureDimensions:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280128029,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 3,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 3,
+        "current": "webgpu:web_platform,external_texture,video:importExternalTexture,video_frame_display_size_from_textureDimensions:displayScale=\"larger\"",
+        "stop": false,
+        "caseStart": 1792280128645,
+        "end": 1792280128665,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {},
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-external-samplewithvideoframewithvisiblerectparam": {
+      "query": "webgpu:web_platform,external_texture,video:importExternalTexture,sampleWithVideoFrameWithVisibleRectParam:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-external-samplewithvideoframewithvisiblerectparam-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,external_texture,video:importExternalTexture,sampleWithVideoFrameWithVisibleRectParam:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280133484,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 28,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 28,
+        "current": "webgpu:web_platform,external_texture,video:importExternalTexture,sampleWithVideoFrameWithVisibleRectParam:videoName=\"four-colors-vp9-bt601-vflip.mp4\";dstColorSpace=\"srgb\"",
+        "stop": false,
+        "caseStart": 1792280138217,
+        "end": 1792280138389,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {},
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-external-compute": {
+      "query": "webgpu:web_platform,external_texture,video:importExternalTexture,compute:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-external-compute-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,external_texture,video:importExternalTexture,compute:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280143103,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 56,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 56,
+        "current": "webgpu:web_platform,external_texture,video:importExternalTexture,compute:videoName=\"four-colors-vp9-bt601-vflip.mp4\";sourceType=\"VideoFrame\";dstColorSpace=\"srgb\"",
+        "stop": false,
+        "caseStart": 1792280151173,
+        "end": 1792280151301,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {},
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-imagebitmap": {
+      "query": "webgpu:web_platform,copyToTexture,ImageBitmap:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-imagebitmap-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,copyToTexture,ImageBitmap:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280154876,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 720,
+          "fail": 0,
+          "skip": 144,
+          "warn": 0
+        },
+        "completed": 864,
+        "current": "webgpu:web_platform,copyToTexture,ImageBitmap:copy_subrect_from_2D_Canvas:orientation=\"flipY\";colorSpaceConversion=\"default\";srcFlipYInCopy=false;dstPremultiplied=false",
+        "stop": false,
+        "caseStart": 1792280770224,
+        "end": 1792280770258,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {
+        "(in subcase: width=1;height=1) SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "SKIP: all subcases were skipped": 144,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 48
+      },
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-canvas-copy": {
+      "query": "webgpu:web_platform,copyToTexture,canvas:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-canvas-copy-host.json",
+      "pass": false,
+      "state": {
+        "query": "webgpu:web_platform,copyToTexture,canvas:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280776390,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 782,
+          "fail": 1,
+          "skip": 168,
+          "warn": 0
+        },
+        "completed": 951,
+        "current": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_gpu_context_canvas:canvasType=\"offscreen\";srcAndDstInSameGPUDevice=false;dstColorFormat=\"rg11b10ufloat\";srcAlphaMode=\"premultiplied\";dstAlphaMode=\"premultiplied\";srcDoFlipYDuringCopy=true",
+        "stop": false,
+        "caseStart": 1792280956153,
+        "stoppedEarly": true,
+        "end": 1792280956490,
+        "pass": false
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {
+        "(in subcase: width=1;height=1) SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "SKIP: all subcases were skipped": 168,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 56
+      },
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-canvas-copy-single-repro": {
+      "query": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_gpu_context_canvas:canvasType=\"offscreen\";srcAndDstInSameGPUDevice=false;dstColorFormat=\"rg11b10ufloat\";srcAlphaMode=\"premultiplied\";dstAlphaMode=\"premultiplied\";srcDoFlipYDuringCopy=true",
+      "record": "out/phone-validation-20261016/phone97a-cts-canvas-copy-single-repro-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_gpu_context_canvas:canvasType=\"offscreen\";srcAndDstInSameGPUDevice=false;dstColorFormat=\"rg11b10ufloat\";srcAlphaMode=\"premultiplied\";dstAlphaMode=\"premultiplied\";srcDoFlipYDuringCopy=true",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280978035,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 1,
+          "fail": 0,
+          "skip": 0,
+          "warn": 0
+        },
+        "completed": 1,
+        "current": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_gpu_context_canvas:canvasType=\"offscreen\";srcAndDstInSameGPUDevice=false;dstColorFormat=\"rg11b10ufloat\";srcAlphaMode=\"premultiplied\";dstAlphaMode=\"premultiplied\";srcDoFlipYDuringCopy=true",
+        "stop": false,
+        "caseStart": 1792280978523,
+        "end": 1792280978781,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {},
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-canvas-gpu-repro": {
+      "query": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_gpu_context_canvas:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-canvas-gpu-repro-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_gpu_context_canvas:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792280996692,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 224,
+          "fail": 0,
+          "skip": 48,
+          "warn": 0
+        },
+        "completed": 272,
+        "current": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_gpu_context_canvas:canvasType=\"offscreen\";srcAndDstInSameGPUDevice=false;dstColorFormat=\"rg11b10ufloat\";srcAlphaMode=\"premultiplied\";dstAlphaMode=\"premultiplied\";srcDoFlipYDuringCopy=false",
+        "stop": false,
+        "caseStart": 1792281033118,
+        "end": 1792281033301,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {
+        "(in subcase: width=1;height=1) SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "SKIP: all subcases were skipped": 48,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16
+      },
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-canvas-copy-sequence-repro": {
+      "query": "webgpu:web_platform,copyToTexture,canvas:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-canvas-copy-sequence-repro-host.json",
+      "pass": false,
+      "state": {
+        "query": "webgpu:web_platform,copyToTexture,canvas:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792281056367,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 754,
+          "fail": 1,
+          "skip": 160,
+          "warn": 0
+        },
+        "completed": 915,
+        "current": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_gpu_context_canvas:canvasType=\"offscreen\";srcAndDstInSameGPUDevice=false;dstColorFormat=\"r16float\";srcAlphaMode=\"premultiplied\";dstAlphaMode=\"premultiplied\";srcDoFlipYDuringCopy=true",
+        "stop": false,
+        "caseStart": 1792281233350,
+        "stoppedEarly": true,
+        "end": 1792281233607,
+        "pass": false
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {
+        "(in subcase: width=1;height=1) SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 56,
+        "SKIP: all subcases were skipped": 160,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 52
+      },
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-canvas-bitmaprenderer": {
+      "query": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_bitmaprenderer_context_canvas:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-canvas-bitmaprenderer-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_bitmaprenderer_context_canvas:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792281257686,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 112,
+          "fail": 0,
+          "skip": 24,
+          "warn": 0
+        },
+        "completed": 136,
+        "current": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_bitmaprenderer_context_canvas:canvasType=\"offscreen\";dstColorFormat=\"rg11b10ufloat\";dstAlphaMode=\"premultiplied\";srcDoFlipYDuringCopy=false",
+        "stop": false,
+        "caseStart": 1792281275384,
+        "end": 1792281275430,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {
+        "(in subcase: width=1;height=1) SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "SKIP: all subcases were skipped": 24,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 8
+      },
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    },
+    "phone97a-cts-canvas-color-conversion": {
+      "query": "webgpu:web_platform,copyToTexture,canvas:color_space_conversion:*",
+      "record": "out/phone-validation-20261016/phone97a-cts-canvas-color-conversion-host.json",
+      "pass": true,
+      "state": {
+        "query": "webgpu:web_platform,copyToTexture,canvas:color_space_conversion:*",
+        "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+        "start": 1792281283762,
+        "context": {
+          "url": "http://127.0.0.1:18080/",
+          "secure": true,
+          "webgpu": true
+        },
+        "done": true,
+        "counts": {
+          "pass": 224,
+          "fail": 0,
+          "skip": 48,
+          "warn": 0
+        },
+        "completed": 272,
+        "current": "webgpu:web_platform,copyToTexture,canvas:color_space_conversion:srcColorSpace=\"display-p3\";dstColorSpace=\"display-p3\";dstColorFormat=\"rg11b10ufloat\";dstPremultiplied=false;srcDoFlipYDuringCopy=false",
+        "stop": false,
+        "caseStart": 1792281481690,
+        "end": 1792281482440,
+        "pass": true
+      },
+      "processesStable": true,
+      "silent": true,
+      "skips": {
+        "(in subcase: width=1;height=1) SKIP: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'r16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "SKIP: all subcases were skipped": 48,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'rg16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=1) SKIP: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=1;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=2;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=4;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=15;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=255;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=1) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=2) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=4) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=15) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=255) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16,
+        "(in subcase: width=256;height=256) SKIP: subcase skipped: texture format 'rgba16unorm' requires feature: 'texture-formats-tier1'": 16
+      },
+      "before": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ],
+      "after": [
+        {
+          "type": "browser",
+          "id": 11095
+        },
+        {
+          "type": "GPU",
+          "id": 11468
+        }
+      ]
+    }
+  },
+  "remainingWebPlatformPlan": {
+    "total": 3177,
+    "cameraCases": 12,
+    "cameraStatus": "not run; awaiting optional user clarification",
+    "nonCameraTotal": 3165,
+    "noCameraAccessAttempted": true
+  },
+  "additionalWebPlatformTotals": {
+    "completed": 3165,
+    "pass": 2704,
+    "skip": 460,
+    "fail": 1,
+    "warn": 0,
+    "note": "Unique official case queries; newest completed observation per case. Historical failures remain listed separately; repeated/subgroup runs are not double counted."
+  },
+  "webPlatformCrossGroupProcessCheck": {
+    "browserIds": [
+      11095
+    ],
+    "gpuIds": [
+      11468
+    ],
+    "stable": true
+  },
+  "webPlatformFailureHistory": [
+    {
+      "query": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_gpu_context_canvas:canvasType=\"offscreen\";srcAndDstInSameGPUDevice=false;dstColorFormat=\"rg11b10ufloat\";srcAlphaMode=\"premultiplied\";dstAlphaMode=\"premultiplied\";srcDoFlipYDuringCopy=true",
+      "record": "out/phone-validation-20261016/phone97a-cts-canvas-copy-host.json",
+      "logs": [
+        "(in subcase: width=1;height=1) INFO: subcase ran",
+        "(in subcase: width=1;height=2) INFO: subcase ran",
+        "(in subcase: width=1;height=4) INFO: subcase ran",
+        "(in subcase: width=1;height=15) INFO: subcase ran",
+        "(in subcase: width=2;height=1) INFO: subcase ran",
+        "(in subcase: width=2;height=2) INFO: subcase ran",
+        "(in subcase: width=2;height=4) INFO: subcase ran",
+        "(in subcase: width=2;height=15) INFO: subcase ran",
+        "(in subcase: width=4;height=1) INFO: subcase ran",
+        "(in subcase: width=4;height=2) INFO: subcase ran",
+        "(in subcase: width=4;height=4) INFO: subcase ran",
+        "(in subcase: width=4;height=15) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\nAbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.",
+        "(in subcase: width=4;height=15) INFO: subcase ran",
+        "(in subcase: width=15;height=1) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\nAbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.",
+        "(in subcase: width=15;height=1) INFO: subcase ran",
+        "(in subcase: width=15;height=2) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=15;height=2) INFO: subcase ran",
+        "(in subcase: width=15;height=4) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=15;height=4) INFO: subcase ran",
+        "(in subcase: width=15;height=15) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=15;height=15) INFO: subcase ran",
+        "EXCEPTION: OperationError: A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)"
+      ]
+    },
+    {
+      "query": "webgpu:web_platform,copyToTexture,canvas:copy_contents_from_gpu_context_canvas:canvasType=\"offscreen\";srcAndDstInSameGPUDevice=false;dstColorFormat=\"r16float\";srcAlphaMode=\"premultiplied\";dstAlphaMode=\"premultiplied\";srcDoFlipYDuringCopy=true",
+      "record": "out/phone-validation-20261016/phone97a-cts-canvas-copy-sequence-repro-host.json",
+      "logs": [
+        "(in subcase: width=1;height=1) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\nAbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.",
+        "(in subcase: width=1;height=1) INFO: subcase ran",
+        "(in subcase: width=1;height=2) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\nAbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.",
+        "(in subcase: width=1;height=2) INFO: subcase ran",
+        "(in subcase: width=1;height=4) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=1;height=4) INFO: subcase ran",
+        "(in subcase: width=1;height=15) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=1;height=15) INFO: subcase ran",
+        "(in subcase: width=2;height=1) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=2;height=1) INFO: subcase ran",
+        "(in subcase: width=2;height=2) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=2;height=2) INFO: subcase ran",
+        "(in subcase: width=2;height=4) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=2;height=4) INFO: subcase ran",
+        "(in subcase: width=2;height=15) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=2;height=15) INFO: subcase ran",
+        "(in subcase: width=4;height=1) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=4;height=1) INFO: subcase ran",
+        "(in subcase: width=4;height=2) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=4;height=2) INFO: subcase ran",
+        "(in subcase: width=4;height=4) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=4;height=4) INFO: subcase ran",
+        "(in subcase: width=4;height=15) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=4;height=15) INFO: subcase ran",
+        "(in subcase: width=15;height=1) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=15;height=1) INFO: subcase ran",
+        "(in subcase: width=15;height=2) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=15;height=2) INFO: subcase ran",
+        "(in subcase: width=15;height=4) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=15;height=4) INFO: subcase ran",
+        "(in subcase: width=15;height=15) EXCEPTION: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)",
+        "(in subcase: width=15;height=15) INFO: subcase ran",
+        "EXCEPTION: OperationError: A valid external Instance reference no longer exists.\n  at (elided: only 2 shown)"
+      ]
+    }
+  ],
+  "offscreenAllocationInvestigation": {
+    "state": "REPRODUCED twice in full sequence; isolated exactcase and272caseGPUsubgroup pass. Not resolved.",
+    "firstRecord": "out/phone-validation-20261016/phone97a-cts-canvas-copy-host.json",
+    "repeatRecord": "out/phone-validation-20261016/phone97a-cts-canvas-copy-sequence-repro-host.json",
+    "nativeEvidence": "out/phone-validation-20261016/phone97a-canvas-app-buffer.log",
+    "nativeError": "CreateSharedImage: could not create backing at 07:49:16.255 before first InstanceDropped",
+    "diagnosticCommit": "2050293f8f9f8d5075d765882f9b675f741058f6",
+    "diagnosticNativeCI": 39080752000,
+    "diagnosticAdapterCI": 39080752013,
+    "ciCodeModified": false,
+    "nativeLocalCompile": false,
+    "installedStill": "97abe6d7",
+    "diagnosticCIStatus": "success",
+    "diagnosticInstalled": "2050293f",
+    "packageRecord": "out/phone-validation-20261016/phone205-default-package.json",
+    "installRecord": "out/phone-validation-20261016/phone205-default-install.json",
+    "diagnosticRuntime": {
+      "record": "out/phone-validation-20261016/phone205-cts-canvas-sequence-diagnostic-host.json",
+      "counts": {
+        "pass": 730,
+        "fail": 1,
+        "skip": 156,
+        "warn": 0
+      },
+      "processesStable": false,
+      "browser": 39274,
+      "gpuBefore": 39480,
+      "gpuAfter": 42028,
+      "nativeExit": 6,
+      "signal": "SIGABRT",
+      "symbolizedFrame": "dawn::SystemHandle::Duplicate() const @0x925434c",
+      "buildId": "27949fecccfe4f2a7358f613f209c27a82fa1eac",
+      "evidence": [
+        "out/phone-validation-20261016/phone205-crashed-gpu.log",
+        "out/phone-validation-20261016/phone205-gpu-processdump.log",
+        "out/phone-validation-20261016/phone205-canvas-browser-live.log"
+      ],
+      "fdExhaustion": "DfxFaultlogClient StartConnect errno(24) during crash handling; leak origin not proven",
+      "currentRendererFallback": "OpenGL SDR8; do not claim Vulkan healthy"
+    },
+    "resourceDiagnostic": {
+      "commit": "951eb3ef82426d95fc240eede63bd341b5cb498b",
+      "nativeCI": 39081970183,
+      "adapterCI": 39081970158,
+      "status": "CIpassed,installed;normalCanvassequence running",
+      "purpose": "Sample ownprocess openFD count, RLIMIT_NOFILE and live/created offscreen pixmaps every512allocations; no behavioralfix.",
+      "installRecord": "out/phone-validation-20261016/phone951-default-install.json",
+      "browserPid": 58055,
+      "gpuPid": 58323,
+      "normalRecord": "out/phone-validation-20261016/phone951-cts-canvas-normal-counters-host.json",
+      "nativeLog": "out/phone-validation-20261016/phone951-canvas-browser-live.log",
+      "normalRuntime": {
+        "record": "out/phone-validation-20261016/phone951-cts-canvas-normal-counters-host.json",
+        "counts": {
+          "pass": 1120,
+          "fail": 0,
+          "skip": 240,
+          "warn": 0
+        },
+        "hostPass": true,
+        "processesStable": true,
+        "scope": "Diagnosticloggingonly; thissequencepassedbutpriorreproductionsremainunresolved. NaturalGCtimingaffectsFDhighwater."
+      }
+    },
+    "gcDiagnosticAttempts": [
+      {
+        "record": "out/phone-validation-20261016/phone205-cts-canvas-gc-diagnostic-host.json",
+        "result": "INTERRUPTED: Runtime.evaluate timeout, no acceptance claim; GC was midcase."
+      },
+      {
+        "record": "out/phone-validation-20261016/phone205-cts-canvas-boundary-gc-host.json",
+        "result": "INTERRUPTED: Runtime.evaluate timeout; subsequent screenoff/lock observed; causality unproven, not a productpass/fail."
+      }
+    ],
+    "gcBoundaryControl": {
+      "record": "out/phone-validation-20261016/phone205-cts-canvas-boundary-gc-awake-host.json",
+      "counts": {
+        "pass": 1120,
+        "fail": 0,
+        "skip": 240,
+        "warn": 0
+      },
+      "completed": 1360,
+      "hostPass": true,
+      "processesStable": true,
+      "silent": true,
+      "forcedGcCount": 21,
+      "interpretation": "GCboundarycontrolpasseswhereunmodifiedcontinuoussequencefails. Correlationonly: doesnotseparateGCfromaddedtiminganddoesnotacceptnormalruntime."
+    },
+    "candidateFix": {
+      "source": "82a91eac27e83a46696b6d08b1eabfa978b3fa89",
+      "nativeCI": 39082833537,
+      "adapterCI": 39082833530,
+      "state": "INSTALLED_AND_BOUNDED_VALIDATION_PASS",
+      "change": "ImportretainsNativeWindowBufferonly, borrowsitsbufferFD locally; serializesownedparcelFDsonactualExportHandle. Eliminatespersistentreceivedparcel/planeFDduplicates. No pixelscopied, nofakeGC, no fdlimitincrease.",
+      "latestSource": "573379da76cc5a41b2b7a5e7d86e876aedd7cdb1",
+      "latestNativeCI": 39083095284,
+      "latestAdapterCI": 39083095448,
+      "serializationReason": "NativeBufferparcelAPIisnon-thread-safe; ExportHandlecanbeusedfromdifferentGPUrepresentations.",
+      "installRecord": "out/phone-validation-20261016/phone573-default-install.json",
+      "packageRecord": "out/phone-validation-20261016/phone573-default-package.json",
+      "nativeLog": "out/phone-validation-20261016/phone573-browser-live.log",
+      "browserPid": 5344,
+      "gpuPid": 5655
+    },
+    "retainedCanvasBaseline": {
+      "record": "out/phone-validation-20261016/phone951-baseline-two-adapters-retained-canvas.json",
+      "source": "951eb3ef",
+      "pass": true,
+      "heldCanvasCount": 2000,
+      "pixelChecks": [
+        {
+          "label": "created-0",
+          "okay": true
+        },
+        {
+          "label": "created-128",
+          "okay": true
+        },
+        {
+          "label": "created-256",
+          "okay": true
+        },
+        {
+          "label": "created-384",
+          "okay": true
+        },
+        {
+          "label": "created-512",
+          "okay": true
+        },
+        {
+          "label": "created-640",
+          "okay": true
+        },
+        {
+          "label": "created-768",
+          "okay": true
+        },
+        {
+          "label": "created-896",
+          "okay": true
+        },
+        {
+          "label": "created-1024",
+          "okay": true
+        },
+        {
+          "label": "created-1152",
+          "okay": true
+        },
+        {
+          "label": "created-1280",
+          "okay": true
+        },
+        {
+          "label": "created-1408",
+          "okay": true
+        },
+        {
+          "label": "created-1536",
+          "okay": true
+        },
+        {
+          "label": "created-1664",
+          "okay": true
+        },
+        {
+          "label": "created-1792",
+          "okay": true
+        },
+        {
+          "label": "created-1920",
+          "okay": true
+        },
+        {
+          "label": "retained-0",
+          "okay": true
+        },
+        {
+          "label": "retained-1000",
+          "okay": true
+        },
+        {
+          "label": "retained-1999",
+          "okay": true
+        }
+      ],
+      "processesStable": true,
+      "sample": {
+        "created": 11264,
+        "live": 3992,
+        "openFDs": 24047,
+        "FDLimit": 32768
+      },
+      "scope": "2000stronglyretained4x4canvases;noGCduringworkload. NativeLogsampletakenbeforecleanup.",
+      "fdAnalysisRecord": "out/phone-validation-20261016/phone951-baseline-two-adapters-fds.json",
+      "fdsPerLivePixmapSlope": 5.997465587797619,
+      "probeSource": {
+        "source": "out/phone-validation-20261018/retained-canvas-green-v1.js",
+        "sha256": "5049002cda090f2f6c769f79aefde2d9327ee6e19b6f7f58b3e7aacfab23b4cf"
+      }
+    },
+    "retainedProbeInitialHarnessError": {
+      "record": "out/phone-validation-20261016/phone951-baseline-retained-canvas.json",
+      "reason": "SecondrequestDeviceonsameconsumedadapterrejectedbeforeanycanvascreated. Fixedhostprobeusesseparateadapterrequests;notproductfailure."
+    },
+    "retainedCanvasFixed": {
+      "record": "out/phone-validation-20261016/phone573-fixed-retained-canvas.json",
+      "fdRecord": "out/phone-validation-20261016/phone573-fixed-fds.json",
+      "source": "573379da",
+      "pass": true,
+      "heldCanvases": 2000,
+      "pixelChecks": [
+        {
+          "label": "created-0",
+          "okay": true
+        },
+        {
+          "label": "created-128",
+          "okay": true
+        },
+        {
+          "label": "created-256",
+          "okay": true
+        },
+        {
+          "label": "created-384",
+          "okay": true
+        },
+        {
+          "label": "created-512",
+          "okay": true
+        },
+        {
+          "label": "created-640",
+          "okay": true
+        },
+        {
+          "label": "created-768",
+          "okay": true
+        },
+        {
+          "label": "created-896",
+          "okay": true
+        },
+        {
+          "label": "created-1024",
+          "okay": true
+        },
+        {
+          "label": "created-1152",
+          "okay": true
+        },
+        {
+          "label": "created-1280",
+          "okay": true
+        },
+        {
+          "label": "created-1408",
+          "okay": true
+        },
+        {
+          "label": "created-1536",
+          "okay": true
+        },
+        {
+          "label": "created-1664",
+          "okay": true
+        },
+        {
+          "label": "created-1792",
+          "okay": true
+        },
+        {
+          "label": "created-1920",
+          "okay": true
+        },
+        {
+          "label": "retained-0",
+          "okay": true
+        },
+        {
+          "label": "retained-1000",
+          "okay": true
+        },
+        {
+          "label": "retained-1999",
+          "okay": true
+        }
+      ],
+      "processesStable": true,
+      "silent": true,
+      "fdsPerLivePixmap": 2.9991629464285716,
+      "baselineFDsPerLivePixmap": 5.997465587797619,
+      "reductionFraction": 0.49992827761602543,
+      "scope": "MeasuredperlivepixmapFDs approximately6→3 underfixed2000heldcanvasworkload. Peak samples have differentlivecounts; do not compare rawsampledpeakratios. No generalresourcebound orpower/FPSclaim.",
+      "probeSource": {
+        "source": "out/phone-validation-20261018/retained-canvas-green-v1.js",
+        "sha256": "5049002cda090f2f6c769f79aefde2d9327ee6e19b6f7f58b3e7aacfab23b4cf"
+      }
+    },
+    "postFixNormalGroups": {
+      "canvas-copy-r1": {
+        "record": "out/phone-validation-20261016/phone573-fixed-canvas-copy-r1-host.json",
+        "pass": true,
+        "state": {
+          "query": "webgpu:web_platform,copyToTexture,canvas:*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+          "start": 1792284054357,
+          "context": {
+            "url": "http://127.0.0.1:18080/",
+            "secure": true,
+            "webgpu": true
+          },
+          "done": true,
+          "counts": {
+            "pass": 1120,
+            "fail": 0,
+            "skip": 240,
+            "warn": 0
+          },
+          "completed": 1360,
+          "current": "webgpu:web_platform,copyToTexture,canvas:color_space_conversion:srcColorSpace=\"display-p3\";dstColorSpace=\"display-p3\";dstColorFormat=\"rg11b10ufloat\";dstPremultiplied=false;srcDoFlipYDuringCopy=false",
+          "stop": false,
+          "caseStart": 1792284441615,
+          "end": 1792284442351,
+          "pass": true
+        },
+        "processesStable": true,
+        "silent": true,
+        "extraHostGC": false
+      },
+      "canvas-output": {
+        "record": "out/phone-validation-20261016/phone573-fixed-canvas-output-host.json",
+        "pass": true,
+        "state": {
+          "query": "webgpu:web_platform,canvas,*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+          "start": 1792284447145,
+          "context": {
+            "url": "http://127.0.0.1:18080/",
+            "secure": true,
+            "webgpu": true
+          },
+          "done": true,
+          "counts": {
+            "pass": 438,
+            "fail": 0,
+            "skip": 52,
+            "warn": 0
+          },
+          "completed": 490,
+          "current": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:transferToImageBitmap_huge_size:",
+          "stop": false,
+          "caseStart": 1792284455719,
+          "end": 1792284455723,
+          "pass": true
+        },
+        "processesStable": true,
+        "silent": true,
+        "extraHostGC": false
+      },
+      "canvas-copy-r2": {
+        "record": "out/phone-validation-20261016/phone573-fixed-canvas-copy-r2-host.json",
+        "recoveredFailureRecord": "out/phone-validation-20261016/phone573-r2-failure-recovered-readonly.json",
+        "result": "INTERRUPTED_BY_UNPLANNED_BACKGROUND; rawcase645PASS140SKIP1FAILretained. Not a foregroundpass; do not erasepixelzeros.",
+        "nativeEvidence": "out/phone-validation-20261016/phone573-browser-live.log",
+        "nativeBackgroundAt": "2026-10-18T08:50:14.917+08:00",
+        "failedCaseStarted": "2026-10-18T08:50:14.981+08:00",
+        "failedCaseEnded": "2026-10-18T08:50:15.155+08:00",
+        "pixelFailures": [
+          "width4height2zeroRG",
+          "width15height1zeroRG"
+        ],
+        "gpuPid": 5655,
+        "browserPid": 5344,
+        "gpuCrashCountAfterResume": 0,
+        "skiaAfterResume": "GaneshVulkan",
+        "latestFDSample": {
+          "live": 2610,
+          "fds": 7941,
+          "limit": 32768
+        },
+        "controlState": "Freshforegroundreruncompleted1360caseswithoutfailure; rawbackground-interruptedrunremainsrecorded."
+      },
+      "canvas-copy-r2-foreground": {
+        "record": "out/phone-validation-20261016/phone573-fixed-canvas-copy-r2-foreground-host.json",
+        "pass": true,
+        "state": {
+          "query": "webgpu:web_platform,copyToTexture,canvas:*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+          "start": 1792285155775,
+          "context": {
+            "url": "http://127.0.0.1:18080/",
+            "secure": true,
+            "webgpu": true
+          },
+          "done": true,
+          "counts": {
+            "pass": 1120,
+            "fail": 0,
+            "skip": 240,
+            "warn": 0
+          },
+          "completed": 1360,
+          "current": "webgpu:web_platform,copyToTexture,canvas:color_space_conversion:srcColorSpace=\"display-p3\";dstColorSpace=\"display-p3\";dstColorFormat=\"rg11b10ufloat\";dstPremultiplied=false;srcDoFlipYDuringCopy=false",
+          "stop": false,
+          "caseStart": 1792285550868,
+          "end": 1792285551628,
+          "pass": true
+        },
+        "processesStable": true,
+        "silent": true,
+        "visibility": {
+          "initial": "visible",
+          "events": []
+        },
+        "extraHostGC": false
+      },
+      "workers": {
+        "record": "out/phone-validation-20261016/phone573-fixed-workers-host.json",
+        "pass": true,
+        "state": {
+          "query": "webgpu:web_platform,worker,worker:*",
+          "revision": "c354d28170af04797c053d223ff53dbdb9e17b8d+upstream-cc11994-configure",
+          "start": 1792285622018,
+          "context": {
+            "url": "http://127.0.0.1:18080/",
+            "secure": true,
+            "webgpu": true
+          },
+          "done": true,
+          "counts": {
+            "pass": 3,
+            "fail": 0,
+            "skip": 0,
+            "warn": 0
+          },
+          "completed": 3,
+          "current": "webgpu:web_platform,worker,worker:service_worker:",
+          "stop": false,
+          "caseStart": 1792285623069,
+          "end": 1792285623705,
+          "pass": true
+        },
+        "processesStable": true,
+        "silent": true
+      }
+    },
+    "postFixFunctional": {
+      "record": "out/phone-validation-20261016/phone573-functional-normal-regression.json",
+      "pass": true,
+      "steps": [
+        {
+          "name": "distinct retained canvases",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-distinct-retained-canvas.json",
+          "pass": true
+        },
+        {
+          "name": "distinct retained canvases after30sbackground",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-distinct-background-retained-canvas.json",
+          "pass": true
+        },
+        {
+          "name": "native transport",
+          "code": 0,
+          "report": "out/phone-validation-20261015/phone573-functional-native-native-webgpu-results.json",
+          "pass": true
+        },
+        {
+          "name": "native chroma and PQ gray",
+          "code": 0,
+          "report": "out/phone-validation-20261015/phone573-functional-native-native-color-gates.json",
+          "pass": true
+        },
+        {
+          "name": "WebGPU HDR SDR output",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-webgpu.json",
+          "pass": true
+        },
+        {
+          "name": "WebGPU native pixels",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-webgpu-pixels.json",
+          "pass": true
+        },
+        {
+          "name": "Worker HDR P3 output",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-worker-webgpu-worker.json",
+          "pass": true
+        },
+        {
+          "name": "Worker native pixels",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-worker-pixels.json",
+          "pass": true
+        },
+        {
+          "name": "Canvas2D WebGL color output",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-color.json",
+          "pass": true
+        },
+        {
+          "name": "Canvas2D WebGL native pixels",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-color-pixels.json",
+          "pass": true
+        },
+        {
+          "name": "real touch dual fullscreen",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-fullscreen-fullscreen-native-diagnostic.json",
+          "pass": true
+        },
+        {
+          "name": "native dual background",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-background-video-only-background.json",
+          "pass": true
+        },
+        {
+          "name": "hidden native submission analysis",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-background-native-visibility-analysis.json",
+          "pass": true
+        },
+        {
+          "name": "ordinary SDR resume gray",
+          "code": 0,
+          "report": "out/phone-validation-20261015/phone573-functional-sdr-sdr-resume.json",
+          "pass": true
+        },
+        {
+          "name": "quiescent final state",
+          "code": 0,
+          "report": "out/phone-validation-20261016/phone573-functional-final-final-state.json",
+          "pass": true
+        }
+      ],
+      "nativeOutputModesRecord": "out/phone-validation-20261016/phone573-functional-native-output-modes.json",
+      "nativeOutputModesPass": true
+    },
+    "distinctRetained": {
+      "record": "out/phone-validation-20261016/phone573-functional-distinct-retained-canvas.json",
+      "pass": true,
+      "completed": 2000,
+      "pixelChecks": [
+        {
+          "label": "created-0",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-128",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-256",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-384",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-512",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-640",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-768",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-896",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1024",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1152",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1280",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1408",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1536",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1664",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1792",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1920",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "retained-0",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "retained-1000",
+          "expected": [
+            217,
+            165,
+            141,
+            255
+          ],
+          "actual": [
+            217,
+            165,
+            141,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "retained-1999",
+          "expected": [
+            148,
+            8,
+            158,
+            255
+          ],
+          "actual": [
+            148,
+            8,
+            158,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        }
+      ],
+      "processesStable": true,
+      "silent": true,
+      "background": null,
+      "sourceFile": "out/phone-validation-20261018/retained-canvas-distinct-probe.js",
+      "sourceSHA256": "d932824408aa4c15cd4da0ec646eafb4f38d52e7de6202a38c73aa92497ac127"
+    },
+    "distinctRetainedBackground": {
+      "record": "out/phone-validation-20261016/phone573-functional-distinct-background-retained-canvas.json",
+      "pass": true,
+      "completed": 2000,
+      "pixelChecks": [
+        {
+          "label": "created-0",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-128",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-256",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-384",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-512",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-640",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-768",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-896",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1024",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1152",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1280",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1408",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1536",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1664",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1792",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "created-1920",
+          "expected": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "actual": [
+            145,
+            157,
+            181,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "retained-0",
+          "expected": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "actual": [
+            17,
+            29,
+            53,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "retained-1000",
+          "expected": [
+            217,
+            165,
+            141,
+            255
+          ],
+          "actual": [
+            217,
+            165,
+            141,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        },
+        {
+          "label": "retained-1999",
+          "expected": [
+            148,
+            8,
+            158,
+            255
+          ],
+          "actual": [
+            148,
+            8,
+            158,
+            255
+          ],
+          "maxError": 0,
+          "okay": true
+        }
+      ],
+      "processesStable": true,
+      "silent": true,
+      "background": {
+        "start": 1792285703430,
+        "seconds": 30,
+        "beforeVisibility": "visible",
+        "home": "Invalid parameters. \n\nUSAGE : \nhelp                                                                                  print uiInput usage\ndircFling <direction> [velocity] [stepLength] [displayId]                fling in the specified direction\n                                                    direction ranges from 0,1,2,3 (left, right, up, down)\n                                                           velocity ranges from 200 to 40000, default 600\n                                  stepLength defaults to the width or height of the screen divided by 200\n                                                             displayId defaults to the default display id\nclick/doubleClick/longClick <x> <y> [displayId]                           click on the target coordinates\n                                                             displayId defaults to the default display id\nswipe/drag <from_x> <from_y> <to_x> <to_y> [velocity] [displayId]                                        \n                                                           velocity ranges from 200 to 40000, default 600\n                                                             displayId defaults to the default display id\nfling <from_x> <from_y> <to_x> <to_y> [velocity] [stepLength] [displayId]                                \n                                                           velocity ranges from 200 to 40000, default 600\n                                                        stepLength defaults to the distance divided by 50\n                                                             displayId defaults to the default display id\nkeyEvent <keyID/Back/Home/Power> [displayId]                                              inject keyEvent\n                                                             displayId defaults to the default display id\nkeyEvent <keyID_0> <keyID_1> [keyID_2] [displayId]                               keyID_2 defaults to None\n                                                             displayId defaults to the default display id\ninputText <x> <y> <text> [displayId]                             inputText at the target coordinate point\n                                                             displayId defaults to the default display id\ntext <text> [displayId]                               input text at the location where is already focused\n                                                             displayId defaults to the default display id\n\n",
+        "beforeRestore": 1792285733846,
+        "launch": "start ability successfully.\n",
+        "restored": 1792285735305,
+        "afterVisibility": "visible"
+      },
+      "sourceFile": "out/phone-validation-20261018/retained-canvas-distinct-background-probe.js",
+      "sourceSHA256": "7f790da240c89a12c9962ef7d6ffe68d963890884a5044ee4c492bb50c569cab"
+    }
+  },
+  "webPlatformAcceptance": "AFFECTED_PATH_BOUNDED_PASS, NOT_FULL_CTS: latest573379da1853uniqueCanvas/Workerqueries1561PASS292optionalSKIP,copy1360queryselectionrepeatedinsecondforegroundround. Prior3165noncameraWebPlatformcoveragefrom97abe6d7remainsversion-scoped. Historicalallocationcrashesandbackground-interruptedpixelFAILretained; nofailureserased.",
+  "phoneKeepawake": {
+    "pid": 655636,
+    "intervalSeconds": 5,
+    "reason": "Previously40sinterval; screenoffobserved andphonewoken/swipedunlocked; strengthenedto5s.",
+    "padUntouched": true,
+    "temporaryTimeoutRecord": "out/phone-validation-20261016/phone573-keepawake-timeout.json",
+    "currentTimeoutOverrideMs": 3600000
+  },
+  "priorCanvasGuardCandidate": {
+    "source": "97abe6d758da345fbcc74e62a5bc27b1f49b8c8b",
+    "nativeCI": 39077859952,
+    "adapterCI": 39077859956
+  },
+  "latestScopeLimits": [
+    "12realcameraCTScasesnotrun,noauthorizationreceived",
+    "FullWebGPUCTS/ arbitraryworkloadboundsnotaccepted",
+    "PanelP3gamutandHDRpeaknotphysicallymeasured",
+    "OldOSthermalSIGKILLremainsrecorded;latest573regressionscool30–32C,notnewhigh-temperatureacceptance",
+    "Long-first-fullscreen13mintestpassbelongs15a51962;latest573normalreal-touchfullscreen10sandbackground30sverified"
+  ],
+  "finalStateRecord": "out/phone-validation-20261016/phone573-functional-final-final-state.json",
+  "CIWorkflowCodeModified": false
+}

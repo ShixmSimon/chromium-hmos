@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Worker synchronous resource regression</title>
+<h1>Worker synchronous resource regression</h1>
+<p>Serve on localhost or HTTPS with normal advertising protection enabled.
+This checks Service Worker importScripts and dedicated worker synchronous loads.</p>
+<button id="run">Run</button>
+<pre id="output">Ready</pre>
+<script>
+window.results = [];
+const output = document.querySelector('#output');
+function record(test, value) {
+  results.push({test, ...value});
+  output.textContent = JSON.stringify(results, null, 2);
+}
+async function bounded(promise) {
+  let timer;
+  try {
+    return await Promise.race([promise, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(Error('Timed out after 15 seconds')), 15000);
+    })]);
+  } finally { clearTimeout(timer); }
+}
+window.runTests = async function() {
+  results = [];
+  let worker;
+  try {
+    const value = await bounded(new Promise((resolve, reject) => {
+      worker = new Worker('worker.js');
+      worker.onmessage = event => resolve(event.data);
+      worker.onerror = event => reject(Error(event.message));
+    }));
+    record('dedicated importScripts + sync XHR', {
+      pass: value.imported === 'worker-import-ok' && value.status === 200 && value.bodyMatches,
+      value
+    });
+  } catch (error) { record('dedicated importScripts + sync XHR', {pass: false, error: String(error)}); }
+  finally { worker?.terminate(); }
+  let registration, channel;
+  try {
+    registration = await bounded(navigator.serviceWorker.register('worker.js?service', {scope: './'}));
+    const active = registration.active || registration.waiting || registration.installing;
+    if (!active) throw Error('No service worker');
+    if (active.state !== 'activated') {
+      await bounded(new Promise((resolve, reject) => {
+        active.addEventListener('statechange', () => {
+          if (active.state === 'activated') resolve();
+          if (active.state === 'redundant') reject(Error('Service worker became redundant'));
+        });
+      }));
+    }
+    channel = new MessageChannel();
+    const response = new Promise(resolve => channel.port1.onmessage = event => resolve(event.data));
+    active.postMessage('probe', [channel.port2]);
+    const value = await bounded(response);
+    record('service worker importScripts', {pass: value.imported === 'worker-import-ok', value});
+  } catch (error) { record('service worker importScripts', {pass: false, error: String(error)}); }
+  finally {
+    channel?.port1.close();
+    if (registration) await registration.unregister();
+  }
+  return results;
+};
+document.querySelector('#run').onclick = runTests;
+</script>

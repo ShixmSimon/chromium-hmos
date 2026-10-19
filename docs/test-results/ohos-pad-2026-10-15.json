@@ -1,0 +1,558 @@
+{
+  "recorded_at_utc": "2026-10-15T23:02:07.261356+00:00",
+  "task": "Verify Pad YouTube crashes in GL/Skia, bottom white gap, and gray output in Skia",
+  "status": "CI12c5bbd6 installed. Requested Pad YouTube, fullscreen-gap and SDR gray regressions passed in GL/Skia. Fixed-duration HEVC P010 SDR/HDR tests and loop recovery verified; not an hours-long or phone validation.",
+  "updated_at_utc": "2026-10-16T02:23:39.714189+00:00",
+  "fix_progress": {
+    "lumie_commit": "9f56d22",
+    "native_commits": [
+      "bc7a0a7f",
+      "c5e2cc33",
+      "13904b19",
+      "8558d04d",
+      "5b26c7d",
+      "ab33abea",
+      "cded582e",
+      "9ca27faf",
+      "12c5bbd6"
+    ],
+    "ci_runs": {
+      "bc7a0a7f": 38822236815,
+      "c5e2cc33": 38823582842,
+      "13904b19": 38824378065,
+      "8558d04d": 38827726822,
+      "ab33abea": 38828238434,
+      "cded582e": 38829456141,
+      "9ca27faf": 38830165095,
+      "12c5bbd6": 38830696231
+    },
+    "fullscreen": {
+      "gl": "3/3 pass, 738 CSS px restored",
+      "skia": "3/3 pass, 738 CSS px restored",
+      "evidence": "out/pad-fix-20261015/bc7-{gl,skia}-fullscreen.json"
+    },
+    "sdr_colors": {
+      "evidence": "out/pad-fix-20261015/139-color-samples.json",
+      "max_channel_delta": 0,
+      "actual_wsi": "SDR10, format64 color_space0, no zero-size fallback",
+      "limitation": "Pixel equivalence only; fullscreen GPU reset and video channel failure remain."
+    },
+    "youtube": {
+      "latest_standard": "c9 GL and bc7 Skia reproduce ServiceWorker SIGTRAP",
+      "jitless": "Still reproduces on bc7 with --jitless --wasm-jitless",
+      "minimal_worker": "localhost test: service-worker registration, activation, message and CacheStorage put pass",
+      "debugger": "Standard SDK debugger connects to app, isolated renderer attach cannot retrieve process information; isolation retained. Opt-in signal location diagnostics in 13904b19, default disabled.",
+      "diagnostic_cause": "Pinned Chromium content/app/content_main.cc SetupSignalHandlers resets SIGTRAP before renderer startup. Repackaging verified 855 CI engine with temporary --disable-in-process-stack-traces to preserve opt-in observer; no native local build.",
+      "root_cause": "Missing DetachFromCurrentSequence override in chrome::ohos::adblock::Throttle. Worker synchronous load calls inherited blink::URLLoaderThrottle::DetachFromCurrentSequence, which executes NOTREACHED.",
+      "symbols": {
+        "855_pc": "0x3d62e6c blink::URLLoaderThrottle::DetachFromCurrentSequence",
+        "855_lr": "0x6938e88 blink::ResourceRequestSender::SendSync"
+      },
+      "minimal_reproduction": "docs/test-pages/worker-sync-load/ crashes on unchanged 855 CI engine with identical PC/LR; dedicated importScripts triggers before imported.js reaches server.",
+      "fix": "cded582e adds override; throttle keeps unbound Mojo pending remote until WillStartRequest/Check on destination sequence. No adblock or worker bypass.",
+      "validation": "Native CI 38829456141 pending; Adapter CI 38829456189 passed."
+    },
+    "constraints": {
+      "phone": "untouched, paused",
+      "pad_audio": "music 0 mute 1",
+      "ci_code": "unchanged",
+      "native_build": "push-triggered CI only"
+    },
+    "additional_findings": {
+      "13904b19_color": "Actual SDR10 WSI format64 color_space0, color samples identical to GL; no zero-size swapchain fallback",
+      "13904b19_fullscreen": "3/3 height restored to738, but GPU processCrashCount rose from0 to1 after popup/fullscreen sequence",
+      "13904b19_media": "HEVC Main10 imported P010 into Vulkan with CPU copies0 initially; CanvasResourceRaster factory failure closed shared-image stub, causing PIPELINE_ERROR_DECODE within0.4s",
+      "shared_image_fix": "Phone-only ExternalVk factory registration extended to Pad/PC; follow-up patch context preserved; ab33abe Adapter CI success, native CI in progress",
+      "worker_api_probes": "random, SHA256, empty Wasm compilation, IndexedDB all pass in isolated worker",
+      "diagnostic_attempt": "139 trap observer skipped existing platform SIGTRAP handler; 855 chains the original handler. CI success, packaging for Pad.",
+      "gpu_reset_isolation": {
+        "855_slow": "0 during samples, then reset after final sample; not stable",
+        "855_fast": "crash count 1 -> 2; dimensions preserved",
+        "4d_original": "crash count 0 throughout 3 fast fullscreen cycles +10s; height bug reproduced 738 ->671. Popup creation had fallen back to SDR8; main output HDR10.",
+        "popup_fix": "9ca27faf: honor IsOhosAnchoredWindow as EGL already does; use SDR8 for alpha popups without downgrading main HDR-capable surface. Pending native CI; GPU fix not yet validated.",
+        "4d_current_layout": "Same 4d CI engine repackaged with Lumie9f56d22: 3 fast fullscreen cycles +10s restore738 with GPU crashes0. Rules out layout change as sufficient trigger.",
+        "extended_baseline": "4d+layout fix ALSO reset after the first short observation ended (08:34:35). Subsequent fullscreen with main+popups all SDR8 stayed at count1 over20s animation. Previous count0 statements refer only to short samples; not an exclusion of native HDR10 resize failure. Popup SDR8 fix still valid alpha contract but not yet proven sufficient for stability.",
+        "4d_original_extended": "Original Lumie layout with old4d engine: 3 fullscreen cycles +20s continuous animation, crash count0; height still671. New layout incurs extra native resize, whose buffer retirement is now synchronized in12c5. Candidate not yet device-verified."
+      },
+      "resume_855": "Home/return restored height738 and identical SDR color samples, GPU count remained2. Document visibility incorrectly stayed visible; screenshot confirms home transition; no claim about visibility API.",
+      "wsi_resize_candidate": "12c5: VulkanSurface finishes GPU queue before replacing an existing swapchain on OHOS. Unchanged-size/color fast path remains free of waits. Requires CI build and prolonged fullscreen/HDR validation."
+    },
+    "ci_queue": "Superseded ab33 and9ca native runs cancelled through GitHub to prioritize12c5 latest combined fix; CI source/config unchanged. ab33 official log showed824/2608 compile steps at cancellation; build is substantial.",
+    "final_validation": "See validation_12c; earlier fix_progress entries retain historical intermediate results."
+  },
+  "baseline": {
+    "device": {
+      "hdc": "192.168.8.136:38905",
+      "model": "GEM-W00 / MatePad Pro Max",
+      "gpu": "Maleoon 935",
+      "display_pixels": [
+        3000,
+        2000
+      ],
+      "dpr": 2.3125,
+      "package": "com.miramira8295.lumiebrowser",
+      "module": "entry_wide",
+      "updateTime": 1792073216702,
+      "installed_build_evidence": "updateTime matches out/install-4d7bb521/pad-authorized-after.json exactly; that installation manifest records CI commit 4d7bb521. Direct installed engine hash could not be read (permission denied).",
+      "scope": "Installed old Pad package, not acceptance of current c9ca539f CI build"
+    },
+    "youtube": {
+      "url": "https://www.youtube.com/watch?v=diLzHHuJeuE",
+      "gl": "REPRODUCED: GaneshGL, in-process GPU; page error 5. Renderer PID 53745 received SIGTRAP on ServiceWorker thread TID 53968; main browser survived.",
+      "skia": "REPRODUCED: GaneshVulkan, separate GPU, GPU crash count 0; renderer PID 55890 received SIGTRAP on ServiceWorker thread TID 56007; main browser survived.",
+      "diagnostic": {
+        "mode": "GL",
+        "changes": "New test tab only: Network.setBypassServiceWorker(true) and registration rejection injected before document scripts; existing registrations not removed.",
+        "result": "Six samples at 5-second intervals succeeded; subsequent check reached main content time 27.90508/851.021 seconds, 1920x1080, muted=true, volume=0, playing. No tab crash observed.",
+        "evidence": [
+          "youtube-no-sw.json",
+          "youtube-no-sw-final.json"
+        ]
+      },
+      "conclusion": "ServiceWorker execution is a strong lead shared by both rendering modes. This does not establish the specific native assertion or prove a decoder/GPU defect. Bypassing ServiceWorker is diagnostic, not a production fix.",
+      "limits": "Current child crash was visible in hilog but absent from Hiview persisted fault list (invalid child module logged). An older October 14 VizCompositor crash was retrieved for reference only; it is NOT the current ServiceWorker stack.",
+      "next": "Obtain current ServiceWorker native crash stack / matching symbols; repeat against latest CI-built Pad package; distinguish renderer startup/JIT/memory behavior from worker API implementation."
+    },
+    "bottom_gap": {
+      "result": "REPRODUCED with entering and exiting document fullscreen on controlled static page in GL.",
+      "before": {
+        "surface_bottom_px": 2000,
+        "inner_height_css": 738
+      },
+      "after": {
+        "surface_rect_px": [
+          0,
+          293,
+          3000,
+          1846
+        ],
+        "inner_height_css": 671,
+        "uncovered_bottom_px": 154
+      },
+      "layout_evidence": "After exit: outer content [0,90..3000,1936], nested frame original [0,0..3000,1846]. 154px equals 90px top system area +64px bottom area; initial screenshot showed the same geometry.",
+      "conclusion": "Fullscreen exit restores system avoidance and the shell layout loses height. Evidence favors repeated system safe-area accounting over a fixed phone dock-height reservation.",
+      "source_candidates": [
+        "Lumie/products/shell/src/main/ets/entryability/WindowController.ets:213 restores EXIT_IMMERSIVE without reapplying full-screen content layout; phone branch does reapply it",
+        "overlay/chromium-ui/engine/src/main/ets/components/webwindow/WebWindow.ets:755 sets setWindowLayoutFullScreen(false) on exitFullscreen",
+        "Lumie root Index/ShellHost percent height and nested ShellFrame ignoreLayoutSafeArea require consistent window content ownership"
+      ],
+      "next": "Keep Pad shell content-layout policy consistent after fullscreen/window-state restoration; check maximized/floating windows, background return and rotation. Do not globally remove keyboard avoidance."
+    },
+    "skia_gray": {
+      "result": "REPRODUCED on static SDR CSS color bars, independent of video.",
+      "comparison": {
+        "gl": {
+          "sample_y": 900,
+          "sample_x": [
+            187,
+            562,
+            937,
+            1312,
+            1687,
+            2062,
+            2437,
+            2812
+          ],
+          "rgb": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              64,
+              64,
+              64
+            ],
+            [
+              128,
+              128,
+              128
+            ],
+            [
+              191,
+              191,
+              191
+            ],
+            [
+              255,
+              255,
+              255
+            ],
+            [
+              254,
+              0,
+              0
+            ],
+            [
+              0,
+              254,
+              1
+            ],
+            [
+              0,
+              0,
+              254
+            ]
+          ]
+        },
+        "skia": {
+          "sample_y": 900,
+          "sample_x": [
+            187,
+            562,
+            937,
+            1312,
+            1687,
+            2062,
+            2437,
+            2812
+          ],
+          "rgb": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              58,
+              58,
+              58
+            ],
+            [
+              95,
+              95,
+              95
+            ],
+            [
+              130,
+              130,
+              130
+            ],
+            [
+              167,
+              167,
+              167
+            ],
+            [
+              158,
+              35,
+              25
+            ],
+            [
+              76,
+              164,
+              51
+            ],
+            [
+              0,
+              0,
+              161
+            ]
+          ]
+        }
+      },
+      "runtime_output": {
+        "requested": "auto",
+        "startup_white_millinits": 203000,
+        "startup_peak_millinits": 203000,
+        "selected_mode": 2,
+        "reason": "hdr10-request",
+        "swapchain_format": 64,
+        "vk_color_space": 1000104008,
+        "output_mode": 2
+      },
+      "conclusion": "Pad normal Vulkan output selects HDR10 even for the SDR control page. Phone-specific output has explicit SDR content usage overrides; normal Vulkan output still publishes MakeOhosOutputColorSpaces(HDR10) for all usages. This matches the observed SDR white being reduced from RGB255 in GL to RGB167 in Skia.",
+      "source": [
+        "patches/ohos-vulkan-hdr-output.patch:270",
+        "patches/ohos-vulkan-hdr-output.patch:339",
+        "overlay/components/viz/service/display_embedder/skia_output_device_ohos_phone_vulkan.cc:335"
+      ],
+      "limits": "Native screenshot digital values; not a colorimeter measurement of physical screen luminance. No production output-mode fix or post-fix acceptance performed.",
+      "next": "Implement SDR/HDR content-appropriate output for normal Vulkan WSI, keeping actual swapchain format/color tags, Skia surface color and metadata consistent; validate SDR before HDR/P3."
+    },
+    "cleanup": {
+      "at": "2026-10-15T23:02:07.016Z",
+      "closed": [
+        "0DFD1C5888D4F7242A56317A121533FA",
+        "D80408CCFEC68A20480964BD76736994",
+        "31F9430C111570004685EB8ECDAFE4DB"
+      ],
+      "restoredSkiaBackend": "GaneshGL",
+      "restoredInProcessGpu": true,
+      "activatedOriginalGoogleTab": true
+    },
+    "constraints": {
+      "phone": "Untouched; previous phone testing remains paused",
+      "audio": "Pad music volume0 and mute1 verified before and after; test media also muted",
+      "ci": "No CI/workflow/build orchestration changes; no local native build, no new compilation, no install",
+      "production_source_changes": false,
+      "pad_screen_timeout": "Temporary 3600000ms override was set for testing. power-shell timeout -r returned Restore screen off time failed twice; restoration is NOT confirmed. No wakeup automation remains running.",
+      "host_capture": "Owned Pad hilog capture PID3121913 terminated and verified absent."
+    },
+    "evidence": [
+      "initial-system-info.json",
+      "skia-system-info.json",
+      "gl-crash-excerpt.txt",
+      "after-youtube-gl-hilog.txt",
+      "skia-startup-hilog.txt",
+      "youtube-gl.jpeg",
+      "skia-initial.jpeg",
+      "gl-colors.jpeg",
+      "skia-colors.jpeg",
+      "color-comparison.json",
+      "layout.json",
+      "exit-fullscreen-layout.json",
+      "exit-fullscreen.jpeg",
+      "youtube-no-sw.json",
+      "youtube-no-sw-final.json",
+      "bundle-dump.txt",
+      "audio-final.txt",
+      "cleanup.json"
+    ],
+    "evidence_directory": "/data/dev/chromium-hmos-sdr-web/out/pad-validation-20261015"
+  },
+  "device": {
+    "hdc": "192.168.8.136:38905",
+    "model": "GEM-W00 / MatePad Pro Max",
+    "gpu": "Maleoon 935",
+    "current_package": {
+      "native_source": "12c5bbd6",
+      "native_ci": "38830696231",
+      "engine_sha256": "2d8d321914ccfc626ce2da5047df67a0b059d503a1d679b8c1e191da56fb22a6",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/pad-fix-20261015/12c-normal.hap",
+      "hap_sha256": "3b71b7594b1292a23f42f5d3ebd313eaeda4cb542462a10c73ed0d995ef15ad1",
+      "pad_authorized_profile": true,
+      "native_compile": false
+    },
+    "installed_engine_hash_scope": "HAP verified before successful HDC install; on-device private engine file was not read."
+  },
+  "constraints": {
+    "phone": "Untouched; testing remains paused",
+    "audio": "Pad music0 mute1, silent ringer; all test media also muted",
+    "ci_code": "Unchanged",
+    "native_build": "Only push-triggered GitHub CI; superseded intermediate runs cancelled through GitHub",
+    "local_packaging": "ArkTS/HAP only, using SHA256-verified CI engine.har",
+    "keep_awake": "Owned Pad wakeup+PowerManager -t loop, timeout7200s, session63937, started about00:46UTC. ScreenOffTime remains120000; never rely on timeout override."
+  },
+  "current_ci": {
+    "head": "12c5bbd61f18d99c82f7797d8db8cb7d039db9f6",
+    "native_run": 38830696231,
+    "native_status": "success",
+    "adapter_run": 38830696257,
+    "adapter_status": "success",
+    "url": "https://github.com/miramira8295/chromium-hmos/actions/runs/38830696231"
+  },
+  "current_cleanup": {
+    "at": "2026-10-16T02:22:53.514Z",
+    "closed": [
+      "C75A64872F2B090B0298A1CA6B4FB7B2",
+      "3A842D77F57699F18545993E57993845"
+    ],
+    "restoredSkiaBackend": "GaneshVulkan",
+    "restoredInProcessGpu": false,
+    "activatedOriginalGoogleTab": true,
+    "temporary_flags": false,
+    "debugger": "Owned debugger port forwards removed; no debugger running",
+    "active_owned_sessions": [],
+    "phone_untouched": true,
+    "pad_media_muted": true
+  },
+  "queued_verification": [],
+  "evidence_directory": "/data/dev/chromium-hmos-sdr-web/out/pad-fix-20261015",
+  "latest_status_check": {
+    "at": "2026-10-16T02:15:37.285177+00:00",
+    "native_ci_run": 38830696231,
+    "native_head": "12c5bbd61f18d99c82f7797d8db8cb7d039db9f6",
+    "native_status": "success",
+    "installed_native": "12c5bbd6",
+    "new_fixes_installed": true,
+    "phone_untouched": true
+  },
+  "validation_12c": {
+    "package": {
+      "native_source": "12c5bbd6",
+      "native_ci": "38830696231",
+      "engine_sha256": "2d8d321914ccfc626ce2da5047df67a0b059d503a1d679b8c1e191da56fb22a6",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/pad-fix-20261015/12c-normal.hap",
+      "hap_sha256": "3b71b7594b1292a23f42f5d3ebd313eaeda4cb542462a10c73ed0d995ef15ad1",
+      "pad_authorized_profile": true,
+      "native_compile": false
+    },
+    "tests": {
+      "12c-skia-workers": {
+        "pass": true
+      },
+      "12c-skia-youtube": {
+        "pass": true,
+        "playbackPass": true,
+        "fullscreenPass": true,
+        "gpuPass": true
+      },
+      "12c-skia-fullscreen": {
+        "pass": true,
+        "fullscreenPass": true,
+        "gpuPass": true,
+        "layoutPass": true
+      },
+      "12c-skia-hdr-smoke": {
+        "pass": true,
+        "playbackPass": true,
+        "gpuPass": true,
+        "frameProgress": [
+          {
+            "clip": "sdr-1080p60.mp4",
+            "total": 725,
+            "dropped": 7,
+            "displayedFps": 59.226264126041414
+          },
+          {
+            "clip": "pq-1080p60.mp4",
+            "total": 718,
+            "dropped": 20,
+            "displayedFps": 57.69548685733179
+          },
+          {
+            "clip": "sdr-1080p60.mp4",
+            "total": 725,
+            "dropped": 8,
+            "displayedFps": 59.08529048207664
+          }
+        ]
+      },
+      "12c-gl-workers": {
+        "pass": true
+      },
+      "12c-gl-youtube": {
+        "pass": true,
+        "playbackPass": true,
+        "fullscreenPass": true,
+        "gpuPass": true
+      },
+      "12c-gl-fullscreen": {
+        "pass": true,
+        "fullscreenPass": true,
+        "gpuPass": true,
+        "layoutPass": true
+      },
+      "12c-skia-hdr-sustained": {
+        "pass": false,
+        "playbackPass": false,
+        "gpuPass": true,
+        "frameProgress": [
+          {
+            "clip": "sdr-1080p60.mp4",
+            "total": 2632,
+            "dropped": 29,
+            "displayedFps": 58.67237687366167
+          },
+          {
+            "clip": "pq-1080p60.mp4",
+            "total": 2619,
+            "dropped": 60,
+            "displayedFps": 57.65851020684062
+          },
+          {
+            "clip": "sdr-1080p60.mp4",
+            "total": 2633,
+            "dropped": 32,
+            "displayedFps": 58.56657134493706
+          }
+        ]
+      }
+    },
+    "hdr_native_evidence": {
+      "content_transitions": [
+        "1 -> 2",
+        "2 -> 1"
+      ],
+      "P010LE_SharedImage": true,
+      "CPU_output_copies": 0
+    },
+    "pending": [],
+    "SDR_GL_Skia_RGB_equal": true,
+    "background_return": {
+      "height_css": 738,
+      "GPU_crashes": 0,
+      "SDR_RGB_unchanged": true,
+      "visibility_api_background_still_visible": true
+    },
+    "loop_recovery": {
+      "pass": true,
+      "clips": [
+        {
+          "clip": "sdr-1080p60.mp4",
+          "recoveryMs": 150,
+          "pass": true
+        },
+        {
+          "clip": "pq-1080p60.mp4",
+          "recoveryMs": 100,
+          "pass": true
+        }
+      ]
+    },
+    "sustained_assessment": {
+      "duration_seconds_approx": 150,
+      "GPU_crashes": 0,
+      "strict_script_pass": false,
+      "strict_failure_reason": "readyState==1 at time==0 on SDR loop boundaries; raw strict result preserved, not rewritten as pass",
+      "followup": "50 ms sampling confirmed loop resumes in 150 ms SDR / 100 ms HDR; no errors or pauses",
+      "observed_displayed_fps": [
+        58.67,
+        57.66,
+        58.57
+      ]
+    },
+    "limitations": [
+      "No hours-long playback or memory growth qualification",
+      "YouTube automatic quality varied; regression test is not fixed 1440p60 performance qualification",
+      "Background page visibilityState remains visible; physical app return and pixel colors tested separately",
+      "Native Display-P3 SDR output remains unavailable; SDR converts to sRGB",
+      "One software-video mappable SharedImage allocation warning fell back during YouTube; no crash",
+      "Phone tests remain paused at user request"
+    ],
+    "final_log_scan": {
+      "GPU_device_lost": false,
+      "SIGTRAP": false,
+      "PIPELINE_ERROR_DECODE": false,
+      "log": "12c-final-hilog.txt"
+    }
+  },
+  "webgpu_followup": {
+    "backend": "GaneshVulkan",
+    "probe": {
+      "secure": true,
+      "api": true,
+      "errors": [],
+      "adapter": true,
+      "info": {
+        "vendor": "huawei",
+        "architecture": "maleoon",
+        "device": "",
+        "description": ""
+      },
+      "device": true,
+      "compute": [
+        3,
+        10,
+        17,
+        24
+      ],
+      "computePass": true,
+      "context": true,
+      "lost": {
+        "reason": "destroyed",
+        "message": "Device was destroyed."
+      },
+      "error": "OperationError: A valid external Instance reference no longer exists.",
+      "pass": false
+    },
+    "gpu_process_crashes": 0,
+    "result": "FAIL: compute passes, Canvas presentation SharedImage allocation fails and WebGPU device is destroyed",
+    "native_error": "No SharedImageBackingFactory for Gles2Read|RasterRead|DisplayRead|WebgpuRead|WebgpuSwapChainTexture|WebgpuWrite, BGRA_8888, empty GMB",
+    "logs": "out/pad-fix-20261015/webgpu-hilog.txt",
+    "restored_webgpu_enabled": false,
+    "gl_webgpu_tested": false
+  }
+}

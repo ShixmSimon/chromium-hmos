@@ -1,0 +1,321 @@
+{
+  "date_utc": "2026-10-14T15:57:19.992182+00:00",
+  "device": {
+    "model": "PLA-AL10",
+    "os": "HarmonyOS 7.0.0.109",
+    "gpu": "Maleoon 920",
+    "physical_sdr_nits": 2
+  },
+  "native_commit": "9418fe70",
+  "package": {
+    "sha256": "0af7e48584ce525d3a3927dd399846488b2d9e4921432b2b6809ac1c1b6b0f02",
+    "signedHapMatchesHar": true
+  },
+  "overall_acceptance": "incomplete: high-resolution video performance remains below target; no physical HDR photometry or full Chromium test suite",
+  "correctness": {
+    "hdr_first_frame": {
+      "time": 0,
+      "timestamp": 0,
+      "format": "I420P10",
+      "bytes": 2764800,
+      "layout": [
+        {
+          "offset": 0,
+          "stride": 2560
+        },
+        {
+          "offset": 1843200,
+          "stride": 1280
+        },
+        {
+          "offset": 2304000,
+          "stride": 1280
+        }
+      ],
+      "sha256": "80360cd8644e9fc83c02bb3f87dae58e1bf7bca82f878bec7bd071fa52825580"
+    },
+    "retained_hdr_frame": {
+      "format": "I420P10",
+      "timestamp": 0,
+      "currentTime": 2.08341,
+      "before": "80360cd8644e9fc83c02bb3f87dae58e1bf7bca82f878bec7bd071fa52825580",
+      "after": "80360cd8644e9fc83c02bb3f87dae58e1bf7bca82f878bec7bd071fa52825580",
+      "retainedFrameUnchanged": true
+    },
+    "sdr_frame_and_retention": {
+      "format": "NV12",
+      "timestamp": 0,
+      "currentTime": 4.973728,
+      "before": "8e42304d3920c90825839f1deac12cf48e05daffef09ad9d29fc116ee442e8c5",
+      "after": "8e42304d3920c90825839f1deac12cf48e05daffef09ad9d29fc116ee442e8c5",
+      "retainedFrameUnchanged": true
+    },
+    "canvas_webgl": {
+      "pixel": [
+        64,
+        128,
+        191,
+        255
+      ],
+      "error": 0,
+      "lost": false,
+      "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+      "renderer": "ANGLE (HUAWEI, Maleoon 920, OpenGL ES 3.2)",
+      "canvas": [
+        64,
+        128,
+        191,
+        255
+      ],
+      "passed": true
+    },
+    "hdr_video_webgl_texture": {
+      "status": 36053,
+      "error": 0,
+      "pixel": [
+        2,
+        6,
+        10,
+        255
+      ],
+      "passed": true
+    },
+    "three_background_resume_cycles": {
+      "passed": true,
+      "page_state": {
+        "visible": "visible",
+        "background": "rgb(255, 255, 255)",
+        "filter": "none",
+        "opacity": "1",
+        "hdr": true,
+        "videos": 0
+      },
+      "native_sdr_mode": 1
+    },
+    "gpu_session": {
+      "pid": 31585,
+      "observation": "23:48 through 23:57 local; no GPU restart, SIGTRAP, packet-validation failure or GL/SDR8 fault fallback in captured application log"
+    }
+  },
+  "performance": {
+    "youtube_1080p60_10s": {
+      "before": {
+        "total": 991,
+        "dropped": 24,
+        "time": 32.66103,
+        "ready": 4,
+        "width": 1920,
+        "height": 1080
+      },
+      "after": {
+        "total": 1592,
+        "dropped": 51,
+        "time": 42.666058,
+        "ready": 4,
+        "width": 1920,
+        "height": 1080
+      },
+      "total": 601,
+      "dropped": 27,
+      "visibility": "visible"
+    },
+    "youtube_1440p60_fullscreen_10s": {
+      "before": {
+        "total": 789,
+        "dropped": 28,
+        "time": 32.650592,
+        "ready": 4,
+        "width": 2560,
+        "height": 1440
+      },
+      "after": {
+        "total": 1389,
+        "dropped": 44,
+        "time": 42.65513,
+        "ready": 4,
+        "width": 2560,
+        "height": 1440
+      },
+      "total": 600,
+      "dropped": 16,
+      "visibility": "visible"
+    },
+    "youtube_1440p60_fullscreen_60s": [
+      {
+        "before": {
+          "total": 333,
+          "dropped": 0,
+          "time": 55.0616,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "after": {
+          "total": 933,
+          "dropped": 8,
+          "time": 65.022971,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "total": 600,
+        "dropped": 8,
+        "visibility": "visible",
+        "fullscreen": true
+      },
+      {
+        "before": {
+          "total": 933,
+          "dropped": 8,
+          "time": 65.022971,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "after": {
+          "total": 1532,
+          "dropped": 19,
+          "time": 75.023835,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "total": 599,
+        "dropped": 11,
+        "visibility": "visible",
+        "fullscreen": true
+      },
+      {
+        "before": {
+          "total": 1532,
+          "dropped": 19,
+          "time": 75.023835,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "after": {
+          "total": 2131,
+          "dropped": 34,
+          "time": 85.024493,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "total": 599,
+        "dropped": 15,
+        "visibility": "visible",
+        "fullscreen": true
+      },
+      {
+        "before": {
+          "total": 2131,
+          "dropped": 34,
+          "time": 85.024493,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "after": {
+          "total": 2730,
+          "dropped": 44,
+          "time": 95.02579,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "total": 599,
+        "dropped": 10,
+        "visibility": "visible",
+        "fullscreen": true
+      },
+      {
+        "before": {
+          "total": 2730,
+          "dropped": 44,
+          "time": 95.02579,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "after": {
+          "total": 3330,
+          "dropped": 99,
+          "time": 105.026548,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "total": 600,
+        "dropped": 55,
+        "visibility": "visible",
+        "fullscreen": true
+      },
+      {
+        "before": {
+          "total": 3330,
+          "dropped": 99,
+          "time": 105.026548,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "after": {
+          "total": 3930,
+          "dropped": 121,
+          "time": 115.038164,
+          "ready": 4,
+          "width": 2560,
+          "height": 1440
+        },
+        "total": 600,
+        "dropped": 22,
+        "visibility": "visible",
+        "fullscreen": true
+      }
+    ],
+    "youtube_1440p60_fullscreen_60s_total": 3597,
+    "youtube_1440p60_fullscreen_60s_dropped": 121,
+    "local_hevc1440p60_10s": {
+      "before": {
+        "total": 16,
+        "dropped": 4,
+        "time": 0.175462,
+        "ready": 4,
+        "width": 2560,
+        "height": 1440
+      },
+      "after": {
+        "total": 581,
+        "dropped": 265,
+        "time": 9.532896,
+        "ready": 4,
+        "width": 2560,
+        "height": 1440
+      },
+      "total": 565,
+      "dropped": 261,
+      "visibility": "visible"
+    },
+    "trace_mean_ms": {
+      "ipc_serialization_before": 10.58,
+      "ipc_serialization_after": 0.0127,
+      "hardware_copy_output_after": 17.9446,
+      "software_frame_upload_preparation_after": 8.2516,
+      "gpu_plane_upload_after": 3.874
+    }
+  },
+  "host_checks_passed": [
+    "scripts/test-ohos-phone-gpu.sh",
+    "scripts/test-ohos-fork-server.sh",
+    "scripts/tests/test-incremental-patches.py (2 tests)",
+    "scripts/verify-public-tree.sh",
+    "bash -n changed build scripts",
+    "git diff --check"
+  ],
+  "limitations": [
+    "P3 SDR is converted to sRGB; native P3 output is not implemented",
+    "trace samples are not an end-to-end benchmark and times cannot be added across threads",
+    "large performance variation remains; no inference that shared-memory decoder changes improve VP9 software decoding"
+  ]
+}

@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>WebGPU snapshot lifetime regression</title>
+<button id="run">Run snapshot lifetime matrix</button><pre id="result"></pre>
+<script src="snapshot-lifetime.js"></script><script>
+document.getElementById('run').onclick = async () => {
+  document.getElementById('result').textContent = JSON.stringify(await runSnapshotLifetime(), null, 2);
+};
+</script>

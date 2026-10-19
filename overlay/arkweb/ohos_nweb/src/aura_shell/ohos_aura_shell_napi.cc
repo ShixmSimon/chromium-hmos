@@ -3,6 +3,8 @@
 
 #include "ohos_nweb/src/aura_shell/ohos_aura_shell_napi.h"
 
+#include <atomic>
+#include <cmath>
 #include <limits>
 #include <map>
 #include <memory>
@@ -16,18 +18,20 @@
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/no_destructor.h"
-#include "base/strings/string_util.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "base/values.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
-#include "components/ohos_system_service/system_service_ohos.h"
 #include "components/ohos_accessibility/accessibility_provider_ohos.h"
+#include "components/ohos_system_service/system_service_ohos.h"
 #include "device/bluetooth/ohos/bluetooth_bridge_ohos.h"
+#include "hilog/log.h"
 #include "ohos_nweb/src/aura_shell/ohos_aura_shell_host.h"
 #include "ohos_nweb/src/aura_shell/ohos_chrome_main_runner.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "services/device/usb/ohos/usb_bridge_ohos.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
+#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 
 namespace ohos_nweb {
 namespace {
@@ -1190,6 +1194,12 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
     config.skia_backend = *skia_backend;
   }
 
+  ReadStringField(dict, "vulkanOutputMode", &config.vulkan_output_mode);
+  config.vulkan_hdr_white_nits =
+      dict.FindDouble("vulkanHdrWhiteNits").value_or(0);
+  config.vulkan_hdr_peak_nits =
+      dict.FindDouble("vulkanHdrPeakNits").value_or(0);
+
   std::optional<bool> jitless = dict.FindBool("jitless");
   if (jitless.has_value()) {
     config.jitless = *jitless;
@@ -1238,6 +1248,48 @@ HostPtr TakeHost(const std::string& component_id) {
   HostMap& hosts = Hosts();
   auto node = hosts.extract(component_id);
   return node.empty() ? nullptr : std::move(node.mapped());
+}
+
+napi_value UpdateDisplayBrightness(napi_env env, napi_callback_info info) {
+  size_t argc = 4;
+  napi_value args[4] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  double values[4] = {};
+  // First report for each outcome only. Brightness events may arrive at the
+  // display refresh rate; neither normal updates nor rejected events spam logs.
+  static std::atomic<uint32_t> reported{0};
+  const auto report = [&](uint32_t outcome, const char* reason, int argument) {
+    if (reported.fetch_or(outcome) & outcome)
+      return;
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xc233, "AuraShell",
+                 "OHOS brightness NAPI: %{public}s argument=%{public}d "
+                 "argc=%{public}zu display=%{public}g sdr_nits=%{public}g "
+                 "current_headroom=%{public}g max_headroom=%{public}g",
+                 reason, argument, argc, values[0], values[1], values[2],
+                 values[3]);
+  };
+  if (argc != 4) {
+    report(1, "rejected-argument-count", -1);
+    return MakeUndefined(env);
+  }
+  for (size_t i = 0; i < 4; ++i) {
+    if (napi_get_value_double(env, args[i], &values[i]) != napi_ok) {
+      report(2u << i, "rejected-non-number", static_cast<int>(i));
+      return MakeUndefined(env);
+    }
+  }
+  // Default display IDs from the JS API are exact nonnegative integers.
+  if (!std::isfinite(values[0]) || values[0] < 0 ||
+      values[0] > 9007199254740991.0) {
+    report(32, "rejected-display-id", 0);
+    return MakeUndefined(env);
+  }
+  auto brightness = ui::MakeOhosDisplayBrightness(
+      static_cast<uint64_t>(values[0]), values[1], values[2], values[3]);
+  report(brightness ? 64 : 128,
+         brightness ? "accepted" : "cleared-invalid-luminance", -1);
+  ui::UpdateOhosDisplayBrightness(brightness);
+  return MakeUndefined(env);
 }
 
 napi_value Initialize(napi_env env, napi_callback_info info) {
@@ -1627,6 +1679,8 @@ napi_value Shutdown(napi_env env, napi_callback_info info) {
 napi_value InitAuraShellNapi(napi_env env, napi_value exports) {
   RegisterNativeXComponentCallbacks(env, exports);
   napi_property_descriptor desc[] = {
+      {"UpdateDisplayBrightness", nullptr, UpdateDisplayBrightness, nullptr,
+       nullptr, nullptr, napi_default, nullptr},
       {"Initialize", nullptr, Initialize, nullptr, nullptr, nullptr,
        napi_default, nullptr},
       {"OnSurfaceCreated", nullptr, OnSurfaceCreated, nullptr, nullptr, nullptr,

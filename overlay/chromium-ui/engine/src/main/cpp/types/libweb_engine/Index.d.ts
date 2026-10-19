@@ -13,6 +13,9 @@ export interface AuraStartupConfig {
   fullscreenRequested: boolean;
 }
 
+export const UpdateDisplayBrightness: (
+  displayId: number, sdrNits: number, currentHeadroom: number, maxHeadroom: number
+) => void;
 export const Initialize: (
   xComponentId: string,
   configJson: string,

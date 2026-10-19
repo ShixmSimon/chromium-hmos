@@ -14,6 +14,7 @@ class SkiaOutputDeviceOhosPhoneVulkan final : public SkiaOutputDevice {
  public:
   SkiaOutputDeviceOhosPhoneVulkan(VulkanContextProvider* provider,
                                   gpu::SurfaceHandle widget,
+                                  bool requires_alpha,
                                   gpu::MemoryTracker* memory_tracker,
                                   DidSwapBufferCompleteCallback callback);
   ~SkiaOutputDeviceOhosPhoneVulkan() override;

@@ -9,6 +9,8 @@
 #include <stdint.h>
 
 #include <memory>
+#include <map>
+#include "base/files/scoped_file.h"
 #include <optional>
 
 #include "base/containers/circular_deque.h"
@@ -18,6 +20,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "media/base/callback_registry.h"
 #include "media/base/cdm_context.h"
@@ -30,20 +33,29 @@
 #include "media/gpu/ohos/ohos_video_frame_converter.h"
 #include "media/gpu/ohos/ohos_video_surface.h"
 
+namespace gpu {
+class SharedImageInterface;
+}
+
 namespace media {
 
 class VideoFrame;
+using OhosGetSharedImageInterfaceCB = base::RepeatingCallback<void(
+    base::OnceCallback<void(scoped_refptr<gpu::SharedImageInterface>)>)>;
 
 // AVCodecKit hardware decoding. Eligible streams use Surface -> SharedImage by
 // default, with Buffer mode as the compatibility fallback during initialization.
 class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
  public:
+  // A null gpu_task_runner selects Buffer output without a GPU converter,
+  // used by the browser-hosted phone media service.
   OhosVideoDecoder(scoped_refptr<base::SequencedTaskRunner> task_runner,
                    std::unique_ptr<MediaLog> media_log,
                    SupportedVideoDecoderConfigs supported_configs,
                    scoped_refptr<base::SequencedTaskRunner> gpu_task_runner,
                    OhosVideoFrameConverter::GetCommandBufferStubCB get_stub_cb,
-                   const gpu::GpuDriverBugWorkarounds& workarounds);
+                   const gpu::GpuDriverBugWorkarounds& workarounds,
+                   OhosGetSharedImageInterfaceCB get_browser_sii = {});
   OhosVideoDecoder(const OhosVideoDecoder&) = delete;
   OhosVideoDecoder& operator=(const OhosVideoDecoder&) = delete;
   ~OhosVideoDecoder() override;
@@ -104,6 +116,7 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
     gfx::Size natural_size;
     gfx::ColorSpace color_space;
     gfx::HDRMetadata hdr_metadata;
+    uint32_t flags = 0;
   };
 
   enum class State {
@@ -138,11 +151,32 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   void OnNewOutputBuffer(uint32_t generation, CodecBuffer output);
 
   void OnGpuInitialized(uint32_t generation, InitCB init_cb, bool supported);
+  void OnBrowserGpuInitialized(uint32_t generation,
+                               InitCB init_cb,
+                               scoped_refptr<gpu::SharedImageInterface> sii);
+  void OnBrowserFrameMetadataReady(uint32_t generation,
+                                   uint64_t ordinal,
+                                   scoped_refptr<VideoFrame> frame);
+  uint64_t browser_metadata_ordinal_ = 0;
+  uint64_t browser_metadata_output_ordinal_ = 0;
+  std::map<uint64_t, scoped_refptr<VideoFrame>> browser_metadata_ready_;
+  void WaitBrowserFrameLease(uint32_t generation,
+                             base::ScopedFD receiver,
+                             scoped_refptr<gfx::NativePixmap> pixmap,
+                             scoped_refptr<VideoFrame> frame);
+  void ConvertBrowserFrame(uint32_t generation,
+                           scoped_refptr<gfx::NativePixmap> pixmap,
+                           gfx::GpuFenceHandle fence,
+                           SurfaceOutput output);
   void FinishInitialize(InitCB init_cb);
   void AdvanceGeneration();
   DecoderStatus CreateCodec();
   void RenderNextSurfaceOutput();
+  void OnSurfacePresentationResumed(uint32_t generation);
   void OnSurfaceFrameAvailable(uint32_t generation);
+  bool TryProcessSurfaceFrame(uint32_t generation);
+  void OnSurfaceFrameArrivalTimeout(uint32_t generation);
+  void OnSurfaceFramePoll(uint32_t generation);
   void OnSurfaceFrameConverted(uint32_t generation,
                                scoped_refptr<VideoFrame> frame);
   void OnSurfaceFrameReleased(uint32_t generation);
@@ -168,6 +202,9 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   const scoped_refptr<base::SequencedTaskRunner> gpu_task_runner_;
   const scoped_refptr<OhosVideoFrameConverter> frame_converter_;
 
+  const OhosGetSharedImageInterfaceCB get_browser_sii_;
+  const bool allow_webgpu_native_video_;
+  scoped_refptr<gpu::SharedImageInterface> browser_sii_;
   State state_ = State::kUninitialized;
   VideoDecoderConfig config_;
   OutputCB output_cb_;
@@ -195,13 +232,20 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   std::optional<OutputLayout> output_layout_;
 
   bool surface_enabled_ = false;
+  class SurfaceVisibilityObserver;
+  std::unique_ptr<SurfaceVisibilityObserver> surface_visibility_observer_;
   scoped_refptr<OhosVideoSurface> surface_;
   base::circular_deque<SurfaceOutput> surface_outputs_;
   // Only one rendered buffer awaits acquisition: consumer FIFO and this entry
   // have an unambiguous PTS association, including duplicate timestamps.
   std::optional<SurfaceOutput> rendered_output_;
   base::OneShotTimer surface_timeout_;
+  base::RepeatingTimer surface_poll_;
+  base::TimeTicks surface_wait_started_;
   size_t surface_frames_in_flight_ = 0;
+  size_t surface_frame_limit_ = 0;
+  std::optional<bool> surface_background_;
+  int surface_queue_size_ = 0;
   size_t pending_conversions_ = 0;
   bool surface_eos_ = false;
   uint64_t surface_frame_count_ = 0;

@@ -12,8 +12,8 @@
 
 namespace ui {
 
-// The OHOS Skia Vulkan swapchain and phone shared buffers are SDR-only.
-// This remains true for a Vulkan session after its GPU falls back to GL.
+// Keep the global screen SDR for separate-GPU GL fallback. Vulkan advertises
+// its verified formats per output; luminance still travels via ScreenInfo.
 bool OhosRequiresSdrOutput();
 
 // Whether the default display reports any HDR format. Asked by the screen,
@@ -46,6 +46,7 @@ class OhosScreen : public PlatformScreen {
   // Rotation, refresh rate or resolution changed at the display manager.
   void OnDisplayChanged();
   void UpdatePrimaryDisplay();
+  void OnDisplayBrightnessChanged();
 
   display::DisplayList display_list_;
   gfx::Size pixel_size_;

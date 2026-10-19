@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "engine": "adblock 0.13.3",
+  "braveCore": "076ea140325075a9f220d78daf9f588363d9d003",
+  "braveResources": "6da9b247c3368baa8b4f24cd02046e18702a6527",
+  "braveLists": "8846788d578bf89696ad4ec5cdff845dfb170f1a",
+  "packagerReference": "72418b387cb1feddc614aaacb8cf166db8e80ed8",
+  "ublock": "4dfbb048607ec4fd19c1c252fd255df6cc653720",
+  "compatibility": "Brave core Cargo.lock and resources package.json both select adblock 0.13.3. uBlock is the packager submodule pin; resource and list components are separately updated upstream, not pinned by core. This is a Lumie integration lock, not a Brave release claim.",
+  "permissionPolicy": "uBO requiresTrust -> bit 0; all Brave supplemental scripts -> bit 1. Only reviewed bundled sources may get masks; custom sources always zero.",
+  "files": {
+    "sources.tar.gz": "c81f3d8ffa0f3e5f3728f17141991d3c301e8d1a22bad8e064826d4710c4e54e",
+    "resources.json": "4dd37d9c4af0a9414b1b0274d8aaea53532ba92f4da86a6b8f0444120b8ceb22",
+    "BRAVE-MPL-2.0.txt": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+    "UBLOCK-GPL-3.0.txt": "e73d33841f942fa73aa5a63d4a6399cc39a29564db1dbca0915485842fcb236d"
+  }
+}

@@ -14,6 +14,8 @@
  */
 
 import { common } from '@kit.AbilityKit';
+import { TranslationStyle, TranslationResult, TranslationReleaseReason } from './TranslationTypes';
+import { DisplayBrightnessBridge, DisplayBrightnessNativePort } from '../../utils/DisplayBrightnessBridge';
 import { BluetoothBridge, BluetoothNativePort } from '../../utils/BluetoothBridge';
 import { UsbBridge, UsbNativePort } from '../../utils/UsbBridge';
 import { SystemServiceBridge, SystemServiceNativePort } from '../../utils/SystemServiceBridge';
@@ -213,12 +215,16 @@ export interface BrowserRuntimeEvent {
     'gpuContextLost' | 'lastSessionRestorable' | 'lastSessionRestored' | 'extensionInstallFailed' |
     'pageFullscreenChanged' | 'pullToRefresh' |
     'extensionDetails' | 'extensionCommandFailed' |
+    'extensionUpdateCapabilities' | 'extensionUpdateProgress' |
     'pageDragStarted' | 'pageDragEnded' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |
     'extensionActionsChanged' |
     'sitePermissionCancelled' |
     'browserControlsRatio' | 'findResult' | 'pageText' |
+    'translationCapabilities' | 'translationState' | 'translationSessionResult' |
+    'translationBatch' | 'translationBatchResult' | 'translationWorkAvailable' |
+    'translationStateChanged' | 'translationSessionEnded' | 'translationBatchInvalidated' |
     'contextMenuRequested' | 'externalUrlRequested' | 'popupBlocked' |
     'fileOpenRequested' | 'dateTimePickerRequested' | 'dateTimePickerClosed' |
     'selectPopupRequested' | 'selectPopupClosed' | 'contactsPickerRequested' |
@@ -475,6 +481,19 @@ export interface DroppedFileRef {
 
 export interface BrowserCommandPayload {
   command: string;
+  // Translation v1: use native-issued identities from getTranslationState/start.
+  sessionId?: string;
+  batchId?: string;
+  sourceLanguage?: string;
+  targetLanguage?: string;
+  style?: TranslationStyle;
+  prefetchViewportRatio?: number;
+  maxSegments?: number;
+  maxTextUnits?: number;
+  segments?: TranslationResult[];
+  showTranslation?: boolean;
+  reason?: TranslationReleaseReason;
+  retryable?: boolean;
   // URL/site protection: native-issued identity and atomic policy revision.
   contextId?: string;
   tabId?: string;
@@ -708,7 +727,7 @@ export interface AuxiliaryWindowState {
   incognito?: boolean;
 }
 
-export interface INativeContext extends BluetoothNativePort, UsbNativePort, SystemServiceNativePort {
+export interface INativeContext extends BluetoothNativePort, UsbNativePort, SystemServiceNativePort, DisplayBrightnessNativePort {
   Initialize(xComponentId: string, configJson: string, onWindowAction: (action: string) => void): void;
   OnSurfaceCreated(xComponentId: string): void;
   OnSurfaceChanged(
@@ -741,6 +760,7 @@ export interface INativeContext extends BluetoothNativePort, UsbNativePort, Syst
 export class NativeContext {
   private readonly xComponentId: string;
   private nativeContext: INativeContext | null = null;
+  private displayBrightnessBridge: DisplayBrightnessBridge | null = null;
   private bluetoothBridge: BluetoothBridge | null = null;
   private usbBridge: UsbBridge | null = null;
   private systemServiceBridge: SystemServiceBridge | null = null;
@@ -770,6 +790,8 @@ export class NativeContext {
     onAuxiliaryWindowState: (stateJson: string) => void
   ): void {
     this.nativeContext = context;
+    this.displayBrightnessBridge = new DisplayBrightnessBridge(context);
+    this.displayBrightnessBridge.start();
     this.onWindowAction = onWindowAction;
     this.onBrowserState = onBrowserState;
     this.onAuxiliaryWindowState = onAuxiliaryWindowState;
@@ -820,6 +842,9 @@ export class NativeContext {
   }
 
   OnVisibilityChanged(visible: boolean): void {
+    if (visible) {
+      this.displayBrightnessBridge?.refresh();
+    }
     this.callVoid('OnVisibilityChanged', () => {
       this.nativeContext!.OnVisibilityChanged(this.xComponentId, visible);
     });
@@ -903,6 +928,8 @@ export class NativeContext {
       return;
     }
 
+    this.displayBrightnessBridge?.destroy();
+    this.displayBrightnessBridge = null;
     this.bluetoothBridge?.destroy();
     this.bluetoothBridge = null;
     this.usbBridge?.destroy();

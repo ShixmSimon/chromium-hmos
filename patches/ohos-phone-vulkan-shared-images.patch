@@ -1,0 +1,1699 @@
+diff --git a/gpu/command_buffer/service/BUILD.gn b/gpu/command_buffer/service/BUILD.gn
+index 09245d2..219716e 100644
+--- a/gpu/command_buffer/service/BUILD.gn
++++ b/gpu/command_buffer/service/BUILD.gn
+@@ -437,6 +437,10 @@ target(link_target_type, "gles2_sources") {
+     }
+   }
+ 
++  if (is_ohos) {
++    deps += [ "//ui/ozone/platform/ohos:native_window_registry" ]
++  }
++
+   if (enable_vulkan) {
+     deps += [
+       "//components/viz/common:vulkan_context_provider",
+@@ -452,7 +456,7 @@ target(link_target_type, "gles2_sources") {
+       "shared_image/texture_holder_vk.h",
+     ]
+ 
+-    if (is_linux || is_fuchsia || is_win) {
++    if (is_linux || is_fuchsia || is_win || is_ohos) {
+       sources += [
+         "external_semaphore.cc",
+         "external_semaphore.h",
+diff --git a/gpu/command_buffer/service/shared_context_state.cc b/gpu/command_buffer/service/shared_context_state.cc
+index 4f1e6fd..f7e363b 100644
+--- a/gpu/command_buffer/service/shared_context_state.cc
++++ b/gpu/command_buffer/service/shared_context_state.cc
+@@ -68,8 +68,12 @@
+ #include "gpu/vulkan/vulkan_implementation.h"
+ #include "gpu/vulkan/vulkan_util.h"
+ 
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN) || \
++    BUILDFLAG(IS_OHOS)
+ #include "gpu/command_buffer/service/external_semaphore_pool.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
++#endif
+ #endif
+ 
+ #endif
+@@ -304,9 +308,17 @@ SharedContextState::SharedContextState(
+ #endif
+   ) {
+     if (vk_context_provider_) {
+-#if BUILDFLAG(ENABLE_VULKAN) && \
+-    (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN))
+-      external_semaphore_pool_ = std::make_unique<ExternalSemaphorePool>(this);
++#if BUILDFLAG(ENABLE_VULKAN) &&                                           \
++    (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN) || \
++     BUILDFLAG(IS_OHOS))
++#if BUILDFLAG(IS_OHOS)
++      if (ui::IsOhosPhoneGpuChild() &&
++          gr_context_type_ == GrContextType::kVulkan)
++#endif
++      {
++        external_semaphore_pool_ =
++            std::make_unique<ExternalSemaphorePool>(this);
++      }
+ #endif
+     }
+   }
+@@ -345,8 +357,9 @@ SharedContextState::~SharedContextState() {
+     UnbindCacheFromCurrentOpenGLContext();
+   }
+ 
+-#if BUILDFLAG(ENABLE_VULKAN) && \
+-    (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN))
++#if BUILDFLAG(ENABLE_VULKAN) &&                                           \
++    (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN) || \
++     BUILDFLAG(IS_OHOS))
+   external_semaphore_pool_.reset();
+ #endif
+ 
+diff --git a/gpu/command_buffer/service/shared_context_state.h b/gpu/command_buffer/service/shared_context_state.h
+index c52d371..24b359f 100644
+--- a/gpu/command_buffer/service/shared_context_state.h
++++ b/gpu/command_buffer/service/shared_context_state.h
+@@ -253,8 +253,9 @@ class GPU_GLES2_EXPORT SharedContextState
+   gpu::MemoryTypeTracker* memory_type_tracker() {
+     return &memory_type_tracker_;
+   }
+-#if BUILDFLAG(ENABLE_VULKAN) && \
+-    (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN))
++#if BUILDFLAG(ENABLE_VULKAN) &&                                           \
++    (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN) || \
++     BUILDFLAG(IS_OHOS))
+   ExternalSemaphorePool* external_semaphore_pool() {
+     return external_semaphore_pool_.get();
+   }
+@@ -425,8 +426,9 @@ class GPU_GLES2_EXPORT SharedContextState
+   base::Time last_gl_check_graphics_reset_status_;
+   bool disable_check_reset_status_throttling_for_test_ = false;
+ 
+-#if BUILDFLAG(ENABLE_VULKAN) && \
+-    (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN))
++#if BUILDFLAG(ENABLE_VULKAN) &&                                           \
++    (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN) || \
++     BUILDFLAG(IS_OHOS))
+   std::unique_ptr<ExternalSemaphorePool> external_semaphore_pool_;
+ #endif
+ 
+diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
+--- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
++++ b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
+@@ -56,8 +56,12 @@
+ #include "gpu/command_buffer/service/shared_image/angle_vulkan_image_backing_factory.h"
+ #include "gpu/vulkan/vulkan_device_queue.h"
+ 
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN)
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN) || \
++    BUILDFLAG(IS_OHOS)
+ #include "gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
++#endif
+ #endif
+ 
+ #if BUILDFLAG(IS_ANDROID)
+@@ -350,6 +354,25 @@
+   }
+ #endif  // BUILDFLAG(ENABLE_VULKAN) && (BUILDFLAG(IS_LINUX) ||
+         // BUILDFLAG(IS_FUCHSIA))
++#if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_OHOS)
++  if (gr_context_type_ == GrContextType::kVulkan) {
++    // The phone keeps native-pixmap allocation disabled in renderers, so it
++    // needs explicit GPU-only registration. Pad/PC already register Ozone.
++    if (ui::IsOhosPhoneGpuChild()) {
++      factories_.push_back(std::make_unique<OzoneImageBackingFactory>(
++          context_state_, workarounds_));
++    }
++    // Canvas and software video also need a Vulkan/GL bridge on Pad/PC.
++    // Otherwise GLES2_READ | RASTER_WRITE has no factory and disconnects the
++    // entire renderer GPU channel, including its native video decoder.
++    factories_.push_back(std::make_unique<ExternalVkImageBackingFactory>(
++        context_state_, /*enable_webgpu_on_vk_via_gl_interop=*/false));
++    LOG(WARNING) << "OHOS Vulkan SharedImage bridge enabled; "
++                 << "external_object_interop="
++                 << context_state_->support_vulkan_external_object()
++                 << "; WebGPU shared images disabled";
++  }
++#endif
+ #endif  // BUILDFLAG(IS_OZONE)
+ 
+ #if BUILDFLAG(IS_APPLE)
+@@ -864,6 +887,13 @@
+       is_angle_metal || is_skia_graphite;
+   shared_image_caps.disable_webgpu_shared_images =
+       workarounds_.disable_webgpu_shared_images;
++#if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_OHOS)
++  // CPU-backed ExternalVk images still require the Raster conversion path.
++  // Native decoder frames opt into WEBGPU_READ independently of this pool.
++  if (gr_context_type_ == GrContextType::kVulkan) {
++    shared_image_caps.disable_webgpu_shared_images = true;
++  }
++#endif
+   if (context_state_) {
+     shared_image_caps.supports_ycbcr_nv12_sampling =
+         shared_image_manager_->SupportsNV12TextureSampling();
+diff --git a/media/video/mappable_shared_image_video_frame_pool.cc b/media/video/mappable_shared_image_video_frame_pool.cc
+index b99d14b..127786b 100644
+--- a/media/video/mappable_shared_image_video_frame_pool.cc
++++ b/media/video/mappable_shared_image_video_frame_pool.cc
+@@ -1283,7 +1283,13 @@ MappableSharedImageVideoFramePool::PoolImpl::GetOrCreateFrameResource(
+   // SharedImageCapabilities, once this metadata is compatible.
+ #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
+   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+-          switches::kEnableUnsafeWebGPU)) {
++          switches::kEnableUnsafeWebGPU)
++#if BUILDFLAG(IS_OHOS)
++      // Phone Skia Vulkan can upload shared-memory video, but cannot also
++      // expose these images to Dawn. Keep that optional usage off in this case.
++      && !si_caps.disable_webgpu_shared_images
++#endif
++  ) {
+     // This SharedImage may be used for zero-copy import into WebGPU.
+     // OHOS: an OH_NativeBuffer that Dawn imports with VK_OHOS_external_memory.
+     si_usage |= gpu::SHARED_IMAGE_USAGE_WEBGPU_READ;
+diff --git a/gpu/ipc/service/webgpu_command_buffer_stub.cc b/gpu/ipc/service/webgpu_command_buffer_stub.cc
+--- a/gpu/ipc/service/webgpu_command_buffer_stub.cc
++++ b/gpu/ipc/service/webgpu_command_buffer_stub.cc
+@@ -77,6 +77,11 @@
+   GpuChannelManager* manager = channel_->gpu_channel_manager();
+   DCHECK(manager);
+ 
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS WebGPU context: starting, GL implementation="
++               << static_cast<int>(gl::GetGLImplementation());
++#endif
++
+   ContextResult result;
+   scoped_refptr<SharedContextState> shared_context_state =
+       manager->GetSharedContextState(&result);
+@@ -108,6 +113,10 @@
+           sequence_id_, CommandBufferNamespace::GPU_IO, command_buffer_id_);
+ 
+   result = decoder->Initialize(manager->gpu_feature_info());
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS WebGPU context: decoder result="
++               << static_cast<int>(result);
++#endif
+   if (result != gpu::ContextResult::kSuccess) {
+     DLOG(ERROR) << "Failed to initialize decoder.";
+     return result;
+@@ -133,6 +142,9 @@
+     manager->delegate()->DidCreateOffscreenContext(active_url_.url());
+ 
+   manager->delegate()->DidCreateContextSuccessfully();
++#if BUILDFLAG(IS_OHOS)
++  LOG(WARNING) << "OHOS WebGPU context: service initialized";
++#endif
+   initialized_ = true;
+   return gpu::ContextResult::kSuccess;
+ #endif  // BUILDFLAG(IS_FUCHSIA)
+diff --git a/services/viz/public/cpp/gpu/context_provider_command_buffer.cc b/services/viz/public/cpp/gpu/context_provider_command_buffer.cc
+--- a/services/viz/public/cpp/gpu/context_provider_command_buffer.cc
++++ b/services/viz/public/cpp/gpu/context_provider_command_buffer.cc
+@@ -261,6 +261,11 @@
+       stream_priority_, attributes_.Clone(), active_url_,
+       command_buffer_metrics::ContextTypeToString(context_type_));
+   if (bind_result_ != gpu::ContextResult::kSuccess) {
++#if BUILDFLAG(IS_OHOS)
++    LOG(ERROR) << "OHOS context: command buffer creation failed, type="
++               << static_cast<int>(attributes_->which())
++               << " result=" << static_cast<int>(bind_result_);
++#endif
+     DLOG(ERROR) << "GpuChannelHost failed to create command buffer.";
+     command_buffer_metrics::UmaRecordContextInitFailed(context_type_);
+     return bind_result_;
+@@ -274,6 +279,10 @@
+       bind_result_ =
+           webgpu_helper->Initialize(memory_limits_.command_buffer_size);
+       if (bind_result_ != gpu::ContextResult::kSuccess) {
++#if BUILDFLAG(IS_OHOS)
++        LOG(ERROR) << "OHOS WebGPU context: helper initialization failed, result="
++                   << static_cast<int>(bind_result_);
++#endif
+         DLOG(ERROR) << "Failed to initialize WebGPUCmdHelper.";
+         return bind_result_;
+       }
+@@ -289,6 +298,10 @@
+           default_task_runner_ != reply_task_runner_);
+       bind_result_ = webgpu_impl->Initialize(memory_limits_);
+       if (bind_result_ != gpu::ContextResult::kSuccess) {
++#if BUILDFLAG(IS_OHOS)
++        LOG(ERROR) << "OHOS WebGPU context: client initialization failed, result="
++                   << static_cast<int>(bind_result_);
++#endif
+         DLOG(ERROR) << "Failed to initialize WebGPUImplementation.";
+         return bind_result_;
+       }
+diff --git a/gpu/command_buffer/service/shared_image/skia_vk_ozone_image_representation.cc b/gpu/command_buffer/service/shared_image/skia_vk_ozone_image_representation.cc
+--- a/gpu/command_buffer/service/shared_image/skia_vk_ozone_image_representation.cc
++++ b/gpu/command_buffer/service/shared_image/skia_vk_ozone_image_representation.cc
+@@ -7,6 +7,7 @@
+ #include <utility>
+ 
+ #include "base/containers/to_vector.h"
++#include "build/build_config.h"
+ #include "components/viz/common/gpu/vulkan_context_provider.h"
+ #include "components/viz/common/resources/shared_image_format_utils.h"
+ #include "gpu/command_buffer/common/shared_image_usage.h"
+@@ -266,6 +267,20 @@
+ 
+ std::unique_ptr<skgpu::MutableTextureState>
+ SkiaVkOzoneImageRepresentation::GetEndAccessState() {
++#if BUILDFLAG(IS_OHOS)
++  // NativeBuffer imports can be recreated for every representation. Both Dawn
++  // and Skia exchange these allocations through the foreign queue in GENERAL,
++  // including consecutive accesses from the same Skia device.
++  if (vulkan_images_.front()->native_pixmap()) {
++    for (const auto& image : vulkan_images_) {
++      if (image->queue_family_index() != VK_QUEUE_FAMILY_FOREIGN_EXT)
++        return nullptr;
++    }
++    return std::make_unique<skgpu::MutableTextureState>(
++        skgpu::MutableTextureStates::MakeVulkan(VK_IMAGE_LAYOUT_GENERAL,
++                                                VK_QUEUE_FAMILY_FOREIGN_EXT));
++  }
++#endif
+   // `kSingleDeviceUsage` defines the set of usages for which only the Vulkan
+   // device from SharedContextState is used. If the SI has any usages outside
+   // this set (e.g., if it has any GLES2 usage), then it will be accessed
+diff --git a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc b/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
+--- a/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
++++ b/gpu/command_buffer/service/shared_image/dawn_ozone_image_representation.cc
+@@ -113,6 +113,12 @@
+     return nullptr;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Even a read acquires exclusive queue ownership from FOREIGN. Serialize
++  // it with Skia/GL reads and retain the completion fence for the next owner.
++  is_readonly_ = false;
++#endif
++
+   if (!ozone_backing()->BeginAccess(is_readonly_,
+                                     OzoneImageBacking::AccessStream::kWebGPU,
+                                     &fences, need_end_fence)) {
+@@ -120,14 +126,47 @@
+   }
+   DCHECK(need_end_fence || is_readonly_);
+ 
++#if BUILDFLAG(IS_OHOS)
++  auto restore_begin_fences = [&]() {
++    gfx::GpuFenceHandle recovery_fence;
++    for (auto& pending : fences) {
++      if (pending.is_null())
++        continue;
++      if (recovery_fence.is_null()) {
++        recovery_fence = std::move(pending);
++        continue;
++      }
++      base::ScopedFD merged(
++          sync_merge("ohos-dawn-recover", recovery_fence.Peek(), pending.Peek()));
++      if (!merged.is_valid()) {
++        // Keep the backing locked rather than let a later access omit a
++        // producer dependency. Teardown can still reclaim the allocation.
++        LOG(ERROR) << "Failed to preserve OHOS shared image producer fences";
++        return;
++      }
++      recovery_fence.Adopt(std::move(merged));
++    }
++    ozone_backing()->EndAccess(is_readonly_,
++                              OzoneImageBacking::AccessStream::kWebGPU,
++                              std::move(recovery_fence));
++  };
++#endif
++
+   wgpu::SharedTextureMemoryBeginAccessDescriptor begin_access_desc = {};
+   begin_access_desc.initialized = IsCleared();
+ 
+   wgpu::SharedTextureMemoryVkImageLayoutBeginState begin_layout{};
+ 
++#if BUILDFLAG(IS_OHOS)
++  // NativeBuffer producers release to the foreign queue in GENERAL. UNDEFINED
++  // would discard initialized Canvas/Skia/video content on the first access.
++  begin_layout.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
++  begin_layout.newLayout = VK_IMAGE_LAYOUT_GENERAL;
++#else
+   // TODO(crbug.com/330385376): Track layouts correctly.
+   begin_layout.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+   begin_layout.newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
++#endif
+   begin_access_desc.nextInChain = &begin_layout;
+ 
+   // If the semaphore from BeginWrite is valid then pass it to
+@@ -184,9 +223,7 @@
+   native_buffer_desc.handle = ui::GetOhosNativeBuffer(*pixmap_);
+   if (!native_buffer_desc.handle) {
+     LOG(ERROR) << "No OH_NativeBuffer behind this pixmap.";
+-    ozone_backing()->EndAccess(
+-        is_readonly_, OzoneImageBacking::AccessStream::kWebGPU,
+-        fences.empty() ? gfx::GpuFenceHandle() : std::move(fences[0]));
++    restore_begin_fences();
+     return nullptr;
+   }
+   wgpu::SharedTextureMemoryDescriptor desc;
+@@ -234,9 +271,13 @@
+     LOG(ERROR) << "Failed to begin access for shared image.";
+     // End the access on the backing and restore its fence, as Dawn did not
+     // consume it.
++#if BUILDFLAG(IS_OHOS)
++    restore_begin_fences();
++#else
+     ozone_backing()->EndAccess(
+         is_readonly_, OzoneImageBacking::AccessStream::kWebGPU,
+         fences.empty() ? gfx::GpuFenceHandle() : std::move(fences[0]));
++#endif
+ 
+     // Set `texture_` to nullptr to signal failure to BeginScopedAccess(),
+     // which will itself then return nullptr to signal failure to the client.
+@@ -274,6 +315,41 @@
+   // signaled after the WGPUTexture's last use, or it should re-export
+   // the begin fences if the WGPUTexture was unused.
+   gfx::GpuFenceHandle fence;
++#if BUILDFLAG(IS_OHOS)
++  bool fences_valid = true;
++  for (size_t i = 0; i < end_access_desc.fenceCount; ++i) {
++    wgpu::SharedFenceExportInfo export_info{};
++    wgpu::SharedFenceSyncFDExportInfo sync_info{};
++    export_info.nextInChain = &sync_info;
++    UNSAFE_TODO(end_access_desc.fences[i]).ExportInfo(&export_info);
++    if (export_info.type != wgpu::SharedFenceType::SyncFD ||
++        sync_info.handle < -1) {
++      fences_valid = false;
++      break;
++    }
++    // Vulkan sync-fd -1 denotes an already-signaled payload. It must not
++    // replace another, still-pending fence or be passed to dup/sync_merge.
++    if (sync_info.handle == -1)
++      continue;
++    base::ScopedFD merged(
++        fence.is_null()
++            ? dup(sync_info.handle)
++            : sync_merge("ohos-dawn-release", fence.Peek(), sync_info.handle));
++    if (!merged.is_valid()) {
++      fences_valid = false;
++      break;
++    }
++    fence.Adopt(std::move(merged));
++  }
++  if (!fences_valid) {
++    LOG(ERROR) << "Failed to preserve OHOS Dawn completion fences";
++    // Keep backing access locked: an empty fence would falsely advertise
++    // completion and allow Skia to acquire memory still in use by Dawn.
++    texture_.Destroy();
++    texture_ = nullptr;
++    return;
++  }
++#else
+   if (end_access_desc.fenceCount) {
+     wgpu::SharedFenceExportInfo export_info;
+     wgpu::SharedFenceSyncFDExportInfo sync_fd_export_info;
+@@ -295,6 +371,8 @@
+     fence.Adopt(std::move(fd_handle_merged));
+   }
+ 
++#endif
++
+   ozone_backing()->EndAccess(
+       is_readonly_, OzoneImageBacking::AccessStream::kWebGPU, std::move(fence));
+ 
+diff --git a/gin/array_buffer.cc b/gin/array_buffer.cc
+--- a/gin/array_buffer.cc
++++ b/gin/array_buffer.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "gin/array_buffer.h"
+ 
++#include <errno.h>
+ #include <stddef.h>
+ #include <stdlib.h>
+ 
+@@ -11,6 +12,7 @@
+ #include "base/check_op.h"
+ #include "base/compiler_specific.h"
+ #include "base/no_destructor.h"
++#include "base/trace_event/trace_event.h"
+ #include "build/build_config.h"
+ #include "gin/per_isolate_data.h"
+ #include "partition_alloc/page_allocator.h"
+@@ -203,10 +205,37 @@
+     v8::PagePermissions permissions = write_allowed
+                                           ? v8::PagePermissions::kReadWrite
+                                           : v8::PagePermissions::kRead;
++#if BUILDFLAG(IS_OHOS)
++    // Clear stale errno so allocator rejection is distinguishable from mmap.
++    errno = 0;
++#endif
+     uintptr_t mapping = v8::V8::GetSandboxAddressSpace()->AllocateSharedPages(
+         0, mapping_size, permissions, v8_handle, offset);
+-    if (!mapping)
++    if (!mapping) {
++#if BUILDFLAG(IS_OHOS)
++      const int sandbox_errno = errno;
++      // Diagnostic only: test this same fd outside the V8 reservation, then
++      // immediately unmap it. Never expose an out-of-sandbox ArrayBuffer.
++      errno = 0;
++      void* probe = mmap(nullptr, mapping_size,
++                         PROT_READ | (write_allowed ? PROT_WRITE : 0),
++                         MAP_SHARED, handle.fd, offset);
++      const int probe_errno = probe == MAP_FAILED ? errno : 0;
++      const bool probe_ok = probe != MAP_FAILED;
++      if (probe_ok) {
++        CHECK_EQ(0, munmap(probe, mapping_size));
++      }
++      TRACE_EVENT_INSTANT("gpu", "OHOS.ArrayBufferSharedMemoryMapFailed",
++                         "size", mapping_size, "offset", offset,
++                         "write_allowed", write_allowed, "errno", sandbox_errno,
++                         "sandbox_base", address_space->base(),
++                         "sandbox_size", address_space->size(),
++                         "subspaces", address_space->CanAllocateSubspaces(),
++                         "plain_mmap_ok", probe_ok, "plain_mmap_errno", probe_errno);
++      errno = sandbox_errno;
++#endif
+       return std::nullopt;
++    }
+ 
+     return UNSAFE_TODO(base::span(reinterpret_cast<uint8_t*>(mapping), size));
+   }
+diff --git a/gpu/ipc/client/command_buffer_proxy_impl.cc b/gpu/ipc/client/command_buffer_proxy_impl.cc
+--- a/gpu/ipc/client/command_buffer_proxy_impl.cc
++++ b/gpu/ipc/client/command_buffer_proxy_impl.cc
+@@ -520,6 +520,11 @@
+   std::tie(shared_memory_region, shared_memory_mapping) =
+       AllocateAndMapSharedMemory(size, transfer_buffer_mapper_);
+   if (!shared_memory_mapping.IsValid()) {
++#if BUILDFLAG(IS_OHOS)
++    TRACE_EVENT_INSTANT("gpu", "OHOS.TransferBufferMapFailed", "size", size,
++                       "custom_mapper", transfer_buffer_mapper_ != nullptr,
++                       "region_valid", shared_memory_region.IsValid());
++#endif
+     if (last_state_.error == gpu::error::kNoError &&
+         option != TransferBufferAllocationOption::kReturnNullOnOOM)
+       OnClientError(gpu::error::kOutOfBounds);
+@@ -530,6 +535,9 @@
+   if (last_state_.error == gpu::error::kNoError) {
+     base::UnsafeSharedMemoryRegion region = shared_memory_region.Duplicate();
+     if (!region.IsValid()) {
++#if BUILDFLAG(IS_OHOS)
++      TRACE_EVENT_INSTANT("gpu", "OHOS.TransferBufferDuplicateFailed", "size", size);
++#endif
+       if (last_state_.error == gpu::error::kNoError)
+         OnClientError(gpu::error::kLostContext);
+       return nullptr;
+diff --git a/gpu/command_buffer/client/mapped_memory.cc b/gpu/command_buffer/client/mapped_memory.cc
+--- a/gpu/command_buffer/client/mapped_memory.cc
++++ b/gpu/command_buffer/client/mapped_memory.cc
+@@ -101,6 +101,9 @@
+ 
+   if (max_allocated_bytes_ != SharedMemoryLimits::kNoLimit &&
+       (allocated_memory_ + size) > max_allocated_bytes_) {
++    TRACE_EVENT_INSTANT("gpu", "MappedMemoryManager.AllocationLimitExceeded",
++                       "requested", size, "allocated", allocated_memory_,
++                       "limit", max_allocated_bytes_);
+     return {};
+   }
+ 
+diff --git a/third_party/blink/renderer/modules/webgpu/external_texture_helper.cc b/third_party/blink/renderer/modules/webgpu/external_texture_helper.cc
+--- a/third_party/blink/renderer/modules/webgpu/external_texture_helper.cc
++++ b/third_party/blink/renderer/modules/webgpu/external_texture_helper.cc
+@@ -3,6 +3,8 @@
+ // found in the LICENSE file.
+ 
+ #include "third_party/blink/renderer/modules/webgpu/external_texture_helper.h"
++
++#include <cmath>
+ 
+ #include "base/debug/crash_logging.h"
+ #include "media/base/video_frame.h"
+@@ -22,6 +24,8 @@
+ #include "third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h"
+ #include "third_party/blink/renderer/platform/graphics/gpu/webgpu_shared_image_wrapper.h"
+ #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
++#include "third_party/skia/include/core/SkColorSpace.h"
++#include "third_party/skia/include/core/SkM44.h"
+ #include "third_party/skia/include/effects/SkColorMatrix.h"
+ #include "third_party/skia/modules/skcms/skcms.h"
+ 
+@@ -58,7 +62,24 @@
+ }  // namespace
+ 
+ std::array<float, 12> GetYUVToRGBMatrix(gfx::ColorSpace color_space,
+-                                        size_t bit_depth) {
++                                     size_t bit_depth) {
++  // Skia's Rec709 YUV enum describes 8-bit samples even when the source is
++  // P010. Use gfx's depth-aware range and transfer matrices for higher bit
++  // depths, including the exact chroma midpoint for full-range video.
++  if (color_space.GetMatrixID() == gfx::ColorSpace::MatrixID::BT709 &&
++      bit_depth > 8 && bit_depth <= 16) {
++    SkM44 yuv_to_rgb;
++    if (color_space.GetTransferMatrix(static_cast<int>(bit_depth))
++            .invert(&yuv_to_rgb)) {
++      yuv_to_rgb.preConcat(
++          color_space.GetRangeAdjustMatrix(static_cast<int>(bit_depth)));
++      float matrix[16];
++      yuv_to_rgb.getRowMajor(matrix);
++      return {matrix[0], matrix[1], matrix[2], matrix[3],
++              matrix[4], matrix[5], matrix[6], matrix[7],
++              matrix[8], matrix[9], matrix[10], matrix[11]};
++    }
++  }
+   // Get the appropriate YUV to RGB conversion matrix.
+   SkYUVColorSpace src_sk_color_space;
+   color_space.ToSkYUVColorSpace(static_cast<int>(bit_depth),
+@@ -110,6 +131,67 @@
+                            src_transfer_fn.d, src_transfer_fn.e,
+                            src_transfer_fn.f};
+ 
++  // GetTransferFunction() does not represent PQ and leaves an identity
++  // function on failure. Passing that identity to Dawn treats PQ code values
++  // as linear light (e.g. 0.1 nit becomes sRGB 71/255 instead of about 2/255).
++  if (src_color_space.GetTransferID() == gfx::ColorSpace::TransferID::PQ) {
++    // Match the PQ mode and coefficients in the pinned Dawn revision's
++    // common/ExternalTextureParams.cpp. Dawn performs the EOTF in the shader.
++    color_space_conversion_constants.src_transfer_constants = {
++        -2.f, 2610.f / 16384.f, 2523.f / 32.f, 3424.f / 4096.f,
++        2413.f / 128.f, 2392.f / 128.f, 0.f};
++
++    // The PQ EOTF produces a fraction of 10000 nits. Scale linear RGB to the
++    // source's SDR reference white, preserving an explicitly configured white
++    // level through Skia's HDR transfer function rather than assuming 203 nits.
++    float luminance_scale = 10000.f / gfx::ColorSpace::kDefaultSDRWhiteLevel;
++    auto sk_color_space = src_color_space.GetAsFullRangeRGB().ToSkColorSpace();
++    if (sk_color_space) {
++      skcms_TransferFunction hdr_transfer;
++      sk_color_space->transferFn(&hdr_transfer);
++      if (skcms_TransferFunction_isPQ(&hdr_transfer)) {
++        // Modern skcms stores the SDR reference white in A. Its scalar
++        // evaluator returns normalized PQ and does not apply this white level.
++        if (std::isfinite(hdr_transfer.a) && hdr_transfer.a > 0.f) {
++          luminance_scale = 10000.f / hdr_transfer.a;
++        }
++      } else if (skcms_TransferFunction_isPQish(&hdr_transfer)) {
++        // The older PQish representation folds the white scale into its
++        // coefficients, so evaluating the peak already includes that scale.
++        const float peak = skcms_TransferFunction_eval(&hdr_transfer, 1.f);
++        if (std::isfinite(peak) && peak > 0.f) {
++          luminance_scale = peak;
++        }
++      }
++    }
++    for (float& value : color_space_conversion_constants.gamut_conversion_matrix) {
++      value *= luminance_scale;
++    }
++  } else if (src_color_space.GetTransferID() ==
++             gfx::ColorSpace::TransferID::HLG) {
++    // HLG also cannot be represented by GetTransferFunction(). Use Dawn's
++    // HLG inverse-OETF mode, rather than passing encoded samples as linear.
++    // These coefficients and luminance normalization match the pinned Dawn
++    // common/ExternalTextureParams.cpp implementation.
++    color_space_conversion_constants.src_transfer_constants = {
++        -1.f, 0.17883277f, 0.28466892f, 0.55991073f, 0.5f, 3.f, 12.f};
++    float luminance_scale = 1000.f / gfx::ColorSpace::kDefaultSDRWhiteLevel;
++    auto sk_color_space = src_color_space.GetAsFullRangeRGB().ToSkColorSpace();
++    if (sk_color_space) {
++      skcms_TransferFunction hdr_transfer;
++      sk_color_space->transferFn(&hdr_transfer);
++      if (skcms_TransferFunction_isHLG(&hdr_transfer) &&
++          std::isfinite(hdr_transfer.a) && hdr_transfer.a > 0.f &&
++          std::isfinite(hdr_transfer.b) && hdr_transfer.b > 0.f) {
++        // Modern skcms stores reference white in A and display peak in B.
++        luminance_scale = hdr_transfer.b / hdr_transfer.a;
++      }
++    }
++    for (float& value : color_space_conversion_constants.gamut_conversion_matrix) {
++      value *= luminance_scale;
++    }
++  }
++
+   // Set constants for destination transfer function.
+   skcms_TransferFunction dst_transfer_fn;
+   dst_color_space.GetInverseTransferFunction(&dst_transfer_fn);
+@@ -237,6 +296,17 @@
+   bool device_support_zero_copy = device->GetHandle().GetAdapter().HasFeature(
+       wgpu::FeatureName::DawnMultiPlanarFormats);
+ 
++  bool opaque_native_yuv = false;
++#if BUILDFLAG(IS_OHOS)
++  opaque_native_yuv =
++      device->GetHandle().GetAdapter().HasFeature(
++          wgpu::FeatureName::OpaqueYCbCrAndroidForExternalTexture) &&
++      (media_video_frame->format() == media::PIXEL_FORMAT_NV12 ||
++       media_video_frame->format() == media::PIXEL_FORMAT_P010LE);
++  // OHOS YUV imports are opaque; planar views are not a fallback here.
++  device_support_zero_copy = false;
++#endif
++
+   wgpu::ExternalTextureDescriptor external_texture_desc = {};
+ 
+   // Set the ExternalTexture cropSize/Origin and apparentSize. The 0-copy path
+@@ -274,8 +344,9 @@
+ 
+   const bool zero_copy =
+       (media_video_frame->HasSharedImage() &&
+-       (media_video_frame->format() == media::PIXEL_FORMAT_NV12) &&
+-       device_support_zero_copy &&
++       (opaque_native_yuv ||
++        (media_video_frame->format() == media::PIXEL_FORMAT_NV12 &&
++         device_support_zero_copy)) &&
+        media_video_frame->metadata().is_webgpu_compatible &&
+        DstColorSpaceSupportedByZeroCopy(dst_predefined_color_space));
+ 
+@@ -291,19 +362,22 @@
+       return {};
+     }
+ 
+-    wgpu::TextureViewDescriptor view_desc = {
+-        .format = wgpu::TextureFormat::R8Unorm,
+-        .aspect = wgpu::TextureAspect::Plane0Only};
+-    wgpu::TextureView plane0 =
+-        mailbox_texture->GetTexture().CreateView(&view_desc);
+-    view_desc.format = wgpu::TextureFormat::RG8Unorm;
+-    view_desc.aspect = wgpu::TextureAspect::Plane1Only;
+-    wgpu::TextureView plane1 =
+-        mailbox_texture->GetTexture().CreateView(&view_desc);
+-
+-    // Set Planes for ExternalTexture
+-    external_texture_desc.plane0 = plane0;
+-    external_texture_desc.plane1 = plane1;
++    if (opaque_native_yuv) {
++      // One opaque view preserves NV12/P010 precision. Dawn's static sampler
++      // returns raw YUV; the matrix below performs range and RGB conversion.
++      external_texture_desc.plane0 =
++          mailbox_texture->GetTexture().CreateView();
++    } else {
++      wgpu::TextureViewDescriptor view_desc = {
++          .format = wgpu::TextureFormat::R8Unorm,
++          .aspect = wgpu::TextureAspect::Plane0Only};
++      external_texture_desc.plane0 =
++          mailbox_texture->GetTexture().CreateView(&view_desc);
++      view_desc.format = wgpu::TextureFormat::RG8Unorm;
++      view_desc.aspect = wgpu::TextureAspect::Plane1Only;
++      external_texture_desc.plane1 =
++          mailbox_texture->GetTexture().CreateView(&view_desc);
++    }
+ 
+     std::array<float, 12> yuvToRgbMatrix;
+     auto set_matrix = [&]() {
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_buffer.cc b/third_party/blink/renderer/modules/webgpu/gpu_buffer.cc
+--- a/third_party/blink/renderer/modules/webgpu/gpu_buffer.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_buffer.cc
+@@ -9,6 +9,7 @@
+ 
+ #include "base/numerics/checked_math.h"
+ #include "base/numerics/safe_conversions.h"
++#include "build/build_config.h"
+ #include "gpu/command_buffer/client/webgpu_interface.h"
+ #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
+ #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_buffer_descriptor.h"
+@@ -387,6 +388,20 @@
+   auto* resolver = MakeGarbageCollected<ScriptPromiseResolver<IDLUndefined>>(
+       script_state, exception_state.GetContext());
+   auto promise = resolver->Promise();
++
++#if BUILDFLAG(IS_OHOS)
++  // The content-timeline check must reject before the next microtask. Dawn's
++  // wire implementation defers already-mapped errors to the GPU process and
++  // does not inject a validation error for an outstanding map request.
++  // Do not start a second request or disturb the original map's future.
++  if (GetHandle().GetMapState() != wgpu::BufferMapState::Unmapped) {
++    constexpr char kError[] = "The buffer is already mapped or mapping.";
++    device_->InjectError(wgpu::ErrorType::Validation, kError);
++    EnsureFlush(ToEventLoop(script_state));
++    resolver->RejectWithDOMException(DOMExceptionCode::kOperationError, kError);
++    return promise;
++  }
++#endif
+ 
+   // And send the command, leaving remaining validation to Dawn.
+   auto* callback = MakeWGPUOnceCallback(resolver->WrapCallbackInScriptScope(
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
+--- a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
+@@ -7,6 +7,7 @@
+ #include "base/metrics/histogram_functions.h"
+ #include "components/viz/common/resources/shared_image_format_utils.h"
+ #include "gpu/command_buffer/client/raster_interface.h"
++#include "gpu/command_buffer/common/capabilities.h"
+ #include "gpu/config/gpu_finch_features.h"
+ #include "third_party/blink/renderer/bindings/core/v8/v8_canvas_tone_mapping.h"
+ #include "third_party/blink/renderer/bindings/core/v8/v8_canvas_tone_mapping_mode.h"
+@@ -205,6 +206,9 @@
+     return SnapshotInternal(swap_texture_->GetHandle());
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  return PaintRenderingResultsToSnapshot(kFrontBuffer);
++#else
+   // If there is no current texture, return a snapshot of the front buffer if
+   // possible.
+   auto front_buffer_texture = GetFrontBufferMailboxTexture();
+@@ -213,6 +217,7 @@
+   }
+ 
+   return SnapshotInternal(front_buffer_texture->GetTexture());
++#endif
+ }
+ 
+ CanvasNon2DResourceProvider*
+@@ -223,10 +228,14 @@
+       if (SharedGpuContext::IsGpuCompositingEnabled()) {
+         // This code path could be used for compositing so add the necessary
+         // shared image usage flags.
++        auto snapshot_usage = swap_buffers_->GetSharedImageUsagesForDisplay();
++#if BUILDFLAG(IS_OHOS)
++        snapshot_usage |= gpu::SHARED_IMAGE_USAGE_RASTER_WRITE;
++#endif
+         resource_provider_ = CanvasNon2DResourceProvider::CreateForWebGPU(
+             Host()->Size(), GetSharedImageFormat(), GetAlphaType(),
+             GetColorSpace(), swap_buffers_->GetHDRMetadata(),
+-            swap_buffers_->GetSharedImageUsagesForDisplay(), Host());
++            snapshot_usage, Host());
+       }
+       Host()->UpdateMemoryUsage();
+       provider = resource_provider_.get();
+@@ -273,6 +282,42 @@
+   wgpu::Texture texture;
+ 
+   scoped_refptr<WebGPUMailboxTexture> front_buffer_texture;
++#if BUILDFLAG(IS_OHOS)
++  if (source_buffer == kFrontBuffer || !texture_) {
++    // Dawn takes exclusive FOREIGN queue ownership even for reads. Reimporting
++    // a presented buffer into Dawn races the compositor's Skia read access.
++    // Copy on the shared raster context instead, where concurrent reads use
++    // the same Vulkan owner. Only explicit snapshots pay for this GPU copy.
++    auto front_image = swap_buffers_->GetFrontBufferSharedImage();
++    auto context = SharedGpuContext::ContextProviderWrapper();
++    if (!front_image) {
++      return MakeFallbackStaticBitmapImage(alpha_mode_);
++    }
++    if (!context) {
++      return nullptr;
++    }
++    gpu::SyncToken destination_token;
++    auto destination =
++        resource_provider->BeginExternalOverwrite(destination_token);
++    if (!destination) {
++      return nullptr;
++    }
++    auto* ri = context->ContextProvider().RasterInterface();
++    const auto source_token = swap_buffers_->GetFrontBufferSyncToken();
++    ri->WaitSyncTokenCHROMIUM(source_token.GetConstData());
++    ri->WaitSyncTokenCHROMIUM(destination_token.GetConstData());
++    ri->CopySharedImage(front_image->mailbox(), destination->mailbox(), 0, 0,
++                        0, 0, front_image->size().width(),
++                        front_image->size().height());
++    // The compositor owns the source's recycle callback. Complete this copy
++    // before yielding to it so the source cannot reenter the swap-buffer pool
++    // while the snapshot still reads it. No pixel data is read back to CPU.
++    ri->Finish();
++    ri->GenUnverifiedSyncTokenCHROMIUM(destination_token.GetData());
++    resource_provider->EndExternalWrite(destination_token);
++    return resource_provider->Snapshot();
++  }
++#endif
+   if (source_buffer == kFrontBuffer) {
+ #if BUILDFLAG(IS_LINUX)
+     // By returning false here the canvas will show up as black in the scenarios
+@@ -353,11 +398,12 @@
+ ImageBitmap* GPUCanvasContext::TransferToImageBitmap(
+     ScriptState* script_state,
+     ExceptionState& exception_state) {
+-  // If the canvas configuration is invalid, WebGPU requires that we give a
+-  // fallback black ImageBitmap if possible.
++  // An unconfigured context has transparent black image contents. A
++  // configured context with an invalid configuration uses opaque black.
+   if (!swap_buffers_) {
+-    auto staticBitmapImage =
+-        MakeFallbackStaticBitmapImage(V8GPUCanvasAlphaMode::Enum::kOpaque);
++    auto staticBitmapImage = MakeFallbackStaticBitmapImage(
++        configured_ ? V8GPUCanvasAlphaMode::Enum::kOpaque
++                    : V8GPUCanvasAlphaMode::Enum::kPremultiplied);
+     return staticBitmapImage
+                ? MakeGarbageCollected<ImageBitmap>(staticBitmapImage)
+                : nullptr;
+@@ -497,6 +543,23 @@
+   if (texture_descriptor_.format == wgpu::TextureFormat::BGRA8Unorm) {
+     // WebGPU on vulkan with GL interop cannot support BGRA due to bugs in
+     // mesa. See anglebug.com/40644739
++    copy_to_swap_texture_required_ = true;
++  }
++#endif
++
++#if BUILDFLAG(IS_OHOS)
++  auto compositor_context = SharedGpuContext::ContextProviderWrapper();
++  const bool ohos_vulkan_compositor =
++      compositor_context && compositor_context->ContextProvider()
++                                .GetCapabilities()
++                                .using_vulkan_context;
++  // NativeBuffer render targets cannot reliably be written as storage images.
++  // Keep storage access on a regular Dawn texture and blit only for presentation.
++  // Likewise, EGL needs an 8-bit presentation image for a float canvas; Vulkan
++  // can keep its float format, including when a storage-to-display blit is used.
++  if ((texture_descriptor_.usage & wgpu::TextureUsage::StorageBinding) != 0 ||
++      (texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float &&
++       !ohos_vulkan_compositor)) {
+     copy_to_swap_texture_required_ = true;
+   }
+ #endif
+@@ -576,6 +639,12 @@
+     // In cases where a copy is necessary the swap buffers will always use the
+     // preferred canvas format.
+     swap_texture_descriptor_.format = GPU::GetPreferredCanvasFormat();
++#if BUILDFLAG(IS_OHOS)
++    if (ohos_vulkan_compositor &&
++        texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float) {
++      swap_texture_descriptor_.format = wgpu::TextureFormat::RGBA16Float;
++    }
++#endif
+ 
+     // The swap buffer texture doesn't need any view formats.
+     swap_texture_descriptor_.viewFormats = nullptr;
+@@ -602,6 +671,50 @@
+         break;
+     }
+   }
++
++#if BUILDFLAG(IS_OHOS)
++  if (texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float &&
++      swap_texture_descriptor_.format != wgpu::TextureFormat::RGBA16Float) {
++    // The GL presentation blit is clamped SDR, even when the application's
++    // float texture has extended range. Do not label that 8-bit image as HDR.
++    hdr_metadata.extended_range.reset();
++  }
++#endif
++
++#if BUILDFLAG(IS_OHOS)
++  // Keep Dawn's required descriptor validation above, but do not allocate a
++  // presentation buffer for a known-invalid configuration. The storage-image
++  // workaround would otherwise create an error texture and try to copy it when
++  // destroy()/unconfigure() runs, after the app has handled the original error.
++  constexpr wgpu::TextureUsage kCanvasUsages =
++      wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::CopyDst |
++      wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::StorageBinding |
++      wgpu::TextureUsage::RenderAttachment;
++  const bool invalid_usage =
++      texture_descriptor_.usage == wgpu::TextureUsage::None ||
++      (texture_descriptor_.usage & ~kCanvasUsages) != wgpu::TextureUsage::None;
++  const bool unsupported_bgra_storage =
++      texture_descriptor_.format == wgpu::TextureFormat::BGRA8Unorm &&
++      (texture_descriptor_.usage & wgpu::TextureUsage::StorageBinding) !=
++          wgpu::TextureUsage::None &&
++      !device_->features()->Has(V8GPUFeatureName::Enum::kBgra8UnormStorage);
++  bool incompatible_view_format = false;
++  for (wgpu::TextureFormat view_format : view_formats_) {
++    if (view_format == texture_descriptor_.format) {
++      continue;
++    }
++    const bool compatible_srgb_view =
++        (texture_descriptor_.format == wgpu::TextureFormat::RGBA8Unorm &&
++         view_format == wgpu::TextureFormat::RGBA8UnormSrgb) ||
++        (texture_descriptor_.format == wgpu::TextureFormat::BGRA8Unorm &&
++         view_format == wgpu::TextureFormat::BGRA8UnormSrgb);
++    incompatible_view_format |= !compatible_srgb_view;
++  }
++  if (invalid_usage || unsupported_bgra_storage || incompatible_view_format) {
++    Host()->SetNeedsCompositingUpdate();
++    return;
++  }
++#endif
+ 
+   const wgpu::DawnTextureInternalUsageDescriptor* internal_usage_desc = nullptr;
+   if (const wgpu::ChainedStruct* next_in_chain =
+@@ -802,6 +915,12 @@
+ }
+ 
+ void GPUCanvasContext::ReplaceDrawingBuffer(bool destroy_swap_buffers) {
++#if BUILDFLAG(IS_OHOS)
++  // Resizing, reconfiguration and unconfigure replace the drawing buffer.
++  // A snapshot of its previous contents must not survive that replacement.
++  resource_provider_.reset();
++  did_fail_to_create_resource_provider_ = false;
++#endif
+   if (!swap_buffers_) {
+     return;
+   }
+diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+--- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
++++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+@@ -6418,7 +6418,18 @@
+       DynamicTo<StaticBitmapImage>(image.get());
+   DCHECK(static_bitmap_image);
+ 
+-  const bool allow_copy_via_gpu = true;
++  bool allow_copy_via_gpu = true;
++#if BUILDFLAG(IS_OHOS)
++  // The OHOS phone EGL driver cannot import Vulkan's RGBA16F NativeBuffer.
++  // Use Skia's existing readback/upload path for these WebGPU snapshots,
++  // preserving floating-point pixels and the normal unpack conversions.
++  auto* source_context = context_host->RenderingContext();
++  if (source_context && source_context->IsWebGPU() &&
++      static_bitmap_image->GetSharedImageFormat() ==
++          viz::SinglePlaneFormat::kRGBA_F16) {
++    allow_copy_via_gpu = false;
++  }
++#endif
+   TexImageStaticBitmapImage(params, static_bitmap_image, allow_copy_via_gpu);
+ }
+ 
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+@@ -10,6 +10,9 @@
+ #include "base/logging.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
++#endif
+ #include "build/chromecast_buildflags.h"
+ #include "components/viz/common/resources/shared_image_format_utils.h"
+ #include "gpu/command_buffer/common/shared_image_usage.h"
+@@ -263,6 +266,16 @@
+       !usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_WEBGPU_WRITE |
+                       SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE |
+                       SHARED_IMAGE_USAGE_WEBGPU_STORAGE_TEXTURE)) {
++    return false;
++  }
++#endif
++
++#if BUILDFLAG(IS_OHOS)
++  // Pad/PC decoder surfaces use their dedicated video backing. Generic
++  // multiplanar pixmaps need per-plane import, which this Vulkan importer
++  // does not provide. Preserve software video's existing conversion path.
++  if (!ui::IsOhosPhoneGpuChild() && format.is_multi_plane() &&
++      gr_context_type == GrContextType::kVulkan) {
+     return false;
+   }
+ #endif
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+@@ -50,6 +50,9 @@
+ #include "gpu/command_buffer/service/shared_image/vulkan_ozone_image_representation.h"
+ #include "gpu/vulkan/vulkan_image.h"
+ #include "gpu/vulkan/vulkan_implementation.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_video_vulkan.h"
++#endif
+ #endif  // BUILDFLAG(ENABLE_VULKAN)
+ 
+ #if BUILDFLAG(USE_DAWN)
+@@ -355,9 +358,20 @@
+       auto vk_format = format().is_single_plane()
+                            ? ToVkFormat(format(), /*plane_index=*/0)
+                            : ToVkFormatExternalSampler(format());
+-      auto vulkan_image = vulkan_implementation->CreateImageFromGpuMemoryHandle(
+-          device_queue, std::move(gmb_handle), size(), vk_format,
+-          gfx::ColorSpace());
++      std::unique_ptr<VulkanImage> vulkan_image;
++#if BUILDFLAG(IS_OHOS)
++      if (format().is_single_plane()) {
++        // RGBA allocations have no CPU-written registry tag. Import the
++        // pixmap we already own instead of trying to rediscover it from a
++        // cloned dma-buf fd. VulkanImage retains it through GPU completion.
++        vulkan_image = ui::ImportOhosOffscreenVulkan(device_queue, pixmap_);
++      } else
++#endif
++      {
++        vulkan_image = vulkan_implementation->CreateImageFromGpuMemoryHandle(
++            device_queue, std::move(gmb_handle), size(), vk_format,
++            gfx::ColorSpace());
++      }
+       if (!vulkan_image) {
+         return nullptr;
+       }
+@@ -528,13 +542,21 @@
+     }
+ #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+   }
+-  auto vulkan_image = vulkan_impl.CreateImageFromGpuMemoryHandle(
+-      vulkan_device_queue,
+-      gfx::GpuMemoryBufferHandle(std::move(native_pixmap_handle)), image_size,
+-      image_format.PrefersExternalSampler()
+-          ? ToVkFormatExternalSampler(image_format)
+-          : ToVkFormatSinglePlanar(image_format),
+-      color_space());
++  std::unique_ptr<VulkanImage> vulkan_image;
++#if BUILDFLAG(IS_OHOS)
++  if (image_format.is_single_plane()) {
++    vulkan_image = ui::ImportOhosOffscreenVulkan(vulkan_device_queue, pixmap_);
++  } else
++#endif
++  {
++    vulkan_image = vulkan_impl.CreateImageFromGpuMemoryHandle(
++        vulkan_device_queue,
++        gfx::GpuMemoryBufferHandle(std::move(native_pixmap_handle)), image_size,
++        image_format.PrefersExternalSampler()
++            ? ToVkFormatExternalSampler(image_format)
++            : ToVkFormatSinglePlanar(image_format),
++        color_space());
++  }
+ 
+   if (!vulkan_image) {
+     return nullptr;
+
+diff --git a/third_party/blink/renderer/platform/graphics/gpu/webgpu_swap_buffer_provider.cc b/third_party/blink/renderer/platform/graphics/gpu/webgpu_swap_buffer_provider.cc
+--- a/third_party/blink/renderer/platform/graphics/gpu/webgpu_swap_buffer_provider.cc
++++ b/third_party/blink/renderer/platform/graphics/gpu/webgpu_swap_buffer_provider.cc
+@@ -107,6 +107,12 @@
+ }
+ 
+ void WebGPUSwapBufferProvider::DiscardCurrentSwapBuffer() {
++#if BUILDFLAG(IS_OHOS)
++  // Explicit drawing-buffer replacement invalidates old snapshot contents.
++  // The compositor's release callback still owns the actual swap buffer.
++  front_buffer_shared_image_ = nullptr;
++  front_buffer_sync_token_ = gpu::SyncToken();
++#endif
+   // We're discarding the current texture without sending it to the compositor.
+   if (current_swap_buffer_ && current_swap_buffer_->mailbox_texture) {
+     current_swap_buffer_->mailbox_texture->SetNeedsPresent(false);
+diff --git a/gpu/command_buffer/service/gpu_persistent_cache.cc b/gpu/command_buffer/service/gpu_persistent_cache.cc
+--- a/gpu/command_buffer/service/gpu_persistent_cache.cc
++++ b/gpu/command_buffer/service/gpu_persistent_cache.cc
+@@ -27,6 +27,7 @@
+ #include "base/trace_event/memory_dump_request_args.h"
+ #include "base/trace_event/trace_event.h"
+ #include "base/types/expected_macros.h"
++#include "build/build_config.h"
+ #include "components/persistent_cache/client.h"
+ #include "components/persistent_cache/persistent_cache.h"
+ #include "components/persistent_cache/transaction_error.h"
+@@ -137,12 +138,19 @@
+   LOG(ERROR) << "Persistent cache error: " << static_cast<int>(error);
+   switch (error) {
+     case persistent_cache::TransactionError::kPermanent:
++#if BUILDFLAG(IS_OHOS)
++      // Disk-cache failure is not a rendering failure. In-process GPUs would
++      // kill the browser; phone fork GPUs would unnecessarily lose Vulkan.
++      // DiskCache retires this backend before releasing its operation gate.
++      break;
++#else
+       if (use_shader_cache_shm_count) {
+         GpuProcessShmCount::ScopedIncrement scoped_increment(
+             use_shader_cache_shm_count);
+         base::ImmediateCrash();
+       }
+       break;
++#endif
+     default:
+       break;
+   }
+@@ -214,7 +222,8 @@
+   friend class base::RefCountedThreadSafe<DiskCache>;
+   ~DiskCache();
+ 
+-  void SignalUsingCacheComplete();
++  void SignalUsingCacheComplete(
++      std::optional<persistent_cache::TransactionError> error);
+   void DoStoreToDisk(scoped_refptr<MemoryCacheEntry> entry);
+   void DoDelayedStoreToDisk(scoped_refptr<MemoryCacheEntry> entry,
+                             uint64_t idle_id);
+@@ -239,6 +248,9 @@
+   base::Lock cache_in_use_mutex_;
+   base::ConditionVariable cache_in_use_cond_var_{&cache_in_use_mutex_};
+   bool cache_in_use_ GUARDED_BY(cache_in_use_mutex_) = false;
++#if BUILDFLAG(IS_OHOS)
++  bool backend_failed_ GUARDED_BY(cache_in_use_mutex_) = false;
++#endif
+ };
+ 
+ GpuPersistentCache::DiskCache::DiskCache(
+@@ -255,14 +267,28 @@
+ 
+ GpuPersistentCache::DiskCache::~DiskCache() = default;
+ 
+-void GpuPersistentCache::DiskCache::SignalUsingCacheComplete() {
++void GpuPersistentCache::DiskCache::SignalUsingCacheComplete(
++    std::optional<persistent_cache::TransactionError> error) {
+   {
+     base::AutoLock lock(cache_in_use_mutex_);
+     DCHECK(cache_in_use_);
++#if BUILDFLAG(IS_OHOS)
++    if (error == persistent_cache::TransactionError::kPermanent) {
++      backend_failed_ = true;
++      LOG(ERROR) << "OHOS GPU persistent cache: retiring failed disk backend "
++                 << cache_prefix_ << "; continuing without disk cache";
++    }
++#endif
+     cache_in_use_ = false;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // All waiters must observe backend retirement. They return without taking
++  // the operation gate, so no later completion would wake the next waiter.
++  cache_in_use_cond_var_.Broadcast();
++#else
+   cache_in_use_cond_var_.Signal();
++#endif
+ }
+ 
+ GpuPersistentCache::CacheLoadResult GpuPersistentCache::DiskCache::Load(
+@@ -287,6 +313,10 @@
+       return CacheLoadResult::kMissTimeout;
+     }
+ 
++#if BUILDFLAG(IS_OHOS)
++    if (backend_failed_)
++      return CacheLoadResult::kMissTransactionError;
++#endif
+     cache_in_use_ = true;
+   }
+ 
+@@ -300,11 +330,14 @@
+   }
+ 
+   // Notify other threads
+-  SignalUsingCacheComplete();
++  SignalUsingCacheComplete(result.has_value()
++                               ? std::nullopt
++                               : std::make_optional(result.error()));
+ 
+   ASSIGN_OR_RETURN(
+       auto metadata, result, [&](persistent_cache::TransactionError error) {
+-        HandlePersistentCacheError(&use_shader_cache_shm_count_->data, error);
++        HandlePersistentCacheError(use_shader_cache_shm_count_ ? &use_shader_cache_shm_count_->data
++                                    : nullptr, error);
+         return CacheLoadResult::kMissTransactionError;
+       });
+ 
+@@ -352,6 +385,10 @@
+     while (cache_in_use_) {
+       cache_in_use_cond_var_.Wait();
+     }
++#if BUILDFLAG(IS_OHOS)
++    if (backend_failed_)
++      return;
++#endif
+     cache_in_use_ = true;
+   }
+ 
+@@ -363,10 +400,13 @@
+   }
+ 
+   // Unblock other threads.
+-  SignalUsingCacheComplete();
++  SignalUsingCacheComplete(result.has_value()
++                               ? std::nullopt
++                               : std::make_optional(result.error()));
+ 
+   RETURN_IF_ERROR(result, [&](persistent_cache::TransactionError error) {
+-    HandlePersistentCacheError(&use_shader_cache_shm_count_->data, error);
++    HandlePersistentCacheError(use_shader_cache_shm_count_ ? &use_shader_cache_shm_count_->data
++                                    : nullptr, error);
+   });
+ }
+ 
+@@ -435,7 +475,8 @@
+       persistent_cache::PersistentCache::Bind(
+           persistent_cache::Client::kShaderCache, std::move(pending_backend)),
+       [&](persistent_cache::TransactionError error) {
+-        HandlePersistentCacheError(&use_shader_cache_shm_count->data, error);
++        HandlePersistentCacheError(use_shader_cache_shm_count ? &use_shader_cache_shm_count->data
++                                   : nullptr, error);
+       });
+ 
+   disk_cache_ = base::MakeRefCounted<DiskCache>(
+diff --git a/components/persistent_cache/sqlite/sqlite_backend_impl.cc b/components/persistent_cache/sqlite/sqlite_backend_impl.cc
+--- a/components/persistent_cache/sqlite/sqlite_backend_impl.cc
++++ b/components/persistent_cache/sqlite/sqlite_backend_impl.cc
+@@ -15,6 +15,7 @@
+ #include "base/check_op.h"
+ #include "base/containers/span.h"
+ #include "base/functional/bind.h"
++#include "base/logging.h"
+ #include "base/memory/ptr_util.h"
+ #include "base/memory/ref_counted_memory.h"
+ #include "base/memory/scoped_refptr.h"
+@@ -29,6 +30,7 @@
+ #include "base/trace_event/trace_event.h"
+ #include "base/types/expected.h"
+ #include "base/types/expected_macros.h"
++#include "build/build_config.h"
+ #include "components/persistent_cache/backend_type.h"
+ #include "components/persistent_cache/client.h"
+ #include "components/persistent_cache/metrics_util.h"
+@@ -127,7 +129,13 @@
+   base::AutoLock lock(lock_, base::subtle::LockTracking::kEnabled);
+ 
+   RETURN_IF_ERROR(InitializeImpl(),
+-                  [](int error_code) { return TranslateError(error_code); });
++                  [](int error_code) {
++#if BUILDFLAG(IS_OHOS)
++                    LOG(ERROR) << "OHOS persistent cache: stage=initialize sqlite_error="
++                               << error_code;
++#endif
++                    return TranslateError(error_code);
++                  });
+ 
+   return base::ok();
+ }
+@@ -220,8 +228,12 @@
+ 
+   ASSIGN_OR_RETURN(auto metadata, FindImpl(key, buffer_provider),
+                    [](int error_code) {
+-                     return TranslateError(error_code);
+-                   });
++#if BUILDFLAG(IS_OHOS)
++                    LOG(ERROR) << "OHOS persistent cache: stage=find sqlite_error="
++                               << error_code;
++#endif
++                    return TranslateError(error_code);
++                  });
+   return metadata;
+ }
+ 
+@@ -238,7 +250,13 @@
+   CHECK_EQ(metadata.write_timestamp, 0);
+ 
+   RETURN_IF_ERROR(InsertImpl(key, content, metadata.input_signature),
+-                  [](int error_code) { return TranslateError(error_code); });
++                  [](int error_code) {
++#if BUILDFLAG(IS_OHOS)
++                    LOG(ERROR) << "OHOS persistent cache: stage=insert sqlite_error="
++                               << error_code;
++#endif
++                    return TranslateError(error_code);
++                  });
+ 
+   return base::ok();
+ }
+diff --git a/gpu/command_buffer/service/gpu_persistent_cache_unittest.cc b/gpu/command_buffer/service/gpu_persistent_cache_unittest.cc
+--- a/gpu/command_buffer/service/gpu_persistent_cache_unittest.cc
++++ b/gpu/command_buffer/service/gpu_persistent_cache_unittest.cc
+@@ -24,6 +24,8 @@
+ #include "components/persistent_cache/backend_type.h"
+ #include "components/persistent_cache/client.h"
+ #include "components/persistent_cache/pending_backend.h"
++#include "components/persistent_cache/persistent_cache.h"
++#include "components/persistent_cache/sqlite/sqlite_backend_impl.h"
+ #include "gpu/command_buffer/service/memory_cache.h"
+ #include "testing/gtest/include/gtest/gtest.h"
+ 
+@@ -82,6 +84,33 @@
+   // LoadData() will return zero size since there is no cache yet.
+   EXPECT_EQ(cache_with_no_memory_cache->FindKey(key), 0u);
+ }
++
++#if BUILDFLAG(IS_OHOS)
++// A broken optional disk cache must not take the GPU down. Restore the table
++// after the error to verify that neither reads nor writes reuse that backend.
++TEST_F(GpuPersistentCacheTest, PermanentDiskErrorRetiresBackend) {
++  InitializeCache();
++  auto* backend = static_cast<persistent_cache::SqliteBackendImpl*>(
++      const_cast<persistent_cache::PersistentCache&>(
++          cache_->GetPersistentCacheForTesting()).GetBackendForTesting());
++  ASSERT_OK(backend->ExecuteStatementForTesting("DROP TABLE entries"));
++  EXPECT_EQ(cache_->FindKey("missing"), 0u);
++  ASSERT_OK(backend->ExecuteStatementForTesting(
++      "CREATE TABLE entries(key BLOB PRIMARY KEY UNIQUE NOT NULL, "
++      "content BLOB NOT NULL, input_signature INTEGER, write_timestamp INTEGER)"));
++  const std::string key = "after_failure";
++  const std::string value = "recompiled_shader";
++  cache_->StoreData(key, base::as_byte_span(value));
++  std::vector<uint8_t> buffer(value.size());
++  EXPECT_EQ(cache_->LoadData(key, buffer), value.size());
++  EXPECT_EQ(std::string(buffer.begin(), buffer.end()), value);
++  // Memory remains usable; the retired disk cache was not written again.
++  auto disk_result = backend->Find(base::as_byte_span(key),
++      [](size_t) { return base::span<uint8_t>(); });
++  ASSERT_TRUE(disk_result.has_value());
++  EXPECT_FALSE(disk_result->has_value());
++}
++#endif
+ 
+ // Tests basic store and load functionality on a single thread.
+ TEST_F(GpuPersistentCacheTest, StoreAndLoadData) {
+diff --git a/gpu/command_buffer/service/shared_image/gl_texture_holder.cc b/gpu/command_buffer/service/shared_image/gl_texture_holder.cc
+--- a/gpu/command_buffer/service/shared_image/gl_texture_holder.cc
++++ b/gpu/command_buffer/service/shared_image/gl_texture_holder.cc
+@@ -426,6 +426,18 @@
+     GLint preferred_type = 0;
+     api->glGetIntegervFn(GL_IMPLEMENTATION_COLOR_READ_TYPE, &preferred_type);
+ 
++#if BUILDFLAG(IS_OHOS)
++    // SharedImage's upload descriptor uses the GLES2 half-float token, but
++    // ANGLE's GLES3 read framebuffer reports the core half-float token.
++    // Both describe 16-bit components. Use the driver's read token without
++    // changing the texture upload descriptor or reducing HDR precision.
++    if (format_ == viz::SinglePlaneFormat::kRGBA_F16 &&
++        gl_format == GL_RGBA && preferred_format == GL_RGBA &&
++        gl_type == GL_HALF_FLOAT_OES && preferred_type == GL_HALF_FLOAT) {
++      gl_type = GL_HALF_FLOAT;
++    }
++#endif
++
+     if (gl_format != static_cast<GLenum>(preferred_format) ||
+         gl_type != static_cast<GLenum>(preferred_type)) {
+       if (format_ == viz::SinglePlaneFormat::kBGRA_8888 ||
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_external_texture.cc b/third_party/blink/renderer/modules/webgpu/gpu_external_texture.cc
+--- a/third_party/blink/renderer/modules/webgpu/gpu_external_texture.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_external_texture.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/modules/webgpu/gpu_external_texture.h"
+ 
++#include "build/build_config.h"
+ #include "media/base/video_frame.h"
+ #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_external_texture_descriptor.h"
+ #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_texture_view_descriptor.h"
+@@ -333,6 +334,15 @@
+ 
+   GetHandle().Expire();
+   status_ = Status::Expired;
++#if BUILDFLAG(IS_OHOS)
++  if (video_ && isZeroCopy() && IsReadLockFenceEnabled()) {
++    // An expired native HTML-video import must not keep exclusive cross-queue
++    // access while playback is hidden or paused. WebGPU permits creating a
++    // fresh external texture on the next task, even for the same video frame.
++    // Reuse within this task remains intact.
++    RemoveFromCache();
++  }
++#endif
+ }
+ 
+ void GPUExternalTexture::Destroy() {
+@@ -343,6 +353,12 @@
+   // construction. Zero copy path needs to ensure all gpu commands
+   // execution finished before destroy.
+   if (isZeroCopy() && IsReadLockFenceEnabled()) {
++#if BUILDFLAG(IS_OHOS)
++    // End native access now so paused/hidden playback cannot pin an exclusive
++    // cross-queue reader. Keep the VideoFrame's producer-side SharedImage alive
++    // separately until the already submitted GPU commands have completed.
++    mailbox_texture_->Dissociate();
++#endif
+     device()->queue()->ReferenceUntilGPUIsFinished(std::move(mailbox_texture_));
+   }
+ 
+diff --git a/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc b/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
+--- a/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
++++ b/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
+@@ -557,6 +557,14 @@
+   if (!context_)
+     return nullptr;
+ 
++#if BUILDFLAG(IS_OHOS)
++  // configureHighDynamicRange() may precede getContext(). Preserve an explicit
++  // HDR request when a 2D provider is first created, including CPU raster.
++  if (IsRenderingContext2D() && !hdr_metadata_.IsEmpty()) {
++    context_->SetHdrMetadata(hdr_metadata_);
++  }
++#endif
++
+   context_->RecordUKMCanvasRenderingAPI();
+   context_->RecordUMACanvasRenderingAPI();
+ 
+@@ -618,7 +626,11 @@
+   }
+ 
+   hdr_metadata_ = hdr_metadata;
+-  if (context_ && (IsWebGL() || IsWebGPU())) {
++  if (context_ && (IsWebGL() || IsWebGPU()
++#if BUILDFLAG(IS_OHOS)
++                   || IsRenderingContext2D()
++#endif
++                   )) {
+     context_->SetHdrMetadata(hdr_metadata);
+   }
+ }
+diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.h b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.h
+--- a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.h
++++ b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.h
+@@ -35,6 +35,7 @@
+ #include "base/check.h"
+ #include "base/gtest_prod_util.h"
+ #include "base/memory/scoped_refptr.h"
++#include "build/build_config.h"
+ #include "cc/paint/paint_record.h"
+ #include "third_party/blink/renderer/core/html/canvas/canvas_context_creation_attributes_core.h"
+ #include "third_party/blink/renderer/core/html/canvas/canvas_performance_monitor.h"
+@@ -62,6 +63,7 @@
+ #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+ #include "third_party/skia/include/core/SkImageInfo.h"
+ #include "third_party/skia/include/core/SkRefCnt.h"
++#include "ui/gfx/hdr_metadata.h"
+ 
+ // IWYU pragma: no_include "third_party/blink/renderer/platform/heap/visitor.h"
+ 
+@@ -131,6 +133,10 @@
+ 
+   V8RenderingContext* AsV8RenderingContext() final;
+ 
++#if BUILDFLAG(IS_OHOS)
++  void SetHdrMetadata(const gfx::HDRMetadata&) override;
++#endif
++
+   bool ShouldAntialias() const;
+   void SetShouldAntialias(bool);
+ 
+@@ -342,6 +348,10 @@
+   bool needs_context_lost_event_ = false;
+ 
+  private:
++#if BUILDFLAG(IS_OHOS)
++  // An explicit legacy HDR configuration must survive provider recreation.
++  std::optional<gfx::HDRMetadata> ohos_hdr_metadata_;
++#endif
+   std::optional<cc::PaintRecord> last_recording_;
+ };
+ 
+diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.cc b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.cc
+--- a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.cc
++++ b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.cc
+@@ -1125,6 +1125,25 @@
+   ax_object_cache->SetCanvasObjectBounds(canvas_element, element, element_rect);
+ }
+ 
++#if BUILDFLAG(IS_OHOS)
++void CanvasRenderingContext2D::SetHdrMetadata(
++    const gfx::HDRMetadata& hdr_metadata) {
++  const bool unchanged = hdr_metadata ==
++      ohos_hdr_metadata_.value_or(color_params_.GetGfxHdrMetadata());
++  ohos_hdr_metadata_ = hdr_metadata;
++  if (unchanged) {
++    return;
++  }
++
++  // Snapshots carry the provider's metadata. Recreate both GPU and CPU
++  // providers so an existing bitmap cannot retain the previous HDR mode.
++  // This preserves the back buffer and pending drawing recorder.
++  DropAndRecreateExistingResourceProvider();
++  canvas()->DidDraw();
++  canvas()->SetNeedsCompositingUpdate();
++}
++#endif
++
+ void CanvasRenderingContext2D::DisableAcceleration() {
+   canvas()->OnAccelerationDisabled();
+ 
+@@ -1193,7 +1212,12 @@
+   const SkAlphaType alpha_type = color_params_.GetAlphaType();
+   const viz::SharedImageFormat format = color_params_.GetSharedImageFormat();
+   const gfx::ColorSpace color_space = color_params_.GetGfxColorSpace();
++#if BUILDFLAG(IS_OHOS)
++  const gfx::HDRMetadata hdr_metadata =
++      ohos_hdr_metadata_.value_or(color_params_.GetGfxHdrMetadata());
++#else
+   const gfx::HDRMetadata hdr_metadata = color_params_.GetGfxHdrMetadata();
++#endif
+ 
+   const bool is_gpu_compositing_enabled =
+       SharedGpuContext::IsGpuCompositingEnabled();
+diff --git a/cc/paint/paint_image.cc b/cc/paint/paint_image.cc
+--- a/cc/paint/paint_image.cc
++++ b/cc/paint/paint_image.cc
+@@ -14,6 +14,7 @@
+ #include "base/hash/hash.h"
+ #include "base/logging.h"
+ #include "base/types/optional_util.h"
++#include "build/build_config.h"
+ #include "cc/paint/paint_image_builder.h"
+ #include "cc/paint/paint_image_generator.h"
+ #include "cc/paint/paint_record.h"
+@@ -379,6 +380,16 @@
+     return gfx::ContentColorUsage::kSRGB;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Float canvases can carry HDR values with an SDR transfer function. CPU
++  // canvas snapshots must retain the same HDR classification as composited
++  // canvas resources, whose explicit extended-range metadata selects HDR.
++  if (hdr_metadata_.extended_range &&
++      hdr_metadata_.extended_range->current_headroom > 1.f) {
++    return gfx::ContentColorUsage::kHDR;
++  }
++#endif
++
+   // Gainmap images are always HDR.
+   if (HasGainmapInfo()) {
+     return gfx::ContentColorUsage::kHDR;
+@@ -514,6 +525,12 @@
+ }
+ 
+ float PaintImage::GetMaximumRenderedHdrHeadroom() const {
++#if BUILDFLAG(IS_OHOS)
++  if (hdr_metadata_.extended_range &&
++      hdr_metadata_.extended_range->current_headroom > 1.f) {
++    return std::log2(hdr_metadata_.extended_range->current_headroom);
++  }
++#endif
+   if (HasGainmapInfo()) {
+     const SkGainmapInfo& gainmap_info = GetGainmapInfo();
+     float max_ratio = std::max({gainmap_info.fGainmapRatioMax[0],
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_external_texture.h b/third_party/blink/renderer/modules/webgpu/gpu_external_texture.h
+--- a/third_party/blink/renderer/modules/webgpu/gpu_external_texture.h
++++ b/third_party/blink/renderer/modules/webgpu/gpu_external_texture.h
+@@ -8,6 +8,7 @@
+ #include <atomic>
+ 
+ #include "base/task/single_thread_task_runner.h"
++#include "build/build_config.h"
+ #include "media/base/video_frame.h"
+ #include "third_party/blink/renderer/modules/webgpu/dawn_object.h"
+ #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
+@@ -72,8 +73,18 @@
+   // when the device is destroyed (via .destroy) to free the memory.
+   HeapHashMap<WeakMember<HTMLVideoElement>, WeakMember<GPUExternalTexture>>
+       from_html_video_element_;
++#if BUILDFLAG(IS_OHOS)
++  // Bind groups retain Dawn external textures, not their Blink wrappers. A
++  // native wrapper's collection ends its mailbox access and destroys the
++  // imported texture, invalidating otherwise live bind groups. Keep it until
++  // its source frame closes or is collected; the weak key does not retain
++  // that source. Explicit close and device destruction still clear the cache.
++  HeapHashMap<WeakMember<VideoFrame>, Member<GPUExternalTexture>>
++      from_video_frame_;
++#else
+   HeapHashMap<WeakMember<VideoFrame>, WeakMember<GPUExternalTexture>>
+       from_video_frame_;
++#endif
+ 
+   bool expire_task_scheduled_ = false;
+   HeapHashSet<Member<GPUExternalTexture>> expire_set_;
+diff --git a/third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.cc b/third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.cc
+--- a/third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.cc
++++ b/third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.cc
+@@ -9,6 +9,7 @@
+ #include "base/feature_list.h"
+ #include "base/task/single_thread_task_runner.h"
+ #include "base/trace_event/trace_event.h"
++#include "build/build_config.h"
+ #include "components/viz/common/quads/compositor_frame.h"
+ #include "components/viz/common/quads/texture_draw_quad.h"
+ #include "components/viz/common/resources/release_callback.h"
+@@ -28,6 +29,7 @@
+ #include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
+ #include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
+ #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
++#include "ui/gfx/display_color_spaces.h"
+ #include "ui/gfx/geometry/point_f.h"
+ #include "ui/gfx/geometry/size_f.h"
+ #include "ui/gfx/mojom/presentation_feedback.mojom-blink.h"
+@@ -167,6 +169,20 @@
+         /*needs_verified_synctoken=*/true);
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // This child surface bypasses cc's layer color-usage analysis. Viz merges
++  // the frame metadata when choosing the root output color space; leaving
++  // the default sRGB clips worker canvas P3 and HDR despite correctly tagged
++  // resources. Classify the actual resource, including explicit linear/SDR-
++  // transfer HDR metadata, without promoting ordinary P3 SDR to HDR.
++  frame->metadata.content_color_usage =
++      resource.GetColorSpace().GetContentColorUsage();
++  if (resource.hdr_metadata.extended_range &&
++      resource.hdr_metadata.extended_range->current_headroom > 1.f) {
++    frame->metadata.content_color_usage = gfx::ContentColorUsage::kHDR;
++  }
++#endif
++
+   const viz::ResourceId resource_id = id_generator_.GenerateNextId();
+   resource.id = resource_id;
+ 
+diff --git a/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h b/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h
+--- a/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h
++++ b/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h
+@@ -8,6 +8,7 @@
+ #include "base/functional/callback.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "base/memory/weak_ptr.h"
++#include "build/build_config.h"
+ #include "gpu/command_buffer/client/client_shared_image.h"
+ #include "gpu/command_buffer/common/sync_token.h"
+ #include "third_party/blink/renderer/platform/graphics/gpu/dawn_control_client_holder.h"
+@@ -99,6 +100,11 @@
+   scoped_refptr<DawnControlClientHolder> dawn_control_client_;
+   wgpu::Device device_;
+   scoped_refptr<gpu::ClientSharedImage> shared_image_;
++#if BUILDFLAG(IS_OHOS)
++  // Dissociate ends access, but the producer's mailbox registration must remain
++  // alive until GPUQueue's completion callback releases this wrapper.
++  scoped_refptr<media::VideoFrame> ohos_video_frame_;
++#endif
+   std::unique_ptr<gpu::WebGPUTextureScopedAccess> scoped_access_;
+   FinishedAccessCallback finished_access_callback_;
+   scoped_refptr<WebGPUTextureAlphaClearer> alpha_clearer_;
+diff --git a/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.cc b/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.cc
+--- a/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.cc
++++ b/third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.cc
+@@ -5,6 +5,8 @@
+ #include "third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h"
+ 
+ #include "base/numerics/safe_conversions.h"
++#include "base/trace_event/trace_event.h"
++#include "build/build_config.h"
+ #include "cc/paint/paint_image.h"
+ #include "components/viz/common/resources/shared_image_format.h"
+ #include "gpu/command_buffer/client/client_shared_image.h"
+@@ -223,10 +225,17 @@
+   wgpu::TextureDescriptor desc = {
+       .usage = wgpu::TextureUsage::TextureBinding,
+   };
+-  return base::AdoptRef(new WebGPUMailboxTexture(
++  auto texture = base::AdoptRef(new WebGPUMailboxTexture(
+       std::move(dawn_control_client), device, desc, video_frame->shared_image(),
+       video_frame->acquire_sync_token(), gpu::webgpu::WEBGPU_MAILBOX_NONE,
+       wgpu::TextureUsage::None, std::move(finished_access_callback)));
++#if BUILDFLAG(IS_OHOS)
++  TRACE_EVENT_INSTANT("gpu", "OhosWebGPUVideoMailboxImport", "mailbox",
++                      video_frame->shared_image()->mailbox().ToDebugString(),
++                      "timestamp_us", video_frame->timestamp().InMicroseconds());
++  texture->ohos_video_frame_ = std::move(video_frame);
++#endif
++  return texture;
+ }
+ 
+ WebGPUMailboxTexture::WebGPUMailboxTexture(
+@@ -322,6 +331,13 @@
+ WebGPUMailboxTexture::~WebGPUMailboxTexture() {
+   dawn_control_client_->UntrackMailboxTexture(weak_ptr_factory_.GetWeakPtr());
+   Dissociate();
++#if BUILDFLAG(IS_OHOS)
++  if (ohos_video_frame_) {
++    TRACE_EVENT_INSTANT("gpu", "OhosWebGPUVideoMailboxRetire", "mailbox",
++                        ohos_video_frame_->shared_image()->mailbox().ToDebugString(),
++                        "timestamp_us", ohos_video_frame_->timestamp().InMicroseconds());
++  }
++#endif
+ }
+ 
+ const wgpu::Texture& WebGPUMailboxTexture::GetTexture() {
+diff --git a/gpu/command_buffer/service/shared_image/shared_image_manager.cc b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
+--- a/gpu/command_buffer/service/shared_image/shared_image_manager.cc
++++ b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
+@@ -294,7 +294,8 @@
+   auto* backing = GetBacking(mailbox);
+   if (!backing) {
+     LOG(ERROR) << "SharedImageManager::ProduceDawn: Trying to Produce a "
+-                  "Dawn representation from a non-existent mailbox.";
++                  "Dawn representation from a non-existent mailbox: "
++               << mailbox.ToDebugString();
+     return nullptr;
+   }
+ 

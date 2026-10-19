@@ -1,0 +1,374 @@
+diff --git a/chrome/browser/extensions/api/developer_private/developer_private_functions.cc b/chrome/browser/extensions/api/developer_private/developer_private_functions.cc
+--- a/chrome/browser/extensions/api/developer_private/developer_private_functions.cc
++++ b/chrome/browser/extensions/api/developer_private/developer_private_functions.cc
+@@ -3,6 +3,12 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/extensions/api/developer_private/developer_private_functions.h"
++
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/shell_extension_updates_ohos.h"  // nogncheck
++#endif
+ 
+ #include <stddef.h>
+ 
+@@ -453,6 +459,14 @@
+ 
+ ExtensionFunction::ResponseAction DeveloperPrivateAutoUpdateFunction::Run() {
+   Profile* profile = Profile::FromBrowserContext(browser_context());
++#if BUILDFLAG(IS_OHOS)
++  if (!chrome::ohos::StartNativeExtensionUpdates(
++          profile, base::BindOnce(
++                       &DeveloperPrivateAutoUpdateFunction::OnComplete, this))) {
++    return RespondNow(Error("Extension update service is unavailable"));
++  }
++  return did_respond() ? AlreadyResponded() : RespondLater();
++#else
+   ExtensionUpdater* updater = ExtensionUpdater::Get(profile);
+   if (updater->enabled()) {
+     ExtensionUpdater::CheckParams params;
+@@ -463,6 +477,7 @@
+     updater->CheckNow(std::move(params));
+   }
+   return RespondLater();
++#endif
+ }
+ 
+ void DeveloperPrivateAutoUpdateFunction::OnComplete() {
+diff --git a/chrome/browser/extensions/updater/extension_updater.cc b/chrome/browser/extensions/updater/extension_updater.cc
+--- a/chrome/browser/extensions/updater/extension_updater.cc
++++ b/chrome/browser/extensions/updater/extension_updater.cc
+@@ -14,6 +14,8 @@
+ #include <vector>
+ 
+ #include "base/auto_reset.h"
++#include "build/build_config.h"
++#include "extensions/browser/extensions_browser_client.h"
+ #include "base/files/file_path.h"
+ #include "base/files/file_util.h"
+ #include "base/functional/bind.h"
+@@ -436,6 +438,16 @@
+ }
+ 
+ void ExtensionUpdater::CheckNow(CheckParams params) {
++  // A background request may contain a high-priority policy download. Do not
++  // let that become a manual OHOS networking exemption in the downloader.
++  if (BUILDFLAG(IS_OHOS) &&
++      params.fetch_priority != DownloadFetchPriority::kForeground &&
++      !ExtensionsBrowserClient::Get()->IsBackgroundUpdateAllowed()) {
++    if (params.callback) {
++      std::move(params.callback).Run();
++    }
++    return;
++  }
+   std::unique_ptr<ScopedProfileKeepAlive> keep_alive =
+       ScopedProfileKeepAlive::TryAcquire(
+           profile_, ProfileKeepAliveOrigin::kExtensionUpdater);
+@@ -500,6 +512,8 @@
+   InProgressCheck& request = requests_in_progress_[request_id];
+   request.is_full_check = is_full_check;
+   request.update_found_callback = params.update_found_callback;
++  request.stage_callback = params.stage_callback;
++  update_check_params.stage_callback = params.stage_callback;
+   request.callback = std::move(params.callback);
+   request.install_immediately = params.install_immediately;
+   request.profile_keep_alive = std::move(keep_alive);
+@@ -577,6 +591,16 @@
+ // Only used for ExtensionDownloader callbacks.
+ void ExtensionUpdater::OnExtensionDownloadStageChanged(const ExtensionId& id,
+                                                        Stage stage) {
++  // Stage notifications have no request IDs. Only forward them to requests
++  // which actually assigned this extension to ExtensionDownloader.
++  if (stage == Stage::QUEUED_FOR_CRX || stage == Stage::DOWNLOADING_CRX ||
++      stage == Stage::DOWNLOADING_CRX_RETRY) {
++    for (const auto& [request_id, request] : requests_in_progress_) {
++      if (request.in_progress_ids.contains(id) && request.stage_callback) {
++        request.stage_callback.Run(id, ExtensionUpdateStage::kDownloading);
++      }
++    }
++  }
+   InstallStageTrackerFactory::GetForBrowserContext(profile_)
+       ->ReportDownloadingStage(id, stage);
+ }
+@@ -652,6 +676,12 @@
+   for (const int request_id : request_ids) {
+     InProgressCheck& request = requests_in_progress_[request_id];
+     install_immediately |= request.install_immediately;
++    if (request.stage_callback) {
++      request.stage_callback.Run(
++          id, error == Error::NO_UPDATE_AVAILABLE
++                  ? ExtensionUpdateStage::kUpToDate
++                  : ExtensionUpdateStage::kFailed);
++    }
+     request.in_progress_ids.erase(id);
+     NotifyIfFinished(request_id);
+   }
+@@ -687,6 +717,12 @@
+       ->ReportInstallationStage(file.extension_id,
+                                 InstallStageTracker::Stage::INSTALLING);
+   UpdatePingData(file.extension_id, ping);
++  for (int request_id : request_ids) {
++    const auto& stage_callback = requests_in_progress_.at(request_id).stage_callback;
++    if (stage_callback) {
++      stage_callback.Run(file.extension_id, ExtensionUpdateStage::kInstalling);
++    }
++  }
+ 
+   VLOG(2) << download_url << " written to " << file.path.value();
+ 
+@@ -986,6 +1022,11 @@
+   } else {
+     for (const int request_id : crx_file.request_ids) {
+       InProgressCheck& request = requests_in_progress_[request_id];
++      if (request.stage_callback) {
++        request.stage_callback.Run(crx_file.info.extension_id,
++                                  error ? ExtensionUpdateStage::kFailed
++                                        : ExtensionUpdateStage::kInstalled);
++      }
+       request.in_progress_ids.erase(crx_file.info.extension_id);
+       NotifyIfFinished(request_id);
+     }
+diff --git a/chrome/browser/extensions/updater/extension_updater.h b/chrome/browser/extensions/updater/extension_updater.h
+--- a/chrome/browser/extensions/updater/extension_updater.h
++++ b/chrome/browser/extensions/updater/extension_updater.h
+@@ -99,6 +99,7 @@
+     // If set, will be called when an update is found and before an attempt to
+     // download and install it is made.
+     UpdateFoundCallback update_found_callback;
++    ExtensionUpdateStageCallback stage_callback;
+ 
+     // Callback to call when the update check is complete. Can be null, if
+     // you're not interested in when this happens.
+@@ -215,6 +216,9 @@
+       ExtensionSystem::InstallUpdateCallback callback);
+ 
+   bool enabled() const { return enabled_; }
++  bool ready_for_manual_updates() const {
++    return enabled_ && alive_ && !browser_terminating_;
++  }
+ 
+   // Exists because some tests are not able to use the private constructor for
+   // testing.
+@@ -261,6 +265,7 @@
+     bool install_immediately = false;
+     bool awaiting_update_service = false;
+     UpdateFoundCallback update_found_callback;
++    ExtensionUpdateStageCallback stage_callback;
+     FinishedCallback callback;
+     // Prevents the destruction of the Profile* while an update check is in
+     // progress.
+diff --git a/extensions/browser/crx_installer.cc b/extensions/browser/crx_installer.cc
+--- a/extensions/browser/crx_installer.cc
++++ b/extensions/browser/crx_installer.cc
+@@ -866,6 +866,9 @@
+ void CrxInstaller::InitializeCreationFlagsForUpdate(const Extension* extension,
+                                                     const int initial_flags) {
+   DCHECK(extension);
++#if BUILDFLAG(IS_OHOS)
++  update_original_extension_ = extension;
++#endif
+ 
+   creation_flags_ = initial_flags;
+ 
+@@ -1034,6 +1037,16 @@
+     return;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (update_original_extension_ &&
++      ExtensionRegistry::Get(browser_context_)->GetInstalledExtension(
++          update_original_extension_->id()) != update_original_extension_.get()) {
++    ReportFailureFromUIThread(CrxInstallError(
++        CrxInstallErrorType::OTHER,
++        CrxInstallErrorDetail::UPDATE_NON_EXISTING_EXTENSION));
++    return;
++  }
++#endif
+   extension()->permissions_data()->BindToCurrentThread();
+ 
+   if (!update_from_settings_page_) {
+diff --git a/extensions/browser/crx_installer.h b/extensions/browser/crx_installer.h
+--- a/extensions/browser/crx_installer.h
++++ b/extensions/browser/crx_installer.h
+@@ -18,6 +18,7 @@
+ #include "base/scoped_observation.h"
+ #include "base/values.h"
+ #include "base/version.h"
++#include "build/build_config.h"
+ #include "components/sync/model/string_ordinal.h"
+ #include "extensions/browser/extension_install_prompt_client.h"
+ #include "extensions/browser/extension_system.h"
+@@ -552,6 +553,11 @@
+ 
+   // Whether the operation is an extension update.
+   bool is_update_ = false;
++#if BUILDFLAG(IS_OHOS)
++  // Hold the original installation, so uninstall/reinstall during unpacking
++  // cannot make an in-flight update resurrect or replace a new installation.
++  scoped_refptr<const Extension> update_original_extension_;
++#endif
+ 
+   // The flags for ExtensionService::OnExtensionInstalled.
+   int install_flags_;
+diff --git a/extensions/browser/updater/extension_downloader.cc b/extensions/browser/updater/extension_downloader.cc
+--- a/extensions/browser/updater/extension_downloader.cc
++++ b/extensions/browser/updater/extension_downloader.cc
+@@ -24,6 +24,7 @@
+ #include "base/strings/stringprintf.h"
+ #include "base/time/time.h"
+ #include "base/version.h"
++#include "build/build_config.h"
+ #include "components/crx_file/crx_verifier.h"
+ #include "components/signin/public/identity_manager/access_token_info.h"
+ #include "components/signin/public/identity_manager/identity_manager.h"
+@@ -434,7 +435,10 @@
+ void ExtensionDownloader::StartUpdateCheck(
+     std::unique_ptr<ManifestFetchData> fetch_data) {
+   const ExtensionIdSet extension_ids = fetch_data->GetExtensionIds();
+-  if (!ExtensionsBrowserClient::Get()->IsBackgroundUpdateAllowed()) {
++  const bool manual_ohos_check = BUILDFLAG(IS_OHOS) &&
++      fetch_data->fetch_priority() == DownloadFetchPriority::kForeground;
++  if (!ExtensionsBrowserClient::Get()->IsBackgroundUpdateAllowed() &&
++      !manual_ohos_check) {
+     NotifyExtensionsDownloadStageChanged(
+         extension_ids, ExtensionDownloaderDelegate::Stage::FINISHED);
+     NotifyExtensionsDownloadFailed(
+diff --git a/extensions/browser/updater/extension_update_data.h b/extensions/browser/updater/extension_update_data.h
+--- a/extensions/browser/updater/extension_update_data.h
++++ b/extensions/browser/updater/extension_update_data.h
+@@ -9,7 +9,7 @@
+ #include <optional>
+ #include <string>
+ 
+-#include "base/functional/callback_forward.h"
++#include "base/functional/callback.h"
+ 
+ namespace base {
+ class Version;
+@@ -26,6 +26,20 @@
+ // found.
+ using UpdateFoundCallback =
+     base::RepeatingCallback<void(const std::string&, const base::Version&)>;
++
++// Per-request observations from the two native update stacks. kInstalled only
++// means the installer finished: callers must check the registry/delayed install
++// manager before claiming that the new version is active.
++enum class ExtensionUpdateStage {
++  kChecking,
++  kDownloading,
++  kInstalling,
++  kInstalled,
++  kUpToDate,
++  kFailed,
++};
++using ExtensionUpdateStageCallback =
++    base::RepeatingCallback<void(const std::string&, ExtensionUpdateStage)>;
+ 
+ // This struct contains update information for a specific extension.
+ struct ExtensionUpdateData {
+@@ -50,6 +64,7 @@
+   ExtensionUpdateCheckParams(const ExtensionUpdateCheckParams& other);
+   ~ExtensionUpdateCheckParams();
+ 
++  ExtensionUpdateStageCallback stage_callback;
+   ExtensionUpdateDataMap update_info;
+   UpdateCheckPriority priority;
+   bool install_immediately;
+diff --git a/extensions/browser/updater/update_service.cc b/extensions/browser/updater/update_service.cc
+--- a/extensions/browser/updater/update_service.cc
++++ b/extensions/browser/updater/update_service.cc
+@@ -16,6 +16,7 @@
+ #include "base/functional/callback.h"
+ #include "base/functional/callback_helpers.h"
+ #include "base/metrics/histogram_functions.h"
++#include "build/build_config.h"
+ #include "components/update_client/crx_update_item.h"
+ #include "components/update_client/protocol_definition.h"
+ #include "components/update_client/update_client.h"
+@@ -103,8 +104,38 @@
+ }
+ 
+ void UpdateService::OnCrxStateChange(UpdateFoundCallback update_found_callback,
++                                     ExtensionUpdateStageCallback stage_callback,
+                                      const update_client::CrxUpdateItem& item) {
+   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
++
++  if (stage_callback) {
++    using State = update_client::ComponentState;
++    switch (item.state) {
++      case State::kNew:
++      case State::kChecking:
++        stage_callback.Run(item.id, ExtensionUpdateStage::kChecking);
++        break;
++      case State::kCanUpdate:
++      case State::kDownloading:
++        stage_callback.Run(item.id, ExtensionUpdateStage::kDownloading);
++        break;
++      case State::kDecompressing:
++      case State::kPatching:
++      case State::kUpdating:
++      case State::kRun:
++        stage_callback.Run(item.id, ExtensionUpdateStage::kInstalling);
++        break;
++      case State::kUpdated:
++        stage_callback.Run(item.id, ExtensionUpdateStage::kInstalled);
++        break;
++      case State::kUpToDate:
++        stage_callback.Run(item.id, ExtensionUpdateStage::kUpToDate);
++        break;
++      case State::kUpdateError:
++        stage_callback.Run(item.id, ExtensionUpdateStage::kFailed);
++        break;
++    }
++  }
+ 
+   // Custom attributes can only be sent for NOT_UPDATED/UPDATE_FOUND events.
+   bool should_perform_action_on_omaha_attributes = false;
+@@ -166,7 +197,12 @@
+ 
+   VLOG(2) << "UpdateService::StartUpdateCheck";
+ 
+-  if (!ExtensionsBrowserClient::Get()->IsBackgroundUpdateAllowed()) {
++  // OHOS disables browser background traffic globally. An explicit user
++  // check (also chrome://extensions) is allowed without opening other services.
++  const bool manual_ohos_check = BUILDFLAG(IS_OHOS) &&
++      update_params.priority == ExtensionUpdateCheckParams::FOREGROUND;
++  if (!ExtensionsBrowserClient::Get()->IsBackgroundUpdateAllowed() &&
++      !manual_ohos_check) {
+     VLOG(1) << "UpdateService - Extension update not allowed.";
+     if (!callback.is_null()) {
+       std::move(callback).Run();
+@@ -227,7 +263,8 @@
+                 update_id_group, get_data,
+                 base::BindRepeating(&UpdateService::OnCrxStateChange,
+                                     weak_ptr_factory_.GetWeakPtr(),
+-                                    update_found_callback),
++                                    update_found_callback,
++                                    update_params.stage_callback),
+                 update_params.priority ==
+                     ExtensionUpdateCheckParams::FOREGROUND,
+                 base::BindOnce(
+diff --git a/extensions/browser/updater/update_service.h b/extensions/browser/updater/update_service.h
+--- a/extensions/browser/updater/update_service.h
++++ b/extensions/browser/updater/update_service.h
+@@ -105,6 +105,7 @@
+       update_client::UpdateClient::Observer* observer);
+ 
+   void OnCrxStateChange(UpdateFoundCallback update_found_callback,
++                        ExtensionUpdateStageCallback stage_callback,
+                         const update_client::CrxUpdateItem& item);
+ 
+   void HandleComponentUpdateErrorEvent(const ExtensionId& extension_id) const;
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -1731,4 +1731,7 @@
+       "ui/ohos/shell_tab_groups_ohos.h",
+       "ui/ohos/shell_extensions_ohos.cc",
+       "ui/ohos/shell_extensions_ohos.h",
++      "ui/ohos/shell_extension_updates_ohos.cc",
++      "ui/ohos/shell_extension_updates_ohos.h",
++      "ui/ohos/extension_update_result_ohos.h",
+       "ui/ohos/shell_passwords_ohos.cc",

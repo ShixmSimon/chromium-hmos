@@ -373,6 +373,9 @@ void OhosAudioDecoder::OnNewOutputBuffer(uint32_t generation,
 }
 
 bool OhosAudioDecoder::CreateCodec(const char* mime) {
+  if (!CanUseOhosNativeCodecs()) {
+    return false;
+  }
   codec_.reset(OH_AudioCodec_CreateByMime(mime, /*isEncoder=*/false));
   if (!codec_) {
     MEDIA_LOG(ERROR, media_log_) << "OH_AudioCodec_CreateByMime failed";

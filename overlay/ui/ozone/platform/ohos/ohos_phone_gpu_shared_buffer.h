@@ -3,7 +3,9 @@
 // found in the LICENSE file.
 #ifndef UI_OZONE_PLATFORM_OHOS_OHOS_PHONE_GPU_SHARED_BUFFER_H_
 #define UI_OZONE_PLATFORM_OHOS_OHOS_PHONE_GPU_SHARED_BUFFER_H_
+#include <map>
 #include <memory>
+#include "ui/ozone/platform/ohos/ohos_buffer_color_policy.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_transport.h"
 
 struct OH_NativeBuffer;
@@ -11,16 +13,49 @@ namespace ui::phone_gpu {
 // Browser only, BEFORE StartOhosForkServer; never initializes EGL.
 bool PrepareSharedBufferAllocator();
 bool SharedBufferAllocatorReady();
+// Browser only. Allocates an offscreen GPU image and exports owned parcel FDs.
+// The reply holds the allocation alive without a Surface queue lease or a CPU
+// mapping; the importing process owns its native reference after receipt.
+bool AllocateSharedImage(uint32_t width,
+                         uint32_t height,
+                         uint32_t native_format,
+                         SharedMessage* response);
+// Exports an existing offscreen allocation without copying pixels. The caller
+// supplies a kImage packet's dimensions/format/sequence; message owns its FDs.
+bool ExportSharedImage(OH_NativeBuffer* native, SharedMessage* message);
 // Reconstructs only the verified parcel schema; owns a native reference on
 // success.
 OH_NativeBuffer* ImportSharedBuffer(const SharedMessage& message);
+// Browser receiver only, serialized by its presentation lock. Owns references
+// to HDR-tagged queues until clean; Reset runs after outstanding leases retire.
+class SharedBufferColorState {
+ public:
+  SharedBufferColorState() = default;
+  ~SharedBufferColorState();
+  SharedBufferColorState(const SharedBufferColorState&) = delete;
+  SharedBufferColorState& operator=(const SharedBufferColorState&) = delete;
+  bool Prepare(void* window,
+               uint64_t widget,
+               const OhosOutputColor& color,
+               bool idle);
+  void Prune();
+  void Reset();
+
+ private:
+  struct WindowState {
+    uint64_t widget;
+    OhosHdrBufferState color;
+  };
+  std::map<void*, WindowState> windows_;
+};
 class SharedBufferLease {
  public:
   SharedBufferLease();
   ~SharedBufferLease();
   SharedBufferLease(const SharedBufferLease&) = delete;
   SharedBufferLease& operator=(const SharedBufferLease&) = delete;
-  bool Acquire(void* window, SharedMessage* message);
+  enum class AcquireResult { kAcquired, kUnavailable, kFailed };
+  AcquireResult Acquire(void* window, SharedMessage* message);
   // Consumes completion_fd. Flush failure does not return an in-flight buffer
   // to the queue; a disconnected lease is detached instead.
   bool Present(int completion_fd);

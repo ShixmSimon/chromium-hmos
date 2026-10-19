@@ -1,0 +1,51 @@
+Route phone fork media to a browser-owned MediaService on a worker sequence.
+
+diff --git a/content/browser/media/media_service.cc b/content/browser/media/media_service.cc
+--- a/content/browser/media/media_service.cc
++++ b/content/browser/media/media_service.cc
+@@ -21,6 +21,17 @@
+ #include "sandbox/policy/mojom/sandbox.mojom.h"
+ #endif
+ 
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "base/command_line.h"
++#include "base/process/fork_server_ohos.h"
++#include "base/task/thread_pool.h"
++#include "base/threading/sequence_bound.h"
++#include "media/mojo/services/media_service.h"
++#include "media/mojo/services/ohos_browser_media_client.h"
++#endif
++
+ namespace content {
+ 
+ media::mojom::MediaService& GetMediaService() {
+@@ -35,6 +46,27 @@
+   if (!remote) {
+     auto receiver = remote.BindNewPipeAndPassReceiver();
+     remote.reset_on_disconnect();
++
++#if BUILDFLAG(IS_OHOS)
++    const auto* command_line = base::CommandLine::ForCurrentProcess();
++    if (command_line->HasSwitch(base::internal::kOhosPhoneFork) &&
++        !command_line->HasSwitch("in-process-gpu")) {
++      // AVCodecKit/DRM must use the browser's clean system runtime. A dedicated
++      // media sequence keeps capability IPC and codec initialization off UI.
++      // Both frame and frameless factories use this service, so capabilities,
++      // WebCodecs, HTML video/audio and CDM instances have the same owner.
++      static base::SequenceLocalStorageSlot<
++          base::SequenceBound<media::MediaService>> browser_service_slot;
++      browser_service_slot.GetOrCreateValue() =
++          base::SequenceBound<media::MediaService>(
++              base::ThreadPool::CreateSingleThreadTaskRunner(
++                  {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
++                  base::SingleThreadTaskRunnerThreadMode::DEDICATED),
++              media::CreateOhosBrowserMediaClient(), std::move(receiver));
++      LOG(WARNING) << "OHOS phone browser media: service bound outside fork GPU";
++      return *remote.get();
++    }
++#endif
+ 
+ #if BUILDFLAG(ENABLE_MOJO_MEDIA_IN_GPU_PROCESS)
+     auto* process_host = GpuProcessHost::Get();

@@ -281,6 +281,8 @@ Process LaunchProcessOhos(const std::vector<std::string>& argv,
   child_command_line.RemoveSwitch(kOhosIsolatedRenderer);
   if (isolate_renderer) {
     child_command_line.AppendSwitch(kOhosIsolatedRenderer);
+    child_command_line.CopySwitchesFrom(*CommandLine::ForCurrentProcess(),
+                                       {"ohos-trap-diagnostics"});
   }
   std::string encoded_params;
   if (!EncodeOhosNativeChildParams(child_command_line.argv(), options,

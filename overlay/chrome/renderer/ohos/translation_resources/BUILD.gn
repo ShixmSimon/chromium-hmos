@@ -1,0 +1,6 @@
+action("runtime") {
+  script = "generate.py"
+  inputs = [ "runtime.js" ]
+  outputs = [ "$target_gen_dir/runtime.h" ]
+  args = [ rebase_path(outputs[0], root_build_dir) ]
+}

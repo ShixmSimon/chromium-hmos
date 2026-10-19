@@ -2,6 +2,7 @@
 
 #include <native_window/external_window.h>
 #include <algorithm>
+#include <atomic>
 #include <limits>
 #include <map>
 #include <set>
@@ -9,16 +10,30 @@
 #include <utility>
 #include <vector>
 
+#include "base/location.h"
 #include "base/no_destructor.h"
+#include "base/observer_list_threadsafe.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/synchronization/condition_variable.h"
 #include "base/synchronization/lock.h"
 #include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 
 namespace ui {
 namespace {
+
+std::atomic_bool g_application_visible{true};
+
+using ApplicationVisibilityObserverList =
+    base::ObserverListThreadSafe<OhosApplicationVisibilityObserver>;
+
+ApplicationVisibilityObserverList& ApplicationVisibilityObservers() {
+  static base::NoDestructor<scoped_refptr<ApplicationVisibilityObserverList>>
+      observers(base::MakeRefCounted<ApplicationVisibilityObserverList>());
+  return **observers;
+}
 
 constexpr char kAuxiliarySurfacePrefix[] = "aura_aux_";
 constexpr char kPwaSurfacePrefix[] = "aura_pwa_";
@@ -903,6 +918,8 @@ std::optional<OhosNativeSurface> GetOhosNativeSurface(
 
 std::optional<OhosNativeSurface> AcquireOhosNativeSurfaceForPhoneGpu(
     gfx::AcceleratedWidget widget) {
+  if (IsOhosGpuChildProcess())
+    return AcquireOhosGpuChildSurface(widget);
   return GetRegistry().Get(widget, true);
 }
 
@@ -1112,6 +1129,32 @@ int DispatchOhosDragEvent(gfx::AcceleratedWidget widget, OhosDragEvent event) {
 
 void SetOhosDragOutCallback(OhosDragOutCallback callback) {
   GetRegistry().SetDragOutCallback(std::move(callback));
+}
+
+void SetOhosApplicationVisible(bool visible) {
+  if (g_application_visible.exchange(visible, std::memory_order_relaxed) !=
+      visible) {
+    TRACE_EVENT_INSTANT("media", "OhosApplicationVisibilityChanged", "visible",
+                        visible);
+    ApplicationVisibilityObservers().Notify(
+        FROM_HERE,
+        &OhosApplicationVisibilityObserver::OnOhosApplicationVisibilityChanged,
+        visible);
+  }
+}
+
+bool IsOhosApplicationVisible() {
+  return g_application_visible.load(std::memory_order_relaxed);
+}
+
+void AddOhosApplicationVisibilityObserver(
+    OhosApplicationVisibilityObserver* observer) {
+  ApplicationVisibilityObservers().AddObserver(observer);
+}
+
+void RemoveOhosApplicationVisibilityObserver(
+    OhosApplicationVisibilityObserver* observer) {
+  ApplicationVisibilityObservers().RemoveObserver(observer);
 }
 
 bool StartOhosDragOut(OhosDragOutRequest request) {

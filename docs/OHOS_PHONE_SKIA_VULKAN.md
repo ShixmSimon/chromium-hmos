@@ -19,6 +19,43 @@ config.skiaBackend = 'vulkan';
 不要追加 `--single-process`、`--in-process-gpu`、`--disable-gpu`。
 切回对照组只改 `skiaBackend = 'gl'` 并冷启动。
 
+## 手机 fork 的系统媒体服务（2026-10-14）
+
+手机 `experimentalPhoneFork + separate GPU` 模式通过 Chromium 原有 Mojo
+MediaService 接口，将能力查询、原生视频/音频解码及 WisePlay CDM 放在**浏览器
+进程的专用媒体线程**。独立 GPU 继续负责 GL/Vulkan 绘制。HTML 视频、WebCodecs
+和帧级 DRM 使用同一服务；能力查询结果按服务生命周期缓存，避免重复查询。
+单进程、浏览器内 GPU、官方 NCP 保留原有路由。
+
+原因：Mate 70 Pro+ API 26 的 `0483a16` 在 GPU 查询音频能力时，经
+`OH_AVCodec_GetCapability → HiAppEvent → FFRT HExecuteUnit::PokeAddRtq`
+调用空函数指针而 SIGSEGV。系统 `libffrt.so` 已通过 `pthread_atfork` 注册
+`ffrt_child_init`，不能靠重复调用内部初始化函数修复。只把能力查询搬回主进程
+也不足以保证实际创建解码器正常，因此这次迁移整个播放服务。
+
+fork 子进程仍拒绝直接使用 AVCodecKit，防止残留调用触发同一问题；这不再代表
+播放器只能软件解码。浏览器服务根据真实系统能力提供 H.264/HEVC/VP9/AV1 和
+AC3/DTS，未被系统报告支持的格式仍不能假报。硬件编码器尚未迁移，手机 fork GPU
+中的原生编码路径仍关闭。
+
+浏览器服务没有 GPU CommandBuffer，视频解码采用 AVCodecKit **Buffer 输出**，
+通过 Mojo 共享内存传送 NV12/P010 及色彩/HDR 元数据；这是系统硬件解码，但包含
+像素拷贝，不能称为视频零拷贝。原有 GPU Surface/SharedImage 路径不变，手机
+Vulkan 最终 NativeBuffer 上屏仍沿用既有实现。
+
+验收证据必须同时包含：
+
+- `OHOS phone browser media: service bound outside fork GPU` 与
+  `ready; video configs=... audio configs=...`，确认能力在浏览器线程读取。
+- HEVC/AC3/DTS 实际媒体播放、拖进度、切换和销毁成功；不能只看
+  `isConfigSupported()` 或 `canPlayType()`。记录解码器创建及实际输出日志。
+- 10 位 HEVC 输出 P010，HDR 视频进入 HDR10，退出后回到 SDR10。
+- 连续能力查询、多次冷启动和前后台切换，无 FFRT 崩溃、GPU 回退或无响应。
+- 单进程和官方 NCP 回归：不出现 `phone browser media` 路由日志。
+
+代码和构建通过不代表上述真机验收已通过。硬件编码、视频零拷贝和长期稳定性
+分别验证，不能用软件 VP9 HDR 样片替代 HEVC 硬解验收。
+
 ## 如何确认实际启用
 
 同时满足：

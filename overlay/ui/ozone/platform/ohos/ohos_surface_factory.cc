@@ -15,11 +15,14 @@
 
 #if BUILDFLAG(ENABLE_VULKAN)
 #include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
+#include "gpu/vulkan/vulkan_image.h"
 #include "gpu/vulkan/vulkan_surface.h"
+#include "ui/ozone/platform/ohos/ohos_video_vulkan.h"
 #endif
 
 #include <native_window/external_window.h>
 #include "base/auto_reset.h"
+#include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
@@ -41,6 +44,8 @@
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
+#include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
+#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 #include "ui/ozone/platform/ohos/ohos_screen.h"
 #include "ui/ozone/platform/ohos/ohos_vsync_provider.h"
 
@@ -48,6 +53,12 @@ namespace ui {
 namespace {
 
 constexpr base::TimeDelta kNativeSurfaceWaitTimeout = base::Seconds(3);
+
+bool IsOffscreenNativeFormat(viz::SharedImageFormat format) {
+  return format == viz::SinglePlaneFormat::kRGBA_8888 ||
+         format == viz::SinglePlaneFormat::kBGRA_8888 ||
+         format == viz::SinglePlaneFormat::kRGBA_F16;
+}
 
 // OH_NativeBuffer_Format's RGBA_8888 and RGBA_1010102. Taking the enum by
 // value keeps native_buffer out of this target's headers for two constants.
@@ -194,16 +205,26 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
                              std::unique_ptr<gfx::VSyncProvider> vsync_provider)
       : gl::NativeViewGLSurfaceEGL(display, window, std::move(vsync_provider)),
         widget_(widget),
+        angle_vulkan_(base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+                          "use-angle") == "vulkan"),
         sdr_output_(OhosRequiresSdrOutput()),
         hdr_panel_(!sdr_output_ && OhosDisplaySupportsHdr()),
         // Whether the window has alpha is only known at the first Resize;
         // until then, a popup is the window that draws it.
-        ten_bit_(hdr_panel_ && !IsOhosAnchoredWindow(widget)) {
+        ten_bit_((hdr_panel_ ||
+                  (angle_vulkan_ &&
+                   !base::CommandLine::ForCurrentProcess()->HasSwitch("ohos-sdr-output") &&
+                   GetOhosRequestedOutputColor().mode != OhosOutputMode::kSdr8)) &&
+                 !IsOhosAnchoredWindow(widget)) {
     HoldWindow(window);
   }
 
   // The EGL surface goes first, then the window it was made on.
   ~OhosNativeViewGLSurfaceEGL() override {
+    if (angle_vulkan_) {
+      ReportOhosWsiOutputCapabilities(widget_, false, false);
+      SetOhosEglOutputColorSpaces(static_cast<const gl::GLSurface*>(this), std::nullopt);
+    }
     Destroy();
     HoldWindow(0);
   }
@@ -229,23 +250,90 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
   // A 10-bit config the driver lists but cannot make a window from must not
   // cost the window: viz takes a failed view surface as GPU compositing
   // being broken and falls back to software, which reaches no screen here.
+  EGLint GetEGLColorSpace() const override {
+    if (!angle_vulkan_)
+      return gl::NativeViewGLSurfaceEGL::GetEGLColorSpace();
+    if (output_color_.mode == OhosOutputMode::kHdr10)
+      return EGL_GL_COLORSPACE_BT2020_PQ_EXT;
+    if (output_color_.mode == OhosOutputMode::kP3Sdr10)
+      return EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT;
+    return EGL_GL_COLORSPACE_LINEAR_KHR;
+  }
+
   bool Initialize(gl::GLSurfaceFormat format) override {
-    // Settle 8 or 10 bits before the base class asks the native window to be
-    // set up, which is where its buffers are given the matching format.
     GetConfig();
+    if (angle_vulkan_ && ten_bit_ && !probed_) {
+      const OhosOutputColor content_color = output_color_;
+      probed_ = true;
+      // No GL context is current during initialization/recreation. Probe real
+      // swapchains on this window, never infer support from the panel alone.
+      const char* raw_extensions =
+          eglQueryString(display_->GetDisplay(), EGL_EXTENSIONS);
+      const std::string extensions = raw_extensions ? raw_extensions : "";
+      const auto has = [&](const char* extension) {
+        return (" " + extensions + " ").find(
+                   " " + std::string(extension) + " ") != std::string::npos;
+      };
+      const auto probe = [&](OhosOutputColor color) {
+        output_color_ = color;
+        const bool ok = gl::NativeViewGLSurfaceEGL::Initialize(format);
+        LOG(WARNING) << "OHOS EGL output probe: window=" << widget_
+                     << " mode=" << static_cast<uint32_t>(color.mode)
+                     << " allocated=" << ok;
+        Destroy();
+        return ok;
+      };
+      p3_capable_ = has("EGL_EXT_gl_colorspace_display_p3_passthrough") &&
+                    OhosSingleDisplaySupportsP3() &&
+                    probe({OhosOutputMode::kP3Sdr10});
+      hdr_color_ = GetOhosRequestedOutputColor();
+      if (OhosDynamicOutputLuminance()) {
+        if (auto brightness = GetOhosDisplayBrightness())
+          hdr_color_ = OhosContentOutputColor(*brightness);
+      }
+      hdr_capable_ = has("EGL_EXT_gl_colorspace_bt2020_pq") &&
+                     GetOhosRequestedOutputColor().mode == OhosOutputMode::kHdr10 &&
+                     hdr_color_.mode == OhosOutputMode::kHdr10 &&
+                     ValidOhosOutputColor(hdr_color_) &&
+                     OhosSingleDisplaySupportsHdr10() && probe(hdr_color_);
+      // Bootstrap is SDR. A replacement native window may already have HDR
+      // or P3 content queued: restore that exact contract after probing, so
+      // its first frame is never interpreted as sRGB by the new swapchain.
+      if (initialized_ &&
+          ((content_color.mode == OhosOutputMode::kHdr10 && !hdr_capable_) ||
+           (content_color.mode == OhosOutputMode::kP3Sdr10 && !p3_capable_))) {
+        FailEglOutput("replacement EGL window lost requested color support");
+        return false;
+      }
+      output_color_ = initialized_ ? content_color
+                                  : OhosOutputColor{OhosOutputMode::kSdr10};
+    }
     if (gl::NativeViewGLSurfaceEGL::Initialize(format)) {
+      initialized_ = true;
+      PublishEglCapabilities();
       return true;
     }
-    // Without a native window there is nothing to learn about the config.
-    std::optional<OhosNativeSurface> surface = GetOhosNativeSurface(widget_);
-    if (!ten_bit_ || !surface || !surface->window) {
+    const auto surface = GetOhosNativeSurface(widget_);
+    if (!ten_bit_ || !surface || !surface->window)
+      return false;
+    // A live context cannot silently switch to an incompatible 8-bit config.
+    // Fail this generation; the persisted gate bounds the subsequent restart.
+    if (angle_vulkan_ && initialized_) {
+      FailEglOutput("live EGL colorspace recreation failed");
       return false;
     }
     ten_bit_ = false;
     ten_bit_unavailable_ = true;
+    p3_capable_ = hdr_capable_ = false;
+    output_color_ = {};
     config_ = nullptr;
     LogConfig("8-bit (the 10-bit window could not be created)");
-    return gl::NativeViewGLSurfaceEGL::Initialize(format);
+    const bool ok = gl::NativeViewGLSurfaceEGL::Initialize(format);
+    if (ok) {
+      initialized_ = true;
+      PublishEglCapabilities();
+    }
+    return ok;
   }
 
   bool InitializeNativeWindow() override {
@@ -257,12 +345,12 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
         reinterpret_cast<EGLNativeWindowType>(surface->window);
     if (window != window_) {
       tagged_pq_.reset();
+      tagged_color_.reset();
       original_format_.reset();
     }
     window_ = window;
     SetBufferFormat();
-    TagNativeWindowColorSpace();
-    return true;
+    return TagNativeWindowColorSpace();
   }
 
   bool Resize(const gfx::Size& size,
@@ -274,23 +362,67 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
       // The shell took the window away; keep the size until it is back.
       return true;
     }
-    pq_output_ =
-        color_space.GetTransferID() == gfx::ColorSpace::TransferID::PQ;
-    TagNativeWindowColorSpace();
-    const bool ten_bit = hdr_panel_ && !has_alpha && !ten_bit_unavailable_;
+    bool color_changed = false;
+    if (angle_vulkan_) {
+      OhosOutputColor next{ten_bit_ ? OhosOutputMode::kSdr10
+                                    : OhosOutputMode::kSdr8};
+      if (color_space.GetTransferID() == gfx::ColorSpace::TransferID::PQ) {
+        if (!hdr_capable_ || has_alpha || !hdr_guard_.Validate()) {
+          FailEglOutput("unverified HDR EGL reshape");
+          return false;
+        }
+        next = hdr_color_;
+        if (OhosDynamicOutputLuminance()) {
+          if (auto brightness = GetOhosDisplayBrightness())
+            next = OhosContentOutputColor(*brightness);
+        }
+      } else if (color_space.GetPrimaryID() ==
+                 gfx::ColorSpace::PrimaryID::P3) {
+        if (!p3_capable_ || has_alpha) {
+          FailEglOutput("unverified P3 EGL reshape");
+          return false;
+        }
+        next = {OhosOutputMode::kP3Sdr10};
+      }
+      color_changed = next.mode != output_color_.mode;
+      if (color_changed) {
+        // Retire this context's rendering and readbacks before replacing its
+        // default framebuffer. ANGLE's surface destruction only waits for
+        // uses tracked by the old window image, which need not include the
+        // copy-output conversion/readback submitted after its last present.
+        // This is a colorspace transition barrier, never a per-frame wait.
+        glFinish();
+        auto* context = gl::GLContext::GetCurrent();
+        if (!context || context->CheckStickyGraphicsResetStatus() != GL_NO_ERROR) {
+          FailEglOutput("GL context lost before EGL color transition");
+          return false;
+        }
+      }
+      output_color_ = next;
+    } else {
+      pq_output_ = color_space.GetTransferID() ==
+                   gfx::ColorSpace::TransferID::PQ;
+    }
+    const bool ten_bit = (angle_vulkan_ ? ten_bit_ : hdr_panel_) &&
+                         !has_alpha && !ten_bit_unavailable_;
     const bool config_changed = ten_bit != ten_bit_;
     if (config_changed) {
       ten_bit_ = ten_bit;
       config_ = nullptr;
     }
-    if (refresh == WindowRefreshResult::kChanged || config_changed) {
+    if (refresh == WindowRefreshResult::kChanged || config_changed ||
+        color_changed) {
       size_ = size;
       if (!Recreate()) {
+        if (angle_vulkan_ && ten_bit_)
+          FailEglOutput("EGL recreation or make-current failed");
         return false;
       }
       HoldWindow(window_);
       return true;
     }
+    if (!TagNativeWindowColorSpace())
+      return false;
     return gl::NativeViewGLSurfaceEGL::Resize(size, scale_factor, color_space,
                                               has_alpha);
   }
@@ -304,8 +436,11 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
       std::move(callback).Run(gfx::PresentationFeedback::Failure());
       return gfx::SwapResult::SWAP_FAILED;
     }
-    return gl::NativeViewGLSurfaceEGL::SwapBuffers(std::move(callback),
-                                                   std::move(data));
+    const auto result = gl::NativeViewGLSurfaceEGL::SwapBuffers(
+        std::move(callback), std::move(data));
+    if (result == gfx::SwapResult::SWAP_FAILED && angle_vulkan_ && ten_bit_)
+      FailEglOutput("ten-bit EGL swap failed");
+    return result;
   }
 
   gfx::SwapResult PostSubBuffer(int x,
@@ -321,41 +456,80 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
       std::move(callback).Run(gfx::PresentationFeedback::Failure());
       return gfx::SwapResult::SWAP_FAILED;
     }
-    return gl::NativeViewGLSurfaceEGL::PostSubBuffer(
+    const auto result = gl::NativeViewGLSurfaceEGL::PostSubBuffer(
         x, y, width, height, std::move(callback), std::move(data));
+    if (result == gfx::SwapResult::SWAP_FAILED && angle_vulkan_ && ten_bit_)
+      FailEglOutput("ten-bit EGL partial swap failed");
+    return result;
   }
 
  private:
   enum class WindowRefreshResult { kUnavailable, kUnchanged, kChanged };
 
-  // Chromium's EGL surface ignores the colour space it is asked to draw in.
-  // On an HDR panel the compositor draws the whole output in Rec. 2020 PQ
-  // while HDR video plays; untagged, the system showed those values as sRGB
-  // and the page went grey. The native window keeps a colour space and an
-  // HDR metadata type that the system stamps on every buffer it hands out
-  // from then on, so tagging it before the next frame is drawn is enough --
-  // no surface has to be recreated. Explicitly tag sRGB on a new/replaced
-  // window too: a previous GPU generation may have left HDR metadata on it.
-  void TagNativeWindowColorSpace() {
-    auto* native_window = reinterpret_cast<OHNativeWindow*>(window_);
-    if (!native_window || (tagged_pq_ && pq_output_ == *tagged_pq_)) {
+  void FailEglOutput(const char* reason) {
+    p3_capable_ = hdr_capable_ = false;
+    ReportOhosWsiOutputCapabilities(widget_, false, false);
+    SetOhosEglOutputColorSpaces(static_cast<const gl::GLSurface*>(this), std::nullopt);
+    NoteOhosOutputColorFailure(reason);
+  }
+
+  void PublishEglCapabilities() {
+    if (!angle_vulkan_)
       return;
+    const auto format = ten_bit_ ? viz::SinglePlaneFormat::kRGBA_1010102
+                                  : viz::SinglePlaneFormat::kRGBA_8888;
+    gfx::DisplayColorSpaces spaces(gfx::ColorSpace::CreateSRGB());
+    spaces.SetOutputFormats(format, format);
+    spaces.SetHDRMaxLuminanceRelative(1.f);
+    if (hdr_capable_) {
+      spaces.SetSDRMaxLuminanceNits(hdr_color_.white_millinits / 1000.f);
+      spaces.SetHDRMaxLuminanceRelative(
+          static_cast<float>(hdr_color_.peak_millinits) /
+          hdr_color_.white_millinits);
+      for (bool alpha : {false, true})
+        spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR,
+            alpha, gfx::ColorSpace::CreateHDR10(), format);
     }
+    if (p3_capable_) {
+      const auto p3 = gfx::ColorSpace::CreateDisplayP3D65();
+      for (bool alpha : {false, true})
+        spaces.SetOutputColorSpaceAndFormat(
+            gfx::ContentColorUsage::kWideColorGamut, alpha, p3, format);
+      spaces.SetPrimaries(gfx::DisplayColorSpaces(p3).GetPrimaries());
+    }
+    SetOhosEglOutputColorSpaces(static_cast<const gl::GLSurface*>(this), spaces);
+    ReportOhosWsiOutputCapabilities(widget_, hdr_capable_, p3_capable_);
+    LOG(WARNING) << "OHOS EGL output verified: window=" << widget_
+                 << " ten_bit=" << ten_bit_ << " p3=" << p3_capable_
+                 << " hdr=" << hdr_capable_;
+  }
+
+  bool TagNativeWindowColorSpace() {
+    auto* native_window = reinterpret_cast<OHNativeWindow*>(window_);
+    if (angle_vulkan_) {
+      if (tagged_color_ && *tagged_color_ == output_color_)
+        return true;
+      if (!SetOhosWindowOutputColor(native_window, output_color_))
+        return false;
+      tagged_color_ = output_color_;
+      LOG(WARNING) << "OHOS EGL native color: window=" << widget_
+                   << " mode=" << static_cast<uint32_t>(output_color_.mode)
+                   << " egl_colorspace=" << GetEGLColorSpace()
+                   << " white_millinits=" << output_color_.white_millinits
+                   << " peak_millinits=" << output_color_.peak_millinits;
+      return true;
+    }
+    if (!native_window || (tagged_pq_ && pq_output_ == *tagged_pq_))
+      return native_window != nullptr;
     tagged_pq_ = pq_output_;
-    const int32_t color_space_result = OH_NativeWindow_SetColorSpace(
+    const int32_t result = OH_NativeWindow_SetColorSpace(
         native_window,
         pq_output_ ? OH_COLORSPACE_BT2020_PQ_FULL : OH_COLORSPACE_SRGB_FULL);
-    // The system reads the type from the first byte. OH_VIDEO_NONE (-1) is
-    // no type it maps, which leaves the window with none.
-    uint8_t metadata_type = static_cast<uint8_t>(
+    uint8_t type = static_cast<uint8_t>(
         pq_output_ ? OH_VIDEO_HDR_HDR10 : OH_VIDEO_NONE);
-    const int32_t metadata_result = OH_NativeWindow_SetMetadataValue(
-        native_window, OH_HDR_METADATA_TYPE, sizeof(metadata_type),
-        &metadata_type);
-    LOG(WARNING) << "OHOS surface colour space: native window tagged "
-                 << (pq_output_ ? "Rec. 2020 PQ, HDR10" : "sRGB")
-                 << " (colour space result " << color_space_result
-                 << ", metadata result " << metadata_result << ")";
+    const int32_t metadata = OH_NativeWindow_SetMetadataValue(
+        native_window, OH_HDR_METADATA_TYPE, sizeof(type), &type);
+    return result == 0 && metadata == 0;
   }
 
   // The window's buffers have to hold what the EGL config draws: a 10-bit
@@ -415,6 +589,11 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
 
     window_ = next_window;
     tagged_pq_.reset();
+    tagged_color_.reset();
+    if (angle_vulkan_) {
+      probed_ = false;
+      ReportOhosWsiOutputCapabilities(widget_, false, false);
+    }
     original_format_.reset();
     LOG(INFO) << "OHOS XComponent native window changed; recreating EGL "
                  "surface";
@@ -428,6 +607,8 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
     }
     if (refresh == WindowRefreshResult::kChanged) {
       if (!Recreate()) {
+        if (angle_vulkan_ && ten_bit_)
+          FailEglOutput("EGL recreation or make-current failed");
         return false;
       }
       HoldWindow(window_);
@@ -474,6 +655,15 @@ class OhosNativeViewGLSurfaceEGL final : public gl::NativeViewGLSurfaceEGL {
   EGLNativeWindowType held_window_ = 0;
 
   const gfx::AcceleratedWidget widget_;
+  const bool angle_vulkan_;
+  bool probed_ = false;
+  bool initialized_ = false;
+  bool p3_capable_ = false;
+  bool hdr_capable_ = false;
+  OhosOutputColor output_color_;
+  OhosOutputColor hdr_color_;
+  std::optional<OhosOutputColor> tagged_color_;
+  OhosHdrDisplayGuard hdr_guard_;
   const bool sdr_output_;
   const bool hdr_panel_;
   bool ten_bit_;
@@ -945,7 +1135,8 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
   }
 
   bool CanImportNativePixmap(viz::SharedImageFormat format) override {
-    return !IsOhosPhoneGpuChild() && IsOhosNativePixmapFormat(format);
+    return IsOhosNativePixmapFormat(format) &&
+           (!IsOhosPhoneGpuChild() || IsOffscreenNativeFormat(format));
   }
 
   // A YUV buffer is sampled whole, through GL_TEXTURE_EXTERNAL_OES with the
@@ -958,9 +1149,11 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
       const gfx::ColorSpace& color_space,
       GLenum target,
       GLuint texture_id) override {
-    if (IsOhosPhoneGpuChild())
+    if (IsOhosPhoneGpuChild() &&
+        !IsOffscreenNativeFormat(pixmap->GetSharedImageFormat()))
       return nullptr;
-    if (plane_index.has_value()) {
+    if (plane_index.has_value() &&
+        (!pixmap->GetSharedImageFormat().is_single_plane() || *plane_index != 0)) {
       LOG(ERROR) << "OHOS native pixmap: per-plane import of "
                  << plane_format.ToString() << " is not supported";
       return nullptr;
@@ -1012,12 +1205,14 @@ scoped_refptr<gfx::NativePixmap> OhosSurfaceFactory::CreateNativePixmap(
     viz::SharedImageFormat format,
     gfx::BufferUsage usage,
     std::optional<gfx::Size> framebuffer_size) {
-  return IsOhosPhoneGpuChild() ? nullptr : CreateOhosNativePixmap(size, format);
+  return IsOhosPhoneGpuChild() ? CreateOhosPhoneOffscreenPixmap(size, format)
+                               : CreateOhosNativePixmap(size, format);
 }
 
 bool OhosSurfaceFactory::CanCreateNativePixmapForFormat(
     viz::SharedImageFormat format) {
-  return !IsOhosPhoneGpuChild() && IsOhosNativePixmapFormat(format);
+  return IsOhosNativePixmapFormat(format) &&
+         (!IsOhosPhoneGpuChild() || IsOffscreenNativeFormat(format));
 }
 
 scoped_refptr<gfx::NativePixmap>
@@ -1026,6 +1221,11 @@ OhosSurfaceFactory::CreateNativePixmapFromHandle(
     gfx::Size size,
     viz::SharedImageFormat format,
     gfx::NativePixmapHandle handle) {
+  if (!handle.ohos_buffer_prefix.empty()) {
+    return IsOffscreenNativeFormat(format)
+               ? ImportOhosOffscreenPixmap(size, format, std::move(handle))
+               : ImportOhosVideoNativePixmap(size, format, std::move(handle));
+  }
   return IsOhosPhoneGpuChild() ? nullptr
                                : CreateOhosNativePixmapFromHandle(
                                      size, format, std::move(handle));
@@ -1040,9 +1240,52 @@ bool OhosSurfaceFactory::IsFormatSupportedForTexturing(
 
 #if BUILDFLAG(ENABLE_VULKAN)
 namespace {
-class PhoneVulkanImplementation final : public gpu::VulkanImplementationOhos {
+class VideoVulkanImplementation : public gpu::VulkanImplementationOhos {
  public:
-  PhoneVulkanImplementation() : VulkanImplementationOhos(true, {}, {}) {}
+  using VulkanImplementationOhos::VulkanImplementationOhos;
+
+  std::vector<const char*> GetOptionalDeviceExtensions() override {
+    auto extensions = VulkanImplementationOhos::GetOptionalDeviceExtensions();
+    // Optional on non-fork devices: missing video import support must not
+    // disable Vulkan page rendering or its existing window swapchain.
+    extensions.push_back("VK_OHOS_external_memory");
+    return extensions;
+  }
+  // Dawn Canvas and Skia share NativeBuffer allocations on every device.
+  // Keep capability probing conditional on the import and sync extensions.
+  bool CanImportGpuMemoryBuffer(gpu::VulkanDeviceQueue* queue,
+                               gfx::GpuMemoryBufferType type) override {
+    return type == gfx::NATIVE_PIXMAP && CanImportOhosVideoVulkan(queue);
+  }
+  std::unique_ptr<gpu::VulkanImage> CreateImageFromGpuMemoryHandle(
+      gpu::VulkanDeviceQueue* queue,
+      gfx::GpuMemoryBufferHandle handle,
+      gfx::Size size,
+      VkFormat format,
+      const gfx::ColorSpace& color) override {
+    if (format == VK_FORMAT_R8G8B8A8_UNORM ||
+        format == VK_FORMAT_B8G8R8A8_UNORM ||
+        format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+      if (handle.type != gfx::NATIVE_PIXMAP)
+        return nullptr;
+      const auto& prefix = handle.native_pixmap_handle().ohos_buffer_prefix;
+      const uint32_t native_format =
+          format == VK_FORMAT_R16G16B16A16_SFLOAT
+              ? phone_gpu::kSharedImageRgba16Float
+              : format == VK_FORMAT_R8G8B8A8_UNORM
+                    ? phone_gpu::kSharedImageRgba8888
+                    : phone_gpu::kSharedImageBgra8888;
+      if (prefix.size() != 14 || prefix[8] != native_format)
+        return nullptr;
+      return ImportOhosOffscreenVulkan(queue, std::move(handle), size);
+    }
+    return ImportOhosVideoVulkan(queue, std::move(handle), size, color);
+  }
+};
+
+class PhoneVulkanImplementation final : public VideoVulkanImplementation {
+ public:
+  PhoneVulkanImplementation() : VideoVulkanImplementation(true, {}, {}) {}
   std::vector<const char*> GetRequiredDeviceExtensions() override {
     auto extensions = VulkanImplementationOhos::GetRequiredDeviceExtensions();
     extensions.push_back("VK_OHOS_external_memory");
@@ -1089,7 +1332,7 @@ OhosSurfaceFactory::CreateVulkanImplementation(bool use_swiftshader,
   // A widget's window as the GL path finds it: from the registry -- the
   // mirror of the browser's, in a GPU process of its own -- waiting for it
   // when one is expected and has not arrived yet.
-  return std::make_unique<gpu::VulkanImplementationOhos>(
+  return std::make_unique<VideoVulkanImplementation>(
       /*force_native=*/true,
       base::BindRepeating([](gfx::AcceleratedWidget widget) -> void* {
         std::optional<OhosNativeSurface> surface =

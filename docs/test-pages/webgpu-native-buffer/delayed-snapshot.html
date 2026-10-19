@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>WebGPU delayed snapshot regression</title>
+<button id="run">Run delayed snapshot matrix</button><pre id="result"></pre>
+<script src="delayed-snapshot.js"></script><script>
+document.getElementById('run').onclick = async () => {
+  document.getElementById('result').textContent = JSON.stringify(await runDelayedSnapshot(), null, 2);
+};
+</script>

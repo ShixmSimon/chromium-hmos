@@ -25,6 +25,8 @@ jobs:
         run: scripts/test-ohos-fork-server.sh
       - name: Check experimental phone GPU frame transport
         run: scripts/test-ohos-phone-gpu.sh
+      - name: Check native extension update result semantics
+        run: scripts/test-extension-updates.sh
       - name: Check memfd write-seal contract
         run: python3 scripts/check-memfd-seals.py
       - name: Check test-page media byte ranges

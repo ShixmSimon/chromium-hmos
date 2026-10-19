@@ -10,6 +10,7 @@
 #include "chrome/browser/ui/ohos/shell_context_menu_image_ohos.h"
 #include "chrome/browser/ui/ohos/shell_drag_drop_ohos.h"
 #include "chrome/browser/ui/ohos/shell_extensions_ohos.h"
+#include "chrome/browser/ui/ohos/shell_extension_updates_ohos.h"
 #include "chrome/browser/ui/ohos/shell_page_position_ohos.h"
 #include "chrome/browser/ui/ohos/shell_store_user_agent_ohos.h"
 #include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
@@ -3794,10 +3795,23 @@ void ApplyWindowStateOnUiThread(gfx::AcceleratedWidget widget, int attempt) {
   if (!visible) {
     window->Deactivate();
     window->Hide();
+    TabStripModel* tabs = browser->GetTabStripModel();
+    content::WebContents* active = tabs ? tabs->GetActiveWebContents() : nullptr;
+    LOG(WARNING) << "OHOS host visibility: hidden widget=" << widget
+                 << " native_visible=" << window->IsVisible()
+                 << " active_visibility="
+                 << (active ? static_cast<int>(active->GetVisibility()) : -1);
     return;
   }
 
   window->ShowInactive();
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    // Restore the foreground media budget only after the native window can
+    // present again, not while its show task is still waiting on this thread.
+    ui::SetOhosApplicationVisible(state.IsCameraForeground());
+  }
   if (focused) {
     // Regaining focus must not take activation from the browser's own bubble.
     // A desktop window manager hands activation back to whichever of the
@@ -4254,6 +4268,9 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     if (const std::string* uri = command.FindString("uri")) {
       SetShellDownloadDirectory(nullptr, *uri);
     }
+    return;
+  }
+  if (HandleShellExtensionUpdateCommand(*name, widget, browser, command)) {
     return;
   }
   if (!browser || !tabs) {
@@ -5210,6 +5227,7 @@ void NotifyAuraShellBrowserStarted() {
     pending_shutdown = state.pending_shutdown;
     state.pending_shutdown = false;
     camera_foreground = state.IsCameraForeground();
+    ui::SetOhosApplicationVisible(camera_foreground);
   }
 
   content::MediaCaptureDevices::SetApplicationForegroundForOhos(
@@ -5354,6 +5372,8 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "setExtensionEnabled",
       "uninstallExtension",
       "getExtensionDetails",
+      "getExtensionUpdateCapabilities",
+      "checkExtensionUpdates",
       "setExtensionSiteAccess",
       "openExtensionOptions",
       "setExtensionPinned",
@@ -6142,8 +6162,15 @@ void SetAuraShellBrowserVisible(gfx::AcceleratedWidget widget, bool visible) {
         state.window_focus[widget] = false;
       }
     }
+    LOG(WARNING) << "OHOS host visibility: requested widget=" << widget
+                 << " visible=" << visible;
     ui_task_runner = state.ui_task_runner;
     const bool is_camera_foreground = state.IsCameraForeground();
+    // Hide is immediate for media. Show is published by ApplyWindowState only
+    // after the platform window resumes presentation.
+    if (!is_camera_foreground) {
+      ui::SetOhosApplicationVisible(false);
+    }
     if (ui_task_runner && was_camera_foreground != is_camera_foreground) {
       // Post in the same order as visibility transitions, before taking any
       // early return while applying a window that has not been created yet.

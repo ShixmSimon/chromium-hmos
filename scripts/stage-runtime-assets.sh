@@ -46,6 +46,7 @@ clear_directory() {
   find "$1" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 }
 
+require_file "${out_dir}/liblumie_adblock.so" 'missing adblock-rust runtime'
 require_file "${out_dir}/libweb_engine.so" 'missing libweb_engine.so'
 require_file "${out_dir}/libnweb_render.so" 'missing libnweb_render.so'
 require_file "${out_dir}/icudtl.dat" 'missing icudtl.dat'
@@ -58,7 +59,7 @@ done
 clear_directory "$libs_dir"
 clear_directory "$raw_dir"
 
-cp -a "${out_dir}/libweb_engine.so" "${out_dir}/libnweb_render.so" "$libs_dir/"
+cp -a "${out_dir}/libweb_engine.so" "${out_dir}/libnweb_render.so" "${out_dir}/liblumie_adblock.so" "$libs_dir/"
 
 # ANGLE is a shared library in some configurations and linked statically into
 # libweb_engine.so in others. Copy the .so files when the build produced them;
@@ -106,6 +107,14 @@ if [[ -n "${PHISHING_UPDATE_CONFIG_FILE:-}" ]]; then
     --validate-config "$PHISHING_UPDATE_CONFIG_FILE" || die 'invalid phishing update configuration'
   cp -- "$PHISHING_UPDATE_CONFIG_FILE" "${raw_dir}/ohos_phishing_updates.json"
 fi
+
+# Preserve notices and the exact unmodified CC BY-SA rule snapshots in the HAR.
+adblock_source="$(cd "$(dirname "${BASH_SOURCE[0]}")/../overlay/third_party/adblock_rust" && pwd)"
+adblock_notices="${project}/engine/src/main/resources/rawfile/adblock-licenses"
+mkdir -p "$adblock_notices"
+cp "$adblock_source/LICENSE" "$adblock_source/THIRD_PARTY_NOTICES.txt" "$adblock_source/Cargo.lock" "$adblock_notices/"
+cp -R "$adblock_source/lists" "$adblock_source/resources" "$adblock_notices/"
+cp -R "$(dirname "$adblock_source")/../chrome/renderer/ohos/adblock_resources" "$adblock_notices/renderer"
 
 # Written last, and after the hash is computed, so it never covers itself.
 runtime_version=$(

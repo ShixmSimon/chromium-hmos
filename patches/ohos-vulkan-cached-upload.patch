@@ -1,0 +1,81 @@
+diff --git a/gpu/vulkan/skia_vk_memory_allocator_impl.cc b/gpu/vulkan/skia_vk_memory_allocator_impl.cc
+--- a/gpu/vulkan/skia_vk_memory_allocator_impl.cc
++++ b/gpu/vulkan/skia_vk_memory_allocator_impl.cc
+@@ -8,8 +8,11 @@
+ #include <vulkan/vulkan_core.h>
+ 
+ #include <array>
++#include <atomic>
+ 
+ #include "base/feature_list.h"
++#include "base/logging.h"
++#include "build/build_config.h"
+ #include "base/trace_event/trace_event.h"
+ #include "gpu/vulkan/vulkan_device_queue.h"
+ #include "gpu/vulkan/vulkan_function_pointers.h"
+@@ -93,9 +96,19 @@
+       info.preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+       break;
+     case BufferUsage::kTransfersFromCpuToGpu:
++#if BUILDFLAG(IS_OHOS)
++      // Large CPU video uploads need cached staging memory on unified-memory
++      // phone GPUs. Coherent-only selection can choose uncached device memory.
++      // Skia's VulkanAlloc tracks noncoherent memory and GrVkBuffer::vkUnmap
++      // flushes it through VMA before submission. Cached is a preference, so
++      // drivers without such a memory type retain the host-visible fallback.
++      info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
++      info.preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
++#else
+       info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+       info.preferredFlags = 0;
++#endif
+       break;
+     case BufferUsage::kTransfersFromGpuToCpu:
+       info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+@@ -124,6 +137,20 @@
+   VkResult result = vma::AllocateMemoryForBuffer(allocator_, buffer, &info,
+                                                  &allocation, nullptr);
+   if (VK_SUCCESS == result) {
++#if BUILDFLAG(IS_OHOS)
++    if (usage == BufferUsage::kTransfersFromCpuToGpu) {
++      static std::atomic<bool> logged{false};
++      if (!logged.exchange(true)) {
++        VmaAllocationInfo allocation_info;
++        vma::GetAllocationInfo(allocator_, allocation, &allocation_info);
++        VkMemoryPropertyFlags memory_flags;
++        vma::GetMemoryTypeProperties(allocator_, allocation_info.memoryType,
++                                    &memory_flags);
++        LOG(WARNING) << "OHOS Vulkan upload memory: type="
++                     << allocation_info.memoryType << " flags=" << memory_flags;
++      }
++    }
++#endif
+     if (info.preferredFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT) {
+       VmaAllocationInfo vma_info;
+       vma::GetAllocationInfo(allocator_, allocation, &vma_info);
+diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
+--- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
++++ b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
+@@ -909,6 +909,21 @@
+             kA16_float_SkColorType);
+   }
+ 
++#if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_OHOS)
++  if (ui::IsOhosPhoneGpuChild() && context_state_ &&
++      gr_context_type_ == GrContextType::kVulkan) {
++    // ExternalVk supplies the R16 planes used by raster-write/display-read
++    // video resources. Publish the actual Skia format support so 10-bit CPU
++    // frames use integer uploads instead of converting every sample to FP16.
++    shared_image_caps.supports_r16_shared_images =
++        context_state_->gr_context() &&
++        context_state_->gr_context()->colorTypeSupportedAsImage(
++            kA16_unorm_SkColorType);
++    LOG(WARNING) << "OHOS phone Vulkan: R16 video upload="
++                 << shared_image_caps.supports_r16_shared_images;
++  }
++#endif
++
+   const bool display_compositor_on_another_thread =
+       shared_image_manager_->display_context_on_another_thread();
+   if (!context_state_) {

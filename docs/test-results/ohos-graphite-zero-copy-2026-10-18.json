@@ -1,0 +1,36 @@
+{
+  "updatedUTC": "2026-10-18T23:27:03.653181+00:00",
+  "state": "IMPLEMENTED_HOST_CHECKS_PASSED_NATIVE_CI_PENDING_DEVICE_OFFLINE",
+  "scope": "Graphite native decoder Surface sampling shared by Pad and phone fork; Ganesh default retained",
+  "implemented": [
+    "Pad decoder Surface -> Ozone SharedImage -> Dawn SharedTextureMemory -> typed Graphite hardware YCbCr sampler",
+    "Phone browser decoder exports existing bounded NativeBuffer parcel; GPU replies with actual per-allocation sampling metadata through existing independent lease endpoint",
+    "Versioned 48-byte metadata reply; bounded worker receive, ordered media callbacks, generation/reset handling; metadata receipt does not release decoder slot",
+    "Acquire fences imported to Dawn; completion sync_fd retains the NativePixmap/decoder lease until GPU completion",
+    "VideoFrameMetadata and Mojo preserve YCbCr descriptor through renderer to Viz; typed promise and fulfillment descriptors agree",
+    "OHOS Skia external-image sampling accepts validated P010 10-bit color description; external images remain read-only",
+    "Graphite software-video native repacking remains disabled; CPU upload compatibility fallback retained"
+  ],
+  "hostChecks": {
+    "existingPhoneTransportColorParcel": "PASS",
+    "newMetadataProtocol": "PASS: validity, fragmentation, 64-bit format, independent EOF, dead peer, truncated reply, 5-second deadline",
+    "orderedPatchReplay": "PASS: 22 touched Chromium files across all 21 existing ordered patches; Skia P010 hunk applied to pinned source",
+    "nativeCompilationLocal": false,
+    "CIWorkflowsModified": false
+  },
+  "device": {
+    "pad": "192.168.8.136:38905 connection failed; hdc list targets empty; current address requested",
+    "phone": "No device operations; latest Graphite zero-copy not validated"
+  },
+  "requiredAcceptance": [
+    "Native CI must compile this exact revision",
+    "Install exact CI engine on Pad; verify silence and keep-awake before playback",
+    "Actual Surface decode and Graphite import logs; CPU output copies=0; P010 and actual driver descriptor; no Ganesh fallback",
+    "Native screenshots and frame advancement for H264 SDR, HEVC Main10 SDR and PQ; software VP9 regression",
+    "VideoFrame/HTMLVideoElement WebGPU and Canvas/WebGL video consumption",
+    "Fullscreen enter/hold/exit with delayed settle, seek/source switch, real background/resume",
+    "Sustained playback and FD/PSS; GPU crash -> Ganesh fallback; default Ganesh regression",
+    "Phone fork regression separately when phone is available"
+  ],
+  "acceptance": "NOT YET ACCEPTED: no native compile or device playback result for this implementation"
+}

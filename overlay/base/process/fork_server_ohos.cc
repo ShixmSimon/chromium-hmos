@@ -14,6 +14,7 @@
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -42,6 +43,35 @@ constexpr size_t kMaxFds = 16;
 constexpr size_t kMaxParams = 64 * 1024;
 constexpr size_t kMaxChildren = 64;
 constexpr int kRpcTimeoutMs = 5000;
+int trace_fd = -1;
+struct stat trace_file = {};
+std::array<int, 1024> trace_original_fds{};
+size_t trace_original_count = 0;
+bool trace_truncated = false;
+
+void CaptureTraceDescriptors() {
+  if (trace_fd < 0)
+    return;
+  trace_original_count = 0;
+  trace_truncated = false;
+  DIR* directory = opendir("/proc/self/fd");
+  if (!directory)
+    return;
+  while (dirent* entry = readdir(directory)) {
+    if (entry->d_name[0] == '.')
+      continue;
+    char* end = nullptr;
+    long fd = strtol(entry->d_name, &end, 10);
+    if (*end || fd < 0 || fd >= INT_MAX || fd == dirfd(directory))
+      continue;
+    if (trace_original_count == trace_original_fds.size()) {
+      trace_truncated = true;
+      break;
+    }
+    trace_original_fds[trace_original_count++] = static_cast<int>(fd);
+  }
+  closedir(directory);
+}
 enum class Operation : uint32_t { kHello, kLaunch, kStatus, kSignal, kStop };
 struct Request {
   uint32_t magic = kMagic;
@@ -129,7 +159,26 @@ void CloseFds(std::vector<int>& fds) {
   fds.clear();
 }
 
+bool IsLoaderRelroFd(int directory_fd, const char* name, int fd) {
+  // OHOS musl caches this descriptor in its inherited prelink state. Closing
+  // or renumbering it lets a later dlopen mmap an unrelated, reused FD at a
+  // RELRO offset (and can SIGBUS beyond that file's end). Keep the original
+  // descriptor, not just the existing mappings or a duplicate at another FD.
+  constexpr char kRelroTarget[] = "/memfd:relro_cache (deleted)";
+  char target[sizeof(kRelroTarget)];
+  ssize_t size = readlinkat(directory_fd, name, target, sizeof(target));
+  if (size != sizeof(kRelroTarget) - 1 ||
+      memcmp(target, kRelroTarget, sizeof(kRelroTarget) - 1) != 0)
+    return false;
+  // Phone policy can deny getattr (fstat returns EACCES) on this inherited
+  // system memfd while readlink, fcntl and mmap remain usable. Metadata access
+  // is not a liveness test. The exact procfs target identifies the cache; keep
+  // its live original descriptor even when metadata cannot be queried.
+  return fcntl(fd, F_GETFD) >= 0;
+}
+
 // Close inherited application channels before the server can fork children.
+// Loader-owned RELRO cache FDs must survive at their original numbers.
 // No broad munmap of Ark/anonymous memory: mapped libraries may still use it.
 bool CloseInheritedFds(int keep, int& minimum_received_fd) {
   DIR* directory = opendir("/proc/self/fd");
@@ -144,7 +193,8 @@ bool CloseInheritedFds(int keep, int& minimum_received_fd) {
     if (*end == '\0' && fd >= 0 && fd < INT_MAX) {
       if (fd >= minimum_received_fd)
         minimum_received_fd = static_cast<int>(fd) + 1;
-      if (fd > 2 && fd != keep && fd != directory_fd)
+      if (fd > 2 && fd != keep && fd != directory_fd && fd != trace_fd &&
+          !IsLoaderRelroFd(directory_fd, entry->d_name, static_cast<int>(fd)))
         close(static_cast<int>(fd));
     }
   }
@@ -327,10 +377,12 @@ void ResetSignals() {
 }
 
 [[noreturn]] void ServerLoop(int socket, pid_t browser, const char* library) {
+  TraceOhosForkDescriptors("server-before-cleanup");
   ResetSignals();
   int minimum_received_fd = 256;
   if (!BindLifetime(browser) || !CloseInheritedFds(socket, minimum_received_fd))
     _exit(79);
+  TraceOhosForkDescriptors("server-after-cleanup");
   prctl(PR_SET_NAME, "ohos-fork-server", 0, 0, 0);
   void* shared = mmap(nullptr, sizeof(ChildProgress) * kMaxChildren,
                       PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
@@ -377,6 +429,7 @@ void ResetSignals() {
       } else {
         slot->progress->value.store(0, std::memory_order_relaxed);
         pid_t server = getpid();
+        TraceOhosForkDescriptors("server-before-child-fork");
         pid_t child = fork();
         if (!child)
           RunChild(socket, server, library, request, fds, slot->progress,
@@ -498,11 +551,94 @@ bool Rpc(Client& client,
 
 }  // namespace
 
+bool ConfigureOhosForkFdTrace(const std::string& path) {
+  if (GetClient().attempted || trace_fd >= 0 || path.empty())
+    return false;
+  int fd = open(
+      path.c_str(),
+      O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC | O_NOFOLLOW, 0600);
+  if (fd < 0)
+    return false;
+  // Avoid occupying the low cached numbers that this diagnostic investigates.
+  trace_fd = fcntl(fd, F_DUPFD_CLOEXEC, 512);
+  close(fd);
+  if (trace_fd < 0)
+    return false;
+  if (fstat(trace_fd, &trace_file) || !S_ISREG(trace_file.st_mode)) {
+    close(trace_fd);
+    trace_fd = -1;
+    return false;
+  }
+  return true;
+}
+
+void TraceOhosForkDescriptors(const char* stage) {
+  if (trace_fd < 0)
+    return;
+  const int saved_errno = errno;
+  struct stat log = {};
+  // Never write through a diagnostic descriptor if it too was reused. Bound
+  // disk usage; this is startup diagnostics, not a per-frame trace.
+  if (fstat(trace_fd, &log) || log.st_dev != trace_file.st_dev ||
+      log.st_ino != trace_file.st_ino || log.st_size >= 8 * 1024 * 1024) {
+    errno = saved_errno;
+    return;
+  }
+  for (size_t i = 0; i <= trace_original_count; ++i) {
+    char line[768];
+    int count;
+    if (i == trace_original_count) {
+      count = snprintf(
+          line, sizeof(line),
+          "FDTRACE pid=%d ppid=%d stage=%s end count=%zu truncated=%d\n",
+          getpid(), getppid(), stage, trace_original_count, trace_truncated);
+    } else {
+      int fd = trace_original_fds[i];
+      char path[48], target[256] = {};
+      snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
+      ssize_t length = readlink(path, target, sizeof(target) - 1);
+      int link_error = length < 0 ? errno : 0;
+      struct stat info = {};
+      int stat_error = fstat(fd, &info) ? errno : 0;
+      int flags = fcntl(fd, F_GETFD);
+      int flags_error = flags < 0 ? errno : 0;
+      const bool name_match =
+          strcmp(target, "/memfd:relro_cache (deleted)") == 0;
+      count = snprintf(
+          line, sizeof(line),
+          "FDTRACE pid=%d ppid=%d stage=%s fd=%d target=%s link_errno=%d "
+          "stat_errno=%d dev=%llu inode=%llu size=%lld nlink=%llu mode=%o "
+          "flags=%d flags_errno=%d name_match=%d keep_relro=%d\n",
+          getpid(), getppid(), stage, fd, length < 0 ? "<closed>" : target,
+          link_error, stat_error, static_cast<unsigned long long>(info.st_dev),
+          static_cast<unsigned long long>(info.st_ino),
+          static_cast<long long>(info.st_size),
+          static_cast<unsigned long long>(info.st_nlink),
+          static_cast<unsigned int>(info.st_mode), flags, flags_error,
+          name_match, name_match && flags >= 0);
+    }
+    if (count > 0 && static_cast<size_t>(count) < sizeof(line)) {
+      // One append per line: concurrent children cannot share/overwrite a seek
+      // offset. Do not retry a partial write by appending half a record later.
+      ssize_t written;
+      do {
+        written = write(trace_fd, line, static_cast<size_t>(count));
+      } while (written < 0 && errno == EINTR);
+    }
+  }
+  errno = saved_errno;
+}
+
 void ReportOhosForkStage(OhosForkStage stage, int detail) {
   if (child_progress) {
     child_progress->value.store(
         (static_cast<uint64_t>(stage) << 32) | static_cast<uint32_t>(detail),
         std::memory_order_relaxed);
+    if (stage == OhosForkStage::kForked || stage == OhosForkStage::kLoading ||
+        stage == OhosForkStage::kEntry || stage == OhosForkStage::kNativeMain ||
+        stage == OhosForkStage::kDescriptors ||
+        stage == OhosForkStage::kChromeMain)
+      TraceOhosForkDescriptors(OhosForkStageName(static_cast<uint32_t>(stage)));
   }
 }
 
@@ -533,6 +669,10 @@ int DuplicateOhosChildDescriptor(int fd) {
   return result;
 }
 
+bool IsOhosForkChild() {
+  return child_progress != nullptr;
+}
+
 bool StartOhosForkServer(const std::string& child_library) {
   Client& client = GetClient();
   std::lock_guard<std::mutex> lock(client.mutex);
@@ -547,12 +687,16 @@ bool StartOhosForkServer(const std::string& child_library) {
   if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sockets))
     return false;
   pid_t browser = getpid();
+  CaptureTraceDescriptors();
+  TraceOhosForkDescriptors("browser-before-server-fork");
   pid_t server = fork();
   if (server == 0) {
+    TraceOhosForkDescriptors("server-after-fork");
     close(sockets[0]);
     ServerLoop(sockets[1], browser, child_library.c_str());
   }
   close(sockets[1]);
+  TraceOhosForkDescriptors("browser-after-server-fork");
   if (server < 0) {
     close(sockets[0]);
     return false;
@@ -697,3 +841,10 @@ std::optional<bool> WaitForOhosForkChild(pid_t pid,
 }
 
 }  // namespace base::internal
+
+// Dawn is built without Chromium base dependencies. Its optional weak hook
+// resolves here when linked into the engine; official NCP has no trace file.
+extern "C" __attribute__((visibility("default"))) void
+OHOS_TraceForkDescriptors(const char* stage) {
+  base::internal::TraceOhosForkDescriptors(stage);
+}

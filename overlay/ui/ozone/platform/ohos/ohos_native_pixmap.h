@@ -22,6 +22,11 @@ class ColorSpace;
 namespace ui {
 
 class NativePixmapGLBinding;
+struct OhosVideoGraphiteMetadata;
+// Reply through an imported video's independent lease endpoint. Same-process
+// pixmaps have no reply endpoint and require no cross-process metadata.
+bool ReplyOhosVideoGraphiteMetadata(
+    const gfx::NativePixmap& pixmap, const OhosVideoGraphiteMetadata& metadata);
 
 // Native pixmaps on HarmonyOS: OH_NativeBuffers, shared as dma-buf fds.
 //
@@ -60,6 +65,17 @@ scoped_refptr<gfx::NativePixmap> CreateOhosNativePixmapFromHandle(
     viz::SharedImageFormat format,
     gfx::NativePixmapHandle handle);
 
+// Offscreen RGBA/BGRA images allocated by the browser for its fork GPU. The
+// parcel and native wrapper own the allocation directly; no CPU tag, mapping,
+// Surface queue lease, or registry handoff grace period is needed.
+scoped_refptr<gfx::NativePixmap> CreateOhosPhoneOffscreenPixmap(
+    gfx::Size size,
+    viz::SharedImageFormat format);
+scoped_refptr<gfx::NativePixmap> ImportOhosOffscreenPixmap(
+    gfx::Size size,
+    viz::SharedImageFormat format,
+    gfx::NativePixmapHandle handle);
+
 // Wraps an acquired decoder surface buffer in the GPU process. The caller
 // transfers a release closure that owns the buffer/consumer queue. No mapping,
 // pixel copy, writable tag, or cross-process dma-buf re-identification is used.
@@ -82,6 +98,16 @@ std::optional<uint32_t> GetOhosVideoNativePixmapId(
 scoped_refptr<gfx::NativePixmap> CloneOhosVideoNativePixmapForImport(
     const gfx::NativePixmap& pixmap);
 
+// Browser -> fork GPU transfer of decoder-owned NativeBuffers. The optional
+// release endpoint is kept by GPU imports until their last completed read.
+gfx::NativePixmapHandle ExportOhosVideoNativePixmap(
+    const gfx::NativePixmap& pixmap,
+    base::ScopedFD release_endpoint);
+scoped_refptr<gfx::NativePixmap> ImportOhosVideoNativePixmap(
+    gfx::Size size,
+    viz::SharedImageFormat format,
+    gfx::NativePixmapHandle handle);
+
 // Imports `pixmap` as an EGLImage through EGL_NATIVE_BUFFER_OHOS, tagged with
 // `color_space` so the driver converts YUV with the right matrix and range,
 // and binds it to `texture_id` on `target` (GL_TEXTURE_EXTERNAL_OES).
@@ -94,10 +120,9 @@ std::unique_ptr<NativePixmapGLBinding> ImportOhosNativePixmap(
 std::unique_ptr<gfx::ClientNativePixmapFactory>
 CreateOhosClientNativePixmapFactory();
 
-// The OH_NativeBuffer behind `pixmap` if this process allocated it, else
-// null; for Dawn, which imports it with VK_OHOS_external_memory
-// (DawnOzoneImageRepresentation). An OH_NativeBuffer*, untyped so that the
-// GPU service needs no HarmonyOS header to call it.
+// The OH_NativeBuffer represented by a registry, decoder, or offscreen pixmap.
+// Borrowed for the pixmap's lifetime; native importers must retain their own
+// reference. Untyped so the GPU service needs no HarmonyOS header to call it.
 void* GetOhosNativeBuffer(const gfx::NativePixmap& pixmap);
 
 }  // namespace ui

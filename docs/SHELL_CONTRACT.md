@@ -1273,3 +1273,18 @@ HAR 的 `module.json5` 声明了 13 项权限(包括 WebAuthn 用到的 `ACCESS_
 - HAR 和引擎来自同一次构建,不存在单独升级引擎的情况。换 HAR 就是换引擎。
 - `BrowserStateSnapshot`、`BrowserRuntimeEvent`、`AuxiliaryWindowState` 都带有 `version` 字段。从这份文档起约定:只新增字段时版本号不变;删除字段或修改字段含义时,版本号加 1。外壳应当容忍未知字段和未知事件,遇到时忽略即可,不要报错。
 - 这份文档跟随仓库更新。接口有变化时,改动 `engine/Index.ets` 的同一个提交里要同步修改这份文档。
+
+## Viewport bilingual translation (protocolVersion 1)
+
+The HAR exports `TranslationTypes` and translation fields on `BrowserCommandPayload`.
+The eight commands are `getTranslationCapabilities`, `getTranslationState`,
+`startTranslation`, `takeTranslationBatch`, `applyTranslationBatch`,
+`releaseTranslationBatch`, `setTranslationPresentation`, `stopTranslation`.
+Full identities, fields, error codes, examples, budgets and lifecycle policy are
+specified in [OHOS_VIEWPORT_TRANSLATION.md](OHOS_VIEWPORT_TRANSLATION.md).
+
+This first implementation reports `frameScope: mainFrame`; it does not translate
+iframes, shadow DOM, PDFs or internal pages. No provider networking or credentials
+enter the kernel. The shell must obtain explicit user consent and pull batches;
+ordinary page loading never uploads text. `standard`, `quote`, `gray` presentation
+changes do not create new translation requests. Native device acceptance is pending.

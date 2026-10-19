@@ -1,0 +1,15 @@
+import("//mojo/public/tools/bindings/mojom.gni")
+mojom("mojom") {
+  sources = [ "adblock.mojom" ]
+  public_deps = [
+    "//url/mojom:url_mojom_gurl",
+    "//third_party/blink/public/mojom:mojom_platform",
+  ]
+}
+
+source_set("execution") {
+  sources = [ "decision_throttle.cc", "decision_throttle.h" ]
+  deps = [ ":mojom", "//base", "//net", "//mojo/public/cpp/bindings",
+           "//services/network/public/cpp", "//services/network/public/cpp:web_platform",
+           "//third_party/blink/public/common", "//url" ]
+}

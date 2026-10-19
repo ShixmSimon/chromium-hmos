@@ -8,10 +8,24 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include "ui/ozone/platform/ohos/ohos_output_color.h"
 
 namespace ui::phone_gpu {
-inline constexpr uint32_t kSharedMagic = 0x50475332;
+inline constexpr uint32_t kSharedMagic = 0x50475335;
 inline constexpr size_t kSharedMaxFds = 8;
+// NativeBuffer format values, checked against the SDK by the allocator.
+inline constexpr uint32_t kSharedImageRgba8888 = 12;
+inline constexpr uint32_t kSharedImageBgra8888 = 20;
+inline constexpr uint32_t kSharedImageRgba16Float = 39;
+inline constexpr bool IsSharedImageFormat(uint32_t format) {
+  return format == kSharedImageRgba8888 || format == kSharedImageBgra8888 ||
+         format == kSharedImageRgba16Float;
+}
+inline constexpr uint32_t SharedImageBytesPerPixel(uint32_t format) {
+  if (format == kSharedImageRgba16Float)
+    return 8;
+  return IsSharedImageFormat(format) ? 4 : 0;
+}
 enum class SharedOp : uint32_t {
   kAcquire = 1,
   kBuffer,
@@ -22,7 +36,17 @@ enum class SharedOp : uint32_t {
   kTiming,
   kDiscard,
   kVulkanState,
-  kVulkanFailed
+  kVulkanFailed,
+  kColorProbe,
+  kColorFailed,
+  kHdrDisplayQuery,
+  kHdrDisplayState,
+  kColorReady,
+  // Offscreen images have no window queue or lease. The allocation request
+  // carries its native format in prefix[8]; the reply carries the full parcel.
+  kAllocateImage,
+  kImage,
+  kGraphiteState
 };
 struct SharedPacket {
   uint32_t magic = kSharedMagic;
@@ -30,6 +54,11 @@ struct SharedPacket {
   uint64_t sequence = 0;
   uint64_t widget = 0;
   uint64_t lease = 0;
+  OhosOutputColor color;
+  uint64_t color_generation = 0;
+  // Only kHdrDisplayState carries an ID. Zero is a valid primary display ID;
+  // result=kPresented means one HDR10-capable display was found by the host.
+  uint64_t display_id = 0;
   uint32_t width = 0;
   uint32_t height = 0;
   uint32_t fd_count = 0;

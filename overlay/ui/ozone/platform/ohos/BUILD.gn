@@ -28,15 +28,22 @@ source_set("native_window_registry") {
 
     # Losing the GPU context is noticed here, and the shell has to hear
     # about it. Widened for that one call rather than for the header.
-    "//gpu/ipc/service:*",
     "//components/viz/service:*",
+    "//gpu/ipc/service:*",
+    "//gpu/command_buffer/service:*",
   ]
 
   sources = [
+    "ohos_buffer_color_policy.h",
+    "ohos_buffer_color_space.h",
+    "ohos_display_brightness.h",
     "ohos_gpu_child_channel.cc",
     "ohos_gpu_child_channel.h",
     "ohos_native_window_registry.cc",
     "ohos_native_window_registry.h",
+    "ohos_output_color.h",
+    "ohos_output_color_config.cc",
+    "ohos_output_color_config.h",
     "ohos_phone_gpu_channel.cc",
     "ohos_phone_gpu_channel.h",
     "ohos_phone_gpu_presenter.cc",
@@ -55,6 +62,7 @@ source_set("native_window_registry") {
   # windows: ohos_gpu_child_channel.h.
   libs = [
     "child_process",
+    "native_display_manager",
     "hilog_ndk.z",
     "ipc_capi",
     "native_buffer",
@@ -64,6 +72,7 @@ source_set("native_window_registry") {
 
   deps = [
     "//base",
+    "//components/viz/common/resources:shared_image_format",
     "//third_party/vulkan-headers/src:vulkan_headers",
     "//ui/base",
     "//ui/gfx",
@@ -81,6 +90,8 @@ source_set("ohos") {
     "ohos_input_method.h",
     "ohos_native_pixmap.cc",
     "ohos_native_pixmap.h",
+    "ohos_video_buffer_parcel.h",
+    "ohos_video_graphite_metadata.h",
     "ohos_native_window_adapter.cc",
     "ohos_native_window_adapter.h",
     "ohos_platform_window.cc",
@@ -97,6 +108,7 @@ source_set("ohos") {
 
   libs = [
     "image_source",
+    "ipc_capi",
     "native_buffer",
     "native_display_manager",
     "native_vsync",
@@ -129,6 +141,7 @@ source_set("ohos") {
   ]
 
   if (enable_vulkan) {
+    sources += [ "ohos_video_vulkan.cc", "ohos_video_vulkan.h" ]
     # The Vulkan implementation this platform hands back. It lives with the
     # other platforms' under //gpu/vulkan rather than here, so that the
     # ladder in gpu/vulkan/init and this one stay recognisably the same

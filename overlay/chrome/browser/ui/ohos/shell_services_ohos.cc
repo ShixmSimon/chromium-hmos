@@ -8,6 +8,8 @@
 #include <utility>
 
 #include "base/logging.h"
+#include "chrome/browser/ohos/adblock/adblock.h"
+#include "chrome/browser/ohos/translation/translation.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
@@ -34,6 +36,28 @@ struct ShellServiceCommand {
 };
 
 constexpr ShellServiceCommand kShellServiceCommands[] = {
+    {"getTranslationCapabilities", &translation::HandleCommand},
+    {"getTranslationState", &translation::HandleCommand},
+    {"startTranslation", &translation::HandleCommand},
+    {"takeTranslationBatch", &translation::HandleCommand},
+    {"applyTranslationBatch", &translation::HandleCommand},
+    {"releaseTranslationBatch", &translation::HandleCommand},
+    {"setTranslationPresentation", &translation::HandleCommand},
+    {"stopTranslation", &translation::HandleCommand},
+
+    {"getAdBlockState", &adblock::HandleCommand},
+    {"setAdBlockEnabled", &adblock::HandleCommand},
+    {"setAdBlockAutoUpdate", &adblock::HandleCommand},
+    {"setAdBlockSourceEnabled", &adblock::HandleCommand},
+    {"saveAdBlockSource", &adblock::HandleCommand},
+    {"removeAdBlockSource", &adblock::HandleCommand},
+    {"updateAdBlockSources", &adblock::HandleCommand},
+    {"setAdBlockUserRules", &adblock::HandleCommand},
+    {"importAdBlockFile", &adblock::HandleCommand},
+    {"removeAdBlockException", &adblock::HandleCommand},
+    {"getAdBlockPageState", &adblock::HandleCommand},
+    {"setAdBlockSiteEnabled", &adblock::HandleCommand},
+
     {"getProtectionRuleSources", &url_protection::HandleRuleSourcesCommand},
     {"addProtectionRuleSource", &url_protection::HandleRuleSourcesCommand},
     {"updateProtectionRuleSource", &url_protection::HandleRuleSourcesCommand},
@@ -174,6 +198,7 @@ void EnsureShellServices(Profile* profile) {
   // platform had nowhere safe to keep them are cleared once.
   ClearPasswordsSavedWithoutProtection(profile);
   ApplyShellDownloadDirectory(profile);
+  adblock::EnsureService(profile);
   EnsureBookmarksObserver(profile);
   EnsureHistoryObserver(profile);
   EnsureDownloadsObserver(profile);

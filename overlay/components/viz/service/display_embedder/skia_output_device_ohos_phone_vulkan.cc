@@ -12,6 +12,7 @@
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/threading/watchdog.h"
+#include "base/trace_event/trace_event.h"
 #include "components/viz/common/gpu/vulkan_context_provider.h"
 #include "gpu/command_buffer/service/memory_tracking.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
@@ -27,8 +28,10 @@
 #include "third_party/skia/include/gpu/ganesh/vk/GrVkTypes.h"
 #include "third_party/skia/include/gpu/vk/VulkanMutableTextureState.h"
 #include "ui/gfx/presentation_feedback.h"
+#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_transport.h"
 
 namespace viz {
 namespace {
@@ -98,6 +101,30 @@ struct SkiaOutputDeviceOhosPhoneVulkan::State {
   raw_ptr<VulkanContextProvider> provider;
   raw_ptr<gpu::MemoryTypeTracker> tracker;
   uint64_t widget;
+  ui::OhosOutputColor color;
+  bool hdr_capable = false;
+  bool p3_capable = false;
+  ui::OhosHdrDisplayGuard display_guard;
+  uint64_t color_generation = 0;
+  VkFormat imported_format = VK_FORMAT_UNDEFINED;
+  SkColorType imported_color_type = kRGBA_1010102_SkColorType;
+  SkColorType color_type() const {
+    return color.mode == ui::OhosOutputMode::kSdr8 ? kRGBA_8888_SkColorType
+                                                   : imported_color_type;
+  }
+  [[noreturn]] void ColorFailure(const char* stage) {
+    if (color.mode == ui::OhosOutputMode::kSdr8)
+      Fail(stage);
+    ui::NoteOhosOutputColorFailure(stage);
+    ui::ReportOhosPhoneOutputColorFailure();
+    _exit(76);  // Browser preserves Vulkan, the next GPU negotiates SDR8.
+  }
+  void CheckImport(VkResult result, const char* stage) {
+    if (result == VK_ERROR_DEVICE_LOST)
+      Fail(stage, result);
+    if (result != VK_SUCCESS)
+      ColorFailure(stage);
+  }
   SkImageInfo info;
   int samples = 1;
   std::map<uint32_t, Imported> imports;
@@ -145,19 +172,35 @@ struct SkiaOutputDeviceOhosPhoneVulkan::State {
     // Import before TakeFence: the parcel decoder validates the FD count.
     item.native = ui::phone_gpu::ImportSharedBuffer(message);
     if (!item.native)
-      Fail("NativeBuffer parcel import");
+      ColorFailure("NativeBuffer parcel import");
     NativeFormat format;
     NativeProperties properties;
     properties.pNext = &format;
-    Check(get_properties(device(), item.native, &properties),
-          "buffer properties");
+    CheckImport(get_properties(device(), item.native, &properties),
+                "buffer properties");
     const auto required = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
                           VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
-    if (format.format != VK_FORMAT_R8G8B8A8_UNORM ||
+    const bool matching =
+        color.mode == ui::OhosOutputMode::kSdr8
+            ? format.format == VK_FORMAT_R8G8B8A8_UNORM
+            : (format.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ||
+               format.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32);
+    if (!matching ||
+        (imported_format != VK_FORMAT_UNDEFINED &&
+         imported_format != format.format) ||
         (format.formatFeatures & required) != required ||
-        !properties.allocationSize || !properties.memoryTypeBits)
-      Fail("RGBA renderable buffer");
+        !properties.allocationSize ||
+        properties.allocationSize > ui::phone_gpu::kMaxFrameBytes ||
+        !properties.memoryTypeBits)
+      ColorFailure("matching renderable native format");
 
+    imported_format = format.format;
+    if (color.mode != ui::OhosOutputMode::kSdr8) {
+      imported_color_type = format.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32
+                                ? kRGBA_1010102_SkColorType
+                                : kBGRA_1010102_SkColorType;
+      info = info.makeColorType(imported_color_type);
+    }
     VkExternalMemoryImageCreateInfo external{
         VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO};
     external.handleTypes = 0x00008000;  // OH_NATIVE_BUFFER_BIT_OHOS
@@ -179,7 +222,7 @@ struct SkiaOutputDeviceOhosPhoneVulkan::State {
       external.handleTypes = 0x00002000;  // older OHOS_NATIVE_BUFFER_BIT
       result = vkCreateImage(device(), &create, nullptr, &item.image);
     }
-    Check(result, "create imported image");
+    CheckImport(result, "create imported image");
     // Like AHardwareBuffer import, the native buffer supplies allocation size
     // and memory type bits. Do not query unbound-image memory requirements.
     VkPhysicalDeviceMemoryProperties memory;
@@ -195,7 +238,7 @@ struct SkiaOutputDeviceOhosPhoneVulkan::State {
       }
     }
     if (type == UINT32_MAX)
-      Fail("buffer memory type");
+      ColorFailure("buffer memory type");
     ImportNative native;
     native.buffer = item.native;
     VkMemoryDedicatedAllocateInfo dedicated{
@@ -206,10 +249,10 @@ struct SkiaOutputDeviceOhosPhoneVulkan::State {
     allocate.pNext = &dedicated;
     allocate.allocationSize = properties.allocationSize;
     allocate.memoryTypeIndex = type;
-    Check(vkAllocateMemory(device(), &allocate, nullptr, &item.memory),
-          "import memory");
-    Check(vkBindImageMemory(device(), item.image, item.memory, 0),
-          "bind memory");
+    CheckImport(vkAllocateMemory(device(), &allocate, nullptr, &item.memory),
+                "import memory");
+    CheckImport(vkBindImageMemory(device(), item.image, item.memory, 0),
+                "bind memory");
     item.bytes = properties.allocationSize;
     tracker->TrackMemAlloc(item.bytes);
 
@@ -225,15 +268,16 @@ struct SkiaOutputDeviceOhosPhoneVulkan::State {
         GrBackendTextures::MakeVk(info.width(), info.height(), image);
     item.surface = SkSurfaces::WrapBackendTexture(
         provider->GetGrContext(), texture, kTopLeft_GrSurfaceOrigin, samples,
-        kRGBA_8888_SkColorType, info.refColorSpace(), nullptr);
+        color_type(), info.refColorSpace(), nullptr);
     if (!item.surface)
-      Fail("Skia wrap imported image");
+      ColorFailure("Skia wrap imported image");
   }
 };
 
 SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
     VulkanContextProvider* provider,
     gpu::SurfaceHandle widget,
+    bool requires_alpha,
     gpu::MemoryTracker* memory_tracker,
     DidSwapBufferCompleteCallback callback)
     : SkiaOutputDevice(provider->GetGrContext(),
@@ -254,6 +298,94 @@ SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
       vkGetDeviceProcAddr(s.device(), "vkGetSemaphoreFdKHR"));
   if (!s.get_properties || !s.import_fence || !s.export_fence)
     Fail("required device entry points");
+  // Probe the real queue before advertising this output's precision to Viz.
+  // No pre-fork Vulkan work and no assumption that a panel flag is sufficient.
+  s.color = requires_alpha ? ui::OhosOutputColor{}
+                           : ui::GetOhosRequestedOutputColor();
+  if (s.color.mode == ui::OhosOutputMode::kHdr10 && !s.display_guard.Validate())
+    s.color = {};
+  {
+    ui::phone_gpu::SharedMessage probe;
+    if (ui::ProbeOhosPhoneOutputColor(s.widget, s.color, &probe)) {
+      s.color_generation = probe.packet.color_generation;
+      auto space = s.color.mode == ui::OhosOutputMode::kHdr10
+                       ? gfx::ColorSpace::CreateHDR10()
+                       : gfx::ColorSpace::CreateSRGB();
+      s.info = SkImageInfo::Make(probe.packet.width, probe.packet.height,
+                                 s.color_type(), kOpaque_SkAlphaType,
+                                 space.ToSkColorSpace());
+      s.watchdog.Arm();
+      s.Import(probe, s.imports[probe.packet.prefix[0]]);
+      s.watchdog.Disarm();
+      // Only imported/wrapped, never drawn: safe to return with its original
+      // acquire fence. First actual Present is logged separately as active.
+      s.Clear();
+      ui::CancelOhosPhoneGpuBuffer(s.widget, probe.packet.lease);
+    } else {
+      LOG(WARNING)
+          << "OHOS phone Vulkan: color probe unavailable/rejected; SDR8";
+      s.color = {};
+    }
+  }
+  capabilities_.ohos_output_color_spaces =
+      ui::MakeOhosOutputColorSpaces(s.color);
+  s.hdr_capable = s.color.mode == ui::OhosOutputMode::kHdr10;
+  if (s.hdr_capable) {
+    if (!ui::ReportOhosPhoneOutputColorReady(s.widget, s.color,
+                                          s.color_generation))
+      s.ColorFailure("publish verified HDR capability");
+    // Wide gamut alone does not make content HDR. Keep both SDR usages out
+    // of the system's HDR tone mapper; only kHDR retains the PQ output.
+    // Start WCG at sRGB; the separate verified P3 probe below may upgrade it.
+    // The Skia surface and NativeBuffer tags must agree on that gamut.
+    for (auto usage : {gfx::ContentColorUsage::kSRGB,
+                       gfx::ContentColorUsage::kWideColorGamut}) {
+      for (bool alpha : {false, true}) {
+        capabilities_.ohos_output_color_spaces->SetOutputColorSpaceAndFormat(
+            usage, alpha, gfx::ColorSpace::CreateSRGB(),
+            SinglePlaneFormat::kRGBA_1010102);
+      }
+    }
+  }
+  if (!requires_alpha && s.color.mode != ui::OhosOutputMode::kSdr8) {
+    // Probe a real P3-tagged 10-bit buffer and import it before advertising WCG.
+    // A rejected optional P3 probe leaves the proven SDR/HDR route available.
+    const auto original_color = s.color;
+    ui::phone_gpu::SharedMessage probe;
+    const ui::OhosOutputColor p3{ui::OhosOutputMode::kP3Sdr10};
+    if (ui::ProbeOhosPhoneOutputColor(s.widget, p3, &probe)) {
+      s.color = p3;
+      s.color_generation = probe.packet.color_generation;
+      s.info = SkImageInfo::Make(probe.packet.width, probe.packet.height,
+          s.color_type(), kOpaque_SkAlphaType,
+          gfx::ColorSpace::CreateDisplayP3D65().ToSkColorSpace());
+      s.watchdog.Arm();
+      s.Import(probe, s.imports[probe.packet.prefix[0]]);
+      s.watchdog.Disarm();
+      s.Clear();
+      ui::CancelOhosPhoneGpuBuffer(s.widget, probe.packet.lease);
+      if (!ui::ReportOhosPhoneOutputColorReady(s.widget, p3, s.color_generation))
+        s.ColorFailure("publish verified P3 capability");
+      s.p3_capable = true;
+      for (bool alpha : {false, true}) {
+        capabilities_.ohos_output_color_spaces->SetOutputColorSpaceAndFormat(
+            gfx::ContentColorUsage::kWideColorGamut, alpha,
+            gfx::ColorSpace::CreateDisplayP3D65(),
+            SinglePlaneFormat::kRGBA_1010102);
+      }
+      capabilities_.ohos_output_color_spaces->SetPrimaries(
+          gfx::DisplayColorSpaces(gfx::ColorSpace::CreateDisplayP3D65()).GetPrimaries());
+    } else {
+      // A partially tagged probe may retire old buffers. Re-establish the
+      // previous generation even when P3 cannot be used on this device.
+      if (!ui::ProbeOhosPhoneOutputColor(s.widget, original_color, &probe))
+        s.ColorFailure("restore output after rejected P3 probe");
+      s.color_generation = probe.packet.color_generation;
+      ui::CancelOhosPhoneGpuBuffer(s.widget, probe.packet.lease);
+    }
+  }
+  capabilities_.ohos_dynamic_output_luminance =
+      s.hdr_capable && ui::OhosDynamicOutputLuminance();
   capabilities_.uses_default_gl_framebuffer = false;
   capabilities_.pending_swap_params.max_pending_swaps = 1;
   capabilities_.output_surface_origin = gfx::SurfaceOrigin::kTopLeft;
@@ -272,8 +404,17 @@ SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
       kRGBA_8888_SkColorType;
   capabilities_.sk_color_type_map[SinglePlaneFormat::kBGRX_8888] =
       kRGBA_8888_SkColorType;
-  LOG(WARNING) << "OHOS phone Vulkan: output formats RGBA_8888, RGBX_8888, "
-                  "BGRA_8888, BGRX_8888; NativeBuffer/VkImage is RGBA8 SDR";
+  if (s.color.mode != ui::OhosOutputMode::kSdr8)
+    capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBA_1010102] =
+        s.color_type();
+  LOG(WARNING) << "OHOS phone Vulkan: negotiated output mode="
+               << static_cast<uint32_t>(s.color.mode)
+               << " native_format=" << ui::OhosOutputNativeFormat(s.color)
+               << " vk_format=" << s.imported_format
+               << " sk_color_type=" << s.color_type()
+               << " color_generation=" << s.color_generation
+               << " white_millinits=" << s.color.white_millinits
+               << " peak_millinits=" << s.color.peak_millinits;
 }
 
 SkiaOutputDeviceOhosPhoneVulkan::~SkiaOutputDeviceOhosPhoneVulkan() {
@@ -286,11 +427,43 @@ SkiaOutputDeviceOhosPhoneVulkan::~SkiaOutputDeviceOhosPhoneVulkan() {
 bool SkiaOutputDeviceOhosPhoneVulkan::Reshape(const ReshapeParams& params) {
   auto& s = *state_;
   CHECK(!s.lease);
-  if (params.image_info.colorType() != kRGBA_8888_SkColorType ||
-      params.color_space.IsHDR()) {
-    Fail("unsupported output color type or HDR color space");
+  if (params.ohos_output_color && *params.ohos_output_color != s.color) {
+    const auto color = *params.ohos_output_color;
+    if (!ui::ValidOhosOutputColor(color))
+      s.ColorFailure("output brightness contract changed");
+    if (color.mode != s.color.mode) {
+      if (!ui::CanSwitchOhosPhoneOutputColor(s.color, color, s.hdr_capable,
+                                              s.p3_capable))
+        s.ColorFailure("unsupported output mode change");
+      // Retire imported images before the browser cleans HDR-tagged buffers.
+      // This happens on SDR/HDR content transitions, never per ordinary frame.
+      s.Clear();
+      ui::phone_gpu::SharedMessage probe;
+      if (!ui::ProbeOhosPhoneOutputColor(s.widget, color, &probe))
+        s.ColorFailure("content output color probe");
+      ui::CancelOhosPhoneGpuBuffer(s.widget, probe.packet.lease);
+      s.color_generation = probe.packet.color_generation;
+      s.logged = false;  // Log the first presented frame of the new mode.
+      LOG(WARNING) << "OHOS phone Vulkan: content output mode="
+                   << static_cast<uint32_t>(color.mode)
+                   << " color_generation=" << s.color_generation;
+    }
+    s.color = color;
+    LOG(WARNING) << "OHOS phone Vulkan: output luminance updated white_millinits="
+                 << color.white_millinits
+                 << " peak_millinits=" << color.peak_millinits;
   }
-  s.Clear();
+  if ((s.color.mode == ui::OhosOutputMode::kP3Sdr10 &&
+       params.color_space != gfx::ColorSpace::CreateDisplayP3D65()) ||
+      params.image_info.colorType() != s.color_type() ||
+      params.color_space.IsHDR() !=
+          (s.color.mode == ui::OhosOutputMode::kHdr10)) {
+    s.ColorFailure("output color contract changed");
+  }
+  // A brightness update changes color conversion/metadata, not the buffer's
+  // dimensions or VkFormat. Preserve imports and avoid a CPU/GPU wait.
+  if (s.info != params.image_info || s.samples != params.sample_count)
+    s.Clear();
   s.info = params.image_info;
   s.samples = params.sample_count;
   return !s.info.isEmpty();
@@ -299,19 +472,22 @@ SkSurface* SkiaOutputDeviceOhosPhoneVulkan::BeginPaint(
     std::vector<GrBackendSemaphore>* semaphores) {
   auto& s = *state_;
   CHECK(!s.lease && !s.begin && !s.end);
+  if (s.color.mode == ui::OhosOutputMode::kHdr10 && !s.display_guard.Validate())
+    s.ColorFailure("HDR display changed or unavailable");
   s.submitted = false;
   ui::phone_gpu::Frame frame;
   frame.widget = s.widget;
   frame.width = s.info.width();
   frame.height = s.info.height();
   ui::phone_gpu::SharedMessage message;
-  if (!ui::AcquireOhosPhoneGpuBuffer(frame, &message)) {
+  if (!ui::AcquireOhosPhoneGpuBuffer(frame, &message, s.color,
+                                     s.color_generation)) {
     if (message.packet.operation != ui::phone_gpu::SharedOp::kUnavailable ||
         message.packet.result !=
             static_cast<uint32_t>(ui::phone_gpu::Result::kDropped))
-      Fail("acquire shared buffer");
-    // Surface registration/rotation can temporarily precede the native window.
-    // Keep Viz alive and drop this frame; retry the real queue next frame.
+      s.ColorFailure("acquire shared buffer");
+    // Surface registration/rotation and a busy consumer can temporarily leave
+    // no available buffer. Keep Viz alive and retry the real queue next frame.
     if (!s.scratch)
       s.scratch = SkSurfaces::RenderTarget(
           s.provider->GetGrContext(), skgpu::Budgeted::kYes, s.info, s.samples,
@@ -321,6 +497,9 @@ SkSurface* SkiaOutputDeviceOhosPhoneVulkan::BeginPaint(
       Fail("temporary render target");
     return s.current.get();
   }
+  if (message.packet.color != s.color ||
+      message.packet.color_generation != s.color_generation)
+    s.ColorFailure("stale color generation");
   s.lease = message.packet.lease;
   s.watchdog.Arm();
   base::ScopedClosureRunner disarm(
@@ -395,14 +574,17 @@ void SkiaOutputDeviceOhosPhoneVulkan::Present(
     int fd = -1;
     Check(s.export_fence(s.device(), &get, &fd), "completion fence export");
     // A successful Vulkan export may return -1 for an already signaled fence.
-    result =
-        ui::PresentOhosPhoneGpuBuffer(s.widget, std::exchange(s.lease, 0), fd);
+    result = ui::PresentOhosPhoneGpuBuffer(s.widget, std::exchange(s.lease, 0),
+                                           fd, s.color, s.color_generation);
     if (result == ui::phone_gpu::Result::kFailed)
-      Fail("present shared buffer");
+      s.ColorFailure("present shared buffer");
     if (result == ui::phone_gpu::Result::kPresented &&
         !std::exchange(s.logged, true))
-      LOG(WARNING)
-          << "OHOS phone Vulkan: first shared NativeBuffer frame presented";
+      LOG(WARNING) << "OHOS phone Vulkan: first shared NativeBuffer frame "
+                      "presented; active mode="
+                   << static_cast<uint32_t>(s.color.mode)
+                   << " native_format=" << ui::OhosOutputNativeFormat(s.color)
+                   << " color_generation=" << s.color_generation;
   }
   s.current.reset();
   s.RetireSemaphores();
@@ -415,8 +597,21 @@ void SkiaOutputDeviceOhosPhoneVulkan::Present(
           ? gfx::PresentationFeedback(base::TimeTicks::Now(), interval, 0)
           : gfx::PresentationFeedback::Failure();
   const gfx::Size size(s.info.width(), s.info.height());
+  // A temporary surface/size mismatch rendered only to scratch. An ACK would
+  // consume its damage even though nothing reached the native window. Static
+  // auxiliary windows can then stop drawing after their opening animation,
+  // leaving successful-presentation callbacks pending. Ask Viz for full damage
+  // and another frame; retain failed presentation feedback until a real buffer
+  // is submitted. This also keeps fullscreen's presentation watchdog effective.
+  const auto swap_result = result == ui::phone_gpu::Result::kPresented
+                               ? gfx::SwapResult::SWAP_ACK
+                               : gfx::SwapResult::SWAP_NAK_RECREATE_BUFFERS;
+  if (result != ui::phone_gpu::Result::kPresented) {
+    TRACE_EVENT_INSTANT("gpu", "OhosPhoneVulkanPresentationDropped", "widget",
+                        s.widget, "width", size.width(), "height", size.height());
+  }
   StartSwapBuffers({});
-  FinishSwapBuffers(gfx::SwapCompletionResult(gfx::SwapResult::SWAP_ACK), size,
+  FinishSwapBuffers(gfx::SwapCompletionResult(swap_result), size,
                     std::move(frame));
   std::move(feedback).Run(presentation);
 }

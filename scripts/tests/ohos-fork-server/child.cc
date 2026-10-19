@@ -15,6 +15,15 @@
 
 #include "base/process/fork_server_ohos.h"
 
+#if !defined(OHOS_FORK_TEST_SHARED_HOST)
+__attribute__((constructor)) static void CheckLoaderFds() {
+  auto check = reinterpret_cast<bool (*)()>(
+      dlsym(RTLD_DEFAULT, "ForkTestCheckLoaderFds"));
+  if (check && !check())
+    _exit(90);
+}
+#endif
+
 static void* Thread(void* value) {
   // Model a late system-library cleanup, after Chromium restores its FDs.
   // Reusing low FD 3 here would close a live Chromium channel.
@@ -38,6 +47,10 @@ extern "C" __attribute__((visibility("default"))) void ChromiumNativeChildMain(
 #endif
   auto duplicate = reinterpret_cast<int (*)(int)>(
       dlsym(host, "ForkTestDuplicateFd"));
+  auto is_fork_child = reinterpret_cast<bool (*)()>(
+      dlsym(host, "ForkTestIsForkChild"));
+  if (!is_fork_child || !is_fork_child())
+    _exit(89);
   auto report = reinterpret_cast<void (*)(uint32_t, int)>(
       dlsym(host, "ForkTestReportStage"));
   if (!duplicate || !report)

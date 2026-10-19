@@ -1,0 +1,931 @@
+diff --git a/components/viz/service/display/direct_renderer.cc b/components/viz/service/display/direct_renderer.cc
+--- a/components/viz/service/display/direct_renderer.cc
++++ b/components/viz/service/display/direct_renderer.cc
+@@ -364,6 +364,24 @@
+   reshape_params.device_scale_factor = device_scale_factor;
+   reshape_params.color_space = frame_color_space;
+   reshape_params.format = frame_si_format;
++#if BUILDFLAG(IS_OHOS)
++  if (output_surface_->capabilities().ohos_output_color_spaces) {
++    ui::OhosOutputColor color;
++    if (frame_color_space.IsHDR()) {
++      auto brightness = ui::MakeOhosDisplayBrightness(
++          0, display_color_spaces.GetSDRMaxLuminanceNits(),
++          display_color_spaces.GetHDRMaxLuminanceRelative(),
++          display_color_spaces.GetHDRMaxLuminanceRelative());
++      CHECK(brightness);
++      color = brightness->hdr;
++    } else if (frame_si_format == SinglePlaneFormat::kRGBA_1010102) {
++      color.mode = frame_color_space == gfx::ColorSpace::CreateDisplayP3D65()
++                       ? ui::OhosOutputMode::kP3Sdr10
++                       : ui::OhosOutputMode::kSdr10;
++    }
++    reshape_params.ohos_output_color = color;
++  }
++#endif
+   reshape_params.alpha_type = root_render_pass->has_transparent_background
+                                   ? RenderPassAlphaType::kPremul
+                                   : RenderPassAlphaType::kOpaque;
+diff --git a/components/viz/service/display/display.cc b/components/viz/service/display/display.cc
+--- a/components/viz/service/display/display.cc
++++ b/components/viz/service/display/display.cc
+@@ -487,9 +487,32 @@
+ 
+ void Display::SetDisplayColorSpaces(
+     const gfx::DisplayColorSpaces& display_color_spaces) {
++#if BUILDFLAG(IS_OHOS)
++  const auto previous = display_color_spaces_;
++  const auto incoming = display_color_spaces;
++#endif
+   display_color_spaces_ = display_color_spaces;
++#if BUILDFLAG(IS_OHOS)
++  const auto& caps = output_surface_->capabilities();
++  if (caps.ohos_output_color_spaces) {
++    display_color_spaces_ = *caps.ohos_output_color_spaces;
++    if (caps.ohos_dynamic_output_luminance) {
++      display_color_spaces_.SetSDRMaxLuminanceNits(
++          incoming.GetSDRMaxLuminanceNits());
++      display_color_spaces_.SetHDRMaxLuminanceRelative(
++          incoming.GetHDRMaxLuminanceRelative());
++    }
++  }
++#endif
+   if (aggregator_)
+     aggregator_->SetDisplayColorSpaces(display_color_spaces_);
++#if BUILDFLAG(IS_OHOS)
++  if (aggregator_ && previous != display_color_spaces_) {
++    if (current_surface_id_.is_valid())
++      aggregator_->SetFullDamageForSurface(current_surface_id_);
++    damage_tracker_->SetRootSurfaceDamaged();
++  }
++#endif
+ }
+ 
+ void Display::SetOutputIsSecure(bool secure) {
+@@ -538,6 +561,8 @@
+     resource_provider_ = std::move(resource_provider);
+   }
+ 
++  // Apply the output's verified format before the first aggregation/Reshape.
++  SetDisplayColorSpaces(display_color_spaces_);
+   renderer_->Initialize();
+   renderer_->SetVisible(visible_);
+ 
+diff --git a/components/viz/service/display/output_surface.h b/components/viz/service/display/output_surface.h
+--- a/components/viz/service/display/output_surface.h
++++ b/components/viz/service/display/output_surface.h
+@@ -6,6 +6,7 @@
+ #define COMPONENTS_VIZ_SERVICE_DISPLAY_OUTPUT_SURFACE_H_
+ 
+ #include <memory>
++#include <optional>
+ #include <vector>
+ 
+ #include "base/functional/callback_helpers.h"
+@@ -25,6 +26,10 @@
+ #include "third_party/skia/include/core/SkM44.h"
+ #include "ui/gfx/buffer_types.h"
+ #include "ui/gfx/color_space.h"
++#include "ui/gfx/display_color_spaces.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_display_brightness.h"
++#endif
+ #include "ui/gfx/overlay_transform.h"
+ #include "ui/gfx/surface_origin.h"
+ #include "ui/latency/latency_info.h"
+@@ -81,6 +86,11 @@
+ #endif
+ 
+   struct Capabilities {
++#if BUILDFLAG(IS_OHOS)
++    // Verified for this output, never inferred globally from a panel HDR flag.
++    std::optional<gfx::DisplayColorSpaces> ohos_output_color_spaces;
++    bool ohos_dynamic_output_luminance = false;
++#endif
+     Capabilities();
+     ~Capabilities();
+     Capabilities(const Capabilities& capabilities);
+@@ -215,6 +225,9 @@
+     gfx::ColorSpace color_space;
+     SharedImageFormat format = SinglePlaneFormat::kRGBA_8888;
+     RenderPassAlphaType alpha_type = RenderPassAlphaType::kPremul;
++#if BUILDFLAG(IS_OHOS)
++    std::optional<ui::OhosOutputColor> ohos_output_color;
++#endif
+ 
+     friend bool operator==(const ReshapeParams&,
+                            const ReshapeParams&) = default;
+diff --git a/components/viz/service/display_embedder/skia_output_device.h b/components/viz/service/display_embedder/skia_output_device.h
+--- a/components/viz/service/display_embedder/skia_output_device.h
++++ b/components/viz/service/display_embedder/skia_output_device.h
+@@ -128,6 +128,9 @@
+     int sample_count = 1;
+     float device_scale_factor = 1.f;
+     gfx::OverlayTransform transform = gfx::OVERLAY_TRANSFORM_NONE;
++#if BUILDFLAG(IS_OHOS)
++    std::optional<ui::OhosOutputColor> ohos_output_color;
++#endif
+ 
+     gfx::Size GfxSize() const {
+       return gfx::SkISizeToSize(image_info.dimensions());
+diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.cc b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
+--- a/components/viz/service/display_embedder/skia_output_device_vulkan.cc
++++ b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
+@@ -43,17 +43,42 @@
+ #include "ui/gl/android/scoped_java_surface.h"
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
++#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
++#endif
++
+ namespace viz {
++namespace {
++SkColorType SwapchainColorType(VkFormat format) {
++  switch (format) {
++    case VK_FORMAT_R8G8B8A8_UNORM:
++      return kRGBA_8888_SkColorType;
++    case VK_FORMAT_B8G8R8A8_UNORM:
++      return kBGRA_8888_SkColorType;
++    case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
++      return kRGBA_1010102_SkColorType;
++    case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
++      return kBGRA_1010102_SkColorType;
++    default:
++      return kUnknown_SkColorType;
++  }
++}
++}  // namespace
+ 
+ // static
+ std::unique_ptr<SkiaOutputDeviceVulkan> SkiaOutputDeviceVulkan::Create(
+     VulkanContextProvider* context_provider,
+     gpu::SurfaceHandle surface_handle,
+     gpu::MemoryTracker* memory_tracker,
+-    DidSwapBufferCompleteCallback did_swap_buffer_complete_callback) {
++    DidSwapBufferCompleteCallback did_swap_buffer_complete_callback,
++    bool requires_alpha) {
+   auto output_device = std::make_unique<SkiaOutputDeviceVulkan>(
+       base::PassKey<SkiaOutputDeviceVulkan>(), context_provider, surface_handle,
+       memory_tracker, did_swap_buffer_complete_callback);
++#if BUILDFLAG(IS_OHOS)
++  output_device->requires_alpha_ = requires_alpha;
++#endif
+   if (!output_device->Initialize()) [[unlikely]] {
+     return nullptr;
+   }
+@@ -111,14 +136,62 @@
+ #endif
+ 
+ bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
++  if (!vulkan_surface_)
++    return false;
++#if BUILDFLAG(IS_OHOS)
++  if (params.ohos_output_color && *params.ohos_output_color != output_color_) {
++    const auto color = *params.ohos_output_color;
++    if (!ui::ValidOhosOutputColor(color) ||
++        (color.mode != output_color_.mode &&
++         !ui::CanSwitchOhosPhoneOutputColor(output_color_, color, hdr_capable_))) {
++      ui::NoteOhosOutputColorFailure("WSI output color contract changed");
++      return false;
++    }
++    if (color.mode != output_color_.mode) {
++      const auto space = color.mode == ui::OhosOutputMode::kHdr10
++                             ? VK_COLOR_SPACE_HDR10_ST2084_EXT
++                             : VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
++      if (!vulkan_surface_->SetOhosColorSpace(space)) {
++        ui::NoteOhosOutputColorFailure("WSI content color-space transition");
++        return false;
++      }
++      LOG(WARNING) << "OHOS Vulkan: content output transition "
++                   << static_cast<uint32_t>(output_color_.mode) << " -> "
++                   << static_cast<uint32_t>(color.mode);
++    }
++    output_color_ = color;
++    if (color.mode == ui::OhosOutputMode::kHdr10) {
++      VkHdrMetadataEXT metadata{VK_STRUCTURE_TYPE_HDR_METADATA_EXT};
++      metadata.displayPrimaryRed = {0.708f, 0.292f};
++      metadata.displayPrimaryGreen = {0.170f, 0.797f};
++      metadata.displayPrimaryBlue = {0.131f, 0.046f};
++      metadata.whitePoint = {0.3127f, 0.3290f};
++      metadata.maxLuminance = color.peak_millinits / 1000.f;
++      metadata.maxContentLightLevel = metadata.maxLuminance;
++      metadata.maxFrameAverageLightLevel = metadata.maxLuminance;
++      if (!vulkan_surface_->SetHdrMetadata(metadata)) {
++        ui::NoteOhosOutputColorFailure("WSI HDR luminance metadata");
++        return false;
++      }
++      LOG(WARNING) << "OHOS Vulkan: HDR luminance updated white_millinits="
++                   << color.white_millinits
++                   << " peak_millinits=" << color.peak_millinits;
++    }
++  }
++#endif
+   DCHECK(!scoped_write_);
+ 
+   if (!vulkan_surface_) [[unlikely]] {
+     return false;
+   }
+ 
+-  return RecreateSwapChain(params.image_info, params.sample_count,
+-                           params.transform);
++  const bool result = RecreateSwapChain(params.image_info, params.sample_count,
++                                        params.transform);
++#if BUILDFLAG(IS_OHOS)
++  if (!result && output_color_.mode != ui::OhosOutputMode::kSdr8)
++    ui::NoteOhosOutputColorFailure("WSI reshape");
++#endif
++  return result;
+ }
+ 
+ void SkiaOutputDeviceVulkan::Submit(
+@@ -199,6 +272,13 @@
+   DCHECK(vulkan_surface_);
+   DCHECK(!scoped_write_);
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (output_color_.mode == ui::OhosOutputMode::kHdr10 &&
++      !hdr_display_guard_.Validate()) {
++    ui::NoteOhosOutputColorFailure("HDR display changed or unavailable");
++    return nullptr;
++  }
++#endif
+   gpu::VulkanSwapChain::ScopedWrite scoped_write(vulkan_surface_->swap_chain());
+   if (!scoped_write.success()) [[unlikely]] {
+     // Return nullptr, and then the caller will make context lost.
+@@ -211,8 +291,7 @@
+   if (!sk_surface) [[unlikely]] {
+     SkSurfaceProps surface_props;
+     const auto surface_format = vulkan_surface_->surface_format().format;
+-    DCHECK(surface_format == VK_FORMAT_B8G8R8A8_UNORM ||
+-           surface_format == VK_FORMAT_R8G8B8A8_UNORM);
++    DCHECK_NE(SwapchainColorType(surface_format), kUnknown_SkColorType);
+     GrVkImageInfo vk_image_info;
+     vk_image_info.fImage = scoped_write.image();
+     vk_image_info.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
+@@ -240,6 +319,10 @@
+         kTopLeft_GrSurfaceOrigin, sample_count_, color_type_, color_space_,
+         &surface_props);
+     if (!sk_surface) [[unlikely]] {
++#if BUILDFLAG(IS_OHOS)
++      if (output_color_.mode != ui::OhosOutputMode::kSdr8)
++        ui::NoteOhosOutputColorFailure("WSI Skia wrap");
++#endif
+       return nullptr;
+     }
+   } else {
+@@ -312,8 +395,63 @@
+     LOG(ERROR) << "Failed to create vulkan surface.";
+     return false;
+   }
+-  auto result = vulkan_surface->Initialize(context_provider_->GetDeviceQueue(),
+-                                           gpu::VulkanSurface::FORMAT_RGBA_32);
++  auto* queue = context_provider_->GetDeviceQueue();
++  bool result = false;
++#if BUILDFLAG(IS_OHOS)
++  // Popup transparency is known by the platform window before Viz sees its
++  // first render pass. RendererSettings alone can still say opaque here.
++  // Match the EGL path: rounded corners and shadows need an 8-bit alpha
++  // channel, not the two alpha bits in an HDR-capable 10-bit swapchain.
++  const bool alpha_window =
++      requires_alpha_ || ui::IsOhosAnchoredWindow(surface_handle_);
++  output_color_ = alpha_window ? ui::OhosOutputColor{}
++                               : ui::GetOhosRequestedOutputColor();
++  if (output_color_.mode == ui::OhosOutputMode::kHdr10 &&
++      (!hdr_display_guard_.Validate() ||
++       !queue->enabled_extensions().contains(
++           VK_EXT_HDR_METADATA_EXTENSION_NAME))) {
++    LOG(WARNING) << "OHOS Vulkan: HDR10 display/WSI metadata unavailable; SDR8";
++    output_color_ = {};
++  }
++  hdr_capable_ = false;
++  const auto requested_color = output_color_;
++  if (output_color_.mode != ui::OhosOutputMode::kSdr8) {
++    const VkColorSpaceKHR space =
++        output_color_.mode == ui::OhosOutputMode::kHdr10
++            ? VK_COLOR_SPACE_HDR10_ST2084_EXT
++            : VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
++    for (VkFormat format : {VK_FORMAT_A2B10G10R10_UNORM_PACK32,
++                            VK_FORMAT_A2R10G10B10_UNORM_PACK32}) {
++      result =
++          vulkan_surface->Initialize(queue, gpu::VulkanSurface::FORMAT_RGBA_32,
++                                     VkSurfaceFormatKHR{format, space});
++      // HDR capability is useful only when the same image format can also
++      // present SDR. Start with an SDR swapchain, before the first web frame.
++      if (result && requested_color.mode == ui::OhosOutputMode::kHdr10) {
++        result = vulkan_surface->SetOhosColorSpace(
++            VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
++      }
++      if (result)
++        break;
++    }
++    if (result && requested_color.mode == ui::OhosOutputMode::kHdr10) {
++      hdr_capable_ = true;
++      output_color_ = {ui::OhosOutputMode::kSdr10};
++    }
++    // Native popup surfaces can still be 0x0 here. Match the SDR8 path and
++    // create buffers in Reshape(), once Viz supplies the first frame size.
++    // A real allocation failure there records the session fallback before
++    // context recreation; an unlaid-out popup is not a format failure.
++    if (!result) {
++      vulkan_surface->Destroy();
++      ui::NoteOhosOutputColorFailure("WSI 10-bit/PQ format pair");
++      return Initialize();  // Marker forces SDR8; exactly one bounded retry.
++    }
++  }
++#endif
++  if (!result)
++    result =
++        vulkan_surface->Initialize(queue, gpu::VulkanSurface::FORMAT_RGBA_32);
+   if (!result) [[unlikely]] {
+     LOG(ERROR) << "Failed to initialize vulkan surface.";
+     vulkan_surface->Destroy();
+@@ -338,26 +476,42 @@
+   capabilities_.damage_area_from_skia_output_device = true;
+ 
+   const auto surface_format = vulkan_surface_->surface_format().format;
+-  DCHECK(surface_format == VK_FORMAT_B8G8R8A8_UNORM ||
+-         surface_format == VK_FORMAT_R8G8B8A8_UNORM);
+-
+-  auto sk_color_type = surface_format == VK_FORMAT_R8G8B8A8_UNORM
+-                           ? kRGBA_8888_SkColorType
+-                           : kBGRA_8888_SkColorType;
++  DCHECK_NE(SwapchainColorType(surface_format), kUnknown_SkColorType);
++
++  auto sk_color_type = SwapchainColorType(surface_format);
+   capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBA_8888] =
+       sk_color_type;
+   capabilities_.sk_color_type_map[SinglePlaneFormat::kBGRA_8888] =
+       sk_color_type;
+ #if BUILDFLAG(IS_OHOS)
+-  // Opaque output uses the same physical 8-bit swapchain. Alpha semantics
+-  // are carried separately by Reshape, as in the GL output device.
++  capabilities_.ohos_output_color_spaces =
++      ui::MakeOhosOutputColorSpaces(hdr_capable_ ? requested_color
++                                               : output_color_);
++  if (hdr_capable_) {
++    // Display capability does not make ordinary web content HDR. P3 SDR is
++    // converted to sRGB until a native P3 SDR WSI contract is implemented.
++    for (auto usage : {gfx::ContentColorUsage::kSRGB,
++                       gfx::ContentColorUsage::kWideColorGamut}) {
++      for (bool alpha : {false, true}) {
++        capabilities_.ohos_output_color_spaces->SetOutputColorSpaceAndFormat(
++            usage, alpha, gfx::ColorSpace::CreateSRGB(),
++            SinglePlaneFormat::kRGBA_1010102);
++      }
++    }
++  }
++  capabilities_.ohos_dynamic_output_luminance =
++      hdr_capable_ &&
++      ui::OhosDynamicOutputLuminance();
++  if (output_color_.mode != ui::OhosOutputMode::kSdr8)
++    capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBA_1010102] =
++        sk_color_type;
+   capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBX_8888] =
+       sk_color_type;
+   LOG(WARNING) << "OHOS Vulkan: swapchain format=" << surface_format
+                << " color_space="
+                << vulkan_surface_->surface_format().colorSpace
+                << " sk_color_type=" << sk_color_type
+-               << "; output is 8-bit sRGB";
++               << " output_mode=" << static_cast<uint32_t>(output_color_.mode);
+ #endif
+   // BGRX_8888 is used on Windows.
+   capabilities_.sk_color_type_map[SinglePlaneFormat::kBGRX_8888] =
+diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.h b/components/viz/service/display_embedder/skia_output_device_vulkan.h
+--- a/components/viz/service/display_embedder/skia_output_device_vulkan.h
++++ b/components/viz/service/display_embedder/skia_output_device_vulkan.h
+@@ -16,6 +16,10 @@
+ #include "components/viz/service/display_embedder/skia_output_device.h"
+ #include "gpu/ipc/common/surface_handle.h"
+ #include "gpu/vulkan/vulkan_swap_chain.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
++#endif
+ 
+ namespace gpu {
+ class VulkanSurface;
+@@ -43,7 +47,8 @@
+       VulkanContextProvider* context_provider,
+       gpu::SurfaceHandle surface_handle,
+       gpu::MemoryTracker* memory_tracker,
+-      DidSwapBufferCompleteCallback did_swap_buffer_complete_callback);
++      DidSwapBufferCompleteCallback did_swap_buffer_complete_callback,
++      bool requires_alpha = true);
+ 
+ #if BUILDFLAG(IS_WIN)
+   gpu::SurfaceHandle GetChildSurfaceHandle();
+@@ -73,6 +78,12 @@
+     uint64_t bytes_allocated = 0u;
+   };
+ 
++#if BUILDFLAG(IS_OHOS)
++  bool requires_alpha_ = true;
++  bool hdr_capable_ = false;
++  ui::OhosOutputColor output_color_;
++  ui::OhosHdrDisplayGuard hdr_display_guard_;
++#endif
+   bool Initialize();
+   bool RecreateSwapChain(const SkImageInfo& image_info,
+                          int sample_count,
+diff --git a/components/viz/service/display_embedder/skia_output_surface_impl.cc b/components/viz/service/display_embedder/skia_output_surface_impl.cc
+--- a/components/viz/service/display_embedder/skia_output_surface_impl.cc
++++ b/components/viz/service/display_embedder/skia_output_surface_impl.cc
+@@ -488,13 +488,15 @@
+   }
+ 
+   const SkiaOutputDevice::ReshapeParams device_reshape_params = {
+-      .image_info =
+-          SkImageInfo::Make(size_.width(), size_.height(), color_type_,
+-                            alpha_type_, sk_color_space_),
+-      .color_space = params.color_space,
+-      .sample_count = sample_count_,
+-      .device_scale_factor = params.device_scale_factor,
+-      .transform = GetDisplayTransform(),
++    .image_info = SkImageInfo::Make(size_.width(), size_.height(), color_type_,
++                                    alpha_type_, sk_color_space_),
++    .color_space = params.color_space,
++    .sample_count = sample_count_,
++    .device_scale_factor = params.device_scale_factor,
++    .transform = GetDisplayTransform(),
++#if BUILDFLAG(IS_OHOS)
++    .ohos_output_color = params.ohos_output_color,
++#endif
+   };
+   // impl_on_gpu_ is released on the GPU thread by a posted task from
+   // SkiaOutputSurfaceImpl::dtor. So it is safe to use base::Unretained.
+diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+--- a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
++++ b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+@@ -2112,7 +2112,9 @@
+   if (ui::IsOhosPhoneGpuChild()) {
+     output_device_ = std::make_unique<SkiaOutputDeviceOhosPhoneVulkan>(
+         vulkan_context_provider_, dependency_->GetSurfaceHandle(),
+-        shared_gpu_deps_->memory_tracker(), GetDidSwapBuffersCompleteCallback());
++        renderer_settings_.requires_alpha_channel,
++        shared_gpu_deps_->memory_tracker(),
++        GetDidSwapBuffersCompleteCallback());
+     return true;
+   }
+ #endif
+@@ -2153,8 +2155,8 @@
+   if (!gpu_preferences_.disable_vulkan_surface) {
+     output_device = SkiaOutputDeviceVulkan::Create(
+         vulkan_context_provider_, dependency_->GetSurfaceHandle(),
+-        shared_gpu_deps_->memory_tracker(),
+-        GetDidSwapBuffersCompleteCallback());
++        shared_gpu_deps_->memory_tracker(), GetDidSwapBuffersCompleteCallback(),
++        renderer_settings_.requires_alpha_channel);
+   }
+   if (MayFallBackToSkiaOutputDeviceX11()) {
+ #if BUILDFLAG(SUPPORTS_OZONE_X11)
+diff --git a/content/browser/gpu/gpu_process_host.cc b/content/browser/gpu/gpu_process_host.cc
+--- a/content/browser/gpu/gpu_process_host.cc
++++ b/content/browser/gpu/gpu_process_host.cc
+@@ -1508,6 +1508,19 @@
+                                                           kind_);
+ 
+ #if BUILDFLAG(IS_OHOS)
++  if (browser_command_line.HasSwitch("user-data-dir"))
++    cmd_line->AppendSwitchPath(
++        "user-data-dir",
++        browser_command_line.GetSwitchValuePath("user-data-dir"));
++  for (const char* name :
++       {"ohos-vulkan-output", "ohos-hdr-white-millinits",
++        "ohos-hdr-peak-millinits", "ohos-hdr-fixed-luminance"}) {
++    if (browser_command_line.HasSwitch(name))
++      cmd_line->AppendSwitchASCII(
++          name, browser_command_line.GetSwitchValueASCII(name));
++  }
++  if (browser_command_line.HasSwitch("ohos-sdr-output"))
++    cmd_line->AppendSwitchASCII("ohos-vulkan-output", "sdr8");
+   // Keep the browser's output color policy across GPU restarts. Vulkan may
+   // have been disabled in GPU preferences by now; this marker only fixes the
+   // display/GL target to SDR and must not re-enable the failed backend.
+diff --git a/gpu/vulkan/ohos/vulkan_implementation_ohos.cc b/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
+--- a/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
++++ b/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
+@@ -4,9 +4,11 @@
+ 
+ #include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
+ 
++#include <cstring>
+ #include "base/files/file_path.h"
+ #include "base/logging.h"
+ #include "base/notimplemented.h"
++#include "base/process/fork_server_ohos.h"
+ #include "gpu/vulkan/vulkan_device_queue.h"
+ #include "gpu/vulkan/vulkan_function_pointers.h"
+ #include "gpu/vulkan/vulkan_image.h"
+@@ -35,8 +37,33 @@
+       VK_KHR_SURFACE_EXTENSION_NAME, "VK_OHOS_surface"};
+   // Said at ERROR either way: when Vulkan was asked for and this fails,
+   // Chromium falls back to GL quietly, and the reason is otherwise lost.
+-  const bool initialized = vulkan_instance_.Initialize(
+-      base::FilePath("libvulkan.so"), required_extensions, {});
++  base::internal::TraceOhosForkDescriptors("skia-before-loader");
++  if (!vulkan_instance_.BindUnassignedFunctionPointers(
++          base::FilePath("libvulkan.so")))
++    return false;
++  uint32_t count = 0;
++  bool extended_colors = false;
++  if (vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr) ==
++      VK_SUCCESS) {
++    std::vector<VkExtensionProperties> extensions(count);
++    if (vkEnumerateInstanceExtensionProperties(
++            nullptr, &count, extensions.data()) == VK_SUCCESS) {
++      for (const auto& extension : extensions)
++        extended_colors |=
++            std::strcmp(extension.extensionName,
++                        VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME) == 0;
++    }
++  }
++  if (extended_colors)
++    required_extensions.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
++  LOG(WARNING) << "OHOS Vulkan: creating instance; requested_layers=0 "
++               << "swapchain_colorspace=" << extended_colors;
++  // Initialize's third argument is required LAYERS, not optional extensions.
++  // Enable colorspace only after enumeration, and request no validation layers.
++  base::internal::TraceOhosForkDescriptors("skia-before-vkCreateInstance");
++  const bool initialized =
++      vulkan_instance_.InitializeInstance(required_extensions, {});
++  base::internal::TraceOhosForkDescriptors("skia-after-vkCreateInstance");
+   LOG(ERROR) << "OHOS Vulkan: instance "
+                << (initialized ? "initialized" : "failed to initialize");
+   return initialized;
+@@ -136,6 +163,7 @@
+       VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,
+       VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME,
+       VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
++      VK_EXT_HDR_METADATA_EXTENSION_NAME,
+   };
+ }
+ 
+diff --git a/gpu/vulkan/vulkan_surface.cc b/gpu/vulkan/vulkan_surface.cc
+--- a/gpu/vulkan/vulkan_surface.cc
++++ b/gpu/vulkan/vulkan_surface.cc
+@@ -102,7 +102,8 @@
+ }
+ 
+ bool VulkanSurface::Initialize(VulkanDeviceQueue* device_queue,
+-                               VulkanSurface::Format format) {
++                               VulkanSurface::Format format,
++                               std::optional<VkSurfaceFormatKHR> requested) {
+   DCHECK(format >= 0 && format < NUM_SURFACE_FORMATS);
+   DCHECK(device_queue);
+ 
+@@ -148,7 +149,21 @@
+     preferred_formats = kPreferredVkFormats16;
+   }
+ 
+-  if (formats.size() == 1 && VK_FORMAT_UNDEFINED == formats[0].format) {
++  if (requested) {
++    // An HDR color space must be enumerated explicitly; UNDEFINED does not
++    // grant support for arbitrary transfer functions.
++    bool found = false;
++    for (const auto& supported : formats) {
++      if (supported.format == requested->format &&
++          supported.colorSpace == requested->colorSpace) {
++        surface_format_ = supported;
++        found = true;
++        break;
++      }
++    }
++    if (!found)
++      return false;
++  } else if (formats.size() == 1 && VK_FORMAT_UNDEFINED == formats[0].format) {
+     surface_format_.format = preferred_formats[0];
+     surface_format_.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+   } else {
+@@ -197,6 +212,35 @@
+ 
+   return true;
+ }
++
++#if BUILDFLAG(IS_OHOS)
++bool VulkanSurface::SetOhosColorSpace(VkColorSpaceKHR color_space) {
++  if (surface_format_.colorSpace == color_space)
++    return true;
++  uint32_t count = 0;
++  auto physical_device = device_queue_->GetVulkanPhysicalDevice();
++  if (vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface_, &count,
++                                          nullptr) != VK_SUCCESS)
++    return false;
++  std::vector<VkSurfaceFormatKHR> formats(count);
++  if (vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface_, &count,
++                                          formats.data()) != VK_SUCCESS)
++    return false;
++  formats.resize(count);
++  for (const auto& format : formats) {
++    if (format.format == surface_format_.format &&
++        format.colorSpace == color_space) {
++      surface_format_ = format;
++      surface_format_dirty_ = true;
++      // PQ metadata must never leak into the following SDR swapchain. A new
++      // HDR frame supplies fresh metadata before Reshape creates its swapchain.
++      hdr_metadata_.reset();
++      return true;
++    }
++  }
++  return false;
++}
++#endif
+ 
+ void VulkanSurface::Destroy() {
+   if (swap_chain_) {
+@@ -303,11 +347,20 @@
+   DCHECK_GT(static_cast<uint32_t>(image_size.width()), 0u);
+   DCHECK_GT(static_cast<uint32_t>(image_size.height()), 0u);
+ 
+-  if (image_size_ == image_size && transform_ == transform &&
++  if (!surface_format_dirty_ && image_size_ == image_size &&
++      transform_ == transform && swap_chain_ &&
+       swap_chain_->state() == VK_SUCCESS) {
+     return true;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // A native window may resize again immediately after leaving immersive
++  // mode. Finish submissions using its old buffers before the OHOS WSI
++  // retires that swapchain and reallocates the native window's buffer queue.
++  // The unchanged-size fast path above avoids a wait during normal playback.
++  if (swap_chain_)
++    Finish();
++#endif
+   image_size_ = image_size;
+   transform_ = transform;
+ 
+@@ -336,7 +389,12 @@
+     return false;
+   }
+ 
++  if (hdr_metadata_ && !swap_chain->SetHdrMetadata(*hdr_metadata_)) {
++    swap_chain->Destroy();
++    return false;
++  }
+   swap_chain_ = std::move(swap_chain);
++  surface_format_dirty_ = false;
+   ++swap_chain_generation_;
+   return true;
+ }
+diff --git a/gpu/vulkan/vulkan_surface.h b/gpu/vulkan/vulkan_surface.h
+--- a/gpu/vulkan/vulkan_surface.h
++++ b/gpu/vulkan/vulkan_surface.h
+@@ -6,6 +6,7 @@
+ #define GPU_VULKAN_VULKAN_SURFACE_H_
+ 
+ #include <vulkan/vulkan_core.h>
++#include <optional>
+ 
+ #include "base/component_export.h"
+ #include "base/functional/callback.h"
+@@ -56,7 +57,18 @@
+   virtual ~VulkanSurface();
+ 
+   bool Initialize(VulkanDeviceQueue* device_queue,
+-                  VulkanSurface::Format format);
++                  VulkanSurface::Format format,
++                  std::optional<VkSurfaceFormatKHR> requested = std::nullopt);
++#if BUILDFLAG(IS_OHOS)
++  // Stage a supported color-space change. Reshape retires the old swapchain
++  // through its normal fence-based lifetime path before presenting new pixels.
++  bool SetOhosColorSpace(VkColorSpaceKHR color_space);
++#endif
++  bool SetHdrMetadata(const VkHdrMetadataEXT& metadata) {
++    hdr_metadata_ = metadata;
++    return surface_format_dirty_ || !swap_chain_ ||
++           swap_chain_->SetHdrMetadata(metadata);
++  }
+   // Destroy() should be called when all related GPU tasks have been finished.
+   virtual void Destroy();
+ 
+@@ -109,6 +121,8 @@
+   const gfx::AcceleratedWidget accelerated_widget_;
+   VkSurfaceKHR surface_ = VK_NULL_HANDLE;
+   VkSurfaceFormatKHR surface_format_ = {};
++  bool surface_format_dirty_ = false;
++  std::optional<VkHdrMetadataEXT> hdr_metadata_;
+   raw_ptr<VulkanDeviceQueue> device_queue_ = nullptr;
+   const uint64_t acquire_next_image_timeout_ns_;
+   std::unique_ptr<gfx::VSyncProvider> vsync_provider_;
+diff --git a/gpu/vulkan/vulkan_swap_chain.cc b/gpu/vulkan/vulkan_swap_chain.cc
+--- a/gpu/vulkan/vulkan_swap_chain.cc
++++ b/gpu/vulkan/vulkan_swap_chain.cc
+@@ -17,6 +17,20 @@
+ #include "gpu/vulkan/vulkan_function_pointers.h"
+ 
+ namespace gpu {
++
++bool VulkanSwapChain::SetHdrMetadata(const VkHdrMetadataEXT& metadata) {
++  base::AutoLock lock(lock_);
++  if (!swap_chain_ || !device_queue_->enabled_extensions().contains(
++                          VK_EXT_HDR_METADATA_EXTENSION_NAME))
++    return false;
++  const VkDevice device = device_queue_->GetVulkanDevice();
++  auto set_metadata = reinterpret_cast<PFN_vkSetHdrMetadataEXT>(
++      vkGetDeviceProcAddr(device, "vkSetHdrMetadataEXT"));
++  if (!set_metadata)
++    return false;
++  set_metadata(device, 1, &swap_chain_, &metadata);
++  return true;  // Vulkan has no readback API; physical output is a device test.
++}
+ 
+ namespace {
+ 
+diff --git a/gpu/vulkan/vulkan_swap_chain.h b/gpu/vulkan/vulkan_swap_chain.h
+--- a/gpu/vulkan/vulkan_swap_chain.h
++++ b/gpu/vulkan/vulkan_swap_chain.h
+@@ -83,6 +83,9 @@
+   // Destroy() should be called when all related GPU tasks have been finished.
+   void Destroy();
+ 
++  // Metadata belongs to this swapchain, never to a window with older frames.
++  bool SetHdrMetadata(const VkHdrMetadataEXT& metadata);
++
+   // Present the current buffer.
+   gfx::SwapResult PostSubBuffer(const gfx::Rect& rect);
+   using PostSubBufferCompletionCallback =
+diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.cc b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
+index 91b5f4d..744026a 100644
+--- a/components/viz/service/display_embedder/skia_output_device_vulkan.cc
++++ b/components/viz/service/display_embedder/skia_output_device_vulkan.cc
+@@ -46,6 +46,7 @@
+ #if BUILDFLAG(IS_OHOS)
+ #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
+ #include "ui/ozone/platform/ohos/ohos_output_color_config.h"
++#include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
+ #endif
+ 
+ namespace viz {
+@@ -100,6 +101,10 @@ SkiaOutputDeviceVulkan::SkiaOutputDeviceVulkan(
+ 
+ SkiaOutputDeviceVulkan::~SkiaOutputDeviceVulkan() {
+   DCHECK(!scoped_write_);
++#if BUILDFLAG(IS_OHOS)
++  if (capabilities_published_)
++    ui::ReportOhosWsiOutputCapabilities(surface_handle_, false, false);
++#endif
+ 
+   for (const auto& sk_surface_size_pair : sk_surface_size_pairs_) {
+     memory_type_tracker_->TrackMemFree(sk_surface_size_pair.bytes_allocated);
+@@ -135,6 +140,14 @@ void SkiaOutputDeviceVulkan::SetPreferredFrameInterval(
+ }
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++void SkiaOutputDeviceVulkan::OhosColorFailure(const char* reason) {
++  ui::ReportOhosWsiOutputCapabilities(gfx::kNullAcceleratedWidget, false, false);
++  capabilities_published_ = false;
++  ui::NoteOhosOutputColorFailure(reason);
++}
++#endif
++
+ bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
+   if (!vulkan_surface_)
+     return false;
+@@ -143,16 +156,18 @@ bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
+     const auto color = *params.ohos_output_color;
+     if (!ui::ValidOhosOutputColor(color) ||
+         (color.mode != output_color_.mode &&
+-         !ui::CanSwitchOhosPhoneOutputColor(output_color_, color, hdr_capable_))) {
+-      ui::NoteOhosOutputColorFailure("WSI output color contract changed");
++         !ui::CanSwitchOhosPhoneOutputColor(output_color_, color, hdr_capable_, p3_capable_))) {
++      OhosColorFailure("WSI output color contract changed");
+       return false;
+     }
+     if (color.mode != output_color_.mode) {
+       const auto space = color.mode == ui::OhosOutputMode::kHdr10
+                              ? VK_COLOR_SPACE_HDR10_ST2084_EXT
+-                             : VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
++                             : color.mode == ui::OhosOutputMode::kP3Sdr10
++                                   ? VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT
++                                   : VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+       if (!vulkan_surface_->SetOhosColorSpace(space)) {
+-        ui::NoteOhosOutputColorFailure("WSI content color-space transition");
++        OhosColorFailure("WSI content color-space transition");
+         return false;
+       }
+       LOG(WARNING) << "OHOS Vulkan: content output transition "
+@@ -170,7 +185,7 @@ bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
+       metadata.maxContentLightLevel = metadata.maxLuminance;
+       metadata.maxFrameAverageLightLevel = metadata.maxLuminance;
+       if (!vulkan_surface_->SetHdrMetadata(metadata)) {
+-        ui::NoteOhosOutputColorFailure("WSI HDR luminance metadata");
++        OhosColorFailure("WSI HDR luminance metadata");
+         return false;
+       }
+       LOG(WARNING) << "OHOS Vulkan: HDR luminance updated white_millinits="
+@@ -189,7 +204,16 @@ bool SkiaOutputDeviceVulkan::Reshape(const ReshapeParams& params) {
+                                         params.transform);
+ #if BUILDFLAG(IS_OHOS)
+   if (!result && output_color_.mode != ui::OhosOutputMode::kSdr8)
+-    ui::NoteOhosOutputColorFailure("WSI reshape");
++    OhosColorFailure("WSI reshape");
++  if (result && !capabilities_published_ && !requires_alpha_ &&
++      !ui::IsOhosAnchoredWindow(surface_handle_) &&
++      !ui::OhosOutputColorFailed() && (hdr_capable_ || p3_capable_)) {
++    // A real SDR swapchain now exists; both optional color spaces have also
++    // passed exact same-format WSI enumeration. Actual HDR/P3 presentation is
++    // still validated by Reshape and failure revokes this GPU generation.
++    capabilities_published_ = ui::ReportOhosWsiOutputCapabilities(
++        surface_handle_, hdr_capable_, p3_capable_);
++  }
+ #endif
+   return result;
+ }
+@@ -275,7 +299,7 @@ SkSurface* SkiaOutputDeviceVulkan::BeginPaint(
+ #if BUILDFLAG(IS_OHOS)
+   if (output_color_.mode == ui::OhosOutputMode::kHdr10 &&
+       !hdr_display_guard_.Validate()) {
+-    ui::NoteOhosOutputColorFailure("HDR display changed or unavailable");
++    OhosColorFailure("HDR display changed or unavailable");
+     return nullptr;
+   }
+ #endif
+@@ -321,7 +345,7 @@ SkSurface* SkiaOutputDeviceVulkan::BeginPaint(
+     if (!sk_surface) [[unlikely]] {
+ #if BUILDFLAG(IS_OHOS)
+       if (output_color_.mode != ui::OhosOutputMode::kSdr8)
+-        ui::NoteOhosOutputColorFailure("WSI Skia wrap");
++        OhosColorFailure("WSI Skia wrap");
+ #endif
+       return nullptr;
+     }
+@@ -414,6 +438,7 @@ bool SkiaOutputDeviceVulkan::Initialize() {
+     output_color_ = {};
+   }
+   hdr_capable_ = false;
++  p3_capable_ = false;
+   const auto requested_color = output_color_;
+   if (output_color_.mode != ui::OhosOutputMode::kSdr8) {
+     const VkColorSpaceKHR space =
+@@ -438,13 +463,25 @@ bool SkiaOutputDeviceVulkan::Initialize() {
+       hdr_capable_ = true;
+       output_color_ = {ui::OhosOutputMode::kSdr10};
+     }
++    if (result && !alpha_window && ui::OhosSingleDisplaySupportsP3()) {
++      p3_capable_ = vulkan_surface->SetOhosColorSpace(
++          VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT);
++      // An optional unsupported P3 pair does not invalidate proven SDR/HDR.
++      if (p3_capable_ && !vulkan_surface->SetOhosColorSpace(
++                              VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)) {
++        vulkan_surface->Destroy();
++        OhosColorFailure("WSI P3 probe could not restore SDR");
++        return Initialize();
++      }
++      LOG(WARNING) << "OHOS Vulkan: native P3 SDR WSI pair=" << p3_capable_;
++    }
+     // Native popup surfaces can still be 0x0 here. Match the SDR8 path and
+     // create buffers in Reshape(), once Viz supplies the first frame size.
+     // A real allocation failure there records the session fallback before
+     // context recreation; an unlaid-out popup is not a format failure.
+     if (!result) {
+       vulkan_surface->Destroy();
+-      ui::NoteOhosOutputColorFailure("WSI 10-bit/PQ format pair");
++      OhosColorFailure("WSI 10-bit/PQ format pair");
+       return Initialize();  // Marker forces SDR8; exactly one bounded retry.
+     }
+   }
+@@ -488,8 +525,8 @@ bool SkiaOutputDeviceVulkan::Initialize() {
+       ui::MakeOhosOutputColorSpaces(hdr_capable_ ? requested_color
+                                                : output_color_);
+   if (hdr_capable_) {
+-    // Display capability does not make ordinary web content HDR. P3 SDR is
+-    // converted to sRGB until a native P3 SDR WSI contract is implemented.
++    // Display capability does not make ordinary web content HDR. Keep SDR
++    // usages separate; upgrade WCG below only for a proven native P3 pair.
+     for (auto usage : {gfx::ContentColorUsage::kSRGB,
+                        gfx::ContentColorUsage::kWideColorGamut}) {
+       for (bool alpha : {false, true}) {
+@@ -499,6 +536,15 @@ bool SkiaOutputDeviceVulkan::Initialize() {
+       }
+     }
+   }
++  if (p3_capable_) {
++    const auto p3 = gfx::ColorSpace::CreateDisplayP3D65();
++    for (bool alpha : {false, true})
++      capabilities_.ohos_output_color_spaces->SetOutputColorSpaceAndFormat(
++          gfx::ContentColorUsage::kWideColorGamut, alpha, p3,
++          SinglePlaneFormat::kRGBA_1010102);
++    capabilities_.ohos_output_color_spaces->SetPrimaries(
++        gfx::DisplayColorSpaces(p3).GetPrimaries());
++  }
+   capabilities_.ohos_dynamic_output_luminance =
+       hdr_capable_ &&
+       ui::OhosDynamicOutputLuminance();
+diff --git a/components/viz/service/display_embedder/skia_output_device_vulkan.h b/components/viz/service/display_embedder/skia_output_device_vulkan.h
+index c22ef97..9c2c8f5 100644
+--- a/components/viz/service/display_embedder/skia_output_device_vulkan.h
++++ b/components/viz/service/display_embedder/skia_output_device_vulkan.h
+@@ -81,6 +81,9 @@ class SkiaOutputDeviceVulkan final : public SkiaOutputDevice {
+ #if BUILDFLAG(IS_OHOS)
+   bool requires_alpha_ = true;
+   bool hdr_capable_ = false;
++  bool p3_capable_ = false;
++  bool capabilities_published_ = false;
++  void OhosColorFailure(const char* reason);
+   ui::OhosOutputColor output_color_;
+   ui::OhosHdrDisplayGuard hdr_display_guard_;
+ #endif

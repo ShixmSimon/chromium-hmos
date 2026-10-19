@@ -1,0 +1,1348 @@
+{
+  "startedUTC": "2026-10-17T14:31:44.054514+00:00",
+  "device": "192.168.8.143:12345",
+  "userAcceptance": {
+    "hdrDroppedFrames": "accepted; not an acceptance blocker",
+    "silenceRequired": true,
+    "keepAwakeRequired": true,
+    "nativeBuild": "push-triggered CI only",
+    "ciCodeModified": false
+  },
+  "pad": {
+    "normalTimeoutRestored": true,
+    "screenOffConfirmed": true,
+    "state": "SLEEP",
+    "timeoutMs": 120000
+  },
+  "native499": {
+    "source": "4998f034",
+    "nativeCI": 39038395763,
+    "engineSha256": "760b044e5309f3445c2a2e544e80c3c05262d74c184e71ca9540f959fbe5ef8f",
+    "skia": "GaneshVulkan",
+    "separateGpu": true,
+    "transport3of3": true,
+    "color3of3": true,
+    "defaultPackage": "out/phone-validation-20261016/phone499-default-package.json",
+    "canvas2d11of11": true,
+    "webgpu5of5": true,
+    "workerWebgpu2of2": true,
+    "glAndCanvasColor7of7": true,
+    "fullscreenShort": {
+      "pass": true,
+      "touchReceiverVerified": true,
+      "observedHoldSeconds": 31.29,
+      "fullscreenHeld": true,
+      "processesStable": true
+    },
+    "longLifecycle": "not yet run on new candidate",
+    "testufo6of6": true,
+    "sdrBackgroundGray4of4": true,
+    "sdrGrayMaximumChannelError": 0
+  },
+  "pointDiagnostic": {
+    "switch": "enable-dawn-features=ohos_maleoon_point_split_render_pass_probe",
+    "fixedWorkload": "65536 vertices x1024 instances, one application render pass",
+    "cpuArguments4of4": true,
+    "gpuGeneratedArguments4of4": true,
+    "scope": "Opt-in diagnostic only; default production workaround not yet enabled. No full WebGPU CTS claim.",
+    "records": [
+      "out/phone-validation-20261016/phone499-point-native-point-pass-probe.json",
+      "out/phone-validation-20261016/phone499-point-gpu-generated.json"
+    ]
+  },
+  "newFailure": {
+    "stage": "NativeWindowRequestBuffer",
+    "nativeError": 40601000,
+    "meaning": "NATIVE_ERROR_NO_BUFFER",
+    "source": "https://developer.huawei.com/consumer/en/doc/harmonyos-references-V13/_o_h___native_image-V13",
+    "nativeOutputMode": 3,
+    "browserPid": 61766,
+    "gpuBefore": 61955,
+    "gpuAfter": 62725,
+    "exitCode": 76,
+    "fallback": "SDR8 mode0 after color failure",
+    "record": "out/phone-validation-20261016/phone499-point-app-point-control.json",
+    "candidate": "1a0cbaba86b6d50abeb8dd2695930ebbcb797632",
+    "nativeCI": 39041062573,
+    "adapterCI": 39041062580,
+    "status": "Native CI and Adapter CI success; artifact downloading; runtime pending"
+  },
+  "status": "Historical15along/lifecycleevidence preserved. Latest97abe6d7invalidCanvascleanupfixedandregressionsPASS; seeCTSfollowupforcurrentstate.",
+  "candidate1a0": {
+    "source": "1a0cbaba",
+    "nativeCI": 39041062573,
+    "adapterCI": 39041062580,
+    "harSha256": "766445d622334acc7d72f713cb07a79128afd351f06db9290364d59b1211210c",
+    "engineSha256": "00c52473aa258d72a5cf446f6a62bbd820b76dd3c925470b84124f41e69ae2a3",
+    "buildId": "532a32455b0f7403dc01b13274c204d4f8a192e2",
+    "dawnEntries": 184,
+    "installed": "production default, paused and silent SDR; waiting for e290 native CI",
+    "ciCodeModified": false,
+    "localNativeCompile": false,
+    "pointStability48of48": true,
+    "queueBackpressureRecoveredEvents": 88,
+    "queueBackpressureEvidence": [
+      "10-17 22:40:10.277  8058  8294 W A0C233/com.miramira8295.lumiebrowser/Chromium: [8058:8294:1017/224010.277320:WARNING:ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.cc:342] OHOS shared buffer: queue temporarily unavailable widget=1 sequence=151 mode=3",
+      "10-17 22:40:10.698  8058  8294 W A0C233/com.miramira8295.lumiebrowser/Chromium: [8058:8294:1017/224010.698318:WARNING:ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.cc:342] OHOS shared buffer: queue temporarily unavailable widget=1 sequence=154 mode=3",
+      "10-17 22:40:51.114  8058  8294 W A0C233/com.miramira8295.lumiebrowser/Chromium: [8058:8294:1017/224051.113949:WARNING:ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.cc:342] OHOS shared buffer: queue temporarily unavailable widget=1 sequence=4255 mode=3",
+      "10-17 22:40:51.392  8058  8294 W A0C233/com.miramira8295.lumiebrowser/Chromium: [8058:8294:1017/224051.392087:WARNING:ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.cc:342] OHOS shared buffer: queue temporarily unavailable widget=1 sequence=4260 mode=3"
+    ],
+    "gpuStableAcrossAnimatedPressure": true,
+    "transport3of3": true,
+    "color3of3": true,
+    "backgroundAnalysis": {
+      "label": "phone1a0-default",
+      "browserPid": 10869,
+      "lifecyclePass": true,
+      "nativeTransitions": 6,
+      "windows": [
+        {
+          "start": 195566712769,
+          "end": 195572383990,
+          "durationSeconds": 5.671221,
+          "interiorSubmissions": 0
+        },
+        {
+          "start": 195586128324,
+          "end": 195591982288,
+          "durationSeconds": 5.853964,
+          "interiorSubmissions": 0
+        },
+        {
+          "start": 195605811987,
+          "end": 195611365527,
+          "durationSeconds": 5.55354,
+          "interiorSubmissions": 0
+        }
+      ],
+      "submissions": 2373,
+      "backgroundFlagSubmissions": 0,
+      "nativeImports": 2240,
+      "externalTextures": 2240,
+      "zeroCopyExternalTextures": 2240,
+      "errors": [],
+      "scope": "Native same-process trace timestamps; ignores1ms at transition boundaries to avoid atomic-store/trace ordering ambiguity. No host epoch conversion or CDP calls required while hidden.",
+      "pass": true
+    },
+    "sdrGray4of4": true,
+    "sdrGrayMaximumChannelError": 0
+  },
+  "pointDefaultCandidate": {
+    "source": "e29055c3134b3783b4d3de4ad19809a0b3e57841",
+    "nativeCI": 39041835023,
+    "adapterCI": 39041835055,
+    "scope": "OHOS Huawei Maleoon920 with drawIndirectFirstInstance; existing single-sample stored-color/no-query/no-depth/no-resolve/no-PLS guard",
+    "status": "production default point gates PASS; full native preflight/lifecycle running",
+    "padRuntime": "not operated; default profile may also match Pad hardware and is not validated there",
+    "package": {
+      "native_source": "e29055c3",
+      "native_ci": "39041835023",
+      "engine_sha256": "05da64d0fc5b9807d9439d2f2d1cb57e4bc4843b0166f070afa92658a4920732",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/phone-validation-20261016/phonee290-default.hap",
+      "hap_sha256": "a1a444ddba770cea44cfa5711b3971aca98579619d317c03ae7d451b4a4f4f62",
+      "existing_phone_signing": true,
+      "native_compile": false
+    },
+    "buildId": "ac4a1d13b7670f3f4d23d4c6ee74d14e3c42557e",
+    "harSha256": "be59207d5eb12de14390f1cd6f9cdb644f4e9e7d7d98ba97eba13819682111a5",
+    "pointCpuArguments4of4": true,
+    "pointSemantics10of10": true,
+    "pointAnimatedStability24of24": true,
+    "systemInfo": {
+      "skia": "GaneshVulkan",
+      "inProcessGpu": false,
+      "gpuCrashCount": 0,
+      "angle": "GLES",
+      "webgpu": "enabled"
+    },
+    "validationScope": "38 selected point cases on production defaults, not full WebGPU CTS",
+    "limitations": [
+      "Selected point tests only; queries, depth/stencil, MSAA, resolves and PLS are excluded from the native pass continuation workaround.",
+      "Indirect GPU slices use four windows; all remaining work is retained in the last window. This is not a universal bound for arbitrary workloads. Full WebGPU CTS remains unaccepted."
+    ]
+  },
+  "startupHarnessInterruption": {
+    "record": "out/phone-validation-20261015/phonee290-startup-interrupted-native-webgpu-lifecycle.json",
+    "failure": "Startup probe marker was replaced as active page by early CDP Target.createTarget. StartupGuard blocked trusted heading touch. Full lifecycle never began.",
+    "gpuFailure": false,
+    "coreOffscreenPointResults": "38 selected point gates remain valid GPU readback tests; they did not prove visible UI readiness.",
+    "recovery": "Built-in Safe Start then UI restore fork+Skia; preserve saved recovery tabs; wait startup UI guard clears before creating test tabs.",
+    "recoveryCompleted": true,
+    "preservedTabsRestoredViaUi": true,
+    "actualUiForkAndSkiaBothEnabled": true,
+    "guardReadinessRecord": "out/phone-validation-20261016/e290-guard-confirmed-startup-ready.json"
+  },
+  "latestVisibleRun": {
+    "label": "phonee290-visible",
+    "pointCpuArguments4of4": true,
+    "pointSemantics10of10": true,
+    "status": "continuous600 correctness and zero-copy PASS; fullscreen transition triggered WebGPU invalid external texture; remaining phases untested",
+    "productionSwitchesEmpty": true,
+    "transport3of3": true,
+    "color3of3": true,
+    "trustedHeadingTouchVerified": true,
+    "fullLifecyclePass": false,
+    "fullscreenFailure": {
+      "gpuErrors": [
+        {
+          "wall": 1792249907160,
+          "message": "[Invalid Texture] is invalid due to a previous error.\n - While calling [Invalid Texture].CreateView([null]).\n"
+        },
+        {
+          "wall": 1792249907160,
+          "message": "[Invalid TextureView] is invalid due to a previous error.\n - While validating [ExternalTextureDescriptor]\n - While calling [Device].CreateExternalTexture([ExternalTextureDescriptor]).\n"
+        },
+        {
+          "wall": 1792249907160,
+          "message": "[Invalid ExternalTexture (unlabeled)] is invalid due to a previous error.\n - While validating entries[0] against { binding: 0, visibility: ShaderStage::Fragment, externalTexture: {} }.\n - While validating [BindGroupDescriptor] against [BindGroupLayout (unlabeled)]\n - While calling [Device].CreateBindGroup([BindGroupDescriptor]).\n"
+        },
+        {
+          "wall": 1792249907161,
+          "message": "[Invalid BindGroup (unlabeled)] is invalid due to a previous error.\n - While encoding [RenderPassEncoder (unlabeled)].SetBindGroup(0, [Invalid BindGroup (unlabeled)], 0, ...).\n - While finishing [CommandEncoder (unlabeled)].\n"
+        },
+        {
+          "wall": 1792249907161,
+          "message": "[Invalid CommandBuffer] is invalid due to a previous error.\n - While calling [Queue].Submit([[Invalid CommandBuffer]])\n"
+        },
+        {
+          "wall": 1792249907162,
+          "message": "[Invalid ExternalTexture (unlabeled)] is invalid due to a previous error.\n - While calling [Invalid ExternalTexture (unlabeled)].Expire()\n"
+        }
+      ],
+      "gpuRestarted": false,
+      "nativeLog": "SharedImageManager::ProduceDawn: Trying to Produce a Dawn representation from a non-existent mailbox.",
+      "record": "out/phone-validation-20261015/phonee290-visible-native-webgpu-lifecycle.json"
+    },
+    "continuousTrace": [
+      {
+        "stage": "continuous-pq",
+        "nativeImports": 515,
+        "externalTextures": 515,
+        "zeroCopyTextures": 515,
+        "fallbackTextures": 0
+      }
+    ],
+    "cleanup": {
+      "paused": true,
+      "muted": true,
+      "volume": 0
+    }
+  },
+  "mailboxLifetimeCandidate": {
+    "source": "15a51962bc86e12a6a7736adc3d59eabc0e9d1b6",
+    "status": "Targeted13min-first-fullscreen,shortfullscreen,source/lifetime/GC/color/cooledbackground regressionsPASS; high-temperatureOStermination remains separate.",
+    "hypothesis": "Immediate OHOS external-texture destruction can release the producer-side SharedImage registration before queued WebGPU use. Native allocation lease lifetime alone does not guarantee mailbox registry lifetime.",
+    "change": "Dissociate native access immediately, retain media VideoFrame in mailbox wrapper until existing GPUQueue work-done callback. Add mailbox import/retire trace IDs and missing-mailbox error ID.",
+    "limits": "Root trigger is not proven; short fullscreen repeat passed. Full original lifecycle stopped at first fullscreen-10 validation error. Do not mark fixed until candidate tests pass.",
+    "localNativeCompile": false,
+    "ciCodeModified": false,
+    "nativeCI": 39044673445,
+    "adapterCI": 39044673443,
+    "harSha256": "b13400ef8e92cfe8cecf25a20bc2f4f5f15fbc78df1a1b6b8e7aec798e16823e",
+    "engineSha256": "43149230db4b54de14ccb917095e56d808261aca184dec194bc3440c5fd3a092",
+    "buildId": "c28e695a3ee1693ff9ca10f4a548053522a19490",
+    "package": {
+      "native_source": "15a51962",
+      "native_ci": "39044673445",
+      "engine_sha256": "43149230db4b54de14ccb917095e56d808261aca184dec194bc3440c5fd3a092",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/phone-validation-20261016/phone15a-default.hap",
+      "hap_sha256": "b34ff9e64fb4c806200ad4c0b96083027f3f7977d556f7f8bd82164fc7916833",
+      "existing_phone_signing": true,
+      "native_compile": false
+    },
+    "backgroundInterruption": {
+      "oldBrowserPid": 47596,
+      "oldGpuPid": 47826,
+      "newBrowserPid": 49215,
+      "reason": "Temperature Control",
+      "signal": 9,
+      "evidence": [
+        "10-17 23:33:02.103   971  1168 W C02948/resource_schedule_service/ThermalAware: [process_clean.cpp] hisysevent write result=0, send event [FRAMEWORK,PROCESS_KILL], pid=47596, processName=com.miramira8295.lumiebrowser, reason=Kill Reason:Temperature Control, msg=Kill Reason:Temperature Control, foreground=0",
+        "10-17 23:33:02.287  1672 48856 W C01311/foundation/AppMS: [AMSI6509]hisysevent write result=0, send event [FRAMEWORK,PROCESS_KILL], pid=47596, processName=com.miramira8295.lumiebrowser, msg=, reason=Temperature Control, FOREGROUND=0, appRunningUniqueId=3618360783372975807, killId=3026"
+      ],
+      "record": "out/phone-validation-20261016/phone15a-bg-video-only-background.json",
+      "sourceLog": "out/phone-validation-20261016/phone15a-background-system-live.log",
+      "notCountedAsPass": true
+    },
+    "backgroundNoTraceOneCyclePass": true,
+    "cooledBackground3Pass": true,
+    "cooledBackground3Analysis": {
+      "label": "phone15a-bg-cooled",
+      "browserPid": 49215,
+      "lifecyclePass": true,
+      "nativeTransitions": 6,
+      "windows": [
+        {
+          "start": 199429550774,
+          "end": 199435288282,
+          "durationSeconds": 5.737508,
+          "interiorSubmissions": 0
+        },
+        {
+          "start": 199448930135,
+          "end": 199454731447,
+          "durationSeconds": 5.801312,
+          "interiorSubmissions": 0
+        },
+        {
+          "start": 199468653467,
+          "end": 199474380226,
+          "durationSeconds": 5.726759,
+          "interiorSubmissions": 0
+        }
+      ],
+      "submissions": 2335,
+      "backgroundFlagSubmissions": 0,
+      "nativeImports": 2207,
+      "externalTextures": 2208,
+      "zeroCopyExternalTextures": 2208,
+      "errors": [],
+      "scope": "Native same-process trace timestamps; ignores1ms at transition boundaries to avoid atomic-store/trace ordering ambiguity. No host epoch conversion or CDP calls required while hidden.",
+      "pass": true
+    },
+    "silentAudioBackground30Pass": true,
+    "traceClientMailboxImports": 2208,
+    "traceClientMailboxRetires": 2207,
+    "traceLimits": "Counts are cut at trace boundaries; remaining single import is not a leak claim.",
+    "silentBackgroundNativeWindowSeconds": 30.787355,
+    "silentBackgroundNativeHiddenSubmissions": 0,
+    "backgroundNativeHiddenSubmissions": [
+      0,
+      0,
+      0
+    ],
+    "cooledBackgroundMailboxAccounting": {
+      "imports": 2208,
+      "retires": 2207,
+      "traceBoundaryUnmatchedImports": 1,
+      "peakObservedPending": 3,
+      "medianRetireMs": 7.869,
+      "p99RetireMs": 22.317,
+      "maxRetireMs": 128.864,
+      "scope": "Trace-window only, no global leak-free claim"
+    }
+  },
+  "e290Followup": {
+    "scope": "Remaining phases only, separate from failed warm-fullscreen full lifecycle. Does not erase original validation errors.",
+    "record": "out/phone-validation-20261015/phonee290-followup-native-webgpu-lifecycle.json",
+    "fullscreenHeld": true,
+    "lastStage": "h264-sdr-60",
+    "errors": [],
+    "traces": [
+      {
+        "stage": "remaining-phase-warmup-pq",
+        "nativeImports": 465,
+        "externalTextures": 465,
+        "zeroCopyTextures": 465,
+        "fallbackTextures": 0
+      },
+      {
+        "stage": "after-background-seek",
+        "nativeImports": 447,
+        "externalTextures": 447,
+        "zeroCopyTextures": 447,
+        "fallbackTextures": 0
+      },
+      {
+        "stage": "main10-sdr",
+        "nativeImports": 566,
+        "externalTextures": 566,
+        "zeroCopyTextures": 566,
+        "fallbackTextures": 0
+      },
+      {
+        "stage": "h264-sdr",
+        "nativeImports": 297,
+        "externalTextures": 297,
+        "zeroCopyTextures": 297,
+        "fallbackTextures": 0
+      },
+      {
+        "stage": "main10-pq-return",
+        "nativeImports": 516,
+        "externalTextures": 516,
+        "zeroCopyTextures": 516,
+        "fallbackTextures": 0
+      }
+    ],
+    "complete": true,
+    "pass": true,
+    "fullLifecycle": false,
+    "sdrGrayVerified": true,
+    "postCleanup": {
+      "errors": [],
+      "stopped": true,
+      "paused": true,
+      "muted": true,
+      "volume": 0,
+      "fullscreen": false
+    }
+  },
+  "controlledFullLifecycle": {
+    "label": "phone15a-controlled",
+    "source": "15a51962",
+    "record": "out/phone-validation-20261015/phone15a-controlled-native-webgpu-lifecycle.json",
+    "scope": "Old sum-of-sleeps600 harness also incurs dump time. Retained unchanged as an incomplete run, never counted as full pass.",
+    "preflightTransport3of3": true,
+    "preflightColor3of3": true,
+    "status": "Controlled stop at Battery44C; no WebGPU errors before stop; later phases untested",
+    "pass": false,
+    "thermalStop": {
+      "stage": "continuous-pq-530",
+      "temperatures": {
+        "Battery": 44,
+        "ambient": 28.44,
+        "charger": 53.384,
+        "modem": 0,
+        "pa_s": 51,
+        "rfboard": 38.888,
+        "shell_back": 48.236,
+        "shell_frame": 47.236,
+        "shell_front": 41.404,
+        "soc_thermal": 60,
+        "system_h": 54
+      }
+    },
+    "errors": [
+      "Error: Controlled thermal stop at 44C; remaining phases untested"
+    ],
+    "lastVideoTime": 610.387586
+  },
+  "nextWallLifecycle": {
+    "label": "phone15a-wall",
+    "source": "15a51962",
+    "criterion": "600 seconds of observed host wall time since first playing sample, memory-dump time included; source/resolution unchanged. Foreground cooling before fullscreen/background retains media source and WebGPU device; internal decoder recreation is not assumed.",
+    "reason": "Avoid conflating OS thermal SIGKILL with a code regression, preserve all original failures and controlled stops.",
+    "status": "Incomplete:600s playback passed, cooldown timed out at39C/41.093C, fullscreen never attempted",
+    "report": "out/phone-validation-20261015/phone15a-wall-native-webgpu-lifecycle.json",
+    "preflight": {
+      "nativeTransport": "3/3 PASS",
+      "nativeColor": "3/3 PASS"
+    },
+    "progress": {
+      "stage": "continuous-pq-wall-466",
+      "mediaSeconds": 450.840105,
+      "batteryC": 43,
+      "errors": [],
+      "initialProcesses": [
+        {
+          "type": "browser",
+          "id": 49215,
+          "cpuTime": 271.56
+        },
+        {
+          "type": "renderer",
+          "id": 53053,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 49760,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 49575,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 49522,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 49751,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 49514,
+          "cpuTime": 0
+        },
+        {
+          "type": "renderer",
+          "id": 49444,
+          "cpuTime": 0
+        },
+        {
+          "type": "GPU",
+          "id": 49413,
+          "cpuTime": 0
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 49425,
+          "cpuTime": 0
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "id": 49430,
+          "cpuTime": 0
+        },
+        {
+          "type": "tracing.mojom.TracingService",
+          "id": 56998,
+          "cpuTime": 0
+        }
+      ]
+    },
+    "continuousTimingAudit": {
+      "lastRowSampleWallSeconds": 597.684,
+      "firstPauseCheckpointWallSeconds": 603.772,
+      "minimumDeadlineSeconds": 600,
+      "scope": "Current script exits continuous loop only once host time reaches deadline; last row timestamp precedes slow dumps, so its 597.684s field is a last sample timestamp rather than endpoint. First pause checkpoint is603.772s. Future harness field corrected, current raw evidence retained."
+    },
+    "errors": [
+      "Error: Controlled cooldown limit; remaining phases untested"
+    ]
+  },
+  "nextWarmFirstFullscreen": {
+    "label": "phone15a-warm-final",
+    "script": "out/phone-validation-20261015/phone-warm-first-fullscreen-lifecycle-20261017.mjs",
+    "preflightLabel": "phone15a-wall",
+    "change": "First fullscreen immediately after600s, no intervening pause; thermal44C stop unchanged; extend safe cooling wait from10 to20min; cool before subsequent source switches. Native code unchanged.",
+    "status": "Incomplete: controlled44C stop during continuous phase, first fullscreen never attempted",
+    "report": "out/phone-validation-20261015/phone15a-warm-final-native-webgpu-lifecycle.json",
+    "errors": [
+      "Error: Controlled thermal stop at 44C; remaining phases untested"
+    ],
+    "thermalStop": {
+      "stage": "continuous-pq-wall-481",
+      "temperatures": {
+        "Battery": 44,
+        "ambient": 23.8,
+        "charger": 51.846,
+        "modem": 0,
+        "pa_s": 49.928,
+        "rfboard": 38.722,
+        "shell_back": 47.619,
+        "shell_frame": 46.619,
+        "shell_front": 42.881,
+        "soc_thermal": 60,
+        "system_h": 52.076
+      }
+    },
+    "lastVideoTime": 457.970206,
+    "gpuErrorsBeforeStop": {
+      "errors": []
+    }
+  },
+  "coolingDisplay": {
+    "coverId": "phone-test-cooling-cover",
+    "videoAndCanvasHidden": true,
+    "reason": "Reduce screen load while paused after thermal stop; no continuity claim for subsequent short tests.",
+    "coverRemoved": true
+  },
+  "finalShortRegressions": {
+    "source": "15a51962",
+    "nativeLifetime3Pass": true,
+    "multiDeviceGcPass": true,
+    "multiDeviceGpuStable": true,
+    "multiDeviceForcedGC": true,
+    "multiDeviceCases": 8,
+    "wireBatchPass": true,
+    "hlgAnalyticColorPass": true,
+    "hlgStripes": 8,
+    "scope": "API/native tracing and shader readback; not a visible fullscreen or physical-panel test.",
+    "canvas2d11Pass": true,
+    "webgpu5": {
+      "cases": 5,
+      "error": null,
+      "pixelVerification": {
+        "source": "out/phone-validation-20261016/phone15a-final-webgpu.json",
+        "rows": [
+          {
+            "mode": "webgpu-srgb",
+            "matchingRows": [
+              1307,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                0,
+                254,
+                1
+              ],
+              [
+                254,
+                0,
+                0
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          },
+          {
+            "mode": "webgpu-p3",
+            "matchingRows": [
+              1307,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                0,
+                254,
+                1
+              ],
+              [
+                254,
+                0,
+                0
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          },
+          {
+            "mode": "webgpu-p3-hdr",
+            "matchingRows": [
+              1306,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                11,
+                168,
+                3
+              ],
+              [
+                255,
+                3,
+                12
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          },
+          {
+            "mode": "webgpu-p3-hdr-storage",
+            "matchingRows": [
+              1306,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                11,
+                168,
+                3
+              ],
+              [
+                255,
+                3,
+                12
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          },
+          {
+            "mode": "webgpu-srgb",
+            "matchingRows": [
+              1307,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                0,
+                254,
+                1
+              ],
+              [
+                254,
+                0,
+                0
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          }
+        ],
+        "pass": true
+      },
+      "apiPass": true
+    },
+    "worker2": {
+      "cases": 2,
+      "error": null,
+      "pixelVerification": {
+        "source": "out/phone-validation-20261016/phone15a-final-worker-webgpu-worker.json",
+        "rows": [
+          {
+            "mode": "webgpu-worker-hdr",
+            "matchingRows": [
+              1306,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                11,
+                168,
+                3
+              ],
+              [
+                255,
+                3,
+                12
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          },
+          {
+            "mode": "webgpu-worker-p3",
+            "matchingRows": [
+              1307,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                0,
+                254,
+                1
+              ],
+              [
+                254,
+                0,
+                0
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          }
+        ],
+        "pass": true
+      },
+      "apiPass": true
+    },
+    "color7": {
+      "cases": 7,
+      "error": null,
+      "pixelVerification": {
+        "source": "out/phone-validation-20261016/phone15a-final-color.json",
+        "rows": [
+          {
+            "mode": "2d-srgb",
+            "matchingRows": [
+              1307,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                0,
+                254,
+                1
+              ],
+              [
+                254,
+                0,
+                0
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          },
+          {
+            "mode": "2d-p3",
+            "matchingRows": [
+              1307,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                0,
+                254,
+                1
+              ],
+              [
+                254,
+                0,
+                0
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          },
+          {
+            "mode": "2d-p3-hdr",
+            "matchingRows": [
+              1306,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                11,
+                168,
+                3
+              ],
+              [
+                255,
+                3,
+                12
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          },
+          {
+            "mode": "webgl2-srgb",
+            "matchingRows": [
+              1307,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                0,
+                254,
+                1
+              ],
+              [
+                254,
+                0,
+                0
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          },
+          {
+            "mode": "webgl2-p3",
+            "matchingRows": [
+              1307,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                0,
+                254,
+                1
+              ],
+              [
+                254,
+                0,
+                0
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          },
+          {
+            "mode": "webgl2-p3-float",
+            "matchingRows": [
+              1307,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                0,
+                254,
+                1
+              ],
+              [
+                254,
+                0,
+                0
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          },
+          {
+            "mode": "webgl2-p3-hdr-float",
+            "matchingRows": [
+              1306,
+              2146
+            ],
+            "minimumRows": 592,
+            "rgb": [
+              [
+                11,
+                168,
+                3
+              ],
+              [
+                255,
+                3,
+                12
+              ]
+            ],
+            "apiErrors": {},
+            "physicalPass": true,
+            "scope": "Native screenshot patch presence; HDR screenshot is tone-mapped, not panel luminance/gamut photometry.",
+            "pass": true
+          }
+        ],
+        "pass": true
+      },
+      "apiPass": true
+    },
+    "shortSourceGate": {
+      "label": "phone15a-final-source",
+      "status": "PASS",
+      "pass": true,
+      "errors": [],
+      "elapsedSeconds": 577.72,
+      "fullscreenHeld": true,
+      "nativePresentationConfirmed": true,
+      "sourceSwitchSecondsEach": 120,
+      "sourceStages": [
+        "main10-sdr",
+        "h264-sdr",
+        "main10-pq-return"
+      ],
+      "sdrPixelsVerified": true,
+      "sdrPixels": {
+        "image": "/data/dev/chromium-hmos-sdr-web/out/phone-validation-20261015/phone15a-final-source-native-webgpu-sdr.jpeg",
+        "width": 1316,
+        "height": 2832,
+        "expected": [
+          0,
+          32,
+          64,
+          128,
+          192,
+          255
+        ],
+        "tolerance": 3,
+        "sample_columns": [
+          109,
+          329,
+          548,
+          767,
+          987,
+          1206
+        ],
+        "best_row": {
+          "row": 552,
+          "rgb": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              32,
+              32,
+              32
+            ],
+            [
+              64,
+              64,
+              64
+            ],
+            [
+              128,
+              128,
+              128
+            ],
+            [
+              192,
+              192,
+              192
+            ],
+            [
+              255,
+              255,
+              255
+            ]
+          ],
+          "max_error": 0
+        },
+        "matching_contiguous_rows": [
+          550,
+          1170
+        ],
+        "minimum_matching_rows": 40,
+        "pass": true,
+        "scope": "Native display screenshot SDR ramp only; not a physical luminance/colorimeter measurement."
+      },
+      "gpuStableAfterCleanup": true,
+      "finalGpuState": {
+        "errors": []
+      },
+      "finalMedia": {
+        "paused": true,
+        "muted": true,
+        "volume": 0
+      },
+      "traces": [
+        {
+          "stage": "continuous-pq",
+          "nativeImports": 600,
+          "externalTextures": 601,
+          "zeroCopyTextures": 601,
+          "fallbackTextures": 0
+        },
+        {
+          "stage": "after-background-seek",
+          "nativeImports": 469,
+          "externalTextures": 469,
+          "zeroCopyTextures": 469,
+          "fallbackTextures": 0
+        },
+        {
+          "stage": "main10-sdr",
+          "nativeImports": 581,
+          "externalTextures": 581,
+          "zeroCopyTextures": 581,
+          "fallbackTextures": 0
+        },
+        {
+          "stage": "h264-sdr",
+          "nativeImports": 301,
+          "externalTextures": 301,
+          "zeroCopyTextures": 301,
+          "fallbackTextures": 0
+        },
+        {
+          "stage": "main10-pq-return",
+          "nativeImports": 478,
+          "externalTextures": 478,
+          "zeroCopyTextures": 478,
+          "fallbackTextures": 0
+        }
+      ],
+      "backgroundScope": "Not repeated here; same-build3cooled and30s silent-audio native visibility tests passed separately.",
+      "continuousCriterion": {
+        "clock": "elapsed host wall time since first playing sample",
+        "minimumSeconds": 20,
+        "includesPeriodicMemoryDumps": true
+      },
+      "scope": "Short20s warmup, real-touch fullscreen30s, seek20s,3x120s source switches, finalSDR gray. Does not complete pending600s-first-fullscreen gate."
+    },
+    "fullscreenMailboxTrace": {
+      "source": "out/phone-validation-20261015/phone15a-final-source-fullscreen-native-webgpu-trace.json",
+      "imports": 1524,
+      "retires": 1523,
+      "matched": 1523,
+      "unmatchedImportsAtEnd": 1,
+      "unmatchedRetiresAtStart": 0,
+      "peakObservedPending": 3,
+      "matchedLifetimeMs": {
+        "min": 2.072,
+        "median": 9.437,
+        "p99": 30.09,
+        "max": 458.837
+      },
+      "scope": "Trace-window accounting only: unmatched endpoints can straddle trace boundaries; does not prove global ownership correctness or leak freedom."
+    }
+  },
+  "remaining": [
+    {
+      "item": "High-temperature background termination",
+      "status": "NOT_REPRODUCED_IN_LATEST_BOUNDED_WARM_TEST",
+      "reason": "Prior OS TemperatureControlSIGKILL remains recorded. LatestBattery41→42C/skin46.61→45.344C30sbackgroundpassed with0hidden submits andsamebrowser/GPU; broader temperature/power conditions remain unverified."
+    },
+    {
+      "item": "Full WebGPU conformance and arbitrary workload bounds",
+      "status": "NOT ACCEPTED",
+      "reason": "Selectedpoint,ATC,resource,external-video cases pass;4indirect windows retain remainder, not a general arbitrary-workload bound."
+    },
+    {
+      "item": "Physical P3 gamut andHDR peak luminance",
+      "status": "NOT MEASURED",
+      "reason": "Readback,nativeoutput modes andscreenshots prove software behavior, not panel photometry."
+    }
+  ],
+  "finalDeviceState": {
+    "atUTC": "2026-10-17T17:10:38.883892+00:00",
+    "pass": true,
+    "source": "15a51962",
+    "skia": "GaneshVulkan",
+    "displayType": "ANGLE_OPENGLES_EGL",
+    "independentGpu": true,
+    "gpuProcessCrashCount": 0,
+    "media": {
+      "paused": true,
+      "muted": true,
+      "volume": 0,
+      "fullScreen": false,
+      "soakStopped": true,
+      "cover": false
+    },
+    "awake": true,
+    "silent": true,
+    "memory": [
+      {
+        "sample": 0,
+        "at": 1792256984732,
+        "type": "browser",
+        "pid": 49215,
+        "pssKB": 160948,
+        "dmaKB": 36
+      },
+      {
+        "sample": 0,
+        "at": 1792256986266,
+        "type": "GPU",
+        "pid": 49413,
+        "pssKB": 194383,
+        "dmaKB": 75020
+      },
+      {
+        "sample": 1,
+        "at": 1792257007821,
+        "type": "browser",
+        "pid": 49215,
+        "pssKB": 160895,
+        "dmaKB": 36
+      },
+      {
+        "sample": 1,
+        "at": 1792257009412,
+        "type": "GPU",
+        "pid": 49413,
+        "pssKB": 194090,
+        "dmaKB": 75020
+      }
+    ],
+    "memoryScope": "Two foreground quiescent memory snapshots, not a leak-free or thermal acceptance claim.",
+    "phoneKeepAwakePid": 386914,
+    "passiveLogReadersStopped": [
+      387682,
+      442143
+    ],
+    "pad": "Normal120000ms timeout restored earlier; screenSLEEPconfirmed, no subsequentPadoperations."
+  },
+  "coldLongFullscreen": {
+    "label": "phone15a-cold-long-fs",
+    "source": "15a51962",
+    "startedUTC": "2026-10-17T22:12:26.663788+00:00",
+    "baseline": "out/phone-validation-20261016/phone15a-resume2-baseline.json",
+    "sameBrowserGpuAsVerified15a": true,
+    "initialBatteryC": 30,
+    "initialSkinMaxC": 33.857,
+    "criterion": "At least780s host continuous playback AND720s media progression; actual PQ1440p60 unchanged, alternatingHTML/VideoFrame imports; then immediate trusted fullscreen30s and finalSDRgray. No intervening pause/recreation.44C stop retained.",
+    "previouslyPassedGatesNotRepeated": true,
+    "fullscreenCallbackCheck": "Require a newly logged current-browser successful presentation line absent from the pre-fullscreen log; old success lines cannot satisfy this run.",
+    "keepawakePid": 591224,
+    "status": "PASS",
+    "pass": true,
+    "continuousWallSeconds": 780.797,
+    "continuousMediaProgressionSeconds": 751.807077,
+    "fullscreenHeld": true,
+    "newCurrentBrowserPresentationLines": [
+      "10-18 06:25:03.335 49215 49396 W A0C233/com.miramira8295.lumiebrowser/Chromium: [49215:49396:1018/062503.335518:WARNING:chrome/browser/ui/views/exclusive_access/exclusive_access_bubble_views.cc:466] OHOS fullscreen presentation: bubble successful"
+    ],
+    "sdrGrayPass": true,
+    "gpuStableAfterCleanup": true,
+    "gpuErrors": {
+      "errors": []
+    },
+    "traces": [
+      {
+        "stage": "continuous-pq",
+        "nativeImports": 533,
+        "externalTextures": 533,
+        "zeroCopyTextures": 533,
+        "fallbackTextures": 0
+      }
+    ],
+    "fullscreenTrace": {
+      "events": 445422,
+      "nativeImports": 1547,
+      "clientMailboxImports": 1547,
+      "clientMailboxRetires": 1547
+    },
+    "mailboxAccounting": {
+      "source": "out/phone-validation-20261015/phone15a-cold-long-fs-fullscreen-native-webgpu-trace.json",
+      "imports": 1547,
+      "retires": 1547,
+      "matched": 1546,
+      "unmatchedImportsAtEnd": 1,
+      "unmatchedRetiresAtStart": 1,
+      "peakObservedPending": 3,
+      "matchedLifetimeMs": {
+        "min": 2.606,
+        "median": 11.065000000000001,
+        "p99": 25.673,
+        "max": 97.888
+      },
+      "scope": "Trace-window accounting only: unmatched endpoints can straddle trace boundaries; does not prove global ownership correctness or leak freedom."
+    },
+    "scope": "ColdstartBattery30C; >13minsame-source/same-device playback, then firsttrusted fullscreen30s. Olde290 failure remains; no thermal-independence or universalrare-race guarantee."
+  },
+  "postLongWarmBackground": {
+    "label": "phone15a-postlong-warm-bg",
+    "source": "15a51962",
+    "configuration": "Nativevideo+WebGPU,1cycle,30sbackground,10sforeground,queuecompletionprobe,trace. NewWebGPUconsumer after long-run cleanup; same browser/GPU.",
+    "initialBatteryC": 41,
+    "initialSkinMaxC": 43.757,
+    "status": "PASS",
+    "scope": "After13min continuous+fullscreen cleanup, newvideo/WebGPUconsumer in the same browser/GPU; Battery41Cwarmup/42Crestore, skin46.61C/45.344C. Not the sameGPUdevice as the longsoak and not a universalthermal-termination guarantee.",
+    "pass": true,
+    "nativeVisibilityAnalysis": {
+      "label": "phone15a-postlong-warm-bg",
+      "browserPid": 49215,
+      "lifecyclePass": true,
+      "nativeTransitions": 2,
+      "windows": [
+        {
+          "start": 223395746425,
+          "end": 223426575542,
+          "durationSeconds": 30.829117,
+          "interiorSubmissions": 0
+        }
+      ],
+      "submissions": 810,
+      "backgroundFlagSubmissions": 0,
+      "nativeImports": 785,
+      "externalTextures": 785,
+      "zeroCopyExternalTextures": 785,
+      "errors": [],
+      "scope": "Native same-process trace timestamps; ignores1ms at transition boundaries to avoid atomic-store/trace ordering ambiguity. No host epoch conversion or CDP calls required while hidden.",
+      "pass": true
+    },
+    "queueProbes": [
+      {
+        "cycle": 1,
+        "elapsed": 2,
+        "destroy": false,
+        "time": 668.049407,
+        "rendered": 1057
+      }
+    ],
+    "temperatureSamples": [
+      {
+        "stage": "warmup",
+        "temperatures": {
+          "Battery": 41,
+          "ambient": 26.86,
+          "charger": 52.769,
+          "modem": 0,
+          "pa_s": 47.428,
+          "rfboard": 37.277,
+          "shell_back": 46.61,
+          "shell_frame": 45.61,
+          "shell_front": 42.285,
+          "soc_thermal": 60,
+          "system_h": 51.846
+        }
+      },
+      {
+        "stage": "restore-1",
+        "temperatures": {
+          "Battery": 42,
+          "ambient": 26.757,
+          "charger": 50.142,
+          "modem": 0,
+          "pa_s": 46.866,
+          "rfboard": 37.388,
+          "shell_back": 45.344,
+          "shell_frame": 44.344,
+          "shell_front": 39.841,
+          "soc_thermal": 60,
+          "system_h": 50
+        }
+      }
+    ],
+    "foregroundProgress": {
+      "wallSeconds": 10.098,
+      "mediaSeconds": 9.803063000000066,
+      "newGpuFrames": 575
+    },
+    "finalGrayPass": true,
+    "finalGrayMaxError": 0
+  },
+  "finalDeviceStateAfterLong": {
+    "atUTC": "2026-10-17T22:29:37.268470+00:00",
+    "pass": true,
+    "source": "15a51962",
+    "media": {
+      "paused": true,
+      "muted": true,
+      "volume": 0,
+      "fullScreen": false,
+      "soakStopped": true,
+      "cover": false
+    },
+    "skia": "GaneshVulkan",
+    "independentGpu": true,
+    "gpuProcessCrashCount": 0,
+    "awake": true,
+    "silent": true,
+    "keepawakePid": 591224,
+    "logReaderStopped": 591988,
+    "grayScreenshot": "out/phone-validation-20261015/phone15a-postlong-final-gray.jpeg",
+    "memoryScope": "Two foreground quiescent memory snapshots, not a leak-free or thermal acceptance claim.",
+    "memory": [
+      {
+        "sample": 0,
+        "pid": 49215,
+        "type": "browser",
+        "pssKB": 142052,
+        "dmaKB": 36
+      },
+      {
+        "sample": 0,
+        "pid": 49413,
+        "type": "GPU",
+        "pssKB": 198822,
+        "dmaKB": 60016
+      },
+      {
+        "sample": 1,
+        "pid": 49215,
+        "type": "browser",
+        "pssKB": 142249,
+        "dmaKB": 36
+      },
+      {
+        "sample": 1,
+        "pid": 49413,
+        "type": "GPU",
+        "pssKB": 214271,
+        "dmaKB": 75020
+      }
+    ]
+  },
+  "latestInstalledNative": "97abe6d7",
+  "latestCtsFollowup": "docs/test-results/ohos-phone-cts-followup-2026-10-17.json",
+  "latestContinuation": {
+    "atUTC": "2026-10-18T01:13:59.916390+00:00",
+    "installedSource": "573379da76cc5a41b2b7a5e7d86e876aedd7cdb1",
+    "nativeCI": 39083095284,
+    "record": "docs/test-results/ohos-phone-cts-followup-2026-10-17.json",
+    "result": "OffscreenFDperlivepixmap6→3;twofullforegroundCanvascopyrounds,Canvasoutput/Workers,2000heldcanvasesbefore/afterbackground,HEVCMain10nativezeroCopy,visibleHDR/SDR/P3,fullscreen/backgroundandSDRgrayregressionsPASS. Historicalfailuresretained.",
+    "limits": "FullCTS,realcamera12cases,panelphotometryandbroaderhightemperatureacceptancenotcompleted. Prior13mincontinuousresultsource15aunchanged."
+  }
+}

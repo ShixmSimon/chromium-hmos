@@ -1,0 +1,348 @@
+{
+  "request": "Optional Graphite on shared phone/Pad code; retain Ganesh Vulkan as first fallback",
+  "state": "PAD_SELECTED_FUNCTIONAL_GATES_PASSED_PHONE_PRIOR_VERSION",
+  "defaultBackend": "Ganesh Vulkan; Graphite explicit opt-in. Pad5ebb and previouslyphone547c UI preference restoredfalse.",
+  "nativeBuild": "CI push only; CI/workflow/build orchestration unchanged",
+  "implementation": [
+    "Compile upstream Graphite/Dawn on OHOS",
+    "Common NativeBuffer output device; phone broker vs native-child lease acquisition",
+    "Same SDR8/SDR10/P3/HDR color policy; actual import required before capability publication",
+    "Shared fence handoff; no final pixel IPC or CPU blit",
+    "Graphite-specific failure latch and browser Ganesh Vulkan crash fallback",
+    "Native-child mirror window reference acquired under lock"
+  ],
+  "validation": {
+    "hostTransportColorAndLeaseTests": "PASS",
+    "nativeCompilation": "PASS5ebb CI39168652994; latestPadbinary. Phone previously547c CI39158416470.",
+    "deviceGraphiteFirstFrame": "PHONE547c andPAD5ebb PASS nativeSDR10/HDR10/P3SDR10 firstframes; phonebroker1 vsPadnative-child0. Not physicalpanel luminance/gamut acceptance.",
+    "GaneshRegression": "PHONE547c andPAD5ebb: coldrestart defaultGaneshVulkan,14color/API/nativepixel scenes PASS, crashCount0.",
+    "nativeVideoGraphite": "Native video zero-copy notimplemented. Buffer playback functional gates PASS on phone547c andPad5ebb, includingMain10PQ; latest5ebb phone notinstalled/retested.",
+    "UISelector": "HAP compile and UI toggle PASS; shared phone/tablet routing21/21 PASS",
+    "orderedPinnedPatchReplay": "PASS actual35-file9-patch replay in standalone git root replay-video-verified154 with changed-content assertions; nativeCI39168652994 alsoappliedandcompiled. Older --directory/unprefixed --include replay was insufficient and superseded.",
+    "phoneGraphiteColor": "PASS14 scenes: Canvas2D/WebGL2/WebGPU/Worker; native screenshot pixel gates PASS; Graphite backend/PIDs unchanged",
+    "phoneRetainedCanvas": "PASS2000 distinct retained canvases and cross-device pixel checks; previous30s background claim withdrawn: Home was injected as invalid uppercase HOME, so no background transition was established.",
+    "phoneVideos": "PASS bounded H264 SDR, Main10 SDR, Main10 PQ, VP9 HDR; advancing frames and Canvas pixels; not zero-copy acceptance",
+    "phoneFullscreen": "PASS real HDC touch, native landscape screenshot,10s hold, exit; processes stable",
+    "phoneSdrResume": "PASS4 captures; gray patch maxError0",
+    "phoneSustainedPlayback": {
+      "boundedStability": "PASS",
+      "wallSeconds": 666.047,
+      "mediaTimeAdvanceSeconds": 548.842305,
+      "totalFrames": 33075,
+      "droppedFrames": 1298,
+      "performance": "NOT_ACCEPTED; buffer decoding and delayed media-time progress remain",
+      "GPUrestarts": 0,
+      "GPUfdRange": [
+        152,
+        155
+      ],
+      "endBatteryC": 43,
+      "evidence": "out/graphite-20261018/phone0109-graphite-soak.json"
+    },
+    "phoneFallback": {
+      "result": "PASS547c1f3b",
+      "expected": "GaneshVulkan",
+      "actual": "GaneshVulkan",
+      "intentionalGPUcrashes": 1,
+      "browserPID": 27125,
+      "GraphiteGPU": 27371,
+      "GaneshVulkanGPU": 28041,
+      "nativeGrayScreenshot": "PASS",
+      "evidence": "out/graphite-20261018/phone547c-fallback.json"
+    },
+    "padGraphite": {
+      "device": "GEM-W00 / Maleoon935 / 192.168.8.136:38905",
+      "source": "547c1f3b",
+      "backend": "GraphiteDawnVulkan; separate native-child GPU, phone_broker=0",
+      "color": "PASS14 Canvas2D/WebGL2/WebGPU/Worker scenes, API precision and native screenshot pixel gates; P3 and HDR advertised",
+      "colorEvidence": "out/graphite-20261018/pad547c-graphite-color-gates.json",
+      "retainedCanvas": "PASS2000 distinct-color strongly retained canvases, cross-device copies, first/middle/last exact pixel checks after real30s background with document.visibilityState hidden verified; same GPU.",
+      "retainedEvidence": "out/graphite-20261018/pad547c-graphite-distinct-background-retained-canvas.json",
+      "sdrResume": "PASS isolated4 captures maxError0, unchanged GPU; initial overlapping crash/resume attempt excluded",
+      "sdrResumeEvidence": "out/graphite-20261018/pad547c-graphite-isolated-sdr-resume.json",
+      "videos": "H264 PASS; HEVCMain10 SDR/PQ and VP9 HDR FAIL: time/frames advance but Canvas readback transparent and video screenshot black",
+      "videoEvidence": "out/graphite-20261018/pad547c-graphite-survey-video-gates.json",
+      "fallback": "FAIL immediate fallback requirement: first deliberate crash restarts Graphite rather than Ganesh Vulkan",
+      "fallbackEvidence": "out/graphite-20261018/pad547c-fallback.json",
+      "fullscreen": "FAIL stable-GPU requirement: trusted fullscreen held10s but anchored output capability publication fails, Graphite exits and Ganesh Vulkan replaces GPU",
+      "fullscreenEvidence": "out/graphite-20261018/pad547c-h264-fullscreen-native-diagnostic.json",
+      "a4ff": {
+        "source": "a4ffd69547efbfeef0776b63f59c1e4def5feb39",
+        "nativeCI": 39167754518,
+        "adapterCI": 39167754541,
+        "build": "PASS; CI engine BuildID94f32375f965f89f696dc850221e3bea99969212; engine SHA5d91c3570832581757a184f0ffa8e23d3ac0949f07d9c9c82a42f6119a82e429",
+        "installed": true,
+        "fullscreen": "Anchored capability rejection fixed;10s fullscreen hold stable, but delayed exit SIGTRAP remains. Immediate PASS overwritten with delayed failure; stricter helper waits5s after exit.",
+        "fullscreenEvidence": "out/graphite-20261018/pada4ff-h264-fullscreen-native-diagnostic.json",
+        "video": "Separate fresh Graphite session: H264 PASS; Main10SDR FAIL. Promise creation rejects format(Y_UV,420,10unorm,ExtSamplerOn). Earlier positive Main10 readback occurred after fallback to GaneshVulkan and is NOT Graphite acceptance.",
+        "videoEvidence": "out/graphite-20261018/pada4ff-graphite-isolated-video-gates.json",
+        "formatEvidence": "out/graphite-20261018/pada4ff-main10-format-isolated.log",
+        "color": "PASS14 scenes with native screenshot pixel gates, separateGraphite GPUcrash0",
+        "colorEvidence": "out/graphite-20261018/pada4ff-graphite-color-gates.json",
+        "fallback": "PASS intentional single GPU crash -> GaneshVulkan, samebrowser, replacedGPU, nativegray pixels PASS",
+        "fallbackEvidence": "out/graphite-20261018/pada4ff-fallback.json"
+      },
+      "5ebb": {
+        "source": "5ebb73135b46a8f9a77bf138d032fd10cee06917",
+        "nativeCI": 39168652994,
+        "adapterCI": 39168652978,
+        "build": "PASS; verifiedCI engineSHA b3ea42696ba0b969132eacdccf36f67210adab4d0c03969ba24491b839f56932; BuildID9a814bca9761dd21b4b0527341ac9e91b81e8599",
+        "installed": true,
+        "video": "PASS4 bounded muted clips, advancingframes/time, opaque nonuniformCanvaspixels; sameGraphiteGPU/crash0. Frame drops recorded, not performance acceptance.",
+        "videoEvidence": "out/graphite-20261018/pad5ebb-graphite-video-gates.json",
+        "nativePresentedModes": "PASS sameGPU53576 modes1 SDR10,2 HDR10,3 DisplayP3SDR10; phone_broker0",
+        "nativeModesEvidence": "out/graphite-20261018/pad5ebb-presented-modes.log",
+        "fullscreen": "PASS Main10PQ realtrustedHDCtouch,10s fullscreen hold, screenshot, exit+5s settle, Graphite backendcrash0 and sameGPU53576",
+        "color": "PASS14 scenes/APIprecision/nativepixelgates; actualseparateGraphiteGPU53576 unchanged",
+        "sustained": {
+          "result": "PASS bounded stability, not performance acceptance",
+          "nominalSeconds": 600,
+          "actualWallSeconds": 645.535,
+          "mediaAdvanceSeconds": 616.961645,
+          "mediaTimeToWallRatio": 0.95573693912801,
+          "totalFrames": 37171,
+          "droppedFrames": 5536,
+          "GPU": {
+            "startPSSKB": 652902,
+            "endPSSKB": 603198,
+            "deltaPSSKB": -49704,
+            "minPSSKB": 603198,
+            "maxPSSKB": 652902,
+            "fdMin": 152,
+            "fdMax": 153
+          },
+          "browser": {
+            "startPSSKB": 219376,
+            "endPSSKB": 198466,
+            "deltaPSSKB": -20910,
+            "minPSSKB": 198263,
+            "maxPSSKB": 219376,
+            "fdMin": 274,
+            "fdMax": 274
+          },
+          "maxBatteryC": 32,
+          "GPUrestarts": 0,
+          "pixels": "Opaque nonuniform Canvas readback every30s and native final screenshot",
+          "evidence": "out/graphite-20261018/pad5ebb-graphite-long-soak.json",
+          "resourceEvidence": "out/graphite-20261018/pad5ebb-long-resource-summary.json"
+        },
+        "fullscreenEvidence": "out/graphite-20261018/pad5ebb-main10-hdr-fullscreen-native-diagnostic.json",
+        "colorEvidence": "out/graphite-20261018/pad5ebb-graphite-color-gates.json",
+        "retainedCanvas": "PASS2000 distinct-color canvases, cross-devicecopies andreal30s hiddenbackground; sameGPU, exactretainedpixels",
+        "retainedEvidence": "out/graphite-20261018/pad5ebb-graphite-distinct-background-retained-canvas.json",
+        "sdrResume": "PASS4 grayscale captures maxError0, sameGPU",
+        "sdrResumeEvidence": "out/graphite-20261018/pad5ebb-graphite-sdr-resume.json",
+        "decoderPrecision": "PASS I420P10 copiedfromHTMLvideo; max1023 and1922537 sampleswithnonzero lowtwo bits. This testsCPUdecodeddata, not end-to-endpanelquantization.",
+        "decoderPrecisionEvidence": "out/graphite-20261018/pad5ebb-main10-cpu-precision.json",
+        "fallback": "PASS singleintentionalGPUcrash -> GaneshVulkan, samebrowser, replacedGPU, nativegraypixelsPASS",
+        "fallbackEvidence": "out/graphite-20261018/pad5ebb-fallback.json",
+        "shortSoak": {
+          "result": "PASS boundedstability; memorytrend prompted longer fresh-process run",
+          "nominalSeconds": 180,
+          "actualWallSeconds": 195.619,
+          "mediaAdvanceSeconds": 191.712532,
+          "mediaTimeToWallRatio": 0.980030222013199,
+          "GPUfdRange": [
+            165,
+            166
+          ],
+          "GPUPSSDeltaKB": 19873,
+          "evidence": "out/graphite-20261018/pad5ebb-graphite-soak.json"
+        },
+        "webgpuVideo": "PASS4 clips, bothHTMLVideoElement andVideoFrame imports, same-tasknonemptyopaqueCanvasreadback, no GPUerrors/loss; outputrgba8 andfunctional scopeonly",
+        "webgpuVideoEvidence": "out/graphite-20261018/pad5ebb-graphite-webgpu-video.json",
+        "defaultRestoration": "PASS Graphite UIpreferencefalse verified, coldrestart separateGaneshVulkan crashCount0,14color/API/nativepixel regression PASS; silent,8 originalpageURLs preserved; testtabs closed.",
+        "infrastructureRetry": "First Pad settings helper clicked omnibox twice, appending lumie://flags to owned fixture URI and hitting local404; no settingchanged. Removed redundantfirstclick and verified actualflags togglefalse. Test-owned404tab will be closed; no usertab modified.",
+        "defaultEvidence": "out/graphite-20261018/pad5ebb-default-ganesh-color-gates.json",
+        "acceptanceAudit": {
+          "reports": [
+            "pad5ebb-graphite-color-gates.json",
+            "pad5ebb-graphite-video-gates.json",
+            "pad5ebb-main10-hdr-fullscreen-native-diagnostic.json",
+            "pad5ebb-graphite-distinct-background-retained-canvas.json",
+            "pad5ebb-graphite-sdr-resume.json",
+            "pad5ebb-graphite-long-soak.json",
+            "pad5ebb-graphite-webgpu-video.json",
+            "pad5ebb-fallback.json",
+            "pad5ebb-default-ganesh-color-gates.json"
+          ],
+          "allReportsPass": true,
+          "originalURLsPreserved": true,
+          "remainingUserPages": 8
+        }
+      },
+      "acceptedFix": {
+        "source": "5ebb73135b46a8f9a77bf138d032fd10cee06917",
+        "nativeCI": 39168652994,
+        "adapterCI": 39168652978,
+        "status": "CI PASS, installedPad; selectedfunctional/video/fullscreen/recovery/resourcegates PASS; nativevideozero-copy/performance/fullCTS/physicalphotometry notaccepted.",
+        "change": "OHOS active Graphite bypasses MappableSharedImageVideoFramePool repacking, retaining10bit CPU frames; nativeNV12/P010 sampling capabilities withheld until corresponding Graphite representations work. Ganesh unchanged."
+      },
+      "currentResult": "PASS5ebb selected Pad gates; earlier547c/a4ff failures retained as history."
+    },
+    "phoneFallbackPrevious": {
+      "result": "FAIL0109b65f",
+      "expected": "GaneshVulkan",
+      "actual": "GaneshGL",
+      "intentionalGPUcrashes": 1,
+      "sourceFix": "547c retain candidate fix compiled/installed; same phone fault test PASS as recorded in phoneFallback."
+    },
+    "phoneGraphiteColor547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "evidence": "out/graphite-20261018/phone547c-graphite-retry-color-gates.json"
+    },
+    "phoneRetainedCanvas547c": {
+      "result": "PARTIAL: retained pixels PASS; background not established by invalid HOME injection",
+      "source": "547c1f3b",
+      "evidence": "out/graphite-20261018/phone547c-graphite-retained-canvas.json",
+      "backgroundAcceptance": "NOT_VALIDATED: helper used invalid uppercase HOME, background.home contains usage error, afterVisibility visible alone is insufficient."
+    },
+    "phoneVideos547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "evidence": "out/graphite-20261018/phone547c-graphite-video-gates.json"
+    },
+    "phoneGraphiteColor547cInfrastructureRetry": {
+      "firstAttempt": "No samples executed: fixture18888 HTTP server had exited and page was chrome-error/ERR_CONNECTION_RESET. Native process/backend stable.",
+      "recovery": "Restarted missing local fixture service and verified exact HTML before retry;14 scenes and native screenshot gates PASS",
+      "failedEvidence": "out/graphite-20261018/phone547c-graphite-color.json"
+    },
+    "phoneFullscreen547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "evidence": "out/phone-validation-20261016/phone547c-graphite-fullscreen-fullscreen-native-diagnostic.json"
+    },
+    "phoneSdrResume547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "evidence": "out/phone-validation-20261015/phone547c-graphite-sdr-resume.json"
+    },
+    "phoneGaneshRegression547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "evidence": "out/graphite-20261018/phone547c-ganesh-color-gates.json"
+    },
+    "deviceGraphiteFirstFrame547c": {
+      "result": "PASS",
+      "source": "547c1f3b",
+      "browserPID": 27829,
+      "gpuPID": 28764,
+      "presentedModes": [
+        1,
+        2,
+        3
+      ],
+      "meaning": "1 SDR10;2 HDR10;3 DisplayP3 SDR10",
+      "evidence": "out/graphite-20261018/phone547c-graphite-presented-modes.log"
+    }
+  },
+  "limitations": [
+    "Graphite video uses CPU buffer-mode frames and raster upload; native NV12/P010 video external-sampler representations remain unsupported. Ganesh native-video route retained.",
+    "Latest5ebb installed/tested onPad only. Phone previous547c functional acceptance retained, except its invalid retained-background claim withdrawn; latestphonebinary regression remains outstanding.",
+    "Pad long run645.535s wall advanced616.961645s media with5536/37171 droppedframes (~14.9%). Boundedstability observed; performance notaccepted or claimed improved.",
+    "Pad WebGPU external-video tests cover HTMLVideoElement/VideoFrame imports andrgba8 readback, not HDR video precision orzero-copy acceptance.",
+    "Native Chromium launch gtest added earlier but notrun separately; hosttransport and21shellrouting tests passed.",
+    "No fullWebGPU CTS or physical HDR peak/P3 gamut photometry; screenshots andAPIreadback have narrower scope."
+  ],
+  "phoneOperation": "Previoussession only: Installed CI547c engine + shared Lumie19c UI; normal Graphite regression PASS, deliberate single GPU crash verifies GaneshVulkan fallback. Restored Graphitefalse, full restart, Ganesh color/API14 PASS. Silent and kept awake. Removed only owned test tabs;5 user pages preserved. This Pad turn did not install/control phone; latest5ebb phone regression outstanding.",
+  "PadOperation": "GEM-W00/Maleoon935 connected192.168.8.136:38905. Installedpush-CI5ebb engine with sharedLumie UI; selectedGraphite anddefaultGanesh gates PASS. RestoredGraphitefalse/GaneshVulkan, silent;8 originalpageURLs preserved, onlyownedfixturetabs closed. Padtestkeepawake loop stopped; originalsleep policy unchanged.",
+  "updatedUTC": "2026-10-18T22:11:29.417063+00:00",
+  "initialCI": {
+    "source": "6f62291567601d9fcbbd5a29fca64dc81eeb9a57",
+    "run": 39109317498,
+    "result": "PATCH_CONTEXT_FAILURE",
+    "adapterRun": 39109317505,
+    "adapterResult": "PASS"
+  },
+  "currentCI": {
+    "source": "5ebb73135b46a8f9a77bf138d032fd10cee06917",
+    "run": 39168652994,
+    "result": "PASS",
+    "adapterRun": 39168652978,
+    "adapterResult": "PASS"
+  },
+  "shell": {
+    "source": "19c4b84",
+    "branch": "codex/pad-fullscreen-restore",
+    "pushed": true,
+    "tests": {
+      "processMode": 21,
+      "passed": 21
+    },
+    "default": "off",
+    "toggle": "Skia Graphite; requires Skia Vulkan; full restart"
+  },
+  "previousCI": [
+    {
+      "source": "2d81b22e",
+      "run": 39109397010,
+      "result": "FAILED"
+    },
+    {
+      "source": "4c06c71c",
+      "run": 39110216315,
+      "result": "FAILED",
+      "diagnostic": "gpu_init.cc:1014 unreachable code after unconditional OHOS return; corrected by #else/#endif around upstream branch",
+      "steps": 33,
+      "failures": 1,
+      "elapsedSeconds": 161,
+      "graphiteOutputObject": "COMPILED; not linked or runtime accepted"
+    }
+  ],
+  "artifact": {
+    "source": "5ebb7313",
+    "run": 39168652994,
+    "buildId": "9a814bca9761dd21b4b0527341ac9e91b81e8599",
+    "engineSHA256": "b3ea42696ba0b969132eacdccf36f67210adab4d0c03969ba24491b839f56932",
+    "DawnRegistrationCount": 184,
+    "DawnRegistrationCheck": "PASS"
+  },
+  "validatedNativeSource": "5ebb7313 onPad;547c1f3b onphone",
+  "padPreparedHap": "out/pad-fix-20261015/pad5ebb-default.hap; installedPad; embedded CIengine SHA verified",
+  "artifact547c": {
+    "source": "547c1f3b",
+    "run": 39158416470,
+    "buildId": "56d5bcd4ebb9a6e39c3622c2819ecac522c78ba0",
+    "engineSHA256": "ff0ed468d5cb299a1fd61d8ae95a24fbb327a46a04ebf40f7c88c09dcceca403",
+    "DawnRegistrationCount": 184,
+    "DawnRegistrationCheck": "PASS"
+  },
+  "phoneFinalState": {
+    "nativeSource": "547c1f3b",
+    "backend": "GaneshVulkan",
+    "graphitePreference": false,
+    "inProcessGpu": false,
+    "processCrashCount": 0,
+    "silent": true,
+    "awake": true,
+    "preservedUserPages": 5,
+    "evidence": "out/graphite-20261018/phone547c-final-state.json"
+  },
+  "artifact0109": {
+    "source": "0109b65f",
+    "run": 39156242758,
+    "buildId": "80b0e91b1573d234b3752e60263410e2ad4f0b79",
+    "engineSHA256": "3c07f71cb12a4c75ca2dcfb085c1995a8b45d021b75272e33c2f85dfc371f1c4",
+    "DawnRegistrationCount": 184,
+    "DawnRegistrationCheck": "PASS"
+  },
+  "padFinalState": {
+    "nativeSource": "5ebb7313",
+    "backend": "GaneshVulkan",
+    "graphitePreference": false,
+    "processCrashCount": 0,
+    "inProcessGpu": false,
+    "preservedUserPages": 8,
+    "silent": true,
+    "keepAwakeEnded": true,
+    "evidence": "out/graphite-20261018/pad5ebb-final-state.json",
+    "cleanupEvidence": "out/graphite-20261018/pad5ebb-final-cleanup.json"
+  },
+  "implementedSafeguards": [
+    "Avoid unused Ganesh VkDevice while Graphite is active; fallback recomputes Vulkan support",
+    "Enable float Canvas presentation only from active Dawn native-memory/sync-fd capabilities",
+    "Clear cached imports on native-window replacement; take window reference under mirror lock",
+    "Validate real display gamut/HDR support before publishing native-child Graphite capabilities"
+  ]
+}

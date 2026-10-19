@@ -18,6 +18,26 @@
 
 namespace ui {
 
+// Application/window visibility published by the shell. Safe to query from
+// media sequences without posting back to a UI thread that may be hidden.
+void SetOhosApplicationVisible(bool visible);
+bool IsOhosApplicationVisible();
+
+// Notifications are posted to the sequence on which the observer registers.
+// Remove the observer on that sequence before destroying it. Consumers must
+// recheck IsOhosApplicationVisible(), since a newer transition may be pending.
+class OhosApplicationVisibilityObserver {
+ public:
+  virtual void OnOhosApplicationVisibilityChanged(bool visible) = 0;
+
+ protected:
+  virtual ~OhosApplicationVisibilityObserver() = default;
+};
+void AddOhosApplicationVisibilityObserver(
+    OhosApplicationVisibilityObserver* observer);
+void RemoveOhosApplicationVisibilityObserver(
+    OhosApplicationVisibilityObserver* observer);
+
 struct OhosNativeSurface {
   void* window = nullptr;
   gfx::Rect bounds;
@@ -218,7 +238,8 @@ struct OhosGpuChildWidgetState {
   int32_t application_window_id = 0;
 };
 
-// Browser frame worker. Takes a native reference under the registry lock.
+// Frame worker. Takes a native reference under the browser registry lock or
+// native GPU child's mirror lock. The fork child must use its broker instead.
 // Caller must OH_NativeWindow_NativeObjectUnreference the returned window.
 std::optional<OhosNativeSurface> AcquireOhosNativeSurfaceForPhoneGpu(
     gfx::AcceleratedWidget widget);

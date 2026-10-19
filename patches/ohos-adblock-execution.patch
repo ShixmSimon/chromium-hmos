@@ -1,0 +1,335 @@
+diff --git a/third_party/blink/public/common/loader/url_loader_throttle.h b/third_party/blink/public/common/loader/url_loader_throttle.h
+--- a/third_party/blink/public/common/loader/url_loader_throttle.h
++++ b/third_party/blink/public/common/loader/url_loader_throttle.h
+@@ -10,6 +10,8 @@
+ #include <vector>
+ 
+ #include "base/memory/raw_ptr.h"
++#include "base/memory/scoped_refptr.h"
++#include "build/build_config.h"
+ #include "base/types/strong_alias.h"
+ #include "mojo/public/cpp/bindings/pending_receiver.h"
+ #include "mojo/public/cpp/bindings/pending_remote.h"
+@@ -29,6 +31,7 @@
+ namespace network {
+ struct HttpRequestHeadersUpdateParams;
+ struct ResourceRequest;
++class SharedURLLoaderFactory;
+ struct URLLoaderCompletionStatus;
+ }  // namespace network
+ 
+@@ -67,6 +70,15 @@
+     // Resumes the deferred resource load. It is a no-op if the resource load is
+     // not deferred or has already been canceled.
+     virtual void Resume() = 0;
++#if BUILDFLAG(IS_OHOS)
++    // Only while start/redirect is deferred. Avoid retaining the borrowed
++    // ResourceRequest / RedirectInfo pointers across asynchronous decisions.
++    // URL changes are same-origin HTTP(S) only; an optional local factory
++    // replaces a blocked response without sending its request to the network.
++    virtual bool OverrideDeferredRequest(
++        const GURL& url,
++        scoped_refptr<network::SharedURLLoaderFactory> factory);
++#endif
+ 
+     // Updates the response head which is deferred to be sent. This method needs
+     // to be called when the response is deferred on
+diff --git a/third_party/blink/common/loader/url_loader_throttle.cc b/third_party/blink/common/loader/url_loader_throttle.cc
+--- a/third_party/blink/common/loader/url_loader_throttle.cc
++++ b/third_party/blink/common/loader/url_loader_throttle.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "third_party/blink/public/common/loader/url_loader_throttle.h"
++#include "services/network/public/cpp/shared_url_loader_factory.h"
+ 
+ #include "base/notimplemented.h"
+ #include "base/notreached.h"
+@@ -10,6 +11,12 @@
+ #include "services/network/public/mojom/url_response_head.mojom.h"
+ 
+ namespace blink {
++#if BUILDFLAG(IS_OHOS)
++bool URLLoaderThrottle::Delegate::OverrideDeferredRequest(
++    const GURL&, scoped_refptr<network::SharedURLLoaderFactory>) {
++  return false;
++}
++#endif
+ 
+ void URLLoaderThrottle::Delegate::UpdateDeferredResponseHead(
+     network::mojom::URLResponseHeadPtr new_response_head,
+diff --git a/third_party/blink/public/common/loader/throttling_url_loader.h b/third_party/blink/public/common/loader/throttling_url_loader.h
+--- a/third_party/blink/public/common/loader/throttling_url_loader.h
++++ b/third_party/blink/public/common/loader/throttling_url_loader.h
+@@ -305,6 +305,10 @@
+   // Holds any info needed to start or restart the request. Used when start is
+   // deferred or when FollowRedirectForcingRestart() is called.
+   std::unique_ptr<StartInfo> start_info_;
++#if BUILDFLAG(IS_OHOS)
++  scoped_refptr<network::SharedURLLoaderFactory> ohos_override_factory_;
++  bool ohos_restart_on_follow_ = false;
++#endif
+ 
+   struct ResponseInfo {
+     explicit ResponseInfo(network::mojom::URLResponseHeadPtr in_response_head);
+diff --git a/third_party/blink/common/loader/throttling_url_loader.cc b/third_party/blink/common/loader/throttling_url_loader.cc
+--- a/third_party/blink/common/loader/throttling_url_loader.cc
++++ b/third_party/blink/common/loader/throttling_url_loader.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "third_party/blink/public/common/loader/throttling_url_loader.h"
++#include "url/origin.h"
+ 
+ #include <algorithm>
+ #include <string_view>
+@@ -144,6 +145,37 @@
+     loader_->StopDeferringForThrottle(throttle_);
+   }
+ 
++  #if BUILDFLAG(IS_OHOS)
++  bool OverrideDeferredRequest(
++      const GURL& url,
++      scoped_refptr<network::SharedURLLoaderFactory> factory) override {
++    if (!loader_ || !loader_->start_info_ || loader_->loader_completed_)
++      return false;
++    const auto stage = loader_->deferred_stage_;
++    if (stage != DEFERRED_START && stage != DEFERRED_REDIRECT)
++      return false;
++    const GURL& original = stage == DEFERRED_START
++        ? loader_->start_info_->url_request.url
++        : loader_->redirect_info_->redirect_info.new_url;
++    if (!url.is_empty() && (!url.SchemeIsHTTPOrHTTPS() ||
++        !url::Origin::Create(original).IsSameOriginWith(url)))
++      return false;
++    if (url.is_valid() && url != original) {
++      auto& target = stage == DEFERRED_START
++          ? loader_->throttle_will_start_redirect_url_
++          : loader_->throttle_will_redirect_redirect_url_;
++      if (!target.is_empty())
++        return false;
++      target = url;
++    }
++    if (factory) {
++      loader_->ohos_override_factory_ = std::move(factory);
++      loader_->ohos_restart_on_follow_ = stage == DEFERRED_REDIRECT;
++    }
++    return true;
++  }
++#endif
++
+   void UpdateDeferredResponseHead(
+       network::mojom::URLResponseHeadPtr new_response_head,
+       mojo::ScopedDataPipeConsumerHandle body) override {
+@@ -322,6 +354,21 @@
+ void ThrottlingURLLoader::FollowRedirect(
+     network::HttpRequestHeadersUpdateParams headers_update_params) {
+   MergeRequestHeaders(std::move(headers_update_params));
++#if BUILDFLAG(IS_OHOS)
++  if (ohos_restart_on_follow_) {
++    ohos_restart_on_follow_ = false;
++    // This may follow our synthesized removeparam redirect. Do not synthesize
++    // it again when restarting on the replacement factory.
++    throttle_will_start_redirect_url_ = GURL();
++    start_info_->url_request.UpdateOnRedirect(redirect_info_->redirect_info);
++    if (!throttle_will_redirect_redirect_url_.is_empty()) {
++      start_info_->url_request.url = throttle_will_redirect_redirect_url_;
++      throttle_will_redirect_redirect_url_ = GURL();
++    }
++    FollowRedirectForcingRestart();
++    return;
++  }
++#endif
+ 
+   if (!throttle_will_start_redirect_url_.is_empty()) {
+     throttle_will_start_redirect_url_ = GURL();
+@@ -520,7 +567,12 @@
+     base::UmaHistogramBoolean("FetchKeepAlive.Renderer.Total.Started", true);
+   }
+   DCHECK(start_info_->url_loader_factory);
+-  start_info_->url_loader_factory->CreateLoaderAndStart(
++  auto factory = start_info_->url_loader_factory;
++#if BUILDFLAG(IS_OHOS)
++  if (ohos_override_factory_)
++    factory = ohos_override_factory_;
++#endif
++  factory->CreateLoaderAndStart(
+       url_loader_.BindNewPipeAndPassReceiver(start_info_->task_runner),
+       start_info_->request_id, start_info_->options, start_info_->url_request,
+       client_receiver_.BindNewPipeAndPassRemote(start_info_->task_runner),
+diff --git a/mojo/public/cpp/bindings/sync_call_restrictions.h b/mojo/public/cpp/bindings/sync_call_restrictions.h
+--- a/mojo/public/cpp/bindings/sync_call_restrictions.h
++++ b/mojo/public/cpp/bindings/sync_call_restrictions.h
+@@ -46,6 +46,8 @@
+ class WebAppShortcutCopierSyncCallHelper;
+ }  // namespace web_app
+ #endif
++
++namespace chrome::ohos::adblock { class EarlyCosmetics; }
+ 
+ namespace mojo {
+ class ScopedAllowSyncCallForTesting;
+@@ -132,6 +134,11 @@
+ #if BUILDFLAG(IS_MAC)
+   friend class web_app::WebAppShortcutCopierSyncCallHelper;
+ #endif
++#if BUILDFLAG(IS_OHOS)
++  // One renderer -> browser query before the first page script. Matching runs
++  // on a worker; the browser never waits on renderer work or network IO.
++  friend class chrome::ohos::adblock::EarlyCosmetics;
++#endif
+   // END ALLOWED USAGE.
+ 
+ #if ENABLE_SYNC_CALL_RESTRICTIONS
+diff --git a/chrome/common/chrome_isolated_world_ids.h b/chrome/common/chrome_isolated_world_ids.h
+--- a/chrome/common/chrome_isolated_world_ids.h
++++ b/chrome/common/chrome_isolated_world_ids.h
+@@ -27,6 +27,9 @@
+   // Numbers for isolated worlds for extensions are set in
+   // extensions/renderer/script_injection.cc, and are are greater than or equal
+   // to this number.
++#if BUILDFLAG(IS_OHOS)
++  ISOLATED_WORLD_ID_LUMIE_ADBLOCK,
++#endif
+   ISOLATED_WORLD_ID_EXTENSIONS
+ };
+ // LINT.ThenChange(//chrome/android/java/src/org/chromium/chrome/browser/common/ChromeIsolatedWorldIds.java)
+diff --git a/content/public/browser/content_browser_client.h b/content/public/browser/content_browser_client.h
+--- a/content/public/browser/content_browser_client.h
++++ b/content/public/browser/content_browser_client.h
+@@ -1976,6 +1976,11 @@
+       bool is_for_network_service);
+ 
+   // Returns true when the embedder wants to intercept a websocket connection.
++#if BUILDFLAG(IS_OHOS)
++  virtual void CheckOhosWebSocket(const GlobalRenderFrameHostId& frame_id,
++      const url::Origin& origin, const GURL& url,
++      base::OnceCallback<void(bool)> callback);
++#endif
+   virtual bool WillInterceptWebSocket(RenderFrameHost* frame);
+ 
+   struct CONTENT_EXPORT WebSocketOptions {
+diff --git a/content/public/browser/content_browser_client.cc b/content/public/browser/content_browser_client.cc
+--- a/content/public/browser/content_browser_client.cc
++++ b/content/public/browser/content_browser_client.cc
+@@ -1095,6 +1095,12 @@
+   DCHECK(browser_context);
+ }
+ 
++#if BUILDFLAG(IS_OHOS)
++void ContentBrowserClient::CheckOhosWebSocket(const GlobalRenderFrameHostId&,
++    const url::Origin&, const GURL&, base::OnceCallback<void(bool)> callback) {
++  std::move(callback).Run(true);
++}
++#endif
+ bool ContentBrowserClient::WillInterceptWebSocket(RenderFrameHost*) {
+   return false;
+ }
+diff --git a/chrome/browser/chrome_content_browser_client.h b/chrome/browser/chrome_content_browser_client.h
+--- a/chrome/browser/chrome_content_browser_client.h
++++ b/chrome/browser/chrome_content_browser_client.h
+@@ -712,6 +712,11 @@
+       int64_t navigation_id,
+       scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner)
+       override;
++#if BUILDFLAG(IS_OHOS)
++  void CheckOhosWebSocket(const content::GlobalRenderFrameHostId& frame_id,
++      const url::Origin& origin, const GURL& url,
++      base::OnceCallback<void(bool)> callback) override;
++#endif
+   bool WillInterceptWebSocket(content::RenderFrameHost* frame) override;
+   content::ContentBrowserClient::WebSocketOptions GetWebSocketOptions(
+       content::RenderFrameHost* frame) override;
+diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
+--- a/chrome/browser/chrome_content_browser_client.cc
++++ b/chrome/browser/chrome_content_browser_client.cc
+@@ -6750,6 +6750,13 @@
+   return prefetch_handler;
+ }
+ 
++#if BUILDFLAG(IS_OHOS)
++void ChromeContentBrowserClient::CheckOhosWebSocket(
++    const content::GlobalRenderFrameHostId& frame_id, const url::Origin& origin,
++    const GURL& url, base::OnceCallback<void(bool)> callback) {
++  chrome::ohos::adblock::CheckWebSocket(frame_id, origin, url, std::move(callback));
++}
++#endif
+ bool ChromeContentBrowserClient::WillInterceptWebSocket(
+     content::RenderFrameHost* frame) {
+ #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+diff --git a/content/browser/websockets/websocket_connector_impl.h b/content/browser/websockets/websocket_connector_impl.h
+--- a/content/browser/websockets/websocket_connector_impl.h
++++ b/content/browser/websockets/websocket_connector_impl.h
+@@ -10,6 +10,7 @@
+ #include <vector>
+ 
+ #include "base/unguessable_token.h"
++#include "base/memory/weak_ptr.h"
+ #include "content/public/browser/content_browser_client.h"
+ #include "content/public/browser/global_routing_id.h"
+ #include "content/public/browser/weak_document_ptr.h"
+@@ -58,6 +59,15 @@
+       network::mojom::IPAddressSpace target_address_space) override;
+ 
+  private:
++#if BUILDFLAG(IS_OHOS)
++  void ConnectFiltered(const GURL& url,
++      const std::vector<std::string>& requested_protocols,
++      const std::optional<std::string>& user_agent,
++      net::StorageAccessApiStatus storage_access_api_status,
++      mojo::PendingRemote<network::mojom::WebSocketHandshakeClient> handshake_client,
++      const std::optional<base::UnguessableToken>& throttling_profile_id,
++      network::mojom::IPAddressSpace target_address_space, bool allowed);
++#endif
+   static void ConnectCalledByContentBrowserClient(
+       const std::vector<std::string>& requested_protocols,
+       net::StorageAccessApiStatus storage_access_api_status,
+@@ -86,6 +96,9 @@
+   const network::mojom::ClientSecurityStatePtr client_security_state_;
+   const base::UnguessableToken network_restrictions_id_;
+   const std::optional<base::UnguessableToken> devtools_worker_token_;
++#if BUILDFLAG(IS_OHOS)
++  base::WeakPtrFactory<WebSocketConnectorImpl> weak_factory_{this};
++#endif
+ };
+ 
+ }  // namespace content
+diff --git a/content/browser/websockets/websocket_connector_impl.cc b/content/browser/websockets/websocket_connector_impl.cc
+--- a/content/browser/websockets/websocket_connector_impl.cc
++++ b/content/browser/websockets/websocket_connector_impl.cc
+@@ -7,6 +7,8 @@
+ #include <algorithm>
+ 
+ #include "base/command_line.h"
++#include "net/base/net_errors.h"
++#include "mojo/public/cpp/bindings/remote.h"
+ #include "base/not_fatal_until.h"
+ #include "content/browser/devtools/devtools_instrumentation.h"
+ #include "content/browser/renderer_host/render_frame_host_impl.h"
+@@ -95,6 +97,26 @@
+         handshake_client,
+     const std::optional<base::UnguessableToken>& throttling_profile_id,
+     network::mojom::IPAddressSpace target_address_space) {
++#if BUILDFLAG(IS_OHOS)
++  GetContentClient()->browser()->CheckOhosWebSocket(frame_id_, origin_, url,
++      base::BindOnce(&WebSocketConnectorImpl::ConnectFiltered,
++          weak_factory_.GetWeakPtr(), url, requested_protocols, user_agent,
++          storage_access_api_status, std::move(handshake_client),
++          throttling_profile_id, target_address_space));
++}
++void WebSocketConnectorImpl::ConnectFiltered(const GURL& url,
++    const std::vector<std::string>& requested_protocols,
++    const std::optional<std::string>& user_agent,
++    net::StorageAccessApiStatus storage_access_api_status,
++    mojo::PendingRemote<network::mojom::WebSocketHandshakeClient> handshake_client,
++    const std::optional<base::UnguessableToken>& throttling_profile_id,
++    network::mojom::IPAddressSpace target_address_space, bool allowed) {
++  if (!allowed) {
++    mojo::Remote<network::mojom::WebSocketHandshakeClient> client(std::move(handshake_client));
++    client->OnFailure("Blocked by content filter", net::ERR_BLOCKED_BY_CLIENT, -1);
++    return;
++  }
++#endif
+   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+ 
+   // If the connector was created for a RenderFrame or a DedicatedWorker

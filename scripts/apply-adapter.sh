@@ -42,22 +42,44 @@ git -C "${chromium_src}" apply \
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-rule-sources.patch"
 git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-extension-updates.patch"
+git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-adblock-rust.patch" \
+  "${project_root}/patches/ohos-adblock-execution.patch" \
+  "${project_root}/patches/ohos-viewport-translation.patch"
+git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-phone-fork.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-phone-gpu-shared-output.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-ime-explicit-keyboard-request.patch"
 git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-adaptive-vsync.patch"
+git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-phone-skia-vulkan.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-skia-output-format-diagnostics.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-vulkan-sdr-output.patch"
+git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-vulkan-hdr-output.patch"
+git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-phone-vulkan-shared-images.patch"
+git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-vulkan-cached-upload.patch"
+git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-phone-browser-media.patch"
+git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-video-zero-copy.patch"
+git -C "${chromium_src}" apply "${project_root}/patches/ohos-phone-vulkan-video.patch"
 while read -r deps_path deps_patch; do
   [[ -z "${deps_path}" || "${deps_path}" == \#* ]] && continue
   git -C "${chromium_src}/${deps_path}" apply --binary \
     "${deps_patch_root}/${deps_patch}"
 done <"${deps_patch_root}/series"
+git -C "${chromium_src}/third_party/skia" apply "${project_root}/patches/ohos-skia-native-ycbcr.patch"
+git -C "${chromium_src}/third_party/dawn" apply \
+  "${project_root}/patches/ohos-dawn-instance-diagnostics.patch"
 git -C "${chromium_src}/third_party/angle" apply \
   "${project_root}/patches/ohos-angle-vulkan-msrt.patch"
 rsync -a "${project_root}/overlay/" "${chromium_src}/"

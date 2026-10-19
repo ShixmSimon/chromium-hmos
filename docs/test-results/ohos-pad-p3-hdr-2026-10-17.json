@@ -1,0 +1,270 @@
+{
+  "updatedUTC": "2026-10-17T08:39:18.580428+00:00",
+  "request": "Investigate Pad reports no P3/HDR; phone testing paused by user.",
+  "device": "192.168.8.136:38905",
+  "connection": "Pad unlocked successfully using power-shell wakeup and native touch swipe. Installed candidate; left test page in SDR. Screen-off override 3600000ms; no keep-awake loop running.",
+  "currentRuntime": {
+    "baselineBackend": "GaneshVulkan + ANGLE Vulkan",
+    "baselineQueries": {
+      "p3": false,
+      "hdr": false,
+      "videoHdr": false
+    },
+    "evidence": "out/pad-p3-hdr-20261017/baseline-system-info.json; baseline-queries.json",
+    "candidateInstalled": true,
+    "candidateSource": "e5db6d8d",
+    "final": {
+      "p3": true,
+      "hdr": true,
+      "videoHdr": true,
+      "fullscreen": false,
+      "mode": "2d-srgb",
+      "visible": "visible"
+    }
+  },
+  "historicalEvidence": {
+    "report": "docs/test-results/ohos-pad-webgl-float-2026-10-16.json",
+    "source": "060f7e9d",
+    "backend": "ANGLE GLES +SkiaGaneshVulkan",
+    "browserQueries": "p3=false,hdr=false evenwhenCanvasdisplay-p3contextcreated",
+    "scope": "ContextcolorSpaceacceptanceandWebGLreadbackdo not prove nativeP3scanout."
+  },
+  "sourceFindings": [
+    {
+      "file": "overlay/ui/ozone/platform/ohos/ohos_screen.cc",
+      "function": "ReadDisplayColorSpaces / OhosRequiresSdrOutput",
+      "finding": "use-vulkan=native forcesglobalSDRfallback unlessverified_phone_hdr orverified_phone_p3. Fallback clampsHDRrelativeMax1. NormalWSI publishesVizper-outputcaps separately."
+    },
+    {
+      "file": "overlay/ui/ozone/platform/ohos/ohos_phone_gpu_channel.cc",
+      "finding": "VerifiedphoneP3/HDR flags setthroughphoneSharedBufferchannel; ordinaryPadWSI hasnocorrespondingglobalbrowserupdate."
+    },
+    {
+      "file": "patches/ohos-vulkan-hdr-output.patch",
+      "finding": "NormalWSI marksHDRcapable afterHDR10+SDRformatpairquery andHDRmetadataextension checks, butexplicitly mapsWideColorGamut tosRGB. Reshape mapsallnonHDR VkColorSpace toSRGB; nativeP3WSItransitionnotimplemented."
+    },
+    {
+      "file": "overlay/ui/ozone/platform/ohos/ohos_output_color_config.cc",
+      "function": "MakeOhosOutputColorSpaces",
+      "finding": "kP3Sdr10 currentlydefaultshelpertoSRGB; phoneoutputaddsseparateP3override."
+    }
+  ],
+  "conclusion": "Pad native Skia Vulkan P3/HDR output and reporting verified. Follow-up e5db6d8d also fixes background visibility and keeps unverified GL+ANGLE Vulkan output SDR; original intermittent driver DEVICE_LOST is not claimed permanently fixed.",
+  "next": [
+    "See latest follow-up report for final results and remaining validation scope.",
+    "Phone remains paused until user returns it."
+  ],
+  "phoneAutomation": "Phone untouched during all Pad work; phone controllers and loggers remain stopped.",
+  "liveSystemEvidence": {
+    "displayDump": "out/pad-validation-20261015/p3-hdr-display-initial.txt",
+    "nativeLog": "out/pad-validation-20261015/p3-hdr-native-initial.log",
+    "supportedHdrFormatValues": [
+      2,
+      1,
+      3
+    ],
+    "activeHdrFormatValue": 2,
+    "supportedGamutValues": [
+      0,
+      4,
+      6
+    ],
+    "activeGamutValue": 4,
+    "supportedColorSpaceValues": [
+      0,
+      2294273,
+      2294278
+    ],
+    "browserNativeLog": "10-17 13:19:23-24 pid3770 repeats: global screen keeps SDR fallback; Vulkan negotiates color per output",
+    "processFreeze": "DisplayManager freeze dump includesLumiepid3770; explainsnoCDPresponsewhilekeyguardlocked.",
+    "interpretation": "System listsHDRcapabilities whilebrowserlogsSDRglobalfallback. DoesnotprovethatcurrentbrowseroutputsHDRorP3; gammatenumsneedrespectivemapping.",
+    "remainingRuntimeDependency": "Resolved: Pad successfully unlocked by native touch swipe."
+  },
+  "implementation": {
+    "source": "29f5a5e71fba7d5c9536ac0138365181a5643373",
+    "nativeCi": 39007994996,
+    "adapterCi": 39007994992,
+    "state": "Native and adapter CI SUCCESS; artifact SHA256 and actual Dawn table verified; Pad HAP packaged and installed successfully",
+    "changes": [
+      "P3 WSI exactformat/colorpairprobe andP3/SRGB/PQcontenttransitions",
+      "SeparatebrowserWSIcapabilityregistry perlivewidget; independentHDR/P3flags",
+      "NormalNCPGPU callbackwithgeneration,known-surfaceandpopupguards",
+      "GPUdeath/outputfailurerevocation; currentSDRallocationrequired beforepublication",
+      "No inventedluminance; systembrightnessandcurrentheadroomretained"
+    ],
+    "sourceCheck": "out/pad-p3-hdr-20261017/patch-source-verification.json",
+    "limitations": [
+      "FormatpairenumerationplusSDRallocation isnotactualHDR/P3firstframeacceptance",
+      "P3 remainsfalse ifchosen10bitWSIformat hasnoP3pair",
+      "NativeHDRmediaquery mayremainfalseifrealcurrentheadroom<=1"
+    ],
+    "followup": "Vulkan-only reverse callback bootstrap guard committed and CI passed; GL bootstrap schema preserved.",
+    "binaryCheck": {
+      "entries": 184,
+      "expectedCount": 184,
+      "mismatches": [],
+      "pass": true,
+      "buildId": "2d22ecd4ce99f941accef0f0fe7ccbf0d18fa511",
+      "packagedBuildId": "2d22ecd4ce99f941accef0f0fe7ccbf0d18fa511",
+      "packagedTableMatches": true
+    },
+    "artifacts": {
+      "run": "39007994996",
+      "source": "29f5a5e7",
+      "har_sha256": "466850efb9a10d28509410bdbb359072cdf53590ebcfea18387f8cbbb9015717",
+      "engine_sha256": "b5e3edb812bb16d06b6febeefdcd563fe3cc2ae430880db1109e9459666f5abf"
+    },
+    "package": {
+      "native_source": "29f5a5e7",
+      "native_ci": "39007994996",
+      "engine_sha256": "b5e3edb812bb16d06b6febeefdcd563fe3cc2ae430880db1109e9459666f5abf",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/pad-fix-20261015/pad-29f5-p3-hdr.hap",
+      "hap_sha256": "e868095f66bf165e5bb8799444f1a8ad41b424b5a4d1357718cd2ac9c98e917b",
+      "pad_authorized_profile": true,
+      "native_compile": false
+    }
+  },
+  "sourceFindingsTiming": "Findings above describe the pre-fix source at 9b30a697, resolved by 6e87ef8b and 29f5a5e7 unless stated otherwise.",
+  "runtimeValidation": {
+    "colorMatrix": {
+      "pass": true,
+      "distinctModes": 7,
+      "samples": 8,
+      "evidence": "out/pad-p3-hdr-20261017/candidate-color-report.json",
+      "scope": "Canvas2D sRGB/P3/unorm8/float16 and WebGL2 sRGB/P3/RGBA16F, then SDR recovery. Readback and compositor screenshots support rendering, not physical gamut/peak luminance."
+    },
+    "nativeOutput": {
+      "pass": true,
+      "p3Pair": true,
+      "browserCapabilities": {
+        "hdr": true,
+        "p3": true
+      },
+      "swapchainFormat": 64,
+      "transitions": [
+        "1 -> 3",
+        "3 -> 2",
+        "2 -> 1"
+      ],
+      "modeMeaning": {
+        "1": "SDR10 sRGB",
+        "2": "HDR10 BT2020/PQ",
+        "3": "Display-P3 SDR10"
+      },
+      "evidence": "out/pad-p3-hdr-20261017/candidate-native.log"
+    },
+    "aboutGpu": {
+      "wcg": "P3/SRGB",
+      "hdr": "BT2020/PQ",
+      "colorVolume": "p3",
+      "bitsPerComponent": 10,
+      "hdrRelativeMaximum": 5,
+      "scope": "Runtime reported values, not panel photometry. Brightness/headroom from native callback, not invented peak luminance.",
+      "evidence": "out/pad-p3-hdr-20261017/candidate-about-gpu.txt"
+    },
+    "repeatedTransitions": {
+      "cycles": 3,
+      "pass": true,
+      "gpuCrashCount": 0,
+      "evidence": "out/pad-p3-hdr-20261017/lifecycle-report.json"
+    },
+    "popupLifetime": {
+      "pass": true,
+      "nativeWidget": 2,
+      "scope": "Created and closed separate browser popup; main capabilities retained. Anchored translucent popup not tested.",
+      "evidence": "out/pad-p3-hdr-20261017/lifecycle-report.json"
+    },
+    "fullscreen": {
+      "source": "29f5a5e7",
+      "button": {
+        "x": 240.5,
+        "y": 417.875
+      },
+      "fullscreen": {
+        "active": true,
+        "p3": true,
+        "hdr": true,
+        "w": 1298,
+        "h": 866
+      },
+      "restored": {
+        "active": false,
+        "p3": true,
+        "hdr": true,
+        "report": {
+          "time": "2026-10-17T06:13:26.056Z",
+          "mode": "2d-srgb",
+          "userAgent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 OpenHarmony/7.0",
+          "p3": true,
+          "hdr": true,
+          "attributes": {
+            "alpha": false,
+            "colorSpace": "srgb",
+            "colorType": "unorm8",
+            "desynchronized": false,
+            "toneMapping": {
+              "mode": "standard"
+            },
+            "willReadFrequently": false
+          },
+          "leftPixel": [
+            0,
+            255,
+            0,
+            255
+          ]
+        }
+      },
+      "pass": true
+    },
+    "glGlesControl": {
+      "pass": true,
+      "backend": "GaneshGL + ANGLE GLES",
+      "distinctModes": 7,
+      "scope": "Rendering/startup regression control; not proof of new native P3/HDR GL scanout support.",
+      "evidence": "out/pad-p3-hdr-20261017/gles-control-color-report.json"
+    },
+    "finalBackend": {
+      "skia": "GaneshVulkan",
+      "angle": "Vulkan",
+      "inProcessGpu": false,
+      "processCrashCount": 0,
+      "webGpuEnabled": true,
+      "originalSettingsRestored": true
+    },
+    "silence": {
+      "ringer": "SILENT",
+      "musicLevel": 0,
+      "musicMuted": true,
+      "ringLevel": 0,
+      "ringMuted": true,
+      "evidence": "out/pad-p3-hdr-20261017/final-audio.txt"
+    }
+  },
+  "openIssues": [
+    {
+      "issue": "Skia GL + ANGLE Vulkan HDR Canvas context loss",
+      "state": "MITIGATED: unverified EGL P3/PQ output now SDR. 80 switches and final float/HDR request test pass; intermittent driver root cause remains unproven.",
+      "evidence": [
+        "out/pad-p3-hdr-20261017/gl-control-color-report.json",
+        "out/pad-p3-hdr-20261017/candidate-native.log"
+      ],
+      "scope": "ANGLE Vulkan experiment was enabled in initial user settings. Startup succeeds; loss occurs at 2d-p3-hdr. Skia Vulkan + ANGLE Vulkan passes tested matrix; Skia GL + ANGLE GLES passes tested matrix. Pre-fix baseline for failing combination not tested, so no regression attribution."
+    },
+    {
+      "issue": "Pad background DOM visibility",
+      "state": "FIXED AND VERIFIED in e5db6d8d: native WINDOW_HIDDEN forwards visibility immediately; DOM hidden, RAF suspension and native media visibility verified, restore passes.",
+      "evidence": [
+        "out/pad-p3-hdr-20261017/lifecycle-report.json"
+      ],
+      "scope": "Restored colour state passes, but hidden scheduling not validated. No visibility fix shipped in this Pad colour change."
+    }
+  ],
+  "latestFollowup": {
+    "report": "docs/test-results/ohos-pad-followup-2026-10-17.json",
+    "source": "e5db6d8d1487d68f253d2e5a36109ecd7f6ed490",
+    "nativeCi": 39017363671,
+    "adapterCi": 39017363576,
+    "installed": true
+  }
+}

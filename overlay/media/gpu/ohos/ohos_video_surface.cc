@@ -5,6 +5,7 @@
 #include "media/gpu/ohos/ohos_video_surface.h"
 
 #include <native_buffer/native_buffer.h>
+#include <native_image/graphic_error_code.h>
 #include <native_window/external_window.h>
 
 #include <unistd.h>
@@ -16,14 +17,22 @@
 #include "base/logging.h"
 #include "base/posix/eintr_wrapper.h"
 #include "base/task/bind_post_task.h"
+#include "base/task/thread_pool.h"
+#include "base/trace_event/trace_event.h"
 
 namespace media {
 
 OhosVideoSurface::OhosVideoSurface(
     scoped_refptr<base::SequencedTaskRunner> task_runner,
-    base::RepeatingClosure frame_available)
+    base::RepeatingClosure frame_available,
+    bool release_on_worker)
     : base::RefCountedDeleteOnSequence<OhosVideoSurface>(task_runner),
       task_runner_(std::move(task_runner)),
+      release_task_runner_(
+          release_on_worker
+              ? base::ThreadPool::CreateSequencedTaskRunner(
+                    {base::MayBlock(), base::TaskPriority::USER_VISIBLE})
+              : task_runner_),
       frame_available_(std::move(frame_available)) {}
 
 OhosVideoSurface::~OhosVideoSurface() {
@@ -38,10 +47,12 @@ OhosVideoSurface::~OhosVideoSurface() {
 scoped_refptr<OhosVideoSurface> OhosVideoSurface::Create(
     scoped_refptr<base::SequencedTaskRunner> task_runner,
     const gfx::Size& size,
-    base::RepeatingClosure frame_available) {
+    base::RepeatingClosure frame_available,
+    bool release_on_worker) {
   DCHECK(task_runner->RunsTasksInCurrentSequence());
   auto surface = base::WrapRefCounted(
-      new OhosVideoSurface(std::move(task_runner), std::move(frame_available)));
+      new OhosVideoSurface(std::move(task_runner), std::move(frame_available),
+                           release_on_worker));
   surface->image_ = OH_ConsumerSurface_Create();
   if (!surface->image_) {
     return nullptr;
@@ -66,6 +77,16 @@ scoped_refptr<OhosVideoSurface> OhosVideoSurface::Create(
   return surface;
 }
 
+int OhosVideoSurface::GetBufferQueueSize() const {
+  DCHECK(task_runner_->RunsTasksInCurrentSequence());
+  int size = 0;
+  if (!window_ || OH_NativeWindow_NativeWindowHandleOpt(
+                      window_, GET_BUFFERQUEUE_SIZE, &size) != 0) {
+    return 0;
+  }
+  return size;
+}
+
 void OhosVideoSurface::StopListening() {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   if (listening_) {
@@ -75,30 +96,44 @@ void OhosVideoSurface::StopListening() {
 }
 
 void OhosVideoSurface::OnFrameAvailable(void* context) {
-  // This callback only posts; all NativeImage operations run on task_runner_.
+  // This callback only posts. NativeImage serializes buffer acquire/release;
+  // the phone can return buffers without waiting for a blocking codec render.
   static_cast<OhosVideoSurface*>(context)->frame_available_.Run();
 }
 
 void OhosVideoSurface::Retire() {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   StopListening();
+  // Finish any release already using the queue before codec teardown clears
+  // its cache. Later worker releases see retired_ and only drop references.
+  base::AutoLock lock(release_lock_);
   retired_ = true;
 }
 
-bool OhosVideoSurface::Acquire(OHNativeWindowBuffer** buffer,
-                               base::ScopedFD* acquire_fence,
-                               base::OnceClosure* release) {
+OhosVideoSurface::AcquireResult OhosVideoSurface::Acquire(
+    OHNativeWindowBuffer** buffer,
+    base::ScopedFD* acquire_fence,
+    base::OnceClosure* release,
+    base::OnceClosure on_released) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
-  if (retired_) {
-    return false;
+  {
+    base::AutoLock lock(release_lock_);
+    if (retired_) {
+      return AcquireResult::kError;
+    }
   }
   int fence = -1;
   *buffer = nullptr;
   const int result =
       OH_NativeImage_AcquireNativeWindowBuffer(image_, buffer, &fence);
   acquire_fence->reset(fence);
-  if (result != 0 || !*buffer) {
-    return false;
+  if (result == NATIVE_ERROR_NO_BUFFER) {
+    return AcquireResult::kEmpty;
+  }
+  if (result != NATIVE_ERROR_OK || !*buffer) {
+    LOG(ERROR) << "OHOS NativeImage acquire failed; status=" << result
+               << " has_buffer=" << (*buffer != nullptr);
+    return AcquireResult::kError;
   }
   if (OH_NativeWindow_NativeObjectReference(*buffer) != 0) {
     if (OH_NativeImage_ReleaseNativeWindowBuffer(
@@ -106,7 +141,7 @@ bool OhosVideoSurface::Acquire(OHNativeWindowBuffer** buffer,
       OH_NativeWindow_NativeObjectUnreference(*buffer);
     }
     *buffer = nullptr;
-    return false;
+    return AcquireResult::kError;
   }
   // Preserve the producer fence even if conversion is cancelled before GPU
   // import. Returning an unfinished decode buffer with fence=-1 is unsafe.
@@ -114,24 +149,30 @@ bool OhosVideoSurface::Acquire(OHNativeWindowBuffer** buffer,
   if (acquire_fence->is_valid()) {
     producer_fence.reset(HANDLE_EINTR(dup(acquire_fence->get())));
     if (!producer_fence.is_valid()) {
-      ReleaseBuffer(BufferToRelease{*buffer, std::move(*acquire_fence)});
+      ReleaseBuffer(BufferToRelease{*buffer, std::move(*acquire_fence)}, {});
       *buffer = nullptr;
-      return false;
+      return AcquireResult::kError;
     }
   }
   // ScopedClosureRunner also releases when a posted conversion task is dropped.
   auto lease = base::ScopedClosureRunner(base::BindPostTask(
-      task_runner_,
+      release_task_runner_,
       base::BindOnce(&OhosVideoSurface::ReleaseBuffer,
                      base::WrapRefCounted(this),
-                     BufferToRelease{*buffer, std::move(producer_fence)})));
+                     BufferToRelease{*buffer, std::move(producer_fence)},
+                     std::move(on_released))));
   *release = base::BindOnce([](base::ScopedClosureRunner) {}, std::move(lease));
-  return true;
+  return AcquireResult::kAcquired;
 }
 
-void OhosVideoSurface::ReleaseBuffer(BufferToRelease acquired) {
+void OhosVideoSurface::ReleaseBuffer(BufferToRelease acquired,
+                                     base::OnceClosure on_released) {
+  TRACE_EVENT0("media", "OhosVideoSurface::ReleaseBuffer");
+  // Post the decoder's in-flight decrement only after the native release and
+  // after dropping the retirement lock. Enqueueing release is not completion.
+  base::ScopedClosureRunner released(std::move(on_released));
+  base::AutoLock lock(release_lock_);
   OHNativeWindowBuffer* buffer = acquired.buffer;
-  DCHECK(task_runner_->RunsTasksInCurrentSequence());
   if (retired_) {
     // Codec teardown already removed the buffer from the queue's cache. The
     // caller still waits for GPU reads before reaching here. Drop both the

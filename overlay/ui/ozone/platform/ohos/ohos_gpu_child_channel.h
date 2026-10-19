@@ -53,6 +53,10 @@ void ForwardOhosSurfacesToGpuChild();
 // GPU process. True once the channel has been opened, which happens before
 // Chromium starts in that process.
 bool IsOhosGpuChildProcess();
+// Publish normal WSI format-pair capabilities to the browser. A null widget
+// revokes the whole current GPU generation after a color/output failure.
+bool ReportOhosWsiOutputCapabilities(gfx::AcceleratedWidget widget,
+                                    bool hdr, bool p3);
 
 // GPU process. Sends Chromium's log to hilog again, at WARNING and above.
 // Called once Chromium has initialised in that process: from then on its
@@ -62,6 +66,9 @@ void AttachOhosGpuChildLogging();
 
 // GPU process. The mirror's answers to the registry's GPU-side lookups.
 std::optional<OhosNativeSurface> GetOhosGpuChildSurface(
+    gfx::AcceleratedWidget widget);
+// Takes a NativeWindow reference while the mirror lock is held.
+std::optional<OhosNativeSurface> AcquireOhosGpuChildSurface(
     gfx::AcceleratedWidget widget);
 bool IsOhosGpuChildSurfaceExpected(gfx::AcceleratedWidget widget);
 bool IsOhosGpuChildAnchored(gfx::AcceleratedWidget widget);

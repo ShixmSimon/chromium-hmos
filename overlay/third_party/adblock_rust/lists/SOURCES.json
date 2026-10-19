@@ -1,0 +1,23 @@
+{
+  "downloaded": "2026-10-15",
+  "sources": [
+    {
+      "id": "easylist",
+      "url": "https://raw.githubusercontent.com/easylist/easylist/gh-pages/easylist.txt",
+      "sha256": "edf4559b9687f2783305a980bfebe086be2ce48f4060cbf888866fd164939cbc",
+      "bytes": 2165408
+    },
+    {
+      "id": "easylist-china",
+      "url": "https://raw.githubusercontent.com/easylist/easylistchina/master/easylistchina.txt",
+      "sha256": "bfdb66c7bdb63bd33e22d2a4d2a57957ecdcddd36414634aaa23f21be5ebc28d",
+      "bytes": 508948
+    },
+    {
+      "id": "easyprivacy",
+      "url": "https://raw.githubusercontent.com/easylist/easylist/gh-pages/easyprivacy.txt",
+      "sha256": "965eacba88ac696a3da86598d5082dfe0c74345ccb23a4cc8463669d5f1100cd",
+      "bytes": 1509451
+    }
+  ]
+}

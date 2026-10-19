@@ -1,0 +1,354 @@
+{
+  "updatedUTC": "2026-10-17T08:39:36.638623+00:00",
+  "request": "Continue fixing Pad GL+ANGLE Vulkan HDR context loss and background visibility. Phone remains paused.",
+  "phoneAccess": "None",
+  "baselineSource": "29f5a5e7",
+  "evidenceRoot": "out/pad-followup-20261017/",
+  "backgroundBaseline": {
+    "targetId": "5D8F5C24B23F1AB56481A40EC52EBC1D",
+    "before": {
+      "state": "visible",
+      "frames": 2,
+      "trace": [],
+      "p3": true,
+      "hdr": true
+    },
+    "hidden1": {
+      "state": "visible",
+      "frames": 334,
+      "trace": [],
+      "p3": true,
+      "hdr": true
+    },
+    "nativeWindow": "\n-------------------------------[ability]-------------------------------\n\n\n----------------------------------WindowManagerService----------------------------------\n-------------------------------------ScreenGroup 0-------------------------------------\nWindowName           DisplayId Pid     WinId Type Mode Flag ZOrd Orientation [ x    y    w    h    ] [ OffsetX OffsetY ] [ ScaleX  ScaleY  PivotX  PivotY  ]\nSCBScenePanel23      0         25041   7     2109 1    0    100  0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBWallpaper8        0         25041   12    2000 1    0    1    0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBDesktop10         0         25041   16    2001 1    0    2    0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBGestureNavBar21   0         25041   27    2111 1    0    2200 0           [ 0    1936 3000 64   ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBGestureBack29     0         25041   35    2111 1    0    4102 0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBStatusBar34       0         25041   40    2108 1    0    2202 0           [ 0    0    3000 134  ] [ 0       0       ] [ 1       1       0.5     0.5     ]\n---------------------------------------------------------------------------------------\nSCBKeyboardPanel     0         25041   4     2134 1    0    -1   0           [ 1977 478  856  738  ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBPCScenePanel1     0         25041   5     2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBScenePanel2       0         25041   6     2109 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nBackgroundBlurView4  0         25041   8     2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nTransparentView5     0         25041   9     2136 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nBackgroundBlurView6  0         25041   10    2109 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nModeSwitchView7      0         25041   11    2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBNegativeScreen11  0         25041   17    2126 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBGlobalSearch12    0         25041   18    2125 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nRecentBackgroundView 0         25041   19    2109 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nSCBshutdownView14    0         25041   20    2116 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBBannerNotificatio 0         25041   21    2106 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSceneSessionAdapter1 0         25041   22    2109 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\n17                   0         25041   23    2122 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBDynamicFloatingSc 0         25041   24    2122 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nSCBScreenLock19      0         25041   25    2110 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBFormCenter20      0         25041   26    2135 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBDropdownPanel22   0         25041   28    2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nNotifyPCModePanel23  0         25041   29    2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBShortcutKeyPanel2 0         25041   30    2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBbrightnessPanel25 0         25041   31    2111 1    0    -1   0           [ 1255 82   490  92   ] [ 0       0       ] [ 1       1       0       0       ]\nSCBMicReminder26     0         25041   32    2109 1    0    -1   0           [ 1038 1470 925  203  ] [ 0       0       ] [ 1       1       0       0       ]\nSCBVolumePanel27     0         25041   33    2111 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBSideScenePanel28  0         25041   34    2135 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBSideEdgeBar30     0         25041   36    2135 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBSystemTopPanel31  0         25041   37    2111 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBPrivacyIndicator3 0         25041   38    2127 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBGestureTopBar33   0         25041   39    2111 1    0    -1   0           [ 0    0    3000 90   ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBKeyboardDialog37  0         25041   48    2106 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nARK_APP_SUBWINDOW_En 0         25041   64    2128 102  0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nappgallery0          0         25539   65    1    1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nsettings0            0         34721   71    1    1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 0.3     0.3     0.5     0.5     ]\npetrelgram0          0         49695   108   1    1    0    -1   0           [ 500  -22002000 3000 ] [ 0       0       ] [ 1.275   0.5666670.5     0.5     ]\nshell_assistant0     0         29421   126   1    1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 0.3003330.3     0.5     0.5     ]\nsoftKeyboard1        0         6484    309   2105 102  0    -1   0           [ 1977 478  856  738  ] [ 0       0       ] [ 1       1       0.5     0.5     ]\n__CanvasSlidingWindo 0         6484    312   2111 102  0    -1   0           [ 1031 2191 388  365  ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nARK_APP_SUBWINDOW_TO 0         25041   335   2128 102  0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\naweme0               0         21465   345   1    1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nwechat0              0         49909   359   1    1    0    -1   0           [ 0    0    1042 1852 ] [ 0       0       ] [ 0.9193860.9184670.5     0.5     ]\nlumiebrowser0        0         51063   446   1    1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nFocus window: 16\nAll Focus window: \nDisplayId: 0 WindowId: 16\nSingleHand: X[0] Y[0] scale[1]\nTotal window num: 52\nHighlighted windows: 16\n",
+    "hidden2": {
+      "state": "visible",
+      "frames": 727,
+      "trace": [],
+      "p3": true,
+      "hdr": true
+    },
+    "restored": {
+      "state": "visible",
+      "frames": 957,
+      "trace": [],
+      "p3": true,
+      "hdr": true
+    },
+    "pass": false
+  },
+  "glInvestigation": {
+    "originalFailure": "Vulkan VK_ERROR_DEVICE_LOST occurred before EGL_CONTEXT_LOST during 2d-p3-hdr in first matrix. Failure details query returned error -2; this does not establish out-of-memory as root cause.",
+    "oldIsolatedFloat": {
+      "pass": true,
+      "evidence": "out/pad-followup-20261017/old-float.json"
+    },
+    "oldMatrixRepeat": {
+      "pass": true,
+      "evidence": "out/pad-followup-20261017/old-matrix-color-report.json"
+    },
+    "conclusion": "Failure not yet deterministic. Native window PQ tagging without advertised EGL P3/PQ surface extensions is independently invalid; no claim that float16 itself always fails."
+  },
+  "candidate": {
+    "source": "9cf786430b31bfcf9b1f4c16f02df259cfedd3c7",
+    "nativeCi": 39016936313,
+    "adapterCi": 39016936268,
+    "nativeState": "SUCCESS",
+    "adapterState": "SUCCESS",
+    "changes": [
+      "Keep ANGLE Vulkan EGL output SDR until actual EGL wide-gamut/HDR surface contract is verified; Skia Vulkan verified WSI capabilities remain enabled.",
+      "Log received host visibility requests and active WebContents visibility after native hide to locate the missing background transition."
+    ],
+    "installed": true,
+    "dawnBinaryCheck": {
+      "entries": 184,
+      "expectedCount": 184,
+      "mismatches": [],
+      "pass": true,
+      "buildId": "ddc5eff82f8d293af25aceb309d28a9323c45eac",
+      "packagedBuildId": "ddc5eff82f8d293af25aceb309d28a9323c45eac",
+      "packagedTableMatches": true
+    },
+    "package": {
+      "native_source": "9cf78643",
+      "native_ci": "39016936313",
+      "engine_sha256": "f8bbae925a11275dcb4de9607ca76aac6c0cc5acaa19c6ec5dbf956bc64e68ee",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/pad-fix-20261015/pad-9cf-output-guard.hap",
+      "hap_sha256": "89b5085799e47a41c82cc5aeffdf0acb6da1c725b754f4397099548ea1d9abbb",
+      "pad_authorized_profile": true,
+      "native_compile": false
+    },
+    "stress": {
+      "pass": true,
+      "switches": 80,
+      "cycles": 10,
+      "gpuCrashCount": 0,
+      "renderQueryValues": {
+        "p3": false,
+        "hdr": false
+      },
+      "scope": "Honest SDR presentation for unverified EGL P3/PQ path. No claim that the original intermittent driver fault is proven fixed.",
+      "evidence": "out/pad-followup-20261017/guard-9cf-stress.json"
+    },
+    "backgroundProbe": {
+      "pass": false,
+      "evidence": "out/pad-followup-20261017/guard-9cf-background.json",
+      "nativeLog": "Only initial requested widget=0 visible=1; no hidden request during Home. Confirms missing callback before C++ browser hide."
+    }
+  },
+  "activeControllers": {},
+  "devicePolicy": {
+    "audio": "MUSIC=0,RING=0,muted, ringer SILENT verified at resume",
+    "keepAwake": "Pad-only controller stopped after tests; temporary screen-off override remains 3600000ms.",
+    "phone": "Untouched"
+  },
+  "next": [
+    "If native HDR is required on GL+ANGLE Vulkan, implement and verify actual EGL/Vulkan surface color-space negotiation before advertising it.",
+    "Additional long-run driver stress remains optional follow-up; do not claim universal stability from 80 transitions.",
+    "When phone returned, regress shared WebWindow background event changes alongside its recorded pending graphics checklist."
+  ],
+  "backgroundTrace": {
+    "nativeVisibilityEvents": [],
+    "evidence": "out/pad-followup-20261017/background-traced.json"
+  },
+  "backgroundFix": {
+    "source": "e5db6d8d1487d68f253d2e5a36109ecd7f6ed490",
+    "nativeCi": 39017363671,
+    "adapterCi": 39017363576,
+    "state": "Native and Adapter CI SUCCESS; final HAP installed",
+    "changes": [
+      "Native WINDOW_HIDDEN immediately calls OnVisibilityChanged(false) and clears pending focus recovery timers.",
+      "WINDOW_SHOWN restores only if shell appVisible allows it. WINDOW_INACTIVE does not hide other visible Pad windows.",
+      "Initial host visibility queried from actual window; all delayed focus recovery respects both visibility gates.",
+      "Unsubscribe only own windowEvent callback; preserve other WebWindows on the same host."
+    ],
+    "runtime": "PASS: GL and Skia Vulkan hidden state, RAF suspension and restore; native media visibility false/true verified, including after popup creation/closure.",
+    "package": {
+      "native_source": "e5db6d8d",
+      "native_ci": "39017363671",
+      "engine_sha256": "4d4a042c6eab9ba7fb7a096141a0e0f3dcc1dddd9016c321a310a039ea9af75f",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/pad-fix-20261015/pad-e5db-visibility.hap",
+      "hap_sha256": "2d4a325b22fd4c0d2fea3757ce417c10d75076d3e0b6cb77ef86069768c9ba11",
+      "pad_authorized_profile": true,
+      "native_compile": false
+    },
+    "dawnBinaryCheck": {
+      "entries": 184,
+      "expectedCount": 184,
+      "mismatches": [],
+      "pass": true,
+      "buildId": "6c1997c220d838829239343b4885d848eb634ca7",
+      "packagedBuildId": "6c1997c220d838829239343b4885d848eb634ca7",
+      "packagedTableMatches": true
+    },
+    "compiledEtsEvidence": "hostWindowVisible identifier present in CI HAR package/ets/modules.abc and WebWindow.d.ets",
+    "glRuntimeProbe": {
+      "targetId": "ED4E3EAF432AB48FAF0C59D0971922A9",
+      "before": {
+        "state": "visible",
+        "frames": 2,
+        "trace": [],
+        "p3": false,
+        "hdr": false
+      },
+      "hidden1": {
+        "state": "hidden",
+        "frames": 46,
+        "trace": [
+          {
+            "at": 1144.800000011921,
+            "state": "hidden"
+          }
+        ],
+        "p3": false,
+        "hdr": false
+      },
+      "nativeWindow": "\n-------------------------------[ability]-------------------------------\n\n\n----------------------------------WindowManagerService----------------------------------\n-------------------------------------ScreenGroup 0-------------------------------------\nWindowName           DisplayId Pid     WinId Type Mode Flag ZOrd Orientation [ x    y    w    h    ] [ OffsetX OffsetY ] [ ScaleX  ScaleY  PivotX  PivotY  ]\nSCBScenePanel23      0         25041   7     2109 1    0    100  0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBWallpaper8        0         25041   12    2000 1    0    1    0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBDesktop10         0         25041   16    2001 1    0    2    0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBGestureNavBar21   0         25041   27    2111 1    0    2200 0           [ 0    1936 3000 64   ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBGestureBack29     0         25041   35    2111 1    0    4102 0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBStatusBar34       0         25041   40    2108 1    0    2202 0           [ 0    0    3000 134  ] [ 0       0       ] [ 1       1       0.5     0.5     ]\n---------------------------------------------------------------------------------------\nSCBKeyboardPanel     0         25041   4     2134 1    0    -1   0           [ 1977 478  856  738  ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBPCScenePanel1     0         25041   5     2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBScenePanel2       0         25041   6     2109 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nBackgroundBlurView4  0         25041   8     2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nTransparentView5     0         25041   9     2136 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nBackgroundBlurView6  0         25041   10    2109 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nModeSwitchView7      0         25041   11    2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBNegativeScreen11  0         25041   17    2126 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBGlobalSearch12    0         25041   18    2125 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nRecentBackgroundView 0         25041   19    2109 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nSCBshutdownView14    0         25041   20    2116 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBBannerNotificatio 0         25041   21    2106 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSceneSessionAdapter1 0         25041   22    2109 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\n17                   0         25041   23    2122 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBDynamicFloatingSc 0         25041   24    2122 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nSCBScreenLock19      0         25041   25    2110 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBFormCenter20      0         25041   26    2135 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBDropdownPanel22   0         25041   28    2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nNotifyPCModePanel23  0         25041   29    2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBShortcutKeyPanel2 0         25041   30    2109 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBbrightnessPanel25 0         25041   31    2111 1    0    -1   0           [ 1255 82   490  92   ] [ 0       0       ] [ 1       1       0       0       ]\nSCBMicReminder26     0         25041   32    2109 1    0    -1   0           [ 1038 1470 925  203  ] [ 0       0       ] [ 1       1       0       0       ]\nSCBVolumePanel27     0         25041   33    2111 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBSideScenePanel28  0         25041   34    2135 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBSideEdgeBar30     0         25041   36    2135 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBSystemTopPanel31  0         25041   37    2111 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBPrivacyIndicator3 0         25041   38    2127 1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0       0       ]\nSCBGestureTopBar33   0         25041   39    2111 1    0    -1   0           [ 0    0    3000 90   ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nSCBKeyboardDialog37  0         25041   48    2106 1    0    -1   0           [ 0    0    0    0    ] [ 0       0       ] [ 1       1       0       0       ]\nARK_APP_SUBWINDOW_En 0         25041   64    2128 102  0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nappgallery0          0         25539   65    1    1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nsettings0            0         34721   71    1    1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 0.3     0.3     0.5     0.5     ]\npetrelgram0          0         49695   108   1    1    0    -1   0           [ 500  -22002000 3000 ] [ 0       0       ] [ 1.275   0.5666670.5     0.5     ]\nshell_assistant0     0         29421   126   1    1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 0.3003330.3     0.5     0.5     ]\nsoftKeyboard1        0         6484    309   2105 102  0    -1   0           [ 1977 478  856  738  ] [ 0       0       ] [ 1       1       0.5     0.5     ]\n__CanvasSlidingWindo 0         6484    312   2111 102  0    -1   0           [ 1031 2191 388  365  ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nARK_APP_SUBWINDOW_TO 0         25041   335   2128 102  0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\naweme0               0         21465   345   1    1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nwechat0              0         49909   359   1    1    0    -1   0           [ 0    0    1042 1852 ] [ 0       0       ] [ 0.9193860.9184670.5     0.5     ]\nlumiebrowser0        0         36868   458   1    1    0    -1   0           [ 0    0    3000 2000 ] [ 0       0       ] [ 1       1       0.5     0.5     ]\nFocus window: 16\nAll Focus window: \nDisplayId: 0 WindowId: 16\nSingleHand: X[0] Y[0] scale[1]\nTotal window num: 52\nHighlighted windows: 16\n",
+      "hidden2": {
+        "state": "hidden",
+        "frames": 46,
+        "trace": [
+          {
+            "at": 1144.800000011921,
+            "state": "hidden"
+          }
+        ],
+        "p3": false,
+        "hdr": false
+      },
+      "restored": {
+        "state": "visible",
+        "frames": 227,
+        "trace": [
+          {
+            "at": 1144.800000011921,
+            "state": "hidden"
+          },
+          {
+            "at": 7266.600000023842,
+            "state": "visible"
+          }
+        ],
+        "p3": false,
+        "hdr": false
+      },
+      "pass": true
+    },
+    "glFloatIsolation": {
+      "pass": true,
+      "evidence": "out/pad-followup-20261017/e5db-float.json"
+    }
+  },
+  "regression": {
+    "skiaVulkanColorMatrix": {
+      "pass": true,
+      "samples": 8,
+      "distinctModes": 7,
+      "initialQueries": {
+        "p3": true,
+        "hdr": true,
+        "videoHdr": true,
+        "visible": "visible"
+      },
+      "evidence": "out/pad-followup-20261017/e5db-color-report.json"
+    },
+    "colorLifecycle": {
+      "pass": true,
+      "steps": 19,
+      "gpuCrashCount": 0,
+      "backgroundWindows": [
+        {
+          "stage": "background-0",
+          "state": {
+            "state": "hidden",
+            "frames": 1510
+          },
+          "stopped": {
+            "state": "hidden",
+            "frames": 1510
+          }
+        },
+        {
+          "stage": "background-1",
+          "state": {
+            "state": "hidden",
+            "frames": 1768
+          },
+          "stopped": {
+            "state": "hidden",
+            "frames": 1768
+          }
+        }
+      ],
+      "evidence": "out/pad-followup-20261017/e5db-lifecycle-report.json"
+    },
+    "fullscreen": {
+      "pass": true,
+      "fullscreen": {
+        "active": true,
+        "p3": true,
+        "hdr": true,
+        "w": 1298,
+        "h": 866
+      },
+      "restored": {
+        "active": false,
+        "p3": true,
+        "hdr": true,
+        "report": {
+          "time": "2026-10-17T08:36:24.298Z",
+          "mode": "2d-srgb",
+          "userAgent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 OpenHarmony/7.0",
+          "p3": true,
+          "hdr": true,
+          "attributes": {
+            "alpha": false,
+            "colorSpace": "srgb",
+            "colorType": "unorm8",
+            "desynchronized": false,
+            "toneMapping": {
+              "mode": "standard"
+            },
+            "willReadFrequently": false
+          },
+          "leftPixel": [
+            0,
+            255,
+            0,
+            255
+          ]
+        }
+      },
+      "evidence": "out/pad-followup-20261017/e5db-fullscreen-report.json"
+    },
+    "postPopupNativeVisibility": {
+      "pass": true,
+      "visibilityEvents": [
+        {
+          "args": {
+            "visible": false
+          },
+          "cat": "media",
+          "name": "OhosApplicationVisibilityChanged",
+          "ph": "I",
+          "pid": 37285,
+          "s": "t",
+          "tid": 37285,
+          "ts": 439256170248,
+          "tts": 2651910
+        },
+        {
+          "args": {
+            "visible": true
+          },
+          "cat": "media",
+          "name": "OhosApplicationVisibilityChanged",
+          "ph": "I",
+          "pid": 37285,
+          "s": "t",
+          "tid": 38449,
+          "ts": 439262132823,
+          "tts": 8004304
+        }
+      ],
+      "hiddenFrames": [
+        99,
+        99
+      ],
+      "evidence": "out/pad-followup-20261017/e5db-background-traced.json"
+    },
+    "finalState": {
+      "pass": true,
+      "page": {
+        "p3": true,
+        "hdr": true,
+        "videoHdr": true,
+        "fullscreen": false,
+        "mode": "2d-srgb",
+        "visible": "visible"
+      },
+      "backend": "GaneshVulkan",
+      "angle": "(gl=egl-angle,angle=vulkan)",
+      "gpuCrashCount": 0,
+      "webGpuStatus": "enabled",
+      "closedOwnedTestTabs": 12,
+      "userTabsPreserved": true,
+      "evidence": "out/pad-followup-20261017/cleanup.json"
+    },
+    "silence": {
+      "pass": true,
+      "musicLevel": 0,
+      "ringLevel": 0,
+      "musicMuted": true,
+      "ringer": "SILENT",
+      "evidence": "out/pad-followup-20261017/final-audio.txt"
+    }
+  },
+  "result": "Background visibility bug fixed and device verified. Unverified GL+ANGLE Vulkan P3/PQ scanout now correctly uses SDR; 80 transitions stable and final float test passes. Native Skia Vulkan P3/HDR remains functional with fullscreen, popup and background regressions passing.",
+  "limitations": [
+    "Original intermittent VK_ERROR_DEVICE_LOST did not reproduce in subsequent old-version runs. Safe SDR routing corrects an independently invalid output contract, but is not proof the vendor driver fault is permanently eliminated.",
+    "GL+ANGLE Vulkan native P3/HDR output remains unimplemented; native wide gamut/HDR uses Skia Vulkan WSI.",
+    "No physical gamut/peak luminance measurement, extended playback validation, or phone regression performed in this Pad follow-up."
+  ],
+  "cleanup": "Owned keep-awake controller, native log stream and local test server stopped. Original user tabs preserved; one static colour diagnostic tab left in SDR. Phone untouched."
+}

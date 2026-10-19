@@ -17,6 +17,7 @@
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
 #include "base/logging.h"
+#include "base/process/fork_server_ohos.h"
 #include "ui/gfx/geometry/size.h"
 
 namespace media {
@@ -47,6 +48,9 @@ const char* ResolveOptionalMime(const char* symbol_name) {
 }
 
 OH_AVCapability* GetHardwareCapability(VideoCodec codec, bool is_encoder) {
+  if (!CanUseOhosNativeCodecs()) {
+    return nullptr;
+  }
   const char* mime = OhosMimeTypeForCodec(codec);
   if (!mime) {
     return nullptr;
@@ -146,6 +150,24 @@ std::optional<SizeRange> GetSizeRange(OH_AVCapability* capability) {
 
 }  // namespace
 
+bool CanUseOhosNativeCodecs() {
+  if (!base::internal::IsOhosForkChild()) {
+    return true;
+  }
+  // Do not probe once and cache: even the first AVCodecKit query can submit
+  // HiAppEvent work into inherited FFRT state. libc already runs FFRT's
+  // pthread_atfork child hook; calling ffrt_child_init again is not a repair.
+  // The phone browser media service owns native codec operations instead.
+  // Log once per child, not on every renderer capability request.
+  static const bool logged = [] {
+    LOG(WARNING) << "OHOS phone fork media: AVCodecKit disabled in fork child; "
+                    "native playback is routed to browser media service";
+    return true;
+  }();
+  (void)logged;
+  return false;
+}
+
 void OhosAVFormatDeleter::operator()(OH_AVFormat* format) const {
   OH_AVFormat_Destroy(format);
 }
@@ -209,6 +231,9 @@ std::optional<int32_t> VideoCodecProfileToOhosProfile(
 }
 
 SupportedVideoDecoderConfigs GetOhosSupportedDecoderConfigs() {
+  if (!CanUseOhosNativeCodecs()) {
+    return {};
+  }
   SupportedVideoDecoderConfigs configs;
   for (VideoCodec codec : {VideoCodec::kH264, VideoCodec::kHEVC,
                            VideoCodec::kVP9, VideoCodec::kAV1}) {
@@ -268,6 +293,9 @@ const char* OhosMimeTypeForAudioCodec(AudioCodec codec) {
 }
 
 SupportedAudioDecoderConfigs GetOhosSupportedAudioDecoderConfigs() {
+  if (!CanUseOhosNativeCodecs()) {
+    return {};
+  }
   SupportedAudioDecoderConfigs configs;
   // E-AC-3 is left out on purpose: the system has no decoder for it, and an
   // entry here is what makes canPlayType say yes.

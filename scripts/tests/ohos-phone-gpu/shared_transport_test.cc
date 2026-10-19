@@ -45,6 +45,26 @@ void RawSend(int socket,
   assert(sendmsg(socket, &msg, MSG_NOSIGNAL) == static_cast<ssize_t>(bytes));
 }
 int main() {
+  {
+    p::SharedPacket control;
+    control.operation = p::SharedOp::kGraphiteState;
+    control.sequence = 1;
+    control.widget = 1;
+    assert(p::ValidSharedPacket(control, 0));
+    auto invalid = control;
+    invalid.lease = 1;
+    assert(!p::ValidSharedPacket(invalid, 0));
+    invalid = control;
+    invalid.width = 64;
+    assert(!p::ValidSharedPacket(invalid, 0));
+    invalid = control;
+    invalid.has_fence = 1;
+    assert(!p::ValidSharedPacket(invalid, 1));
+    invalid = control;
+    invalid.color = {ui::OhosOutputMode::kHdr10, 203000, 1000000};
+    invalid.color_generation = 1;
+    assert(!p::ValidSharedPacket(invalid, 0));
+  }
   int s[2];
   assert(!socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, s));
   int source = open("/dev/null", O_RDONLY | O_CLOEXEC);
@@ -150,6 +170,137 @@ int main() {
     assert(p::ReceiveSharedMessage(s[1], &got, 100));
     assert(got.packet.operation == op);
   }
+  // A 10-bit declaration must agree with the actual parcel and generation.
+  auto ten = buffer;
+  ten.color.mode = ui::OhosOutputMode::kSdr10;
+  ten.color_generation = 17;
+  assert(!p::ValidSharedPacket(ten, 1));  // RGBA8 parcel, not a 10-bit image.
+  ten.prefix[8] = 34;
+  assert(p::ValidSharedPacket(ten, 1));
+  // Actual phone fullscreen-transition allocation: native optimal layout is
+  // smaller than stride * height, but covers the unpadded RGBA pixels.
+  auto tiled = ten;
+  tiled.width = tiled.prefix[4] = 1617;
+  tiled.height = tiled.prefix[6] = 175;
+  tiled.prefix[5] = 6656;
+  tiled.prefix[7] = 1163264;
+  assert(uint64_t{tiled.prefix[5]} * tiled.height > tiled.prefix[7]);
+  assert(p::ValidSharedPacket(tiled, 1));
+  {
+    RawSend(s[0], tiled, source, 1);
+    p::SharedMessage got;
+    assert(p::ReceiveSharedMessage(s[1], &got, 100));
+    assert(got.packet.prefix == tiled.prefix);
+  }
+  tiled.prefix[7] = tiled.width * tiled.height * 4 - 1;
+  reject(tiled);
+  tiled.prefix[7] = 1163264;
+  tiled.prefix[5] = UINT32_MAX;
+  reject(tiled);
+  ten.color = {ui::OhosOutputMode::kHdr10, 203000, 1000000};
+  // Capability publication must name a negotiated HDR generation; SDR,
+  // descriptors, and image payloads cannot masquerade as this control packet.
+  {
+    p::SharedMessage ready, got;
+    ready.packet.operation = p::SharedOp::kColorReady;
+    ready.packet.sequence = 3;
+    ready.packet.widget = 42;
+    ready.packet.color = ten.color;
+    ready.packet.color_generation = 17;
+    assert(p::SendSharedMessage(s[0], ready));
+    assert(p::ReceiveSharedMessage(s[1], &got, 100));
+    assert(got.packet.color_generation == 17);
+    for (int field = 0; field < 5; ++field) {
+      auto invalid = ready.packet;
+      if (field == 0) invalid.color_generation = 0;
+      if (field == 1) invalid.color = {};
+      if (field == 2) invalid.lease = 1;
+      if (field == 3) invalid.width = 1;
+      if (field == 4) invalid.tail_bytes = 4;
+      assert(!p::ValidSharedPacket(invalid, 0));
+    }
+    ready.packet.color = {ui::OhosOutputMode::kP3Sdr10};
+    assert(p::SendSharedMessage(s[0], ready));
+    assert(p::ReceiveSharedMessage(s[1], &got, 100));
+    assert(got.packet.color.mode == ui::OhosOutputMode::kP3Sdr10);
+    auto bad_p3 = ready.packet;
+    bad_p3.color.white_millinits = 203000;
+    assert(!p::ValidSharedPacket(bad_p3, 0));
+    ready.packet.fd_count = 1;
+    assert(!p::ValidSharedPacket(ready.packet, 1));
+  }
+  {
+    RawSend(s[0], ten, source, 1);
+    p::SharedMessage got;
+    assert(p::ReceiveSharedMessage(s[1], &got, 100));
+    assert(got.packet.color == ten.color && got.packet.color_generation == 17);
+  }
+  auto malformed = ten;
+  malformed.color_generation = 0;
+  reject(malformed);
+  malformed = ten;
+  malformed.magic = 0x50475332;  // Old packet version is never reinterpreted.
+  reject(malformed);
+  malformed.magic = 0x50475333;  // Before the brokered display-ID field.
+  reject(malformed);
+  malformed = ten;
+  malformed.color.mode = static_cast<ui::OhosOutputMode>(99);
+  reject(malformed);
+  for (const ui::OhosOutputColor color :
+       {ui::OhosOutputColor{ui::OhosOutputMode::kSdr8, 203000, 1000000},
+        ui::OhosOutputColor{ui::OhosOutputMode::kSdr10, 0, 1000000},
+        ui::OhosOutputColor{ui::OhosOutputMode::kHdr10, 0, 1000000},
+        ui::OhosOutputColor{ui::OhosOutputMode::kHdr10, 203000, 202999},
+        ui::OhosOutputColor{ui::OhosOutputMode::kHdr10, 203000, UINT32_MAX}}) {
+    malformed = ten;
+    malformed.color = color;
+    reject(malformed);
+  }
+  assert(CountFds() == before);
+  for (auto op : {p::SharedOp::kColorProbe, p::SharedOp::kColorFailed}) {
+    p::SharedMessage send, got;
+    send.packet.operation = op;
+    send.packet.sequence = 4;
+    send.packet.widget = 42;
+    send.packet.color_generation = 1;
+    assert(p::SendSharedMessage(s[0], send));
+    assert(p::ReceiveSharedMessage(s[1], &got, 100));
+    send.packet.has_fence = 1;
+    assert(!p::ValidSharedPacket(send.packet, 1));
+  }
+  // Display capability exchange must preserve display 0 and full 64-bit IDs,
+  // and must carry denial/error outcomes without becoming a successful reply.
+  for (uint64_t display_id : {uint64_t{0}, uint64_t{1} << 40}) {
+    for (uint32_t result : {0u, 1u, 2u}) {
+      p::SharedMessage request, got_request, response, got_response;
+      request.packet.operation = p::SharedOp::kHdrDisplayQuery;
+      request.packet.sequence = 8;
+      request.packet.widget = 1;
+      assert(p::SendSharedMessage(s[0], request));
+      assert(p::ReceiveSharedMessage(s[1], &got_request, 100));
+      assert(got_request.packet.operation == p::SharedOp::kHdrDisplayQuery);
+      response.packet.operation = p::SharedOp::kHdrDisplayState;
+      response.packet.sequence = got_request.packet.sequence;
+      response.packet.widget = got_request.packet.widget;
+      response.packet.display_id = display_id;
+      response.packet.result = result;
+      assert(p::SendSharedMessage(s[1], response));
+      assert(p::ReceiveSharedMessage(s[0], &got_response, 100));
+      assert(got_response.packet.operation == p::SharedOp::kHdrDisplayState);
+      assert(got_response.packet.sequence == 8 &&
+             got_response.packet.widget == 1);
+      assert(got_response.packet.display_id == display_id);
+      assert(got_response.packet.result == result);
+      assert(got_response.fds.empty());
+      response.packet.result = 3;
+      assert(!p::ValidSharedPacket(response.packet, 0));
+      request.packet.display_id = 1;
+      assert(!p::ValidSharedPacket(request.packet, 0));
+    }
+  }
+  bad = buffer;
+  bad.display_id = 1;
+  reject(bad);  // Display IDs cannot appear in allocation/lease messages.
   // Vulkan SYNC_FD export supports both pending and already-signaled fences.
   for (bool pending : {false, true}) {
     p::SharedMessage send, got;
@@ -170,7 +321,9 @@ int main() {
     assert(!p::ValidSharedPacket(send.packet, send.fds.size()));
   }
   // Control messages may never smuggle an allocation or fence descriptor.
-  for (auto op : {p::SharedOp::kVulkanState, p::SharedOp::kVulkanFailed}) {
+  for (auto op :
+       {p::SharedOp::kVulkanState, p::SharedOp::kVulkanFailed,
+        p::SharedOp::kHdrDisplayQuery, p::SharedOp::kHdrDisplayState}) {
     auto control = buffer;
     control.operation = op;
     reject(control);

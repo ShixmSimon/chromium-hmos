@@ -1,0 +1,2466 @@
+diff --git a/src/dawn/native/vulkan/BackendVk.cpp b/src/dawn/native/vulkan/BackendVk.cpp
+--- a/src/dawn/native/vulkan/BackendVk.cpp
++++ b/src/dawn/native/vulkan/BackendVk.cpp
+@@ -31,6 +31,11 @@
+ #include <string>
+ #include <utility>
+ 
++#if defined(__OHOS__)
++#include <hilog/log.h>
++extern "C" void OHOS_TraceForkDescriptors(const char* stage) __attribute__((weak));
++#endif
++
+ #include "dawn/native/VulkanBackend.h"
+ #include "src/dawn/common/GPUInfo.h"
+ #include "src/dawn/common/SystemUtils.h"
+@@ -353,6 +358,11 @@
+ }
+ 
+ MaybeError VulkanInstance::Initialize(const InstanceBase* instance, ICD icd) {
++#if defined(__OHOS__)
++    if (OHOS_TraceForkDescriptors) {
++        OHOS_TraceForkDescriptors("dawn-before-loader");
++    }
++#endif
+     // These environment variables need only be set while loading procs and gathering device
+     // info.
+     ScopedEnvironmentVar vkICDFilenames;
+@@ -527,8 +537,43 @@
+         createInfoChain.Add(&validationFeatures, VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT);
+     }
+ 
++#if defined(__OHOS__)
++    // This path is also entered by adapter diagnostics, independently of Skia.
++    // Record both explicit and available layers before entering the loader: a
++    // loader signal cannot be reported through Dawn's ordinary error callback.
++    OH_LOG_Print(LOG_APP, LOG_WARN, 0xC233, "OHOSVulkan",
++                 "Dawn vkCreateInstance begin: requested_layers=%{public}u api=%{public}u",
++                 createInfo.enabledLayerCount, appInfo.apiVersion);
++    for (const char* layer : layerNames) {
++        OH_LOG_Print(LOG_APP, LOG_WARN, 0xC233, "OHOSVulkan", "Dawn requested layer: %{public}s",
++                     layer);
++    }
++    uint32_t layerCount = 0;
++    if (mFunctions.EnumerateInstanceLayerProperties(&layerCount, nullptr) == VK_SUCCESS &&
++        layerCount) {
++        std::vector<VkLayerProperties> availableLayers(layerCount);
++        if (mFunctions.EnumerateInstanceLayerProperties(&layerCount, availableLayers.data()) ==
++            VK_SUCCESS) {
++            for (const auto& layer : availableLayers) {
++                OH_LOG_Print(LOG_APP, LOG_WARN, 0xC233, "OHOSVulkan",
++                             "Dawn available layer: %{public}s", layer.layerName);
++            }
++        }
++    }
++#endif
++#if defined(__OHOS__)
++    if (OHOS_TraceForkDescriptors) {
++        OHOS_TraceForkDescriptors("dawn-before-vkCreateInstance");
++    }
++#endif
+     DAWN_TRY(CheckVkSuccess(mFunctions.CreateInstance(&createInfo, nullptr, &mInstance),
+                             "vkCreateInstance"));
++#if defined(__OHOS__)
++    if (OHOS_TraceForkDescriptors) {
++        OHOS_TraceForkDescriptors("dawn-after-vkCreateInstance");
++    }
++    OH_LOG_Print(LOG_APP, LOG_WARN, 0xC233, "OHOSVulkan", "Dawn vkCreateInstance succeeded");
++#endif
+     DAWN_INVALID_IF(mInstance == VK_NULL_HANDLE, "Failed to create VkInstance");
+ 
+     return usedKnobs;
+diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/TextureVk.cpp
+--- a/src/dawn/native/vulkan/TextureVk.cpp
++++ b/src/dawn/native/vulkan/TextureVk.cpp
+@@ -28,6 +28,7 @@
+ #include "src/dawn/native/vulkan/TextureVk.h"
+ 
+ #include <iostream>
++#include <string>
+ #include <utility>
+ 
+ #include "dawn/native/VulkanBackend.h"
+@@ -747,6 +748,15 @@
+             // The layout returned here is the one that will be used at bindgroup creation time.
+         case wgpu::TextureUsage::TextureBinding:
+         case kResolveAttachmentLoadingUsage:
++#if defined(__OHOS__)
++            if (format.format == wgpu::TextureFormat::OpaqueYCbCrAndroid) {
++                // Native video is acquired/released in GENERAL. Use that same
++                // layout for sampling AND descriptor writes so the eager queue
++                // release already has the consumer's layout. EndAccess must not
++                // need an extra submit after the client destroys its device.
++                return VK_IMAGE_LAYOUT_GENERAL;
++            }
++#endif
+             // The sampled image can be used as a readonly depth/stencil attachment at the same
+             // time if it is a depth/stencil renderable format, so the image layout need to be
+             // VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL.
+@@ -1802,11 +1812,18 @@
+     // promoting to GENERAL.
+     VkImageLayout currentLayout = GetCurrentLayout(GetDisjointVulkanAspects());
+     VkImageLayout targetLayout;
++#if defined(__OHOS__)
++    // OH_NativeBuffer consumers (Skia and EGL) share the allocation through
++    // the foreign queue in GENERAL. Keep that layout when an import is
++    // destroyed/recreated, rather than leaking a Dawn-specific optimal layout.
++    targetLayout = VK_IMAGE_LAYOUT_GENERAL;
++#else
+     if (currentLayout != VK_IMAGE_LAYOUT_UNDEFINED) {
+         targetLayout = currentLayout;
+     } else {
+         targetLayout = VK_IMAGE_LAYOUT_GENERAL;
+     }
++#endif
+ 
+     // We have to manually trigger a transition if the texture hasn't been actually used or if we
+     // need a layout transition.
+@@ -2139,10 +2156,23 @@
+             DAWN_ASSERT(device->HasFeature(Feature::OpaqueYCbCrAndroidForExternalTexture));
+ 
+             yCbCr = StaticSamplerSpecialization::GetYCbCrForTextureView(
+-                static_cast<VkFormat>(stmContents->GetYCbCrVkDesc().vkFormat),
++                device, static_cast<VkFormat>(stmContents->GetYCbCrVkDesc().vkFormat),
+                 stmContents->GetYCbCrVkDesc().externalFormat);
+         }
+ 
++#if defined(__OHOS__)
++        if (yCbCr.externalFormat != 0 &&
++            (device->IsToggleEnabled(Toggle::OhosNativeYuvHardwareProbe) ||
++             device->IsToggleEnabled(Toggle::OhosNativeYuvLinearChromaProbe))) {
++            // Use the device callback: Chromium forwards this to DevTools,
++            // whereas Dawn's standalone log sink is not routed on OHOS.
++            device->EmitWarningOnce(
++                "OHOS YUV image view: external=" + std::to_string(yCbCr.externalFormat) +
++                " model=" + std::to_string(yCbCr.vkYCbCrModel) +
++                " range=" + std::to_string(yCbCr.vkYCbCrRange) +
++                " chromaFilter=" + std::to_string(static_cast<uint32_t>(yCbCr.vkChromaFilter)));
++        }
++#endif
+         // Create the VkSamplerYCbCrConversion and link it in the createInfo.
+         DAWN_TRY_ASSIGN(mSamplerYCbCrConversion, CreateSamplerYCbCrConversion(device, yCbCr));
+ 
+diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+--- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
++++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+@@ -647,6 +647,12 @@
+     // VK_OHOS_external_memory.
+     if (mDeviceInfo.HasExt(DeviceExt::ExternalMemoryOHOSNativeBuffer)) {
+         EnableFeature(Feature::SharedTextureMemoryAHardwareBuffer);
++        if (mDeviceInfo.samplerYCbCrConversionFeatures.samplerYcbcrConversion == VK_TRUE &&
++            CheckSemaphoreSupport(DeviceExt::ExternalSemaphoreFD,
++                                  VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT_KHR)) {
++            EnableFeature(Feature::YCbCrVulkanSamplers);
++            EnableFeature(Feature::OpaqueYCbCrAndroidForExternalTexture);
++        }
+     }
+ #endif  // defined(__OHOS__)
+ 
+diff --git a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp b/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
+--- a/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
++++ b/src/dawn/native/vulkan/SharedTextureMemoryVk.cpp
+@@ -158,6 +158,49 @@
+     const void* pNext;
+     OH_NativeBuffer* buffer;
+ };
++
++ResultOrError<VkImage> CreateOhosVkImage(
++    Device* device,
++    const SharedTextureMemoryProperties& properties,
++    const VkPhysicalDeviceImageFormatInfo2& imageFormatInfo,
++    uint64_t externalFormat) {
++    struct OhosExternalFormat {
++        VkStructureType sType;
++        const void* pNext;
++        uint64_t externalFormat;
++    } externalFormatInfo{static_cast<VkStructureType>(1000452005), nullptr,
++                         externalFormat};
++    VkExternalMemoryImageCreateInfo externalMemory = {};
++    externalMemory.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
++    externalMemory.pNext = externalFormat ? &externalFormatInfo : nullptr;
++    VkImageCreateInfo createInfo = {};
++    createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
++    createInfo.pNext = &externalMemory;
++    createInfo.flags = imageFormatInfo.flags;
++    createInfo.imageType = VK_IMAGE_TYPE_2D;
++    createInfo.format = imageFormatInfo.format;
++    createInfo.extent = {properties.size.width, properties.size.height, 1};
++    createInfo.mipLevels = createInfo.arrayLayers = 1;
++    createInfo.samples = VK_SAMPLE_COUNT_1_BIT;
++    createInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
++    createInfo.usage = imageFormatInfo.usage;
++    createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
++    createInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
++    VkImage image = VK_NULL_HANDLE;
++    ::VkResult result = VK_ERROR_FORMAT_NOT_SUPPORTED;
++    for (uint32_t handleType :
++         {kOhosNativeBufferHandleType, kOhosNativeBufferHandleTypeDeprecated}) {
++        externalMemory.handleTypes = handleType;
++        result = device->fn.CreateImage(device->GetVkDevice(), &createInfo, nullptr, &*image);
++        if (result == VK_SUCCESS ||
++            (result != VK_ERROR_INVALID_EXTERNAL_HANDLE &&
++             result != VK_ERROR_FORMAT_NOT_SUPPORTED)) {
++            break;
++        }
++    }
++    DAWN_TRY(CheckVkSuccess(result, "vkCreateImage(OH_NativeBuffer)"));
++    return image;
++}
+ #endif  // defined(__OHOS__)
+ 
+ template <typename... AdditionalChains>
+@@ -815,11 +858,11 @@
+     return sharedTextureMemory;
+ #elif defined(__OHOS__)
+     // HarmonyOS: the descriptor's handle is an OH_NativeBuffer, imported
+-    // through VK_OHOS_external_memory -- Android's AHardwareBuffer import with
+-    // the names changed. Formats the driver names a VkFormat for, including
+-    // two-plane YUV; no opaque external (YCbCr) formats.
++    // through VK_OHOS_external_memory. Native decoder YUV stays a single
++    // opaque sampled image; never infer a linear plane layout from its format.
+     VkDevice vkDevice = device->GetVkDevice();
+     auto* nativeBuffer = static_cast<OH_NativeBuffer*>(descriptor->handle);
++    DAWN_INVALID_IF(nativeBuffer == nullptr, "Missing OH_NativeBuffer.");
+ 
+     OH_NativeBuffer_Config config = {};
+     OH_NativeBuffer_GetConfig(nativeBuffer, &config);
+@@ -853,30 +896,69 @@
+     DAWN_TRY(CheckVkSuccess(
+         device->fn.GetNativeBufferPropertiesOHOS(vkDevice, nativeBuffer, &bufferProperties),
+         "vkGetNativeBufferPropertiesOHOS"));
++    DAWN_INVALID_IF(bufferProperties.allocationSize == 0 ||
++                        bufferProperties.memoryTypeBits == 0,
++                    "Invalid OH_NativeBuffer memory properties.");
+     VkFormat vkFormat = formatProperties.format;
+-    if (vkFormat == VK_FORMAT_UNDEFINED &&
+-        config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP) {
+-        // The Maleoon driver names no VkFormat for NV12, only an opaque
+-        // external one. These buffers are allocated CPU-writable and so laid
+-        // out as plain NV12, which is what G8_B8R8_2PLANE_420 describes.
+-        vkFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+-    }
+-    DAWN_INVALID_IF(vkFormat == VK_FORMAT_UNDEFINED,
+-                    "OH_NativeBuffer with an external format (%x) is not supported.",
+-                    formatProperties.externalFormat);
+-    DAWN_TRY_ASSIGN(properties.format, FormatFromVkFormat(device, vkFormat));
++    const bool nativeYuv = config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP ||
++                           config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_P010;
++    YCbCrVkDescriptor yCbCrInfo{};
++    uint64_t externalFormat = 0;
++    if (nativeYuv) {
++        DAWN_INVALID_IF(!device->HasFeature(Feature::OpaqueYCbCrAndroidForExternalTexture),
++                        "Native YUV import requires opaque YCbCr external textures.");
++        const VkFormat expected = config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
++                                      ? VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16
++                                      : VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
++        DAWN_INVALID_IF(vkFormat != VK_FORMAT_UNDEFINED && vkFormat != expected,
++                        "OH_NativeBuffer YUV precision/format mismatch.");
++        if (vkFormat == VK_FORMAT_UNDEFINED) {
++            externalFormat = formatProperties.externalFormat;
++            DAWN_INVALID_IF(externalFormat == 0, "Missing OHOS external YUV format.");
++        }
++        DAWN_INVALID_IF(!(formatProperties.formatFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT),
++                        "OH_NativeBuffer does not support YUV sampling.");
++        properties.format = wgpu::TextureFormat::OpaqueYCbCrAndroid;
++        properties.usage = wgpu::TextureUsage::TextureBinding;
++        yCbCrInfo.vkFormat = vkFormat;
++        yCbCrInfo.externalFormat = externalFormat;
++        yCbCrInfo.vkYCbCrModel = formatProperties.suggestedYcbcrModel;
++        yCbCrInfo.vkYCbCrRange = formatProperties.suggestedYcbcrRange;
++        yCbCrInfo.vkComponentSwizzleRed = formatProperties.samplerYcbcrConversionComponents.r;
++        yCbCrInfo.vkComponentSwizzleGreen = formatProperties.samplerYcbcrConversionComponents.g;
++        yCbCrInfo.vkComponentSwizzleBlue = formatProperties.samplerYcbcrConversionComponents.b;
++        yCbCrInfo.vkComponentSwizzleAlpha = formatProperties.samplerYcbcrConversionComponents.a;
++        yCbCrInfo.vkXChromaOffset = formatProperties.suggestedXChromaOffset;
++        yCbCrInfo.vkYChromaOffset = formatProperties.suggestedYChromaOffset;
++        yCbCrInfo.vkChromaFilter =
++            (formatProperties.formatFeatures &
++             VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT)
++                ? wgpu::FilterMode::Linear : wgpu::FilterMode::Nearest;
++        yCbCrInfo.forceExplicitReconstruction =
++            formatProperties.formatFeatures &
++            VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_BIT;
++    } else {
++        DAWN_INVALID_IF(vkFormat == VK_FORMAT_UNDEFINED,
++                        "Unsupported OH_NativeBuffer external non-YUV format.");
++        DAWN_TRY_ASSIGN(properties.format, FormatFromVkFormat(device, vkFormat));
++        // GPU-writable native RGBA buffers can back canvas storage textures.
++        // Require the allocation's actual Vulkan format capability, not merely
++        // the adapter's support for independently allocated storage images.
++        const bool storageFormat = properties.format == wgpu::TextureFormat::RGBA8Unorm ||
++            properties.format == wgpu::TextureFormat::RGBA16Float ||
++            (properties.format == wgpu::TextureFormat::BGRA8Unorm &&
++             device->HasFeature(Feature::BGRA8UnormStorage));
++        if (storageFormat && (config.usage & NATIVEBUFFER_USAGE_HW_RENDER) &&
++            (formatProperties.formatFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)) {
++            properties.usage |= wgpu::TextureUsage::StorageBinding;
++        }
++    }
+ 
+     const Format* internalFormat = nullptr;
+     DAWN_TRY_ASSIGN(internalFormat, device->GetInternalFormat(properties.format));
+-    if (internalFormat->IsMultiPlanar()) {
+-        // A video frame (NV12) for importExternalTexture: sampled plane by
+-        // plane, through views that need the mutable-format bit. The image is
+-        // not disjoint -- one OH_NativeBuffer holds both planes.
+-        properties.usage = wgpu::TextureUsage::TextureBinding;
+-    }
+ 
+     Ref<SharedTextureMemory> sharedTextureMemory = SharedTextureMemory::Create(
+-        device, label, properties, VK_QUEUE_FAMILY_FOREIGN_EXT, YCbCrVkDescriptor{});
++        device, label, properties, VK_QUEUE_FAMILY_FOREIGN_EXT, yCbCrInfo);
+     sharedTextureMemory->APIGetProperties(&properties);
+ 
+     VkImageUsageFlags vkUsageFlags = VulkanImageUsage(device, properties.usage, *internalFormat);
+@@ -892,70 +974,84 @@
+         vkCreateFlags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+     }
+ 
+-    // Which handle type the driver takes the import as, and whether it can
+-    // make the image mutable-format: the SDK's current
+-    // VK_EXTERNAL_MEMORY_HANDLE_TYPE_OH_NATIVE_BUFFER_BIT_OHOS or the
+-    // deprecated value older drivers know, each first with and then without
+-    // VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT (without it, no -srgb views).
+-    VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {};
+-    imageFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+-    imageFormatInfo.format = vkFormat;
+-    imageFormatInfo.type = VK_IMAGE_TYPE_2D;
+-    imageFormatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+-    imageFormatInfo.usage = vkUsageFlags;
+-    VkExternalMemoryHandleTypeFlagBits handleType = {};
+-    bool importable = false;
+-    for (uint32_t candidateType :
+-         {kOhosNativeBufferHandleType, kOhosNativeBufferHandleTypeDeprecated}) {
+-        for (VkImageCreateFlags candidateFlags :
+-             {vkCreateFlags, vkCreateFlags & ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT}) {
+-            imageFormatInfo.pNext = nullptr;
+-            imageFormatInfo.flags = candidateFlags;
+-            handleType = static_cast<VkExternalMemoryHandleTypeFlagBits>(candidateType);
+-            MaybeError supported =
+-                CheckExternalImageFormatSupport(device, properties, &imageFormatInfo, handleType);
+-            imageFormatInfo.pNext = nullptr;
+-            if (!supported.IsError()) {
+-                importable = true;
++    if (nativeYuv) {
++        // Some Maleoon drivers reject the external-image support query while
++        // supporting native imports. Use the actual bounded import as the check;
++        // retain mutable-format flags required by the advertised view formats.
++        VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {};
++        imageFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
++        imageFormatInfo.format = vkFormat;
++        imageFormatInfo.flags = vkCreateFlags;
++        imageFormatInfo.usage = vkUsageFlags;
++        VkImage vkImage;
++        DAWN_TRY_ASSIGN(vkImage, CreateOhosVkImage(device, properties, imageFormatInfo, externalFormat));
++        sharedTextureMemory->mVkImage = AcquireRef(new RefCountedVkHandle<VkImage>(device, vkImage));
++    } else {
++        // Which handle type the driver takes the import as, and whether it can
++        // make the image mutable-format: the SDK's current
++        // VK_EXTERNAL_MEMORY_HANDLE_TYPE_OH_NATIVE_BUFFER_BIT_OHOS or the
++        // deprecated value older drivers know, each first with and then without
++        // VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT (without it, no -srgb views).
++        VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {};
++        imageFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
++        imageFormatInfo.format = vkFormat;
++        imageFormatInfo.type = VK_IMAGE_TYPE_2D;
++        imageFormatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
++        imageFormatInfo.usage = vkUsageFlags;
++        VkExternalMemoryHandleTypeFlagBits handleType = {};
++        bool importable = false;
++        for (uint32_t candidateType :
++             {kOhosNativeBufferHandleType, kOhosNativeBufferHandleTypeDeprecated}) {
++            for (VkImageCreateFlags candidateFlags :
++                 {vkCreateFlags, vkCreateFlags & ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT}) {
++                imageFormatInfo.pNext = nullptr;
++                imageFormatInfo.flags = candidateFlags;
++                handleType = static_cast<VkExternalMemoryHandleTypeFlagBits>(candidateType);
++                MaybeError supported =
++                    CheckExternalImageFormatSupport(device, properties, &imageFormatInfo, handleType);
++                imageFormatInfo.pNext = nullptr;
++                if (!supported.IsError()) {
++                    importable = true;
++                    break;
++                }
++                std::ignore = supported.AcquireError();
++            }
++            if (importable) {
+                 break;
+             }
+-            std::ignore = supported.AcquireError();
+-        }
+-        if (importable) {
+-            break;
+-        }
+-    }
+-    if (!importable) {
+-        // The Maleoon driver answers VK_ERROR_FORMAT_NOT_SUPPORTED to this
+-        // query for either handle type, whatever the flags, while importing
+-        // OH_NativeBuffers is what HarmonyOS's own graphics stack does. The
+-        // query is only a check before the import: go on with the current
+-        // handle type and the flags Dawn wants (mutable format for -srgb and
+-        // plane views), and let vkCreateImage and vkAllocateMemory decide.
+-        handleType =
+-            static_cast<VkExternalMemoryHandleTypeFlagBits>(kOhosNativeBufferHandleType);
+-        imageFormatInfo.flags = vkCreateFlags;
++        }
++        if (!importable) {
++            // The Maleoon driver answers VK_ERROR_FORMAT_NOT_SUPPORTED to this
++            // query for either handle type, whatever the flags, while importing
++            // OH_NativeBuffers is what HarmonyOS's own graphics stack does. The
++            // query is only a check before the import: go on with the current
++            // handle type and the flags Dawn wants (mutable format for -srgb and
++            // plane views), and let vkCreateImage and vkAllocateMemory decide.
++            handleType =
++                static_cast<VkExternalMemoryHandleTypeFlagBits>(kOhosNativeBufferHandleType);
++            imageFormatInfo.flags = vkCreateFlags;
++        }
++
++        {
++            ResultOrError<VkImage> created =
++                CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
++            if (created.IsError() && !internalFormat->IsMultiPlanar() &&
++                (imageFormatInfo.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)) {
++                // Last resort for a single-plane image: no view reinterpretation
++                // (-srgb views), but the texture itself still works.
++                std::ignore = created.AcquireError();
++                imageFormatInfo.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
++                created = CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
++            }
++            VkImage vkImage;
++            DAWN_TRY_ASSIGN(vkImage, std::move(created));
++            sharedTextureMemory->mVkImage =
++                AcquireRef(new RefCountedVkHandle<VkImage>(device, vkImage));
++        }
+     }
+ 
+     {
+-        ResultOrError<VkImage> created =
+-            CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
+-        if (created.IsError() && !internalFormat->IsMultiPlanar() &&
+-            (imageFormatInfo.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)) {
+-            // Last resort for a single-plane image: no view reinterpretation
+-            // (-srgb views), but the texture itself still works.
+-            std::ignore = created.AcquireError();
+-            imageFormatInfo.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+-            created = CreateExternalVkImage(device, properties, imageFormatInfo, handleType);
+-        }
+-        VkImage vkImage;
+-        DAWN_TRY_ASSIGN(vkImage, std::move(created));
+-        sharedTextureMemory->mVkImage =
+-            AcquireRef(new RefCountedVkHandle<VkImage>(device, vkImage));
+-    }
+-
+-    {
+-        VkMemoryRequirements memoryRequirements;
++        VkMemoryRequirements memoryRequirements{};
+         memoryRequirements.memoryTypeBits = bufferProperties.memoryTypeBits;
+         auto maybeMemoryTypeIndex = device->GetResourceMemoryAllocator()->FindBestTypeIndex(
+             memoryRequirements, MemoryKind::DeviceLocal);
+diff --git a/src/dawn/native/vulkan/UtilsVulkan.cpp b/src/dawn/native/vulkan/UtilsVulkan.cpp
+--- a/src/dawn/native/vulkan/UtilsVulkan.cpp
++++ b/src/dawn/native/vulkan/UtilsVulkan.cpp
+@@ -476,6 +476,17 @@
+ 
+         vulkanYCbCrCreateInfo.pNext = &vulkanExternalFormat;
+     }
++#elif defined(__OHOS__)
++    // Same external-format payload, but HarmonyOS has its own structure type.
++    struct OhosExternalFormat {
++        VkStructureType sType;
++        const void* pNext;
++        uint64_t externalFormat;
++    } vulkanExternalFormat{static_cast<VkStructureType>(1000452005), nullptr,
++                           externalFormat};
++    if (externalFormat != 0) {
++        vulkanYCbCrCreateInfo.pNext = &vulkanExternalFormat;
++    }
+ #endif  // DAWN_PLATFORM_IS(ANDROID)
+ 
+     VkSamplerYcbcrConversion samplerYCbCrConversion = VK_NULL_HANDLE;
+diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/DeviceVk.cpp
+--- a/src/dawn/native/vulkan/DeviceVk.cpp
++++ b/src/dawn/native/vulkan/DeviceVk.cpp
+@@ -674,7 +674,11 @@
+ 
+     if ((HasFeature(Feature::YCbCrVulkanSamplers) ||
+          HasFeature(Feature::OpaqueYCbCrAndroidForExternalTexture)) &&
+-        mDeviceInfo.HasExt(DeviceExt::ExternalMemoryAndroidHardwareBuffer)) {
++        (mDeviceInfo.HasExt(DeviceExt::ExternalMemoryAndroidHardwareBuffer)
++#if defined(__OHOS__)
++         || mDeviceInfo.HasExt(DeviceExt::ExternalMemoryOHOSNativeBuffer)
++#endif
++         )) {
+         usedKnobs.samplerYCbCrConversionFeatures.samplerYcbcrConversion = VK_TRUE;
+         featuresChain.Add(&usedKnobs.samplerYCbCrConversionFeatures,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES);
+diff --git a/src/dawn/native/vulkan/SamplerVk.cpp b/src/dawn/native/vulkan/SamplerVk.cpp
+--- a/src/dawn/native/vulkan/SamplerVk.cpp
++++ b/src/dawn/native/vulkan/SamplerVk.cpp
+@@ -28,6 +28,7 @@
+ #include "src/dawn/native/vulkan/SamplerVk.h"
+ 
+ #include <algorithm>
++#include <string>
+ 
+ #include "src/dawn/native/ChainUtils.h"
+ #include "src/dawn/native/vulkan/DeviceVk.h"
+@@ -82,8 +83,27 @@
+ 
+     YCbCrVkDescriptor yCbCrDesc;
+     if (s.isYCbCr) {
+-        yCbCrDesc = StaticSamplerSpecialization::GetYCbCrForTextureView(s.vkFormat,
++        yCbCrDesc = StaticSamplerSpecialization::GetYCbCrForTextureView(device, s.vkFormat,
+                                                                         s.androidExternalFormat);
++#if defined(__OHOS__)
++        if (s.androidExternalFormat != 0 &&
++            device->IsToggleEnabled(Toggle::OhosNativeYuvLinearChromaProbe)) {
++            // This device lacks separate reconstruction filtering. Keep the
++            // sampler and conversion filters equal for a valid diagnostic.
++            samplerDesc.minFilter = samplerDesc.magFilter = wgpu::FilterMode::Linear;
++        }
++        if (yCbCrDesc.externalFormat != 0 &&
++            (device->IsToggleEnabled(Toggle::OhosNativeYuvHardwareProbe) ||
++             device->IsToggleEnabled(Toggle::OhosNativeYuvLinearChromaProbe))) {
++            // Use the device callback: Chromium forwards this to DevTools,
++            // whereas Dawn's standalone log sink is not routed on OHOS.
++            device->EmitWarningOnce(
++                "OHOS YUV static sampler: external=" + std::to_string(yCbCrDesc.externalFormat) +
++                " model=" + std::to_string(yCbCrDesc.vkYCbCrModel) +
++                " range=" + std::to_string(yCbCrDesc.vkYCbCrRange) +
++                " chromaFilter=" + std::to_string(static_cast<uint32_t>(yCbCrDesc.vkChromaFilter)));
++        }
++#endif
+         samplerDesc.nextInChain = &yCbCrDesc;
+     }
+ 
+@@ -217,6 +237,7 @@
+ 
+ // static
+ YCbCrVkDescriptor StaticSamplerSpecialization::GetYCbCrForTextureView(
++    [[maybe_unused]] const Device* device,
+     VkFormat vkFormat,
+     uint64_t androidExternalFormat) {
+     YCbCrVkDescriptor yCbCrDesc;
+@@ -232,6 +253,20 @@
+     yCbCrDesc.vkYChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+     yCbCrDesc.vkChromaFilter = wgpu::FilterMode::Nearest;
+     yCbCrDesc.forceExplicitReconstruction = false;
++#if defined(__OHOS__)
++    // Both toggles are opt-in diagnostics, constant for this device. Sampler
++    // and texture view must use the exact same conversion. Normal imports
++    // retain raw YUV; changing the hardware model alone double-converts RGB.
++    if (androidExternalFormat != 0) {
++        if (device->IsToggleEnabled(Toggle::OhosNativeYuvHardwareProbe)) {
++            yCbCrDesc.vkYCbCrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
++            yCbCrDesc.vkYCbCrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
++        }
++        if (device->IsToggleEnabled(Toggle::OhosNativeYuvLinearChromaProbe)) {
++            yCbCrDesc.vkChromaFilter = wgpu::FilterMode::Linear;
++        }
++    }
++#endif
+     return yCbCrDesc;
+ }
+ 
+diff --git a/src/dawn/native/Toggles.h b/src/dawn/native/Toggles.h
+--- a/src/dawn/native/Toggles.h
++++ b/src/dawn/native/Toggles.h
+@@ -234,3 +234,9 @@
+-    EnumCount,
++    OhosNativeYuvHardwareProbe,
++    OhosNativeYuvLinearChromaProbe,
++    OhosAtcNoWriteDisableOptimizationProbe,
++
++    OhosMaleoonPointSplitRenderPassProbe,
++
++    EnumCount,
+     InvalidEnum = EnumCount,
+ };
+diff --git a/src/dawn/native/Toggles.cpp b/src/dawn/native/Toggles.cpp
+--- a/src/dawn/native/Toggles.cpp
++++ b/src/dawn/native/Toggles.cpp
+@@ -948,6 +948,23 @@
+       "boolean vectors fail.",
+       "https://crbug.com/540789158", ToggleStage::Device}},
+ 
++    {Toggle::OhosNativeYuvHardwareProbe,
++     {"ohos_native_yuv_hardware_probe",
++      "Diagnostic only: sample OHOS external YUV with hardware BT709 narrow conversion. "
++      "The external-texture shader still applies its matrix; this is not a color-correct mode.",
++      "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
++    {Toggle::OhosNativeYuvLinearChromaProbe,
++     {"ohos_native_yuv_linear_chroma_probe",
++      "Diagnostic only: use matching linear luma/chroma filtering for OHOS external YUV. "
++      "Overrides the application's sampler to isolate native chroma reconstruction.",
++      "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
++
++    {Toggle::OhosAtcNoWriteDisableOptimizationProbe,
++     {"ohos_atc_no_write_disable_optimization_probe",
++      "Diagnostic only: disable Vulkan pipeline optimization for OHOS Maleoon "
++      "alpha-to-coverage pipelines with no color or depth writes.",
++      "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
++
+     // Comment to separate the }} so it is clearer what to copy-paste to add a toggle.
+ }};
+ 
+diff --git a/src/dawn/native/vulkan/SamplerVk.h b/src/dawn/native/vulkan/SamplerVk.h
+--- a/src/dawn/native/vulkan/SamplerVk.h
++++ b/src/dawn/native/vulkan/SamplerVk.h
+@@ -75,7 +75,8 @@
+     // conversion information at the moment. However to take advantage of hardware support we'll
+     // need to use different model/range values, at which point the views will need to be
+     // specialized either at ExternalTexture creation, or when the rest of the state is specialized.
+-    static YCbCrVkDescriptor GetYCbCrForTextureView(VkFormat vkFormat,
++    static YCbCrVkDescriptor GetYCbCrForTextureView(const Device* device,
++                                                    VkFormat vkFormat,
+                                                     uint64_t androidExternalFormat);
+ 
+     wgpu::FilterMode minFilter;
+diff --git a/src/tint/lang/spirv/writer/raise/raise.cc b/src/tint/lang/spirv/writer/raise/raise.cc
+--- a/src/tint/lang/spirv/writer/raise/raise.cc
++++ b/src/tint/lang/spirv/writer/raise/raise.cc
+@@ -27,6 +27,9 @@
+ 
+ #include "src/tint/lang/spirv/writer/raise/raise.h"
+ 
++#include <variant>
++
++#include "src/tint/lang/core/ir/builder.h"
+ #include "src/tint/lang/core/ir/module.h"
+ #include "src/tint/lang/core/ir/transform/bgra8unorm_polyfill.h"
+ #include "src/tint/lang/core/ir/transform/binary_polyfill.h"
+@@ -54,6 +57,9 @@
+ #include "src/tint/lang/core/ir/transform/substitute_overrides.h"
+ #include "src/tint/lang/core/ir/transform/vectorize_scalar_matrix_constructors.h"
+ #include "src/tint/lang/core/ir/transform/zero_init_workgroup_memory.h"
++#include "src/tint/lang/core/type/sampler.h"
++#include "src/tint/lang/spirv/ir/builtin_call.h"
++#include "src/tint/lang/spirv/type/sampled_image.h"
+ #include "src/tint/lang/spirv/writer/common/option_helpers.h"
+ #include "src/tint/lang/spirv/writer/raise/builtin_polyfill.h"
+ #include "src/tint/lang/spirv/writer/raise/case_switch_to_if_else.h"
+@@ -71,6 +77,108 @@
+ #include "src/tint/lang/spirv/writer/raise/var_for_dynamic_index.h"
+ 
+ namespace tint::spirv::writer {
++
++namespace {
++
++// YCbCr conversion requires a combined sampled-image resource in SPIR-V.
++// Merely assigning separate image/sampler variables the same binding does not
++// satisfy VUID-RuntimeSpirv-OpTypeImage-12204 / OpTypeSampler-12203.
++Result<SuccessType> CombineYCbCrResources(core::ir::Module& module,
++                                        const Options& options) {
++    core::ir::Builder b{module};
++    auto& ty = module.Types();
++    auto loaded_var = [](core::ir::Value* value) -> core::ir::Var* {
++        auto* result = value->As<core::ir::InstructionResult>();
++        auto* load = result ? result->Instruction()->As<core::ir::Load>() : nullptr;
++        auto* pointer = load ? load->From()->As<core::ir::InstructionResult>() : nullptr;
++        return pointer ? pointer->Instruction()->As<core::ir::Var>() : nullptr;
++    };
++
++    for (const auto& entry : options.bindings.external_texture) {
++        const auto* binding = std::get_if<ExternalYCBCRTexture>(&entry.second);
++        if (!binding) {
++            continue;
++        }
++        if (binding->texture != binding->sampler) {
++            return Failure{"YCbCr image and sampler must share a combined binding"};
++        }
++        core::ir::Var* image = nullptr;
++        core::ir::Var* sampler = nullptr;
++        for (auto* inst : *module.root_block) {
++            auto* var = inst->As<core::ir::Var>();
++            if (!var || var->BindingPoint() != binding->texture) {
++                continue;
++            }
++            auto* store = var->Result()->Type()->As<core::type::Pointer>()->StoreType();
++            if (store->Is<spirv::type::Image>()) {
++                image = var;
++            } else if (store->Is<core::type::Sampler>()) {
++                sampler = var;
++            }
++        }
++        if (!image) {
++            continue;  // This entry point does not use the external texture.
++        }
++        auto* image_type = image->Result()->Type()->As<core::type::Pointer>()
++                               ->StoreType()->As<spirv::type::Image>();
++        auto* combined = b.Var(ty.ptr(core::AddressSpace::kHandle,
++                                     ty.Get<spirv::type::SampledImage>(image_type)));
++        combined->SetBindingPoint(binding->texture.group, binding->texture.binding);
++        combined->InsertBefore(image);
++
++        Vector<spirv::ir::BuiltinCall*, 8> pairs;
++        for (auto* inst : module.Instructions()) {
++            auto* call = inst->As<spirv::ir::BuiltinCall>();
++            if (call && call->Func() == spirv::BuiltinFn::kOpSampledImage &&
++                loaded_var(call->Args()[0]) == image) {
++                if (!sampler || loaded_var(call->Args()[1]) != sampler) {
++                    return Failure{"YCbCr sampling must use its paired immutable sampler"};
++                }
++                pairs.Push(call);
++            }
++        }
++        for (auto* call : pairs) {
++            auto* load = b.Load(combined);
++            load->SetResult(call->DetachResult());
++            load->InsertBefore(call);
++            call->Destroy();
++        }
++
++        // Retain image queries through OpImage, without a separate image
++        // resource declaration. All handles have been flattened by DVA.
++        for (auto use : image->Result()->UsagesSorted()) {
++            auto* load = use.instruction->As<core::ir::Load>();
++            if (!load) {
++                return Failure{"Unexpected indirect YCbCr image access after DVA"};
++            }
++            if (load->Result()->NumUsages() != 0) {
++                b.InsertBefore(load, [&] {
++                    auto* sampled = b.Load(combined);
++                    auto* extract = b.CallExplicit<spirv::ir::BuiltinCall>(
++                        image_type, spirv::BuiltinFn::kOpImage,
++                        Vector<core::ir::TemplateParameter, 1>{image_type},
++                        Vector<core::ir::Value*, 1>{sampled->Result()});
++                    load->Result()->ReplaceAllUsesWith(extract->Result());
++                });
++            }
++            load->Destroy();
++        }
++        image->Destroy();
++        if (sampler) {
++            for (auto use : sampler->Result()->UsagesSorted()) {
++                auto* load = use.instruction->As<core::ir::Load>();
++                if (!load || load->Result()->NumUsages() != 0) {
++                    return Failure{"Unexpected separate YCbCr sampler use after combining"};
++                }
++                load->Destroy();
++            }
++            sampler->Destroy();
++        }
++    }
++    return Success;
++}
++
++}  // namespace
+ 
+ Result<SuccessType> Raise(core::ir::Module& module, const Options& options) {
+     TINT_CHECK_RESULT(core::ir::transform::SingleEntryPoint(module, options.entry_point_name));
+@@ -168,10 +276,22 @@
+     // flattened.
+     TINT_CHECK_RESULT(core::ir::transform::MultiplanarExternalTexture(module, multiplanar_map));
+ 
++    // The YCbCr helpers introduce new handle parameters. Flatten those too,
++    // so the backend can emit one combined sampled-image resource instead of
++    // separate image and sampler declarations at the same binding.
++    bool has_ycbcr = false;
++    for (const auto& entry : options.bindings.external_texture) {
++        has_ycbcr |= std::holds_alternative<ExternalYCBCRTexture>(entry.second);
++    }
++    if (has_ycbcr) {
++        dva_options.transform_handle = core::ir::transform::HandleTransformLevel::kFull;
++        TINT_CHECK_RESULT(core::ir::transform::DirectVariableAccess(module, dva_options));
++    }
++
+     // Fixup loads of binding_arrays of handles that may have been introduced by
+     // DirectVariableAccess (DVA). Vulkan drivers that need DVA of handle expect binding_arrays to
+     // stay as pointer and many mishandle by-value binding_arrays.
+-    if (options.workarounds.dva_transform_handle) {
++    if (options.workarounds.dva_transform_handle || has_ycbcr) {
+         TINT_CHECK_RESULT(raise::KeepBindingArrayAsPointer(module));
+     }
+ 
+@@ -290,6 +410,10 @@
+ 
+     TINT_CHECK_RESULT(raise::VarForDynamicIndex(module));
+ 
++    if (has_ycbcr) {
++        TINT_CHECK_RESULT(CombineYCbCrResources(module, options));
++    }
++
+     return Success;
+ }
+ 
+diff --git a/src/tint/lang/core/ir/transform/multiplanar_external_texture.cc b/src/tint/lang/core/ir/transform/multiplanar_external_texture.cc
+--- a/src/tint/lang/core/ir/transform/multiplanar_external_texture.cc
++++ b/src/tint/lang/core/ir/transform/multiplanar_external_texture.cc
+@@ -312,7 +312,8 @@
+                         } else {
+                             Function* func = TextureLoadYCBCRExternal();
+                             helper =
+-                                b.CallWithResult(call->DetachResult(), func, first, params, coords);
++                                b.CallWithResult(call->DetachResult(), func, first, second,
++                                                 params, coords);
+                         }
+                         helper->InsertBefore(call);
+                         call->Destroy();
+@@ -831,12 +832,14 @@
+ 
+         // The helper function implements the following:
+         // fn tint_TextureLoadYcbcrExternal(texture: texture_2d<f32>,
++        //                                  sampler: sampler,
+         //                                  params: ExternalTextureParams,
+         //                                  coords: vec2<u32>) ->vec4f {
+         //   let clampedCoords = min(coords, params.apparentSize);
+         //   let loadCoords = vec2<u32>(
+         //       round(params.loadTransform * vec3<f32>(vec2<f32>(clampedCoords), 1)));
+-        //   var color = textureLoad(texture, loadCoords, 0).rgb, 1) *
++        //   let uv = (vec2f(loadCoords) + 0.5) / vec2f(textureDimensions(texture));
++        //   var color = vec4f(textureSampleLevel(texture, sampler, uv, 0).rgb, 1) *
+         //                   params.yuvToRgbConversionMatrix;
+         //
+         //   color = ApplyGammaCorrect(params, color)
+@@ -845,9 +848,10 @@
+         // }
+         texture_load_ycbcr_external = b.Function("tint_TextureLoadYcbcrExternal", ty.vec4f());
+         auto* texture = b.FunctionParam("texture", SampledTexture());
++        auto* sampler = b.FunctionParam("sampler", ty.sampler());
+         auto* params = b.FunctionParam("params", ExternalTextureParams());
+         auto* coords = b.FunctionParam("coords", ty.vec2u());
+-        texture_load_ycbcr_external->SetParams({texture, params, coords});
++        texture_load_ycbcr_external->SetParams({texture, sampler, params, coords});
+ 
+         b.Append(texture_load_ycbcr_external->Block(), [&] {
+             auto* yuv_to_rgb_conversion = b.Access(ty.mat3x4<f32>(), params, 2_u);
+@@ -862,8 +866,14 @@
+             auto* load_coords_f = b.Call(ty.vec2f(), core::BuiltinFn::kRound, modified_coords);
+             auto* load_coords = b.Convert(ty.vec2u(), load_coords_f);
+ 
+-            auto* load =
+-                b.Call(ty.vec4f(), core::BuiltinFn::kTextureLoad, texture, load_coords, 0_u);
++            // Vulkan forbids OpImageFetch for YCbCr conversion. Sample the
++            // exact texel center with the external texture's nearest sampler.
++            auto* size = b.Call(ty.vec2u(), core::BuiltinFn::kTextureDimensions, texture, 0_u);
++            auto* center = b.Add(b.Convert(ty.vec2f(), load_coords),
++                                 b.Splat(ty.vec2f(), b.Constant(0.5_f)));
++            auto* normalized = b.Divide(center, b.Convert(ty.vec2f(), size));
++            auto* load = b.Call(ty.vec4f(), core::BuiltinFn::kTextureSampleLevel,
++                                texture, sampler, normalized, 0_f);
+ 
+             auto* extract_rgb =
+                 b.Construct(ty.vec4f(), b.Swizzle(ty.vec3f(), load, {0u, 1u, 2u}), 1_f);
+diff --git a/src/tint/lang/core/ir/transform/multiplanar_external_texture_test.cc b/src/tint/lang/core/ir/transform/multiplanar_external_texture_test.cc
+--- a/src/tint/lang/core/ir/transform/multiplanar_external_texture_test.cc
++++ b/src/tint/lang/core/ir/transform/multiplanar_external_texture_test.cc
+@@ -658,82 +658,87 @@
+     %6:texture_2d<f32> = load %texture
+     %7:sampler = load %texture_ycbcr_sampler
+     %8:tint_ExternalTextureParams = load %texture_params
+-    %result:vec4<f32> = call %tint_TextureLoadYcbcrExternal, %6, %8, %coords
++    %result:vec4<f32> = call %tint_TextureLoadYcbcrExternal, %6, %7, %8, %coords
+     ret %result
+   }
+ }
+-%tint_TextureLoadYcbcrExternal = func(%texture_1:texture_2d<f32>, %params:tint_ExternalTextureParams, %coords_1:vec2<u32>):vec4<f32> {  # %texture_1: 'texture', %coords_1: 'coords'
++%tint_TextureLoadYcbcrExternal = func(%texture_1:texture_2d<f32>, %sampler:sampler, %params:tint_ExternalTextureParams, %coords_1:vec2<u32>):vec4<f32> {  # %texture_1: 'texture', %coords_1: 'coords'
+   $B3: {
+-    %14:mat3x4<f32> = access %params, 2u
+-    %15:mat3x2<f32> = access %params, 7u
+-    %16:vec2<u32> = access %params, 12u
+-    %17:vec2<u32> = min %coords_1, %16
+-    %18:vec2<f32> = convert %17
+-    %19:vec3<f32> = construct %18, 1.0f
+-    %20:vec2<f32> = mul %15, %19
+-    %21:vec2<f32> = round %20
+-    %22:vec2<u32> = convert %21
+-    %23:vec4<f32> = textureLoad %texture_1, %22, 0u
+-    %24:vec3<f32> = swizzle %23, xyz
+-    %25:vec4<f32> = construct %24, 1.0f
+-    %26:vec3<f32> = mul %25, %14
+-    %27:u32 = access %params, 1u
+-    %28:bool = eq %27, 0u
+-    %29:vec3<f32> = if %28 [t: $B4, f: $B5] {  # if_1
++    %15:mat3x4<f32> = access %params, 2u
++    %16:mat3x2<f32> = access %params, 7u
++    %17:vec2<u32> = access %params, 12u
++    %18:vec2<u32> = min %coords_1, %17
++    %19:vec2<f32> = convert %18
++    %20:vec3<f32> = construct %19, 1.0f
++    %21:vec2<f32> = mul %16, %20
++    %22:vec2<f32> = round %21
++    %23:vec2<u32> = convert %22
++    %24:vec2<u32> = textureDimensions %texture_1, 0u
++    %25:vec2<f32> = convert %23
++    %26:vec2<f32> = add %25, vec2<f32>(0.5f)
++    %27:vec2<f32> = convert %24
++    %28:vec2<f32> = div %26, %27
++    %29:vec4<f32> = textureSampleLevel %texture_1, %sampler, %28, 0.0f
++    %30:vec3<f32> = swizzle %29, xyz
++    %31:vec4<f32> = construct %30, 1.0f
++    %32:vec3<f32> = mul %31, %15
++    %33:u32 = access %params, 1u
++    %34:bool = eq %33, 0u
++    %35:vec3<f32> = if %34 [t: $B4, f: $B5] {  # if_1
+       $B4: {  # true
+-        %30:tint_TransferFunctionParams = access %params, 3u
+-        %31:tint_TransferFunctionParams = access %params, 4u
+-        %32:mat3x3<f32> = access %params, 5u
+-        %33:vec4<f32> = access %params, 14u
+-        %34:vec3<f32> = call %tint_ApplySrcTransferFunction, %26, %30
+-        %36:f32 = swizzle %33, w
+-        %37:bool = neq %36, 0.0f
+-        %38:vec3<f32> = if %37 [t: $B6, f: $B7] {  # if_2
++        %36:tint_TransferFunctionParams = access %params, 3u
++        %37:tint_TransferFunctionParams = access %params, 4u
++        %38:mat3x3<f32> = access %params, 5u
++        %39:vec4<f32> = access %params, 14u
++        %40:vec3<f32> = call %tint_ApplySrcTransferFunction, %32, %36
++        %42:f32 = swizzle %39, w
++        %43:bool = neq %42, 0.0f
++        %44:vec3<f32> = if %43 [t: $B6, f: $B7] {  # if_2
+           $B6: {  # true
+-            %39:vec3<f32> = swizzle %33, xyz
+-            %40:f32 = dot %39, %34
+-            %41:f32 = abs %40
+-            %42:f32 = pow %41, %36
+-            %43:f32 = sign %40
+-            %44:f32 = mul %43, %42
+-            %45:vec3<f32> = mul %34, %44
+-            exit_if %45  # if_2
++            %45:vec3<f32> = swizzle %39, xyz
++            %46:f32 = dot %45, %40
++            %47:f32 = abs %46
++            %48:f32 = pow %47, %42
++            %49:f32 = sign %46
++            %50:f32 = mul %49, %48
++            %51:vec3<f32> = mul %40, %50
++            exit_if %51  # if_2
+           }
+           $B7: {  # false
+-            exit_if %34  # if_2
++            exit_if %40  # if_2
+           }
+         }
+-        %46:vec3<f32> = mul %32, %38
+-        %47:vec3<f32> = call %tint_ApplyGammaTransferFunction, %46, %31
+-        exit_if %47  # if_1
++        %52:vec3<f32> = mul %38, %44
++        %53:vec3<f32> = call %tint_ApplyGammaTransferFunction, %52, %37
++        exit_if %53  # if_1
+       }
+       $B5: {  # false
+-        exit_if %26  # if_1
+-      }
+-    }
+-    %49:vec4<f32> = construct %29, 1.0f
+-    ret %49
++        exit_if %32  # if_1
++      }
++    }
++    %55:vec4<f32> = construct %35, 1.0f
++    ret %55
+   }
+ }
+ %tint_ApplySrcTransferFunction = func(%v:vec3<f32>, %params_1:tint_TransferFunctionParams):vec3<f32> {  # %params_1: 'params'
+   $B8: {
+     %mode:u32 = access %params_1, 0u
+-    %53:bool = eq %mode, 0u
+-    if %53 [t: $B9, f: $B10] {  # if_3
++    %59:bool = eq %mode, 0u
++    if %59 [t: $B9, f: $B10] {  # if_3
+       $B9: {  # true
+-        %54:vec3<f32> = call %tint_ApplyGammaTransferFunction, %v, %params_1
+-        ret %54
++        %60:vec3<f32> = call %tint_ApplyGammaTransferFunction, %v, %params_1
++        ret %60
+       }
+       $B10: {  # false
+-        %55:bool = eq %mode, 1u
+-        if %55 [t: $B11, f: $B12] {  # if_4
++        %61:bool = eq %mode, 1u
++        if %61 [t: $B11, f: $B12] {  # if_4
+           $B11: {  # true
+-            %56:vec3<f32> = call %tint_ApplyHLGTransferFunction, %v, %params_1
+-            ret %56
++            %62:vec3<f32> = call %tint_ApplyHLGTransferFunction, %v, %params_1
++            ret %62
+           }
+           $B12: {  # false
+-            %58:vec3<f32> = call %tint_ApplyPQTransferFunction, %v, %params_1
+-            ret %58
++            %64:vec3<f32> = call %tint_ApplyPQTransferFunction, %v, %params_1
++            ret %64
+           }
+         }
+         unreachable
+@@ -751,21 +756,21 @@
+     %E:f32 = access %params_2, 5u
+     %F:f32 = access %params_2, 6u
+     %G:f32 = access %params_2, 7u
+-    %69:vec3<f32> = construct %G
+-    %70:vec3<f32> = construct %D
+-    %71:vec3<f32> = abs %v_1
+-    %72:vec3<f32> = sign %v_1
+-    %73:vec3<bool> = lt %71, %70
+-    %74:vec3<f32> = mul %C, %71
+-    %75:vec3<f32> = add %74, %F
+-    %76:vec3<f32> = mul %72, %75
+-    %77:vec3<f32> = mul %A, %71
+-    %78:vec3<f32> = add %77, %B
+-    %79:vec3<f32> = pow %78, %69
+-    %80:vec3<f32> = add %79, %E
+-    %81:vec3<f32> = mul %72, %80
+-    %82:vec3<f32> = select %81, %76, %73
+-    ret %82
++    %75:vec3<f32> = construct %G
++    %76:vec3<f32> = construct %D
++    %77:vec3<f32> = abs %v_1
++    %78:vec3<f32> = sign %v_1
++    %79:vec3<bool> = lt %77, %76
++    %80:vec3<f32> = mul %C, %77
++    %81:vec3<f32> = add %80, %F
++    %82:vec3<f32> = mul %78, %81
++    %83:vec3<f32> = mul %A, %77
++    %84:vec3<f32> = add %83, %B
++    %85:vec3<f32> = pow %84, %75
++    %86:vec3<f32> = add %85, %E
++    %87:vec3<f32> = mul %78, %86
++    %88:vec3<f32> = select %87, %82, %79
++    ret %88
+   }
+ }
+ %tint_ApplyHLGSingleChannel = func(%v_2:f32, %params_3:tint_TransferFunctionParams):f32 {  # %v_2: 'v', %params_3: 'params'
+@@ -776,20 +781,20 @@
+     %cutoff:f32 = access %params_3, 4u
+     %lower_scale:f32 = access %params_3, 5u
+     %upper_scale:f32 = access %params_3, 6u
+-    %92:bool = lte %v_2, %cutoff
+-    if %92 [t: $B15, f: $B16] {  # if_5
++    %98:bool = lte %v_2, %cutoff
++    if %98 [t: $B15, f: $B16] {  # if_5
+       $B15: {  # true
+-        %93:f32 = mul %v_2, %v_2
+-        %94:f32 = div %93, %lower_scale
+-        ret %94
++        %99:f32 = mul %v_2, %v_2
++        %100:f32 = div %99, %lower_scale
++        ret %100
+       }
+       $B16: {  # false
+-        %95:f32 = sub %v_2, %C_1
+-        %96:f32 = div %95, %A_1
+-        %97:f32 = exp %96
+-        %98:f32 = add %B_1, %97
+-        %99:f32 = div %98, %upper_scale
+-        ret %99
++        %101:f32 = sub %v_2, %C_1
++        %102:f32 = div %101, %A_1
++        %103:f32 = exp %102
++        %104:f32 = add %B_1, %103
++        %105:f32 = div %104, %upper_scale
++        ret %105
+       }
+     }
+     unreachable
+@@ -797,14 +802,14 @@
+ }
+ %tint_ApplyHLGTransferFunction = func(%v_3:vec3<f32>, %params_4:tint_TransferFunctionParams):vec3<f32> {  # %v_3: 'v', %params_4: 'params'
+   $B17: {
+-    %102:f32 = swizzle %v_3, x
+-    %103:f32 = call %tint_ApplyHLGSingleChannel, %102, %params_4
+-    %104:f32 = swizzle %v_3, y
+-    %105:f32 = call %tint_ApplyHLGSingleChannel, %104, %params_4
+-    %106:f32 = swizzle %v_3, z
+-    %107:f32 = call %tint_ApplyHLGSingleChannel, %106, %params_4
+-    %108:vec3<f32> = construct %103, %105, %107
+-    ret %108
++    %108:f32 = swizzle %v_3, x
++    %109:f32 = call %tint_ApplyHLGSingleChannel, %108, %params_4
++    %110:f32 = swizzle %v_3, y
++    %111:f32 = call %tint_ApplyHLGSingleChannel, %110, %params_4
++    %112:f32 = swizzle %v_3, z
++    %113:f32 = call %tint_ApplyHLGSingleChannel, %112, %params_4
++    %114:vec3<f32> = construct %109, %111, %113
++    ret %114
+   }
+ }
+ %tint_ApplyPQTransferFunction = func(%v_4:vec3<f32>, %params_5:tint_TransferFunctionParams):vec3<f32> {  # %v_4: 'v', %params_5: 'params'
+@@ -814,22 +819,22 @@
+     %c1:f32 = access %params_5, 3u
+     %c2:f32 = access %params_5, 4u
+     %c3:f32 = access %params_5, 5u
+-    %116:vec3<f32> = construct %c1
+-    %117:vec3<f32> = construct %c2
+-    %118:vec3<f32> = construct %c3
+-    %119:vec3<f32> = construct %m1
+-    %120:vec3<f32> = construct %m2
+-    %121:vec3<f32> = clamp %v_4, vec3<f32>(0.0f), vec3<f32>(1.0f)
+-    %122:vec3<f32> = div vec3<f32>(1.0f), %120
+-    %123:vec3<f32> = pow %121, %122
+-    %124:vec3<f32> = sub %123, %116
+-    %125:vec3<f32> = max %124, vec3<f32>(0.0f)
+-    %126:vec3<f32> = mul %118, %123
+-    %127:vec3<f32> = sub %117, %126
+-    %128:vec3<f32> = div %125, %127
+-    %129:vec3<f32> = div vec3<f32>(1.0f), %119
+-    %130:vec3<f32> = pow %128, %129
+-    ret %130
++    %122:vec3<f32> = construct %c1
++    %123:vec3<f32> = construct %c2
++    %124:vec3<f32> = construct %c3
++    %125:vec3<f32> = construct %m1
++    %126:vec3<f32> = construct %m2
++    %127:vec3<f32> = clamp %v_4, vec3<f32>(0.0f), vec3<f32>(1.0f)
++    %128:vec3<f32> = div vec3<f32>(1.0f), %126
++    %129:vec3<f32> = pow %127, %128
++    %130:vec3<f32> = sub %129, %122
++    %131:vec3<f32> = max %130, vec3<f32>(0.0f)
++    %132:vec3<f32> = mul %124, %129
++    %133:vec3<f32> = sub %123, %132
++    %134:vec3<f32> = div %131, %133
++    %135:vec3<f32> = div vec3<f32>(1.0f), %125
++    %136:vec3<f32> = pow %134, %135
++    ret %136
+   }
+ }
+ )";
+@@ -1126,82 +1131,87 @@
+     %7:sampler = load %texture_ycbcr_sampler
+     %8:tint_ExternalTextureParams = load %texture_params
+     %9:vec2<u32> = convert %coords
+-    %result:vec4<f32> = call %tint_TextureLoadYcbcrExternal, %6, %8, %9
++    %result:vec4<f32> = call %tint_TextureLoadYcbcrExternal, %6, %7, %8, %9
+     ret %result
+   }
+ }
+-%tint_TextureLoadYcbcrExternal = func(%texture_1:texture_2d<f32>, %params:tint_ExternalTextureParams, %coords_1:vec2<u32>):vec4<f32> {  # %texture_1: 'texture', %coords_1: 'coords'
++%tint_TextureLoadYcbcrExternal = func(%texture_1:texture_2d<f32>, %sampler:sampler, %params:tint_ExternalTextureParams, %coords_1:vec2<u32>):vec4<f32> {  # %texture_1: 'texture', %coords_1: 'coords'
+   $B3: {
+-    %15:mat3x4<f32> = access %params, 2u
+-    %16:mat3x2<f32> = access %params, 7u
+-    %17:vec2<u32> = access %params, 12u
+-    %18:vec2<u32> = min %coords_1, %17
+-    %19:vec2<f32> = convert %18
+-    %20:vec3<f32> = construct %19, 1.0f
+-    %21:vec2<f32> = mul %16, %20
+-    %22:vec2<f32> = round %21
+-    %23:vec2<u32> = convert %22
+-    %24:vec4<f32> = textureLoad %texture_1, %23, 0u
+-    %25:vec3<f32> = swizzle %24, xyz
+-    %26:vec4<f32> = construct %25, 1.0f
+-    %27:vec3<f32> = mul %26, %15
+-    %28:u32 = access %params, 1u
+-    %29:bool = eq %28, 0u
+-    %30:vec3<f32> = if %29 [t: $B4, f: $B5] {  # if_1
++    %16:mat3x4<f32> = access %params, 2u
++    %17:mat3x2<f32> = access %params, 7u
++    %18:vec2<u32> = access %params, 12u
++    %19:vec2<u32> = min %coords_1, %18
++    %20:vec2<f32> = convert %19
++    %21:vec3<f32> = construct %20, 1.0f
++    %22:vec2<f32> = mul %17, %21
++    %23:vec2<f32> = round %22
++    %24:vec2<u32> = convert %23
++    %25:vec2<u32> = textureDimensions %texture_1, 0u
++    %26:vec2<f32> = convert %24
++    %27:vec2<f32> = add %26, vec2<f32>(0.5f)
++    %28:vec2<f32> = convert %25
++    %29:vec2<f32> = div %27, %28
++    %30:vec4<f32> = textureSampleLevel %texture_1, %sampler, %29, 0.0f
++    %31:vec3<f32> = swizzle %30, xyz
++    %32:vec4<f32> = construct %31, 1.0f
++    %33:vec3<f32> = mul %32, %16
++    %34:u32 = access %params, 1u
++    %35:bool = eq %34, 0u
++    %36:vec3<f32> = if %35 [t: $B4, f: $B5] {  # if_1
+       $B4: {  # true
+-        %31:tint_TransferFunctionParams = access %params, 3u
+-        %32:tint_TransferFunctionParams = access %params, 4u
+-        %33:mat3x3<f32> = access %params, 5u
+-        %34:vec4<f32> = access %params, 14u
+-        %35:vec3<f32> = call %tint_ApplySrcTransferFunction, %27, %31
+-        %37:f32 = swizzle %34, w
+-        %38:bool = neq %37, 0.0f
+-        %39:vec3<f32> = if %38 [t: $B6, f: $B7] {  # if_2
++        %37:tint_TransferFunctionParams = access %params, 3u
++        %38:tint_TransferFunctionParams = access %params, 4u
++        %39:mat3x3<f32> = access %params, 5u
++        %40:vec4<f32> = access %params, 14u
++        %41:vec3<f32> = call %tint_ApplySrcTransferFunction, %33, %37
++        %43:f32 = swizzle %40, w
++        %44:bool = neq %43, 0.0f
++        %45:vec3<f32> = if %44 [t: $B6, f: $B7] {  # if_2
+           $B6: {  # true
+-            %40:vec3<f32> = swizzle %34, xyz
+-            %41:f32 = dot %40, %35
+-            %42:f32 = abs %41
+-            %43:f32 = pow %42, %37
+-            %44:f32 = sign %41
+-            %45:f32 = mul %44, %43
+-            %46:vec3<f32> = mul %35, %45
+-            exit_if %46  # if_2
++            %46:vec3<f32> = swizzle %40, xyz
++            %47:f32 = dot %46, %41
++            %48:f32 = abs %47
++            %49:f32 = pow %48, %43
++            %50:f32 = sign %47
++            %51:f32 = mul %50, %49
++            %52:vec3<f32> = mul %41, %51
++            exit_if %52  # if_2
+           }
+           $B7: {  # false
+-            exit_if %35  # if_2
++            exit_if %41  # if_2
+           }
+         }
+-        %47:vec3<f32> = mul %33, %39
+-        %48:vec3<f32> = call %tint_ApplyGammaTransferFunction, %47, %32
+-        exit_if %48  # if_1
++        %53:vec3<f32> = mul %39, %45
++        %54:vec3<f32> = call %tint_ApplyGammaTransferFunction, %53, %38
++        exit_if %54  # if_1
+       }
+       $B5: {  # false
+-        exit_if %27  # if_1
+-      }
+-    }
+-    %50:vec4<f32> = construct %30, 1.0f
+-    ret %50
++        exit_if %33  # if_1
++      }
++    }
++    %56:vec4<f32> = construct %36, 1.0f
++    ret %56
+   }
+ }
+ %tint_ApplySrcTransferFunction = func(%v:vec3<f32>, %params_1:tint_TransferFunctionParams):vec3<f32> {  # %params_1: 'params'
+   $B8: {
+     %mode:u32 = access %params_1, 0u
+-    %54:bool = eq %mode, 0u
+-    if %54 [t: $B9, f: $B10] {  # if_3
++    %60:bool = eq %mode, 0u
++    if %60 [t: $B9, f: $B10] {  # if_3
+       $B9: {  # true
+-        %55:vec3<f32> = call %tint_ApplyGammaTransferFunction, %v, %params_1
+-        ret %55
++        %61:vec3<f32> = call %tint_ApplyGammaTransferFunction, %v, %params_1
++        ret %61
+       }
+       $B10: {  # false
+-        %56:bool = eq %mode, 1u
+-        if %56 [t: $B11, f: $B12] {  # if_4
++        %62:bool = eq %mode, 1u
++        if %62 [t: $B11, f: $B12] {  # if_4
+           $B11: {  # true
+-            %57:vec3<f32> = call %tint_ApplyHLGTransferFunction, %v, %params_1
+-            ret %57
++            %63:vec3<f32> = call %tint_ApplyHLGTransferFunction, %v, %params_1
++            ret %63
+           }
+           $B12: {  # false
+-            %59:vec3<f32> = call %tint_ApplyPQTransferFunction, %v, %params_1
+-            ret %59
++            %65:vec3<f32> = call %tint_ApplyPQTransferFunction, %v, %params_1
++            ret %65
+           }
+         }
+         unreachable
+@@ -1219,21 +1229,21 @@
+     %E:f32 = access %params_2, 5u
+     %F:f32 = access %params_2, 6u
+     %G:f32 = access %params_2, 7u
+-    %70:vec3<f32> = construct %G
+-    %71:vec3<f32> = construct %D
+-    %72:vec3<f32> = abs %v_1
+-    %73:vec3<f32> = sign %v_1
+-    %74:vec3<bool> = lt %72, %71
+-    %75:vec3<f32> = mul %C, %72
+-    %76:vec3<f32> = add %75, %F
+-    %77:vec3<f32> = mul %73, %76
+-    %78:vec3<f32> = mul %A, %72
+-    %79:vec3<f32> = add %78, %B
+-    %80:vec3<f32> = pow %79, %70
+-    %81:vec3<f32> = add %80, %E
+-    %82:vec3<f32> = mul %73, %81
+-    %83:vec3<f32> = select %82, %77, %74
+-    ret %83
++    %76:vec3<f32> = construct %G
++    %77:vec3<f32> = construct %D
++    %78:vec3<f32> = abs %v_1
++    %79:vec3<f32> = sign %v_1
++    %80:vec3<bool> = lt %78, %77
++    %81:vec3<f32> = mul %C, %78
++    %82:vec3<f32> = add %81, %F
++    %83:vec3<f32> = mul %79, %82
++    %84:vec3<f32> = mul %A, %78
++    %85:vec3<f32> = add %84, %B
++    %86:vec3<f32> = pow %85, %76
++    %87:vec3<f32> = add %86, %E
++    %88:vec3<f32> = mul %79, %87
++    %89:vec3<f32> = select %88, %83, %80
++    ret %89
+   }
+ }
+ %tint_ApplyHLGSingleChannel = func(%v_2:f32, %params_3:tint_TransferFunctionParams):f32 {  # %v_2: 'v', %params_3: 'params'
+@@ -1244,20 +1254,20 @@
+     %cutoff:f32 = access %params_3, 4u
+     %lower_scale:f32 = access %params_3, 5u
+     %upper_scale:f32 = access %params_3, 6u
+-    %93:bool = lte %v_2, %cutoff
+-    if %93 [t: $B15, f: $B16] {  # if_5
++    %99:bool = lte %v_2, %cutoff
++    if %99 [t: $B15, f: $B16] {  # if_5
+       $B15: {  # true
+-        %94:f32 = mul %v_2, %v_2
+-        %95:f32 = div %94, %lower_scale
+-        ret %95
++        %100:f32 = mul %v_2, %v_2
++        %101:f32 = div %100, %lower_scale
++        ret %101
+       }
+       $B16: {  # false
+-        %96:f32 = sub %v_2, %C_1
+-        %97:f32 = div %96, %A_1
+-        %98:f32 = exp %97
+-        %99:f32 = add %B_1, %98
+-        %100:f32 = div %99, %upper_scale
+-        ret %100
++        %102:f32 = sub %v_2, %C_1
++        %103:f32 = div %102, %A_1
++        %104:f32 = exp %103
++        %105:f32 = add %B_1, %104
++        %106:f32 = div %105, %upper_scale
++        ret %106
+       }
+     }
+     unreachable
+@@ -1265,14 +1275,14 @@
+ }
+ %tint_ApplyHLGTransferFunction = func(%v_3:vec3<f32>, %params_4:tint_TransferFunctionParams):vec3<f32> {  # %v_3: 'v', %params_4: 'params'
+   $B17: {
+-    %103:f32 = swizzle %v_3, x
+-    %104:f32 = call %tint_ApplyHLGSingleChannel, %103, %params_4
+-    %105:f32 = swizzle %v_3, y
+-    %106:f32 = call %tint_ApplyHLGSingleChannel, %105, %params_4
+-    %107:f32 = swizzle %v_3, z
+-    %108:f32 = call %tint_ApplyHLGSingleChannel, %107, %params_4
+-    %109:vec3<f32> = construct %104, %106, %108
+-    ret %109
++    %109:f32 = swizzle %v_3, x
++    %110:f32 = call %tint_ApplyHLGSingleChannel, %109, %params_4
++    %111:f32 = swizzle %v_3, y
++    %112:f32 = call %tint_ApplyHLGSingleChannel, %111, %params_4
++    %113:f32 = swizzle %v_3, z
++    %114:f32 = call %tint_ApplyHLGSingleChannel, %113, %params_4
++    %115:vec3<f32> = construct %110, %112, %114
++    ret %115
+   }
+ }
+ %tint_ApplyPQTransferFunction = func(%v_4:vec3<f32>, %params_5:tint_TransferFunctionParams):vec3<f32> {  # %v_4: 'v', %params_5: 'params'
+@@ -1282,22 +1292,22 @@
+     %c1:f32 = access %params_5, 3u
+     %c2:f32 = access %params_5, 4u
+     %c3:f32 = access %params_5, 5u
+-    %117:vec3<f32> = construct %c1
+-    %118:vec3<f32> = construct %c2
+-    %119:vec3<f32> = construct %c3
+-    %120:vec3<f32> = construct %m1
+-    %121:vec3<f32> = construct %m2
+-    %122:vec3<f32> = clamp %v_4, vec3<f32>(0.0f), vec3<f32>(1.0f)
+-    %123:vec3<f32> = div vec3<f32>(1.0f), %121
+-    %124:vec3<f32> = pow %122, %123
+-    %125:vec3<f32> = sub %124, %117
+-    %126:vec3<f32> = max %125, vec3<f32>(0.0f)
+-    %127:vec3<f32> = mul %119, %124
+-    %128:vec3<f32> = sub %118, %127
+-    %129:vec3<f32> = div %126, %128
+-    %130:vec3<f32> = div vec3<f32>(1.0f), %120
+-    %131:vec3<f32> = pow %129, %130
+-    ret %131
++    %123:vec3<f32> = construct %c1
++    %124:vec3<f32> = construct %c2
++    %125:vec3<f32> = construct %c3
++    %126:vec3<f32> = construct %m1
++    %127:vec3<f32> = construct %m2
++    %128:vec3<f32> = clamp %v_4, vec3<f32>(0.0f), vec3<f32>(1.0f)
++    %129:vec3<f32> = div vec3<f32>(1.0f), %127
++    %130:vec3<f32> = pow %128, %129
++    %131:vec3<f32> = sub %130, %123
++    %132:vec3<f32> = max %131, vec3<f32>(0.0f)
++    %133:vec3<f32> = mul %125, %130
++    %134:vec3<f32> = sub %124, %133
++    %135:vec3<f32> = div %132, %134
++    %136:vec3<f32> = div vec3<f32>(1.0f), %126
++    %137:vec3<f32> = pow %135, %136
++    ret %137
+   }
+ }
+ )";
+diff --git a/src/dawn/native/vulkan/RenderPipelineVk.cpp b/src/dawn/native/vulkan/RenderPipelineVk.cpp
+--- a/src/dawn/native/vulkan/RenderPipelineVk.cpp
++++ b/src/dawn/native/vulkan/RenderPipelineVk.cpp
+@@ -31,6 +31,7 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "src/dawn/common/GPUInfo.h"
+ #include "src/dawn/native/CreatePipelineAsyncEvent.h"
+ #include "src/dawn/native/vulkan/DeviceVk.h"
+ #include "src/dawn/native/vulkan/FencedDeleter.h"
+@@ -754,6 +755,24 @@
+     createInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+     createInfo.pNext = nullptr;
+     createInfo.flags = 0;
++#if defined(__OHOS__)
++    if (device->IsToggleEnabled(Toggle::OhosAtcNoWriteDisableOptimizationProbe) &&
++        gpu_info::IsHuaweiMaleoon(device->GetDeviceInfo().properties.vendorID,
++                                 device->GetDeviceInfo().properties.deviceID) &&
++        IsAlphaToCoverageEnabled() &&
++        GetDepthStencilState()->depthWriteEnabled != wgpu::OptionalBool::True) {
++        bool noColorWrites = true;
++        for (auto i : GetColorAttachmentsMask()) {
++            noColorWrites &= colorBlendAttachments[i].colorWriteMask == 0;
++        }
++        if (noColorWrites) {
++            // Diagnostic only: isolate driver optimization of an alpha-to-coverage
++            // fragment stage whose only observable result is sample coverage.
++            createInfo.flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
++            device->EmitWarningOnce("OHOS ATC no-write pipeline optimization probe enabled");
++        }
++    }
++#endif
+     createInfo.stageCount = stageCount;
+     createInfo.pStages = shaderStages.data();
+     createInfo.pVertexInputState = &vertexInputCreateInfo;
+diff --git a/src/dawn/native/PassResourceUsage.h b/src/dawn/native/PassResourceUsage.h
+index cb78519..663be2e 100644
+--- a/src/dawn/native/PassResourceUsage.h
++++ b/src/dawn/native/PassResourceUsage.h
+@@ -105,6 +105,7 @@ struct RenderPassResourceUsage : public SyncScopeResourceUsage {
+     std::vector<QuerySetBase*> querySets;
+     std::vector<ityp::vector<QueryIndex, bool>> queryAvailabilities;
+     bool usesFramebufferFetch = false;
++    bool usesZeroColorWriteATC = false;
+ };
+ 
+ using RenderPassUsages = ityp::vector<PassIndex, RenderPassResourceUsage>;
+diff --git a/src/dawn/native/PassResourceUsageTracker.cpp b/src/dawn/native/PassResourceUsageTracker.cpp
+index 1df06f0..bd691ff 100644
+--- a/src/dawn/native/PassResourceUsageTracker.cpp
++++ b/src/dawn/native/PassResourceUsageTracker.cpp
+@@ -335,6 +335,7 @@ RenderPassResourceUsage RenderPassResourceUsageTracker::AcquireResourceUsage() {
+     mQueryAvailabilities.clear();
+ 
+     result.usesFramebufferFetch = mFramebufferFetchUsed;
++    result.usesZeroColorWriteATC = mZeroColorWriteATCUsed;
+ 
+     return result;
+ }
+diff --git a/src/dawn/native/PassResourceUsageTracker.h b/src/dawn/native/PassResourceUsageTracker.h
+index b073f55..bd105c6 100644
+--- a/src/dawn/native/PassResourceUsageTracker.h
++++ b/src/dawn/native/PassResourceUsageTracker.h
+@@ -115,6 +115,7 @@ class RenderPassResourceUsageTracker : public SyncScopeUsageTracker {
+     const QueryAvailabilityMap& GetQueryAvailabilityMap() const;
+ 
+     void MarkFramebufferFetchUsed();
++    void MarkZeroColorWriteATCUsed() { mZeroColorWriteATCUsed = true; }
+ 
+     RenderPassResourceUsage AcquireResourceUsage();
+ 
+@@ -127,6 +128,7 @@ class RenderPassResourceUsageTracker : public SyncScopeUsageTracker {
+     QueryAvailabilityMap mQueryAvailabilities;
+ 
+     bool mFramebufferFetchUsed = false;
++    bool mZeroColorWriteATCUsed = false;
+ };
+ 
+ }  // namespace dawn::native
+diff --git a/src/dawn/native/RenderEncoderBase.cpp b/src/dawn/native/RenderEncoderBase.cpp
+index d05e6d4..443be40 100644
+--- a/src/dawn/native/RenderEncoderBase.cpp
++++ b/src/dawn/native/RenderEncoderBase.cpp
+@@ -563,6 +563,9 @@ void RenderEncoderBase::APISetPipeline(RenderPipelineBase* pipeline) {
+ 
+             mCommandBufferState.SetRenderPipeline(pipeline);
+ 
++            if (pipeline->HasZeroColorWriteAlphaToCoverage()) {
++                mUsageTracker.MarkZeroColorWriteATCUsed();
++            }
+             if (pipeline->UsesFramebufferFetch()) {
+                 mUsageTracker.MarkFramebufferFetchUsed();
+             }
+diff --git a/src/dawn/native/RenderPassEncoder.cpp b/src/dawn/native/RenderPassEncoder.cpp
+index 9a63bd7..800be5d 100644
+--- a/src/dawn/native/RenderPassEncoder.cpp
++++ b/src/dawn/native/RenderPassEncoder.cpp
+@@ -419,6 +419,9 @@ void RenderPassEncoder::APIExecuteBundles(Span<RenderBundleBase* const> renderBu
+                 bundles[i] = renderBundles[i];
+ 
+                 mUsageTracker.MergeResourceUsages(bundle->GetResourceUsage());
++                if (bundle->GetResourceUsage().usesZeroColorWriteATC) {
++                    mUsageTracker.MarkZeroColorWriteATCUsed();
++                }
+                 if (bundle->GetResourceUsage().usesFramebufferFetch) {
+                     mUsageTracker.MarkFramebufferFetchUsed();
+                 }
+diff --git a/src/dawn/native/RenderPipeline.h b/src/dawn/native/RenderPipeline.h
+index 7919fed..bd60b14 100644
+--- a/src/dawn/native/RenderPipeline.h
++++ b/src/dawn/native/RenderPipeline.h
+@@ -133,6 +133,17 @@ class RenderPipelineBase : public PipelineBase,
+     uint32_t GetSampleCount() const;
+     uint32_t GetSampleMask() const;
+     bool IsAlphaToCoverageEnabled() const;
++    bool HasZeroColorWriteAlphaToCoverage() const {
++        if (!IsAlphaToCoverageEnabled() || !GetColorAttachmentsMask().any()) {
++            return false;
++        }
++        for (auto i : GetColorAttachmentsMask()) {
++            if (GetColorTargetState(i)->writeMask != wgpu::ColorWriteMask::None) {
++                return false;
++            }
++        }
++        return true;
++    }
+     bool UseSampleRateShading() const;
+ 
+     // Shader builtin getters
+diff --git a/src/dawn/native/vulkan/CommandBufferVk.cpp b/src/dawn/native/vulkan/CommandBufferVk.cpp
+index 9092c65..167d842 100644
+--- a/src/dawn/native/vulkan/CommandBufferVk.cpp
++++ b/src/dawn/native/vulkan/CommandBufferVk.cpp
+@@ -31,6 +31,7 @@
+ #include <concepts>
+ #include <limits>
+ #include <memory>
++#include <type_traits>
+ #include <utility>
+ #include <vector>
+ 
+@@ -650,6 +651,9 @@ struct ProgrammablePassState : public StackAllocated {
+ 
+         descriptorSets.Apply(vk, commands, PipelineBindPoint);
+         immediates.Apply(vk, commands);
++        if constexpr (std::is_same_v<Pipeline, RenderPipeline>) {
++            lastPipeline->BindZeroColorWriteATCSink(commands, lastPipeline->GetVkLayout());
++        }
+ 
+         DoOperation(vk, commands);
+         return {};
+@@ -747,6 +751,9 @@ struct ProgrammablePassState : public StackAllocated {
+         descriptorSets.Apply(vk, commands, PipelineBindPoint, pipelineHandles.layout,
+                              [&](BindGroupIndex i) { return newDescriptorSets[i]->GetHandle(); });
+         immediates.Apply(vk, commands, pipelineHandles.layout, lastPipeline->GetImmediateMask());
++        if constexpr (std::is_same_v<Pipeline, RenderPipeline>) {
++            lastPipeline->BindZeroColorWriteATCSink(commands, pipelineHandles.layout);
++        }
+ 
+         DoOperation(vk, commands);
+ 
+@@ -1136,6 +1143,11 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* recordingConte
+                                             CommandRecordingContext* recordingContext,
+                                             const RenderPassResourceUsage& usages) -> MaybeError {
+         DAWN_TRY(PrepareResourcesForSyncScope(device, recordingContext, usages));
++        if (usages.usesZeroColorWriteATC && device->NeedsZeroColorWriteATCWorkaround()) {
++            // Initialization and storage WAW barriers must precede BeginRenderPass,
++            // including when the affected draw originates in a render bundle.
++            device->PrepareZeroColorWriteATCSink(recordingContext);
++        }
+ 
+         // Reset all query set used on current render pass together before beginning render pass
+         // because the reset command must be called outside render pass
+diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/DeviceVk.cpp
+index 41d3d96..9d6c06d 100644
+--- a/src/dawn/native/vulkan/DeviceVk.cpp
++++ b/src/dawn/native/vulkan/DeviceVk.cpp
+@@ -67,6 +67,7 @@
+ #include "src/dawn/native/vulkan/TextureVk.h"
+ #include "src/dawn/native/vulkan/UtilsVulkan.h"
+ #include "src/dawn/native/vulkan/VulkanError.h"
++#include "src/dawn/platform/tracing/TraceEvent.h"
+ #include "src/utils/log.h"
+ #include "src/utils/non_copyable.h"
+ #include "src/utils/numeric.h"
+@@ -85,6 +86,71 @@ struct NoopDrawFunction<R(VKAPI_PTR*)(Args...)> {
+ 
+ }  // namespace
+ 
++// An immutable descriptor set for one private word. The shader writes zero
++// atomically, so the side effect is unobservable to WebGPU applications and does
++// not change attachment contents. Initialization failures clean up partial state.
++class ZeroColorWriteATCSink {
++  public:
++    explicit ZeroColorWriteATCSink(Device* device) : device(device) {}
++    ~ZeroColorWriteATCSink() {
++        TRACE_EVENT(DAWN_TRACE_CATEGORY(), "OhosZeroColorWriteATCSinkRelease");
++        if (pool != VK_NULL_HANDLE) {
++            device->fn.DestroyDescriptorPool(device->GetVkDevice(), pool, nullptr);
++        }
++        if (layout != VK_NULL_HANDLE) {
++            device->fn.DestroyDescriptorSetLayout(device->GetVkDevice(), layout, nullptr);
++        }
++        buffer = nullptr;
++    }
++    MaybeError Initialize() {
++        BufferDescriptor descriptor;
++        descriptor.size = sizeof(uint32_t);
++        descriptor.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst;
++        DAWN_TRY_ASSIGN(buffer, device->CreateBuffer(&descriptor));
++        VkDescriptorSetLayoutBinding binding{};
++        binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
++        binding.descriptorCount = 1;
++        binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
++        VkDescriptorSetLayoutCreateInfo layoutInfo{};
++        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
++        layoutInfo.bindingCount = 1;
++        layoutInfo.pBindings = &binding;
++        DAWN_TRY(CheckVkSuccess(device->fn.CreateDescriptorSetLayout(
++            device->GetVkDevice(), &layoutInfo, nullptr, &*layout), "CreateATCSinkLayout"));
++        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1};
++        VkDescriptorPoolCreateInfo poolInfo{};
++        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
++        poolInfo.maxSets = 1;
++        poolInfo.poolSizeCount = 1;
++        poolInfo.pPoolSizes = &size;
++        DAWN_TRY(CheckVkSuccess(device->fn.CreateDescriptorPool(
++            device->GetVkDevice(), &poolInfo, nullptr, &*pool), "CreateATCSinkPool"));
++        VkDescriptorSetAllocateInfo allocation{};
++        allocation.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
++        allocation.descriptorPool = pool;
++        allocation.descriptorSetCount = 1;
++        allocation.pSetLayouts = &*layout;
++        DAWN_TRY(CheckVkSuccess(device->fn.AllocateDescriptorSets(
++            device->GetVkDevice(), &allocation, &*set), "AllocateATCSinkSet"));
++        VkDescriptorBufferInfo bufferInfo{};
++        bufferInfo.buffer = ToBackend(buffer.Get())->GetHandle();
++        bufferInfo.range = sizeof(uint32_t);
++        VkWriteDescriptorSet write{};
++        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
++        write.dstSet = set;
++        write.descriptorCount = 1;
++        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
++        write.pBufferInfo = &bufferInfo;
++        device->fn.UpdateDescriptorSets(device->GetVkDevice(), 1, &write, 0, nullptr);
++        return {};
++    }
++    Device* device;
++    Ref<BufferBase> buffer;
++    VkDescriptorSetLayout layout = VK_NULL_HANDLE;
++    VkDescriptorPool pool = VK_NULL_HANDLE;
++    VkDescriptorSet set = VK_NULL_HANDLE;
++};
++
+ // static
+ ResultOrError<Ref<Device>> Device::Create(AdapterBase* adapter,
+                                           const UnpackedPtr<DeviceDescriptor>& descriptor,
+@@ -416,6 +482,44 @@ FramebufferFetchHelper* Device::GetFramebufferFetchHelper() {
+     return mFramebufferFetchHelper.get();
+ }
+ 
++bool Device::NeedsZeroColorWriteATCWorkaround() const {
++    return NeedsOhosZeroColorWriteATCWorkaround(mDeviceInfo.properties);
++}
++MaybeError Device::EnsureZeroColorWriteATCSink() {
++    return mZeroColorWriteATCSink.Use([this](auto sink) -> MaybeError {
++        if (!*sink) {
++            auto candidate = std::make_unique<ZeroColorWriteATCSink>(this);
++            DAWN_TRY(candidate->Initialize());
++            TRACE_EVENT(DAWN_TRACE_CATEGORY(), "OhosZeroColorWriteATCSinkCreate");
++            *sink = std::move(candidate);
++            InfoLog() << "OHOS Vulkan: private zero-color-write alpha-to-coverage sink enabled";
++        }
++        return {};
++    });
++}
++void Device::PrepareZeroColorWriteATCSink(CommandRecordingContext* recordingContext) {
++    mZeroColorWriteATCSink.Use([recordingContext](auto sink) {
++        DAWN_ASSERT(*sink);
++        auto* buffer = ToBackend((*sink)->buffer.Get());
++        buffer->EnsureDataInitialized(recordingContext);
++        buffer->TransitionUsageNow(recordingContext, wgpu::BufferUsage::Storage,
++                                   wgpu::ShaderStage::Fragment);
++    });
++}
++VkDescriptorSetLayout Device::GetZeroColorWriteATCLayout() {
++    return mZeroColorWriteATCSink.Use([](auto sink) {
++        DAWN_ASSERT(*sink);
++        return (*sink)->layout;
++    });
++}
++VkDescriptorSet Device::GetZeroColorWriteATCSet() {
++    return mZeroColorWriteATCSink.Use([](auto sink) {
++        DAWN_ASSERT(*sink);
++        return (*sink)->set;
++    });
++}
++
++
+ Ref<FencedDeleter>& Device::GetFencedDeleter() {
+     return mDeleter;
+ }
+@@ -1115,6 +1219,9 @@ void Device::DestroyImpl(DestroyReason reason) {
+     }
+ 
+     mFramebufferFetchHelper.reset();
++    // GPU work has finished. Break the private buffer -> device reference cycle
++    // before draining allocator/deleter queues and before destroying VkDevice.
++    mZeroColorWriteATCSink.Use([](auto sink) { sink->reset(); });
+ 
+     mDescriptorAllocatorsPendingDeallocation.Use([&](auto pending) {
+         for (Ref<DescriptorSetAllocator>& allocator : pending->IterateUpTo(kMaxExecutionSerial)) {
+diff --git a/src/dawn/native/vulkan/DeviceVk.h b/src/dawn/native/vulkan/DeviceVk.h
+index c990d80..567d127 100644
+--- a/src/dawn/native/vulkan/DeviceVk.h
++++ b/src/dawn/native/vulkan/DeviceVk.h
+@@ -51,6 +51,7 @@ class BufferUploader;
+ class FencedDeleter;
+ class FramebufferCache;
+ class FramebufferFetchHelper;
++class ZeroColorWriteATCSink;
+ class RenderPassCache;
+ class ResourceMemoryAllocator;
+ 
+@@ -92,6 +93,11 @@ class Device final : public DeviceBase {
+     uint32_t GetGraphicsQueueFamily() const;
+     const VkDescriptorSetLayout& GetResourceTableLayout() const;
+     FramebufferFetchHelper* GetFramebufferFetchHelper();
++    bool NeedsZeroColorWriteATCWorkaround() const;
++    MaybeError EnsureZeroColorWriteATCSink();
++    void PrepareZeroColorWriteATCSink(CommandRecordingContext* recordingContext);
++    VkDescriptorSetLayout GetZeroColorWriteATCLayout();
++    VkDescriptorSet GetZeroColorWriteATCSet();
+ 
+     Ref<FencedDeleter>& GetFencedDeleter();
+     FramebufferCache* GetFramebufferCache() const;
+@@ -232,6 +238,7 @@ class Device final : public DeviceBase {
+ 
+     VkDescriptorSetLayout mResourceTableLayout = VK_NULL_HANDLE;
+     std::unique_ptr<FramebufferFetchHelper> mFramebufferFetchHelper;
++    MutexProtected<std::unique_ptr<ZeroColorWriteATCSink>> mZeroColorWriteATCSink;
+ 
+     // Entries can be appended without holding the device mutex.
+     MutexProtected<SerialQueue<ExecutionSerial, Ref<DescriptorSetAllocator>>>
+diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+index 87548c9..4b314b1 100644
+--- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
++++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+@@ -760,7 +760,19 @@ MaybeError PhysicalDevice::InitializeSupportedLimitsInternal(wgpu::FeatureLevel
+     GetDefaultLimits(limits, featureLevel);
+     CombinedLimits baseLimits = *limits;
+ 
+-    const VkPhysicalDeviceLimits& vkLimits = mDeviceInfo.properties.limits;
++    VkPhysicalDeviceLimits vkLimits = mDeviceInfo.properties.limits;
++    if (NeedsOhosZeroColorWriteATCWorkaround(mDeviceInfo.properties)) {
++        // The private fragment storage binding must fit even at the advertised
++        // public limits. Keep existing user bind-group indices and core minima.
++        --vkLimits.maxBoundDescriptorSets;
++        --vkLimits.maxDescriptorSetStorageBuffers;
++        --vkLimits.maxPerStageDescriptorStorageBuffers;
++        --vkLimits.maxPerStageResources;
++        --vkLimits.maxFragmentCombinedOutputResources;
++        vkLimits.maxPerStageDescriptorStorageBuffers =
++            std::min(vkLimits.maxPerStageDescriptorStorageBuffers,
++                     vkLimits.maxDescriptorSetStorageBuffers / 3);
++    }
+ 
+ #define CHECK_V1_LIMIT_IMPL(vulkanName, webgpuName, compareOp, msgSegment)           \
+     do {                                                                             \
+diff --git a/src/dawn/native/vulkan/PipelineLayoutVk.cpp b/src/dawn/native/vulkan/PipelineLayoutVk.cpp
+index 2543031..56e6aee 100644
+--- a/src/dawn/native/vulkan/PipelineLayoutVk.cpp
++++ b/src/dawn/native/vulkan/PipelineLayoutVk.cpp
+@@ -53,7 +53,7 @@ ResultOrError<Ref<PipelineLayout>> PipelineLayout::Create(
+ ResultOrError<Ref<RefCountedVkHandle<VkPipelineLayout>>> PipelineLayout::CreateVkPipelineLayout(
+     const Specialization& specialization) {
+     // Compute the array of VkDescriptorSetLayouts that will be chained in the create info.
+-    ityp::array<BindGroupIndex, VkDescriptorSetLayout, size_t{kMaxBindGroupsTyped} + 2> setLayouts;
++    ityp::array<BindGroupIndex, VkDescriptorSetLayout, size_t{kMaxBindGroupsTyped} + 3> setLayouts;
+ 
+     // The first VkDescriptorSetLayouts are the for framebuffer fetch and/or the resource table if
+     // needed.
+@@ -91,6 +91,11 @@ ResultOrError<Ref<RefCountedVkHandle<VkPipelineLayout>>> PipelineLayout::CreateV
+     createInfo.pNext = nullptr;
+     createInfo.flags = 0;
+     createInfo.setLayoutCount = static_cast<uint32_t>(highestBindGroupIndex + startOfBindGroups);
++    if (specialization.zeroColorWriteATC) {
++        setLayouts[highestBindGroupIndex + startOfBindGroups] =
++            ToBackend(GetDevice())->GetZeroColorWriteATCLayout();
++        ++createInfo.setLayoutCount;
++    }
+     createInfo.pSetLayouts = AsVkArray(setLayouts.data());
+     createInfo.pushConstantRangeCount = 0;
+     createInfo.pPushConstantRanges = nullptr;
+@@ -113,6 +118,11 @@ ResultOrError<Ref<RefCountedVkHandle<VkPipelineLayout>>> PipelineLayout::CreateV
+     return AcquireRef(new RefCountedVkHandle<VkPipelineLayout>(device, vkPipelineLayout));
+ }
+ 
++uint32_t PipelineLayout::GetZeroColorWriteATCSetIndex(bool framebufferFetch) const {
++    return uint32_t{GetHighestBitIndexPlusOne(GetBindGroupLayoutsMask())} +
++           uint32_t{framebufferFetch} + uint32_t{UsesResourceTable()};
++}
++
+ MaybeError PipelineLayout::Initialize() {
+     BindGroupMask bindGroupMask = GetBindGroupLayoutsMask();
+     BindGroupIndex highestBindGroupIndex = GetHighestBitIndexPlusOne(bindGroupMask);
+diff --git a/src/dawn/native/vulkan/PipelineLayoutVk.h b/src/dawn/native/vulkan/PipelineLayoutVk.h
+index c50133e..c54f884 100644
+--- a/src/dawn/native/vulkan/PipelineLayoutVk.h
++++ b/src/dawn/native/vulkan/PipelineLayoutVk.h
+@@ -54,19 +54,22 @@ class PipelineLayout final : public PipelineLayoutBase {
+         PerBindGroup<BindGroupLayout::Specialization> bindGroups = {};
+         uint32_t pushConstantBytes = 0;
+         uint32_t framebufferFetchAttachmentCount = 0;
++        bool zeroColorWriteATC = false;
+ 
+         template <typename H>
+         friend H AbslHashValue(H h, const Specialization& s) {
+             for (auto& bg : s.bindGroups) {
+                 h = H::combine(std::move(h), bg);
+             }
+-            return H::combine(std::move(h), s.pushConstantBytes, s.framebufferFetchAttachmentCount);
++            return H::combine(std::move(h), s.pushConstantBytes, s.framebufferFetchAttachmentCount, s.zeroColorWriteATC);
+         }
+         bool operator==(const Specialization& other) const = default;
+     };
+     ResultOrError<Ref<RefCountedVkHandle<VkPipelineLayout>>> GetOrCreateVkLayoutObject(
+         const Specialization& specialization);
+ 
++    uint32_t GetZeroColorWriteATCSetIndex(bool framebufferFetch) const;
++
+     // Friend definition of StreamIn which can be found by ADL to override stream::StreamIn<T>.
+     friend void StreamIn(stream::Sink* sink, const PipelineLayout& obj) {
+         StreamIn(sink, static_cast<const CachedObject&>(obj));
+diff --git a/src/dawn/native/vulkan/RenderPipelineVk.cpp b/src/dawn/native/vulkan/RenderPipelineVk.cpp
+index 189b10e..529e33d 100644
+--- a/src/dawn/native/vulkan/RenderPipelineVk.cpp
++++ b/src/dawn/native/vulkan/RenderPipelineVk.cpp
+@@ -397,6 +397,9 @@ Ref<RenderPipeline> RenderPipeline::CreateUninitialized(
+ }
+ 
+ MaybeError RenderPipeline::InitializeImpl() {
++    if (UsesZeroColorWriteATCWorkaround()) {
++        DAWN_TRY(ToBackend(GetDevice())->EnsureZeroColorWriteATCSink());
++    }
+     // Gather list of internal immediates used by this pipeline
+     if ((NeedsPixelCenterPolyfill() || UsesFragDepth()) && !HasUnclippedDepth()) {
+         mImmediateMask |= GetImmediateBlockBits(offsetof(RenderImmediates, clampFragDepth),
+@@ -421,6 +424,7 @@ MaybeError RenderPipeline::InitializeImpl() {
+             AttachmentCount(GetColorAttachmentsMask());
+     }
+ 
++    specialization.layout.zeroColorWriteATC = UsesZeroColorWriteATCWorkaround();
+     SpecializationResult r;
+     DAWN_TRY_ASSIGN(r, InitializeSpecialization(specialization, buildCacheKey));
+     mHandles = {.pipeline = r.pipeline->Get(), .layout = r.layout->Get()};
+@@ -433,6 +437,7 @@ MaybeError RenderPipeline::InitializeImpl() {
+ ResultOrError<PipelineHandles> RenderPipeline::GetOrCreateSpecializedHandle(
+     Specialization&& specializationIn) {
+     Specialization specialization = specializationIn;
++    specialization.layout.zeroColorWriteATC = UsesZeroColorWriteATCWorkaround();
+     specialization.layout.pushConstantBytes = ToPushConstantBytes(mImmediateMask);
+     if (UsesFramebufferFetch()) {
+         specialization.layout.framebufferFetchAttachmentCount =
+@@ -563,6 +568,9 @@ ResultOrError<RenderPipeline::SpecializationResult> RenderPipeline::InitializeSp
+             .polyfillPixelCenter = pixelCenterPolyfillLocation,
+             .pipelineUsesFramebufferFetch = UsesFramebufferFetch(),
+             .needsMultisampledFramebufferFetch = UseSampleRateShading() && UsesFramebufferFetch(),
++            .zeroColorWriteATCSinkSet = UsesZeroColorWriteATCWorkaround()
++                ? std::optional<uint32_t>(layout->GetZeroColorWriteATCSetIndex(UsesFramebufferFetch()))
++                : std::nullopt,
+         }));
+     }
+ 
+@@ -1104,6 +1112,22 @@ VkPipeline RenderPipeline::GetHandle() const {
+     return mHandles.pipeline;
+ }
+ 
++bool RenderPipeline::UsesZeroColorWriteATCWorkaround() const {
++    return ToBackend(GetDevice())->NeedsZeroColorWriteATCWorkaround() &&
++           HasZeroColorWriteAlphaToCoverage();
++}
++void RenderPipeline::BindZeroColorWriteATCSink(VkCommandBuffer commands,
++                                              VkPipelineLayout layout) const {
++    if (!UsesZeroColorWriteATCWorkaround()) {
++        return;
++    }
++    auto* device = ToBackend(GetDevice());
++    const auto index = ToBackend(GetLayout())->GetZeroColorWriteATCSetIndex(UsesFramebufferFetch());
++    VkDescriptorSet set = device->GetZeroColorWriteATCSet();
++    device->fn.CmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, layout,
++                                     index, 1, &*set, 0, nullptr);
++}
++
+ VkPipelineLayout RenderPipeline::GetVkLayout() const {
+     DAWN_ASSERT(mHandles.layout != nullptr);
+     return mHandles.layout;
+diff --git a/src/dawn/native/vulkan/RenderPipelineVk.h b/src/dawn/native/vulkan/RenderPipelineVk.h
+index 4163ec6..a4295f7 100644
+--- a/src/dawn/native/vulkan/RenderPipelineVk.h
++++ b/src/dawn/native/vulkan/RenderPipelineVk.h
+@@ -50,6 +50,8 @@ class RenderPipeline final : public RenderPipelineBase {
+     using Specialization = CommonPipelineSpecialization;
+     ResultOrError<PipelineHandles> GetOrCreateSpecializedHandle(Specialization&& specialization);
+     bool RequiresSpecialization() const;
++    bool UsesZeroColorWriteATCWorkaround() const;
++    void BindZeroColorWriteATCSink(VkCommandBuffer commands, VkPipelineLayout layout) const;
+ 
+     VkPipeline GetHandle() const;
+     VkPipelineLayout GetVkLayout() const;
+diff --git a/src/dawn/native/vulkan/ShaderModuleVk.cpp b/src/dawn/native/vulkan/ShaderModuleVk.cpp
+index 806b750..d558c97 100644
+--- a/src/dawn/native/vulkan/ShaderModuleVk.cpp
++++ b/src/dawn/native/vulkan/ShaderModuleVk.cpp
+@@ -290,6 +290,9 @@ ResultOrError<ShaderModule::ModuleAndSpirv> ShaderModule::GetHandleAndSpirv(
+     req.tintOptions.emit_vertex_point_size = in.emitPointSize;
+     req.tintOptions.polyfill_pixel_center = in.polyfillPixelCenter;
+     req.tintOptions.multisampled_framebuffer_fetch = in.needsMultisampledFramebufferFetch;
++    if (in.zeroColorWriteATCSinkSet) {
++        req.tintOptions.zero_color_write_atc_sink = tint::BindingPoint(*in.zeroColorWriteATCSinkSet, 0);
++    }
+ 
+     req.tintOptions.spirv_version = GetDevice()->IsToggleEnabled(Toggle::UseSpirv14)
+                                         ? tint::spirv::writer::SpvVersion::kSpv14
+diff --git a/src/dawn/native/vulkan/ShaderModuleVk.h b/src/dawn/native/vulkan/ShaderModuleVk.h
+index 00d0bee..8e0429b 100644
+--- a/src/dawn/native/vulkan/ShaderModuleVk.h
++++ b/src/dawn/native/vulkan/ShaderModuleVk.h
+@@ -76,6 +76,7 @@ class ShaderModule final : public ShaderModuleBase {
+         bool emitPointSize = false;
+         bool pipelineUsesFramebufferFetch = false;
+         bool needsMultisampledFramebufferFetch = false;
++        std::optional<uint32_t> zeroColorWriteATCSinkSet = std::nullopt;
+     };
+ 
+     ResultOrError<ModuleAndSpirv> GetHandleAndSpirv(const CompileParameters& in);
+diff --git a/src/dawn/native/vulkan/VulkanInfo.h b/src/dawn/native/vulkan/VulkanInfo.h
+index d705eed..fdda276 100644
+--- a/src/dawn/native/vulkan/VulkanInfo.h
++++ b/src/dawn/native/vulkan/VulkanInfo.h
+@@ -28,6 +28,7 @@
+ #ifndef SRC_DAWN_NATIVE_VULKAN_VULKANINFO_H_
+ #define SRC_DAWN_NATIVE_VULKAN_VULKANINFO_H_
+ 
++#include <string_view>
+ #include <vector>
+ 
+ #include "src/dawn/common/ityp_array.h"
+@@ -37,6 +38,24 @@
+ 
+ namespace dawn::native::vulkan {
+ 
++// This driver can elide the fragment stage when every color write mask is zero,
++// losing alpha-to-coverage even though the shader's alpha still determines coverage.
++inline bool NeedsOhosZeroColorWriteATCWorkaround(const VkPhysicalDeviceProperties& properties) {
++#if defined(__OHOS__)
++    const auto& limits = properties.limits;
++    return properties.vendorID == 0x19e5 &&
++           std::string_view(properties.deviceName) == "Maleoon 920" &&
++           limits.maxBoundDescriptorSets >= 7 &&
++           limits.maxPerStageDescriptorStorageBuffers > 8 &&
++           limits.maxDescriptorSetStorageBuffers > 24 &&
++           limits.maxPerStageResources > 32 &&
++           limits.maxFragmentCombinedOutputResources > 32;
++#else
++    (void)properties;
++    return false;
++#endif
++}
++
+ class PhysicalDevice;
+ class Backend;
+ struct VulkanFunctions;
+diff --git a/src/tint/lang/spirv/writer/common/options.h b/src/tint/lang/spirv/writer/common/options.h
+index f09b019..bd1bf47 100644
+--- a/src/tint/lang/spirv/writer/common/options.h
++++ b/src/tint/lang/spirv/writer/common/options.h
+@@ -303,6 +303,9 @@ struct Options {
+     /// user-defined. Used to size the decomposed immediate array.
+     uint32_t minimum_immediate_size = 0;
+ 
++    /// Optional backend-private storage binding to keep fragment execution for zero-mask ATC.
++    std::optional<BindingPoint> zero_color_write_atc_sink = std::nullopt;
++
+     /// Reflect the fields of this class so that it can be used by tint::ForeachField()
+     TINT_REFLECT(Options,
+                  entry_point_name,
+@@ -324,7 +327,8 @@ struct Options {
+                  spirv_version,
+                  resource_table,
+                  substitute_overrides_config,
+-                 minimum_immediate_size);
++                 minimum_immediate_size,
++                 zero_color_write_atc_sink);
+ };
+ 
+ }  // namespace tint::spirv::writer
+diff --git a/src/tint/lang/spirv/writer/raise/raise.cc b/src/tint/lang/spirv/writer/raise/raise.cc
+index 6c8b1cb..a593ed5 100644
+--- a/src/tint/lang/spirv/writer/raise/raise.cc
++++ b/src/tint/lang/spirv/writer/raise/raise.cc
+@@ -31,6 +31,7 @@
+ 
+ #include "src/tint/lang/core/ir/builder.h"
+ #include "src/tint/lang/core/ir/module.h"
++#include "src/tint/lang/core/ir/function.h"
+ #include "src/tint/lang/core/ir/transform/bgra8unorm_polyfill.h"
+ #include "src/tint/lang/core/ir/transform/binary_polyfill.h"
+ #include "src/tint/lang/core/ir/transform/binding_remapper.h"
+@@ -60,6 +61,8 @@
+ #include "src/tint/lang/core/type/sampler.h"
+ #include "src/tint/lang/spirv/ir/builtin_call.h"
+ #include "src/tint/lang/spirv/type/sampled_image.h"
++#include "src/tint/lang/core/ir/var.h"
++#include "src/tint/lang/core/type/atomic.h"
+ #include "src/tint/lang/spirv/writer/common/option_helpers.h"
+ #include "src/tint/lang/spirv/writer/raise/builtin_polyfill.h"
+ #include "src/tint/lang/spirv/writer/raise/case_switch_to_if_else.h"
+@@ -195,6 +198,32 @@ Result<SuccessType> Raise(core::ir::Module& module, const Options& options) {
+ 
+     TINT_CHECK_RESULT(core::ir::transform::BindingRemapper(module, remapper_data));
+ 
++    if (options.zero_color_write_atc_sink) {
++        core::ir::Builder b(module);
++        core::ir::Var* sink = nullptr;
++        for (auto* function : module.functions) {
++            if (function->Stage() != core::ir::Function::PipelineStage::kFragment) {
++                continue;
++            }
++            if (!sink) {
++                b.Append(module.root_block, [&] {
++                    sink = b.Var("tint_private_atc_sink", core::AddressSpace::kStorage,
++                                 module.Types().Get<core::type::Atomic>(module.Types().u32()),
++                                 core::Access::kReadWrite);
++                    sink->SetBindingPoint(options.zero_color_write_atc_sink->group,
++                                          options.zero_color_write_atc_sink->binding);
++                });
++            }
++            // Before the user body, so unconditional discard/early returns are
++            // covered too. Later block-layout and helper-invocation transforms
++            // process this ordinary storage atomic alongside user operations.
++            b.InsertBefore(function->Block()->Front(), [&] {
++                b.Call(module.Types().void_(), core::BuiltinFn::kAtomicStore,
++                       sink, b.Constant(core::u32(0)));
++            });
++        }
++    }
++
+     if (!options.disable_robustness) {
+         core::ir::transform::RobustnessConfig config;
+         if (options.extensions.disable_image_robustness) {
+diff --git a/src/dawn/native/Toggles.cpp b/src/dawn/native/Toggles.cpp
+index 01de9d8..0bc57ba 100644
+--- a/src/dawn/native/Toggles.cpp
++++ b/src/dawn/native/Toggles.cpp
+@@ -966,6 +966,12 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
+       "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
+ 
+     // Comment to separate the }} so it is clearer what to copy-paste to add a toggle.
++    {Toggle::OhosMaleoonPointSplitRenderPassProbe,
++     {"ohos_maleoon_point_split_render_pass_probe",
++      "Bound direct and GPU-generated indirect point instances per native render pass on OHOS Maleoon920. "
++      "Only single-sampled stored color attachments without queries, depth, resolve or PLS. "
++      "Enabled by default only on the verified Maleoon920 profile; retains explicit opt-out.",
++      "https://github.com/miramira8295/chromium-hmos", ToggleStage::Device}},
+ }};
+ 
+ }  // anonymous namespace
+diff --git a/src/dawn/native/vulkan/CommandBufferVk.cpp b/src/dawn/native/vulkan/CommandBufferVk.cpp
+index 167d842..7f88fd6 100644
+--- a/src/dawn/native/vulkan/CommandBufferVk.cpp
++++ b/src/dawn/native/vulkan/CommandBufferVk.cpp
+@@ -31,6 +31,7 @@
+ #include <concepts>
+ #include <limits>
+ #include <memory>
++#include <string_view>
+ #include <type_traits>
+ #include <utility>
+ #include <vector>
+@@ -1800,6 +1801,81 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+         state.immediates.SetClampFragDepth(0.0, 1.0);
+     }
+ 
++    // Driver workaround. Splitting complete instances preserves vertex,
++    // instance and primitive indices. Do not split vertices within an instance.
++    // Queries, depth/stencil, resolves, framebuffer fetch and PLS need their own
++    // continuation protocols and are deliberately outside this workaround.
++    const bool splitPointPassProbe = [&] {
++#if defined(__OHOS__)
++        const auto& properties = device->GetDeviceInfo().properties;
++        if (!device->IsToggleEnabled(Toggle::OhosMaleoonPointSplitRenderPassProbe) ||
++            properties.vendorID != 0x19e5 ||
++            std::string_view(properties.deviceName) != "Maleoon 920" ||
++            renderPassCmd->attachmentState->GetSampleCount() != 1 ||
++            renderPassCmd->attachmentState->HasDepthStencilAttachment() ||
++            renderPassCmd->occlusionQuerySet || usage.usesFramebufferFetch ||
++            renderPassCmd->timestampWrites.querySet || renderPassCmd->msaaRenderToSingleSampled ||
++            renderPassCmd->attachmentState->GetExpandResolveInfo().attachmentsToExpandResolve.any()) {
++            return false;
++        }
++        if (renderPassCmd->attachmentState->GetColorAttachmentsMask().none()) {
++            return false;
++        }
++        for (auto i : renderPassCmd->attachmentState->GetColorAttachmentsMask()) {
++            const auto& attachment = renderPassCmd->colorAttachments[i];
++            if (attachment.resolveTarget || attachment.storeOp != wgpu::StoreOp::Store) {
++                return false;
++            }
++        }
++        for (const auto& attachment : renderPassCmd->storageAttachments) {
++            if (attachment.storage) {
++                return false;
++            }
++        }
++        return true;
++#else
++        return false;
++#endif
++    }();
++    constexpr uint64_t kPointWorkPerNativePass = uint64_t{1} << 24;
++    uint64_t pointWorkInNativePass = 0;
++    auto ContinuePointPass = [&]() -> MaybeError {
++        RecordEndRenderPass(recordingContext, device);
++        // Complete attachment writes before a new LOAD, and preserve storage
++        // shader effects across the hardware boundary. No readback or upload.
++        VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
++        barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
++        barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
++                                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT |
++                                VK_ACCESS_SHADER_WRITE_BIT;
++        device->fn.CmdPipelineBarrier(commands, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
++                                      VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, 0, 1, &barrier, 0,
++                                      nullptr, 0, nullptr);
++        BeginRenderPassCmd continuation = *renderPassCmd;
++        for (auto i : continuation.attachmentState->GetColorAttachmentsMask()) {
++            continuation.colorAttachments[i].loadOp = wgpu::LoadOp::Load;
++        }
++        DAWN_TRY(RecordBeginRenderPass(recordingContext, device, &continuation));
++        // These compatible native passes preserve Vulkan pipeline, descriptor
++        // bindings and dynamic state. Keep Dawn's matching cache intact:
++        // DirtyAll() would also dirty unused bind-group slots, which Apply()
++        // dereferences even when only group 0 is bound by the application.
++        pointWorkInNativePass = 0;
++        device->EmitWarningOnce("OHOS Maleoon native point render pass split probe used");
++        return {};
++    };
++    auto PointInstanceChunk = [&](uint32_t count, uint32_t remaining) -> ResultOrError<uint32_t> {
++        if (pointWorkInNativePass >= kPointWorkPerNativePass ||
++            count > kPointWorkPerNativePass - pointWorkInNativePass) {
++            DAWN_TRY(ContinuePointPass());
++        }
++        const uint32_t chunk = static_cast<uint32_t>(
++            std::min<uint64_t>(remaining,
++                               (kPointWorkPerNativePass - pointWorkInNativePass) / count));
++        pointWorkInNativePass += uint64_t{count} * chunk;
++        return chunk;
++    };
++
+     // Tracks the number of commands that do significant GPU work (a draw or query write) this pass.
+     uint32_t workCommandCount = 0;
+ 
+@@ -1810,6 +1886,24 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+                 DrawCmd* draw = iter->NextCommand<DrawCmd>();
+ 
+                 if (draw->vertexCount > 0 && draw->instanceCount > 0) {
++                    if (splitPointPassProbe &&
++                        state.lastPipeline->GetPrimitiveTopology() ==
++                            wgpu::PrimitiveTopology::PointList &&
++                        draw->vertexCount <= kPointWorkPerNativePass) {
++                        uint32_t first = 0;
++                        while (first < draw->instanceCount) {
++                            uint32_t chunk;
++                            DAWN_TRY_ASSIGN(chunk, PointInstanceChunk(
++                                draw->vertexCount, draw->instanceCount - first));
++                            DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
++                                                         VkCommandBuffer commands) {
++                                vk.CmdDraw(commands, draw->vertexCount, chunk,
++                                           draw->firstVertex, draw->firstInstance + first);
++                            }));
++                            first += chunk;
++                        }
++                        break;
++                    }
+                     DAWN_TRY(
+                         state.SyncAndRun([&](const VulkanFunctions& vk, VkCommandBuffer commands) {
+                             vk.CmdDraw(commands, draw->vertexCount, draw->instanceCount,
+@@ -1824,6 +1918,25 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+                 DrawIndexedCmd* draw = iter->NextCommand<DrawIndexedCmd>();
+ 
+                 if (draw->indexCount > 0 && draw->instanceCount > 0) {
++                    if (splitPointPassProbe &&
++                        state.lastPipeline->GetPrimitiveTopology() ==
++                            wgpu::PrimitiveTopology::PointList &&
++                        draw->indexCount <= kPointWorkPerNativePass) {
++                        uint32_t first = 0;
++                        while (first < draw->instanceCount) {
++                            uint32_t chunk;
++                            DAWN_TRY_ASSIGN(chunk, PointInstanceChunk(
++                                draw->indexCount, draw->instanceCount - first));
++                            DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
++                                                         VkCommandBuffer commands) {
++                                vk.CmdDrawIndexed(commands, draw->indexCount, chunk,
++                                                  draw->firstIndex, draw->baseVertex,
++                                                  draw->firstInstance + first);
++                            }));
++                            first += chunk;
++                        }
++                        break;
++                    }
+                     DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
+                                                   VkCommandBuffer commands) {
+                         vk.CmdDrawIndexed(commands, draw->indexCount, draw->instanceCount,
+diff --git a/src/dawn/native/IndirectDrawMetadata.cpp b/src/dawn/native/IndirectDrawMetadata.cpp
+index db9eaac..11881d7 100644
+--- a/src/dawn/native/IndirectDrawMetadata.cpp
++++ b/src/dawn/native/IndirectDrawMetadata.cpp
+@@ -179,7 +179,8 @@ IndirectDrawMetadata::GetIndirectMultiDraws() const {
+ 
+ void IndirectDrawMetadata::SetValidatedIndirectDrawArgs(const IndirectDraw& draw,
+                                                         BufferBase* indirectBuffer,
+-                                                        uint64_t indirectOffset) {
++                                                        uint64_t indirectOffset,
++                                                        uint64_t pointSplitOffset) {
+     // The first time validated args are set ensure the array of args is large enough to store all
+     // of the args that will be needed.
+     if (mValidatedIndirectDraws.size() < mNextIndirectDrawIndex) {
+@@ -191,6 +192,7 @@ void IndirectDrawMetadata::SetValidatedIndirectDrawArgs(const IndirectDraw& draw
+         mValidatedIndirectDraws[draw.validatedDrawIndex];
+     validatedDraw.indirectBuffer = indirectBuffer;
+     validatedDraw.indirectOffset = indirectOffset;
++    validatedDraw.pointSplitOffset = pointSplitOffset;
+ 
+     // TODO(crbug.com/495489174): Currently running without validation does not populate the
+     // validated indirect draws array. Setting the indirectBuffer of the command to null is used as
+diff --git a/src/dawn/native/IndirectDrawMetadata.h b/src/dawn/native/IndirectDrawMetadata.h
+index 63aa76b..0a52fe0 100644
+--- a/src/dawn/native/IndirectDrawMetadata.h
++++ b/src/dawn/native/IndirectDrawMetadata.h
+@@ -84,6 +84,7 @@ class IndirectDrawMetadata : public NonCopyable {
+     struct ValidatedIndirectDraw {
+         Ref<BufferBase> indirectBuffer = nullptr;
+         uint64_t indirectOffset = 0;
++        uint64_t pointSplitOffset = 0;  // Zero means no internal GPU slices.
+     };
+ 
+     struct IndirectValidationBatch {
+@@ -209,7 +210,8 @@ class IndirectDrawMetadata : public NonCopyable {
+ 
+     void SetValidatedIndirectDrawArgs(const IndirectDraw& draw,
+                                       BufferBase* indirectBuffer,
+-                                      uint64_t indirectOffset);
++                                      uint64_t indirectOffset,
++                                      uint64_t pointSplitOffset = 0);
+     ValidatedIndirectDraw GetValidatedIndirectDraw(DrawIndirectCmd* cmd,
+                                                    IndirectDrawIndex indirectDrawIndex) const;
+ 
+diff --git a/src/dawn/native/IndirectDrawValidationEncoder.cpp b/src/dawn/native/IndirectDrawValidationEncoder.cpp
+index 89fb324..baa6cd4 100644
+--- a/src/dawn/native/IndirectDrawValidationEncoder.cpp
++++ b/src/dawn/native/IndirectDrawValidationEncoder.cpp
+@@ -65,6 +65,7 @@ constexpr uint32_t kValidationEnabled = 4;
+ constexpr uint32_t kIndirectFirstInstanceEnabled = 8;
+ constexpr uint32_t kUseFirstIndexToEmulateIndexBufferOffset = 16;
+ constexpr uint32_t kIndirectDrawCountBuffer = 32;
++constexpr uint32_t kOhosPointSplitProbe = 64;
+ 
+ // Equivalent to the IndirectDraw struct defined in the shader below.
+ struct IndirectDraw {
+@@ -112,6 +113,7 @@ static const char sRenderValidationShaderSource[] = DAWN_MULTILINE(
+     const kValidationEnabled = 4u;
+     const kIndirectFirstInstanceEnabled = 8u;
+     const kUseFirstIndexToEmulateIndexBufferOffset = 16u;
++    const kOhosPointSplitProbe = 64u;
+     const kIndirectDrawCountBuffer = 32u;  // if set, drawCount is read from a buffer
+ 
+     struct MultiDrawConstants {
+@@ -164,6 +166,9 @@ static const char sRenderValidationShaderSource[] = DAWN_MULTILINE(
+         if (bool(flags & kDuplicateBaseVertexInstance)) {
+             numParams = numParams + 2u;
+         }
++        if (bool(flags & kOhosPointSplitProbe)) {
++            numParams = numParams * 5u;
++        }
+         return numParams;
+     }
+ 
+@@ -198,6 +203,31 @@ static const char sRenderValidationShaderSource[] = DAWN_MULTILINE(
+         if (bool(batch.flags & kUseFirstIndexToEmulateIndexBufferOffset)) {
+             outputParams.data[outIndex + kFirstIndexEntry] += batch.draws[drawIndex].indexOffsetAsNumElements;
+         }
++
++        if (bool(batch.flags & kOhosPointSplitProbe)) {
++            // Keep the original record for all unmodified backend paths. Four
++            // additional records are generated on GPU after normal validation.
++            // No CPU readback, shadow arguments, truncation or reduced work.
++            let pointCount = outputParams.data[outIndex];
++            let maxInstances = max(1u, 16777216u / max(1u, pointCount));
++            let originalFirst = outputParams.data[outIndex + numInputParams - 1u];
++            var remaining = outputParams.data[outIndex + 1u];
++            var consumed = 0u;
++            for (var chunk = 0u; chunk < 4u; chunk++) {
++                let dst = outIndex + (chunk + 1u) * numInputParams;
++                for (var parameter = 0u; parameter < numInputParams; parameter++) {
++                    outputParams.data[dst + parameter] = outputParams.data[outIndex + parameter];
++                }
++                var instances = min(remaining, maxInstances);
++                // Preserve all remaining work even beyond the diagnostic's
++                // four-window budget; that final job can still exceed budget.
++                if (chunk == 3u) { instances = remaining; }
++                outputParams.data[dst + 1u] = instances;
++                outputParams.data[dst + numInputParams - 1u] = originalFirst + consumed;
++                remaining -= instances;
++                consumed += instances;
++            }
++        }
+     }
+ 
+     fn set_pass_multi(drawIndex: u32) {
+@@ -506,6 +536,12 @@ MaybeError EncodeIndirectDrawValidationCommands(DeviceBase* device,
+ 
+         uint64_t outputIndirectSize =
+             GetOutputIndirectDrawSize(config.drawType, config.duplicateBaseVertexInstance);
++        const bool splitPointIndirect =
++            device->IsToggleEnabled(Toggle::OhosMaleoonPointSplitRenderPassProbe) &&
++            !config.duplicateBaseVertexInstance;
++        if (splitPointIndirect) {
++            outputIndirectSize *= 5;
++        }
+ 
+         for (const IndirectDrawMetadata::IndirectValidationBatch& batch :
+              validationInfo.GetBatches()) {
+@@ -553,7 +589,7 @@ MaybeError EncodeIndirectDrawValidationCommands(DeviceBase* device,
+             newPass.drawType = config.drawType;
+             newPass.batchDataSize = newBatch.dataSize;
+             newPass.batches.push_back(newBatch);
+-            newPass.flags = 0;
++            newPass.flags = splitPointIndirect ? kOhosPointSplitProbe : 0;
+             if (config.duplicateBaseVertexInstance) {
+                 newPass.flags |= kDuplicateBaseVertexInstance;
+             }
+@@ -677,7 +713,13 @@ MaybeError EncodeIndirectDrawValidationCommands(DeviceBase* device,
+ 
+                 // Save the args that point to the validated values in the indirectDrawMetadata.
+                 indirectDrawMetadata->SetValidatedIndirectDrawArgs(
+-                    draw, outputParamsBuffer.GetBuffer(), outputParamsOffset);
++                    draw, outputParamsBuffer.GetBuffer(), outputParamsOffset,
++                    (pass.flags & kOhosPointSplitProbe)
++                        ? outputParamsOffset + GetOutputIndirectDrawSize(pass.drawType, false)
++                        : 0);
++                if (pass.flags & kOhosPointSplitProbe) {
++                    outputParamsOffset += 4 * GetOutputIndirectDrawSize(pass.drawType, false);
++                }
+                 if (pass.flags & kIndexedDraw) {
+                     outputParamsOffset += kDrawIndexedIndirectSize;
+                 } else {
+diff --git a/src/dawn/native/vulkan/CommandBufferVk.cpp b/src/dawn/native/vulkan/CommandBufferVk.cpp
+index 375316b..33f3afc 100644
+--- a/src/dawn/native/vulkan/CommandBufferVk.cpp
++++ b/src/dawn/native/vulkan/CommandBufferVk.cpp
+@@ -1954,6 +1954,25 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+                 Buffer* indirectBuffer = ToBackend(validatedDraw.indirectBuffer.Get());
+                 DAWN_ASSERT(indirectBuffer != nullptr);
+ 
++                if (splitPointPassProbe && validatedDraw.pointSplitOffset != 0 &&
++                    device->GetDeviceInfo().features.drawIndirectFirstInstance == VK_TRUE &&
++                    state.lastPipeline->GetPrimitiveTopology() == wgpu::PrimitiveTopology::PointList) {
++                    for (uint32_t chunk = 0; chunk < 4; ++chunk) {
++                        if (chunk != 0 || pointWorkInNativePass != 0) {
++                            DAWN_TRY(ContinuePointPass());
++                        }
++                        DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
++                                                     VkCommandBuffer commands) {
++                            vk.CmdDrawIndirect(commands, indirectBuffer->GetHandle(),
++                                validatedDraw.pointSplitOffset + uint64_t{chunk} * kDrawIndirectSize,
++                                1, 0);
++                        }));
++                    }
++                    // Counts are GPU-owned. Conservatively start the next
++                    // point draw in a fresh native pass without reading them.
++                    pointWorkInNativePass = kPointWorkPerNativePass;
++                    break;
++                }
+                 DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk, VkCommandBuffer commands) {
+                     vk.CmdDrawIndirect(commands, indirectBuffer->GetHandle(),
+                                        validatedDraw.indirectOffset, 1, 0);
+@@ -1971,6 +1990,25 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
+                 Buffer* indirectBuffer = ToBackend(validatedDraw.indirectBuffer.Get());
+                 DAWN_ASSERT(indirectBuffer != nullptr);
+ 
++                if (splitPointPassProbe && validatedDraw.pointSplitOffset != 0 &&
++                    device->GetDeviceInfo().features.drawIndirectFirstInstance == VK_TRUE &&
++                    state.lastPipeline->GetPrimitiveTopology() == wgpu::PrimitiveTopology::PointList) {
++                    for (uint32_t chunk = 0; chunk < 4; ++chunk) {
++                        if (chunk != 0 || pointWorkInNativePass != 0) {
++                            DAWN_TRY(ContinuePointPass());
++                        }
++                        DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk,
++                                                     VkCommandBuffer commands) {
++                            vk.CmdDrawIndexedIndirect(commands, indirectBuffer->GetHandle(),
++                                validatedDraw.pointSplitOffset + uint64_t{chunk} * kDrawIndexedIndirectSize,
++                                1, 0);
++                        }));
++                    }
++                    // Counts are GPU-owned. Conservatively start the next
++                    // point draw in a fresh native pass without reading them.
++                    pointWorkInNativePass = kPointWorkPerNativePass;
++                    break;
++                }
+                 DAWN_TRY(state.SyncAndRun([&](const VulkanFunctions& vk, VkCommandBuffer commands) {
+                     vk.CmdDrawIndexedIndirect(commands, indirectBuffer->GetHandle(),
+                                               validatedDraw.indirectOffset, 1, 0);
+diff --git a/src/dawn/native/vulkan/DeviceVk.cpp b/src/dawn/native/vulkan/DeviceVk.cpp
+index 9d6c06d..4f37a0c 100644
+--- a/src/dawn/native/vulkan/DeviceVk.cpp
++++ b/src/dawn/native/vulkan/DeviceVk.cpp
+@@ -28,6 +28,7 @@
+ #include "src/dawn/native/vulkan/DeviceVk.h"
+ 
+ #include <algorithm>
++#include <string_view>
+ #include <utility>
+ 
+ #include "dawn/dawn_version.h"
+@@ -716,7 +717,18 @@ ResultOrError<VulkanDeviceKnobs> Device::CreateDevice(VkPhysicalDevice vkPhysica
+         usedKnobs.features.geometryShader = VK_TRUE;
+     }
+ 
+-    if (HasFeature(Feature::IndirectFirstInstance)) {
++    bool internalPointFirstInstance = false;
++#if defined(__OHOS__)
++    // Public validation still rejects nonzero user firstInstance without the
++    // requested feature. This only enables the supported Vulkan feature for
++    // the private GPU-generated slices in the guarded point workaround.
++    internalPointFirstInstance =
++        IsToggleEnabled(Toggle::OhosMaleoonPointSplitRenderPassProbe) &&
++        mDeviceInfo.properties.vendorID == 0x19e5 &&
++        std::string_view(mDeviceInfo.properties.deviceName) == "Maleoon 920" &&
++        mDeviceInfo.features.drawIndirectFirstInstance == VK_TRUE;
++#endif
++    if (HasFeature(Feature::IndirectFirstInstance) || internalPointFirstInstance) {
+         DAWN_CHECK(mDeviceInfo.features.drawIndirectFirstInstance == VK_TRUE);
+         usedKnobs.features.drawIndirectFirstInstance = VK_TRUE;
+     }
+diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+--- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
++++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+@@ -1058,6 +1058,16 @@
+ 
+ void PhysicalDevice::SetupBackendDeviceToggles(dawn::platform::Platform* platform,
+                                                TogglesState* deviceToggles) const {
++#if defined(__OHOS__)
++    // The verified Maleoon 920 path bounds point work per native render pass.
++    // CommandBufferVk excludes queries, depth, MSAA, resolves and PLS. Keep the
++    // existing toggle name/ordinal for compatibility and explicit opt-out.
++    if (mDeviceInfo.properties.vendorID == 0x19e5 &&
++        std::string_view(mDeviceInfo.properties.deviceName) == "Maleoon 920" &&
++        mDeviceInfo.features.drawIndirectFirstInstance == VK_TRUE) {
++        deviceToggles->Default(Toggle::OhosMaleoonPointSplitRenderPassProbe, true);
++    }
++#endif
+     // TODO(crbug.com/dawn/857): tighten this workaround when this issue is fixed in both
+     // Vulkan SPEC and drivers.
+     deviceToggles->Default(Toggle::UseTemporaryBufferInCompressedTextureToTextureCopy, true);
+diff --git a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+--- a/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
++++ b/src/dawn/native/vulkan/PhysicalDeviceVk.cpp
+@@ -30,6 +30,7 @@
+ #include <algorithm>
+ #include <cstdint>
+ #include <string>
++#include <string_view>
+ #include <utility>
+ #include <vector>
+ 

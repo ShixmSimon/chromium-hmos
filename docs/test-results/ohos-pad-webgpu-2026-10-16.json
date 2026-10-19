@@ -1,0 +1,591 @@
+{
+  "at": "2026-10-16T04:04:12.442299+00:00",
+  "task": "Adapt Pad WebGPU with Skia Vulkan through CI and on-device verification",
+  "device": "192.168.8.136:38905",
+  "phone_untouched": true,
+  "ci_code_unchanged": true,
+  "native_builds": "GitHub CI only",
+  "commits": [
+    {
+      "sha": "927125495e5f6f5ce104c53c92026446e67ad1a7",
+      "ci": 38844834963,
+      "status": "success",
+      "result": "Adapter/compute/shader readback work; physical presentation FAIL: blank due to RGB fd registry reacquire without a tag"
+    },
+    {
+      "sha": "4bca7c074bb470b19f30ef4677dec650462c9597",
+      "ci": 38845750462,
+      "status": "success",
+      "result": "Direct NativePixmap import and retention verified on Pad with GL/Skia physical screenshots, interop and sustained stress"
+    },
+    {
+      "sha": "80f6ff873c9e23316f8996c9365eea62ac521263",
+      "ci": 38847113333,
+      "result": "GL float presentation GPU blit",
+      "status": "success"
+    },
+    {
+      "sha": "c6e46bf8e4b3018f0ff88acf9c6f2a7ddcf1e49a",
+      "ci": 38847463497,
+      "result": "Storage canvas GPU presentation blit, preserving Vulkan float format",
+      "status": "success"
+    }
+  ],
+  "gl_baseline": {
+    "source": "12c5bbd6",
+    "compute": true,
+    "shader_rgb_readback": true,
+    "resize_fullscreen_resume_1148_frames": true,
+    "Canvas2D_ImageBitmap_upload": true,
+    "SDR_HDR_video_external_texture": true,
+    "worker_offscreen_canvas": true
+  },
+  "current_installed": "060f7e9d",
+  "test_evidence": "out/webgpu-20261016",
+  "acceptance_requires": [
+    "GPU computation and exact RGB readback",
+    "Physical screenshot canvas pixels, not just command submission success",
+    "Canvas2D and ImageBitmap interoperability",
+    "Native SDR/HDR video importExternalTexture",
+    "Worker OffscreenCanvas",
+    "Repeated resize, fullscreen, background resume",
+    "No device loss or GPU process restart",
+    "Previous SDR and video regression checks"
+  ],
+  "skia_tests": {
+    "4bc-skia": {
+      "pass": true,
+      "evidence": "out/webgpu-20261016/4bc-skia.json"
+    },
+    "4bc-skia-advanced": {
+      "pass": true,
+      "evidence": "out/webgpu-20261016/4bc-skia-advanced.json"
+    },
+    "4bc-skia-interop": {
+      "pass": true,
+      "evidence": "out/webgpu-20261016/4bc-skia-interop.json"
+    },
+    "4bc-skia-worker": {
+      "pass": true,
+      "evidence": "out/webgpu-20261016/4bc-skia-worker.json"
+    },
+    "4bc-skia-formats-present": {
+      "pass": true,
+      "evidence": "out/webgpu-20261016/4bc-skia-formats-present.json"
+    },
+    "4bc-skia-sustained": {
+      "pass": true,
+      "evidence": "out/webgpu-20261016/4bc-skia-sustained.json"
+    }
+  },
+  "pending": [],
+  "additional_failures_4bc": [
+    "GL RGBA16F canvas readback correct but presentation blank",
+    "GL storage Canvas returned gray instead of red without validation errors"
+  ],
+  "video_regression_4bc": {
+    "4bc-gl-webgpu-youtube": {
+      "pass": true,
+      "gpuPass": true,
+      "playbackPass": true,
+      "frameProgress": null
+    },
+    "4bc-skia-webgpu-youtube": {
+      "pass": true,
+      "gpuPass": true,
+      "playbackPass": true,
+      "frameProgress": null
+    },
+    "4bc-skia-webgpu-hdr": {
+      "pass": true,
+      "gpuPass": true,
+      "playbackPass": true,
+      "frameProgress": [
+        {
+          "clip": "sdr-1080p60.mp4",
+          "total": 726,
+          "dropped": 10,
+          "displayedFps": 58.98830120283407
+        },
+        {
+          "clip": "pq-1080p60.mp4",
+          "total": 719,
+          "dropped": 15,
+          "displayedFps": 58.143376280145354
+        },
+        {
+          "clip": "sdr-1080p60.mp4",
+          "total": 727,
+          "dropped": 9,
+          "displayedFps": 59.01693243465395
+        }
+      ]
+    }
+  },
+  "package": {
+    "native_source": "c6e46bf8",
+    "native_ci": "38847463497",
+    "engine_sha256": "9ab80516d87692e46fd5a9bda8ec3ac149e7f8916e1d4e463bca809acb78b45d",
+    "hap": "/data/dev/chromium-hmos-sdr-web/out/pad-fix-20261015/c6-webgpu.hap",
+    "hap_sha256": "ca32025f1d85fb91d769685bcfbb6f28d1f9cac3fa7985055c33dab7ba5c2ffc",
+    "pad_authorized_profile": true,
+    "native_compile": false
+  },
+  "final_matrix": {
+    "gl": {
+      "c6-gl": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-gl.json"
+      },
+      "c6-gl-storage-formats": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-gl-storage-formats.json"
+      },
+      "c6-gl-alpha": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-gl-alpha.json"
+      },
+      "c6-gl-formats-fresh": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-gl-formats-fresh.json"
+      },
+      "c6-gl-advanced": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-gl-advanced.json"
+      },
+      "c6-gl-interop": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-gl-interop.json"
+      },
+      "c6-gl-worker": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-gl-worker.json"
+      },
+      "c6-gl-storage-stress": {
+        "pass": true,
+        "frames": 3600,
+        "format_switches": 60,
+        "evidence": "out/webgpu-20261016/c6-gl-storage-stress.json"
+      }
+    },
+    "skia": {
+      "c6-skia": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-skia.json"
+      },
+      "c6-skia-storage-formats": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-skia-storage-formats.json"
+      },
+      "c6-skia-alpha": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-skia-alpha.json"
+      },
+      "c6-skia-formats-fresh": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-skia-formats-fresh.json"
+      },
+      "c6-skia-advanced": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-skia-advanced.json"
+      },
+      "c6-skia-interop": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-skia-interop.json"
+      },
+      "c6-skia-worker": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/c6-skia-worker.json"
+      },
+      "c6-skia-storage-stress": {
+        "pass": true,
+        "frames": 3600,
+        "format_switches": 60,
+        "evidence": "out/webgpu-20261016/c6-skia-storage-stress.json"
+      }
+    }
+  },
+  "float_snapshot_timing": {
+    "after_present": "c6-skia-formats.json: returned transparent snapshot after 100 ms delay; physical display and GPU texture bits correct",
+    "same_frame": "c6-skia-formats-fresh.json and c6-gl-formats-fresh.json: redraw and snapshot within same frame both pass",
+    "historical_observation": "Post-presentation canvas contents are not asserted by the same-frame interoperability acceptance tests; delayed observation retained, not erased.",
+    "current_status": "Fixed in 060f7e9d: post-presentation snapshots, repeated redraws, unconfigure/reconfigure and resize pass GL and Skia Vulkan regression. Earlier transparent result retained as pre-fix evidence."
+  },
+  "implementation": {
+    "ordinary_canvas": "NativePixmap direct import into Dawn/Skia, retained through GPU completion",
+    "storage_canvas": "Dawn storage texture with GPU blit into native presentation texture",
+    "gl_float_canvas": "RGBA16F application texture with GPU blit into 8-bit presentation format; application format and float readback preserved",
+    "vulkan_float_canvas": "RGBA16F native presentation preserved",
+    "presentation_cpu_readback": false
+  },
+  "limitations": [
+    "Pad MatePad Pro Max GEM-W00 only; phone remains paused and untouched",
+    "Focused regression plus 121.65-minute endurance; not full WebGPU CTS",
+    "HDR resume consistency and SDR recovery verified; absolute HDR luminance/colorimetry not measured",
+    "Optional bgra8unorm-storage remains unexposed; storage coverage is RGBA8 and RGBA16F",
+    "GL float presentation is 8-bit, not native float/HDR scanout",
+    "Memory results show reclamation during this run, not proof of leak absence; persistent renderer drift and changing process counts are recorded"
+  ],
+  "final_video": {
+    "pass": true,
+    "frameProgress": [
+      {
+        "clip": "sdr-1080p60.mp4",
+        "total": 722,
+        "dropped": 8,
+        "displayedFps": 58.930340046219875
+      },
+      {
+        "clip": "pq-1080p60.mp4",
+        "total": 720,
+        "dropped": 13,
+        "displayedFps": 58.47324456207097
+      },
+      {
+        "clip": "sdr-1080p60.mp4",
+        "total": 728,
+        "dropped": 6,
+        "displayedFps": 59.4532279314888
+      }
+    ],
+    "muted": true,
+    "evidence": "out/pad-fix-20261015/c6-skia-webgpu-hdr.json"
+  },
+  "completed_at": "2026-10-16T08:16:53.140395+00:00",
+  "status": "passed scoped Pad WebGPU regression and 121.65-minute mixed WebGPU/HEVC endurance on 060f7e9d",
+  "final_layout": {
+    "pass": true,
+    "evidence": "out/pad-fix-20261015/c6-skia-colors.json",
+    "physical_sdr_pixels": {
+      "rows": {
+        "1000": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            64,
+            64,
+            64
+          ],
+          [
+            128,
+            128,
+            128
+          ],
+          [
+            191,
+            191,
+            191
+          ],
+          [
+            255,
+            255,
+            255
+          ],
+          [
+            254,
+            0,
+            0
+          ],
+          [
+            0,
+            254,
+            1
+          ],
+          [
+            0,
+            0,
+            254
+          ]
+        ],
+        "1950": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            64,
+            64,
+            64
+          ],
+          [
+            128,
+            128,
+            128
+          ],
+          [
+            191,
+            191,
+            191
+          ],
+          [
+            255,
+            255,
+            255
+          ],
+          [
+            254,
+            0,
+            0
+          ],
+          [
+            0,
+            254,
+            1
+          ],
+          [
+            0,
+            0,
+            254
+          ]
+        ]
+      },
+      "pass": true
+    }
+  },
+  "final_settings": {
+    "Skia Vulkan": true,
+    "WebGPU": true,
+    "ANGLE Vulkan": false,
+    "actual_compositor": "GaneshVulkan"
+  },
+  "cleanup": {
+    "test_tabs_closed": true,
+    "remaining_original_page_count": 6,
+    "original_google_activated": true,
+    "test_ports_removed_this_turn": [
+      18888
+    ],
+    "pad_cdp_forward_retained": 19226,
+    "owned_fixture_server_stopped": true,
+    "owned_hilog_stopped": true,
+    "keepawake_stopped_after_tests": true,
+    "normal_screen_timeout_restored": true,
+    "media_symlink_removed": true,
+    "phone_untouched": true,
+    "video_audio_muted_throughout": true,
+    "final_tabs_evidence": "out/webgpu-20261016/060-final-tabs.json"
+  },
+  "followup": {
+    "started": "2026-10-16T05:21:18.945702+00:00",
+    "scope": [
+      "Delayed snapshot correctness",
+      "Two-hour mixed WebGPU and native video endurance"
+    ],
+    "snapshot_baseline": "c6-skia-delayed-matrix.json: all six combinations fail after presentation; same-frame reads pass",
+    "spec": "https://www.w3.org/TR/webgpu/#canvas-rendering",
+    "spec_finding": "Drawing buffer outlives current texture and remains readable after presentation",
+    "fix": "060f7e9d78d5d7ac1508b81f21bb491c101cdbca",
+    "native_ci": 38857349618,
+    "adapter_ci": 38857349776,
+    "status": "completed",
+    "first_fix_result": {
+      "source": "ba09d332",
+      "first_run": "5/6 snapshot cases pass; one intermittent invalid texture/access conflict",
+      "repeat_20": "20/20 matrices pass, insufficient to dismiss first failure",
+      "evidence": [
+        "out/webgpu-20261016/ba09-skia-delayed-matrix.json",
+        "out/webgpu-20261016/ba09-skia-repeat20.json",
+        "out/webgpu-20261016/ba09-snapshot-hilog.txt"
+      ]
+    },
+    "mechanism": "Copy presented image via shared raster GPU context, complete before compositor can recycle source; no CPU pixel readback; applies to explicit snapshot requests only",
+    "compile_retry": {
+      "failed_source": "3d53c8e1",
+      "run": 38856066023,
+      "reason": "-Wunreachable-code after OHOS early return; fixed with #else/#endif, without changing CI"
+    },
+    "package": {
+      "native_source": "060f7e9d",
+      "native_ci": "38857349618",
+      "engine_sha256": "354d2a8931682fe0ceade5403198f07b46cdc13be3f2cb036ff8cdfeff5a9bba",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/pad-fix-20261015/060-snapshot.hap",
+      "hap_sha256": "a10f1a9dcc95958dc026d045a57e645207ac2bd0d2d241bbc3bfeff52d588d13",
+      "pad_authorized_profile": true,
+      "native_compile": false
+    },
+    "ci_status": "both success",
+    "e440_regression": {
+      "gl_repeat20": true,
+      "skia_repeat20": true,
+      "cold_starts": {
+        "skia": 2,
+        "gl": 1
+      },
+      "delayed_float_snapshots": "GL and Skia pass",
+      "interop": "GL and Skia pass"
+    },
+    "reset_bug": {
+      "evidence": "out/webgpu-20261016/e440-gl-reset-baseline.json",
+      "observed": "unconfigure/reconfigure/resize may expose stale cached snapshot",
+      "fix": "invalidate resource-provider snapshot and front-buffer metadata on drawing-buffer replacement; transparent/opaque empty fallback preserves configured alpha mode"
+    },
+    "harness_startup_interference": {
+      "evidence": "out/webgpu-20261016/060-startup-hilog.txt",
+      "failed_physical_runs": [
+        "060-skia-advanced",
+        "060-skia-worker",
+        "060-skia-storage"
+      ],
+      "reason": "Test script changed active tab before Lumie mode probe completed, causing timeout and startup guard overlay despite live CDP/GPU",
+      "resolution": "Wait for native address bar and absence of startup guard before any test navigation; restore six saved original tabs via built-in recovery; close owned recovery new-tab",
+      "app_code_changed": false,
+      "retest_prefix": "060-skia-confirmed"
+    },
+    "regression_final": {
+      "060-gl-lifetime": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/060-gl-lifetime.json"
+      },
+      "060-gl-delayed": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/060-gl-delayed.json"
+      },
+      "060-gl-repeat10": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/060-gl-repeat10.json"
+      },
+      "060-skia-lifetime": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/060-skia-lifetime.json"
+      },
+      "060-skia-delayed": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/060-skia-delayed.json"
+      },
+      "060-skia-repeat10": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/060-skia-repeat10.json"
+      },
+      "060-skia-confirmed-advanced": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/060-skia-confirmed-advanced.json"
+      },
+      "060-skia-confirmed-worker": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/060-skia-confirmed-worker.json"
+      },
+      "060-skia-confirmed-storage": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/060-skia-confirmed-storage.json"
+      },
+      "060-skia-confirmed-lifetime": {
+        "pass": true,
+        "evidence": "out/webgpu-20261016/060-skia-confirmed-lifetime.json"
+      }
+    },
+    "endurance": {
+      "status": "passed",
+      "requested_minutes": 120,
+      "actual_minutes": 121.65186666666666,
+      "evidence": "out/webgpu-20261016/060-skia-endurance-v2-120m.json",
+      "summary_evidence": "out/webgpu-20261016/060-skia-endurance-v2-summary.json",
+      "summary": {
+        "status": "passed",
+        "minutes": 120,
+        "elapsed_ms": 7299112,
+        "frames": 647478,
+        "all_rounds_pass": true,
+        "gpu_crashes_max": 0,
+        "render_error_count": 0,
+        "device_losses": 0,
+        "hdr_resume_checks": 12,
+        "sdr_recovery_checks": 12,
+        "media_errors": [],
+        "memory_mib": {
+          "GPU": {
+            "min": 302.384765625,
+            "max": 392.6181640625,
+            "first_10_mean": 352.19482421875,
+            "last_10_mean": 346.80498046875,
+            "post_warmup_slope_mib_per_round": 0.36804625775561844,
+            "settled": 186.2353515625
+          },
+          "browser": {
+            "min": 179.8271484375,
+            "max": 192.1376953125,
+            "first_10_mean": 182.27646484375,
+            "last_10_mean": 187.58740234375,
+            "post_warmup_slope_mib_per_round": 0.05607153624642157,
+            "settled": 184.171875
+          },
+          "renderer": {
+            "min": 357.8154296875,
+            "max": 682.37890625,
+            "first_10_mean": 673.4654296875,
+            "last_10_mean": 364.20546875,
+            "post_warmup_slope_mib_per_round": -3.8329025771758,
+            "settled": 360.1240234375
+          }
+        },
+        "renderer_process_counts": [
+          3,
+          4,
+          6
+        ],
+        "persistent_renderer_memory_mib": {
+          "26636": {
+            "min": 93.5703125,
+            "max": 103.7880859375,
+            "first_10_mean": 93.72314453125,
+            "last_10_mean": 103.72744140625,
+            "settled": 103.728515625
+          },
+          "33556": {
+            "min": 134.0830078125,
+            "max": 165.8916015625,
+            "first_10_mean": 137.51298828125,
+            "last_10_mean": 164.61767578125,
+            "settled": 160.4765625
+          },
+          "34562": {
+            "min": 89.0380859375,
+            "max": 96.0380859375,
+            "first_10_mean": 90.004296875,
+            "last_10_mean": 95.8603515625,
+            "settled": 95.9189453125
+          }
+        },
+        "video_all": {
+          "total_frames": 331825,
+          "dropped_frames": 2293,
+          "dropped_percent": 0.6910268967076019
+        },
+        "video_regular": {
+          "total_frames": 258679,
+          "dropped_frames": 1578,
+          "dropped_percent": 0.6100224602692913
+        },
+        "video_fullscreen_or_resume": {
+          "total_frames": 73146,
+          "dropped_frames": 715,
+          "dropped_percent": 0.9774970606731742
+        },
+        "platform_decoder_sessions": 25,
+        "video_profiles": [
+          "hevc main 10"
+        ],
+        "video_transfers": [
+          "BT709",
+          "SMPTEST2084"
+        ],
+        "memory_interpretation": "GPU PSS fluctuated 302–393 MiB, first/last ten-round means 352/347 MiB, and fell to 186 MiB after stopping video and destroying WebGPU resources. Post-warmup linear fit is +0.368 MiB/round, so this is bounded-run evidence of resource reclamation, not proof of no leak. Browser first/last means 182/188 MiB, settled 184 MiB. Renderer counts changed from 6 to 3; aggregate drop is not attributed to test cleanup. Persistent renderer changes are retained separately.",
+        "hdr_scope": "HDR before/after resume screenshots are compared for consistency; strict RGB references apply only after SDR recovery. This does not measure absolute HDR luminance or color accuracy."
+      }
+    },
+    "endurance_first_attempt": {
+      "status": "stopped at first HDR physical screenshot assertion",
+      "completed_checks": 10,
+      "gpu_crashes": 0,
+      "webgpu_frames": 53931,
+      "evidence": "out/webgpu-20261016/060-skia-endurance-120m.json",
+      "cause": "Incorrect comparison of PQ/HDR system screenshot against raw SDR RGB values",
+      "control": "out/webgpu-20261016/060-hdr-screen-control.json",
+      "control_result": "SDR screenshot [0,254,1]; HDR before/resumed/fullscreen returned all [76,164,51]; SDR returned/stopped [0,254,1]; GPU readbacks all [0,255,0,255]",
+      "limitation": "Screenshot comparison is a consistency test, not an absolute HDR luminance/colorimetry measurement"
+    }
+  }
+}

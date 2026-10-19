@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="only light">
+<title>SDR / 宽色域输出检查</title>
+<style>
+  :root { color-scheme: only light; font: 16px system-ui, sans-serif; }
+  body { margin: 16px; background: white; color: black; }
+  button { padding: 12px; font: inherit; }
+  .gray { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .gray div { height: 96px; border: 1px solid #888; }
+  .gray span { display: inline-block; background: white; color: black; padding: 4px; }
+  #wide { display: none; }
+  #wide.visible { display: block; }
+  #p3-css { background: color(display-p3 1 0 0); height: 64px; }
+  canvas { display: block; width: 100%; height: 64px; }
+</style>
+<h1>SDR / 宽色域输出检查</h1>
+<p>本页不含 HDR 内容。切换宽色域色块、切到后台再恢复后，灰阶和白色背景应保持一致。</p>
+<button id="toggle" aria-pressed="false">显示 Display P3 SDR 色块</button>
+<p id="status">当前仅显示 sRGB 灰阶。</p>
+<div class="gray">
+  <div style="background:rgb(0,0,0)"><span>0</span></div>
+  <div style="background:rgb(32,32,32)"><span>32</span></div>
+  <div style="background:rgb(64,64,64)"><span>64</span></div>
+  <div style="background:rgb(128,128,128)"><span>128</span></div>
+  <div style="background:rgb(192,192,192)"><span>192</span></div>
+  <div style="background:rgb(255,255,255)"><span>255</span></div>
+</div>
+<section id="wide">
+  <h2>Display P3 SDR</h2>
+  <p>CSS 色块：</p><div id="p3-css"></div>
+  <p>Canvas 色块：</p><canvas id="p3-canvas" width="256" height="64"></canvas>
+</section>
+<script>
+  const button = document.querySelector('#toggle');
+  const wide = document.querySelector('#wide');
+  const status = document.querySelector('#status');
+  // Create/draw only when enabled, so the initial page is an sRGB control.
+  button.onclick = () => {
+    const enabled = wide.classList.toggle('visible');
+    button.setAttribute('aria-pressed', String(enabled));
+    button.textContent = enabled ? '隐藏 Display P3 SDR 色块' : '显示 Display P3 SDR 色块';
+    if (!enabled) {
+      // Replace the canvas to retire its P3 backing on return to the control.
+      const old = document.querySelector('#p3-canvas');
+      old.replaceWith(old.cloneNode(false));
+      status.textContent = '当前仅显示 sRGB 灰阶。';
+      return;
+    }
+    const canvas = document.querySelector('#p3-canvas');
+    const context = canvas.getContext('2d', {colorSpace: 'display-p3'});
+    if (context) {
+      context.fillStyle = 'color(display-p3 1 0 0)';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    const actual = context?.getContextAttributes().colorSpace ?? 'unavailable';
+    status.textContent = `已显示宽色域 SDR 色块；Canvas 实际色彩空间：${actual}。`;
+  };
+</script>
+</html>
