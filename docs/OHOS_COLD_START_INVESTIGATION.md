@@ -195,3 +195,49 @@ WebNN 失败出现在 `OH_NNModel_GetAvailableOperations` 的能力判断阶段�
 修正关闭覆盖层后，用独立标识重新执行检查。
 所有原始日志、脚本、逐项 JSON 和安装哈希留在
 `out/pad-validation-20261019/` 与 `out/phone-validation-20261019/`。
+
+
+## 后续只读调查：Binder 关闭早于 Chromium 清理
+
+从手机普通包取得已有 `PhoneForkFdTrace.log`，没有唤醒设备、重启应用或换包。
+同一轮 browser PID 24872、fork server PID 25126、GPU PID 25159：
+
+| 阶段 | FD 10 |
+| --- | --- |
+| browser-before-server-fork | `/dev/binder`，F_GETFD 成功 |
+| server-after-fork | 已关闭，F_GETFD errno=9 |
+| server-before-cleanup | 仍关闭 |
+| server-after-cleanup | 仍关闭 |
+| GPU chrome-main | 仍关闭 |
+
+`server-after-fork` 的记录在 `fork()` 返回后、`close(sockets[0])` 与
+`ServerLoop` 之前；只有三个原始 FD 此时消失，不能归因于后面的全量清理循环。
+因此“修改 CloseInheritedFds 以保留 Binder”无法保留这个已经关闭的连接。
+关闭发生在 fork 的 runtime / 回调 / 内核路径中；尚未确定其中哪一层执行，
+不能擅自绕过 pthread_atfork 或换用 raw clone / _Fork。
+
+进一步只读取得设备实际 `libipc_common.z.so`、`libipc_core.z.so` 和 `libc.so`，
+不是仅用 OpenHarmony 上游源码推断该固件实现：
+
+- BinderConnector::GetInstance 在 instance_ 非空时直接返回，没有 PID 校验。
+- IsDriverAlive 只判断缓存 FD 数值是否非负，不调用 fcntl 检查描述符是否仍打开。
+- WriteBinder 对缓存 FD 调用 ioctl，失败时返回负 errno；它不会自动新建连接。
+- 这解释了为何连接缓存可能存活而底层 FD 已失效；尚未读取该进程的缓存实例
+  或跟踪具体 ioctl 返回，不能把静态分析提升为每次系统查询错误码的直接证据。
+
+设备 SAMgr 查询循环从 -6 计数，代理为空时每轮 usleep(200000)，最多六次
+休眠预算约 1.2 秒。之前采样命中该分支；这是静态上限与采样定位，不能宣称
+已经逐次测得完整六次纯睡眠时间。它与最终普通包 EGL 1.692062 秒的总墙钟
+吻合，但 EGL 其余调用开销仍单独存在。Pad 最终 GPU 初始化为 0.106201 秒，
+应另查外壳健康检查和恢复文档的时序，不能套用手机等待结论。
+
+现有外壳 PageTextRequests 的 4000ms 是无回复时的超时，不是每次启动固定
+休眠四秒；StartupHealth 还会每 500ms 重试，且只在 modeProbePending 时运行。
+下一步外壳可以接入内核已有 window-scoped StartupHandoff，按 renderer ready
+与恢复文档首帧分别确认。需要验证窗口归属、取消、旧内核兼容、后台恢复与
+遮罩释放顺序；不能为缩短时间提前宣告 ready。
+
+新增证据：`binder-fork-close-summary.json`、`fork-ipc-device-analysis.json`、
+三份 `binder-*-device-disassembly.txt` 与 `PhoneForkFdTrace-final.log`。
+设备库 SHA-256 在上述 JSON 中；原始二进制和应用日志只保存在本地 out。
+本轮未修改渲染路径、系统配置或 CI，没有进行本地原生编译。
