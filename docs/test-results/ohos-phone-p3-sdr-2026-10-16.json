@@ -1,0 +1,91 @@
+{
+  "source": "59c64b663fd0e518d35dd0486b69358ca5ac38f8",
+  "scope": "Phone Skia Vulkan P3 SDR output, HDR headroom diagnostics, isolated Canvas/WebGL probe",
+  "adapter_ci": 38890365461,
+  "native_ci": 38890365416,
+  "status": "Implementation committed; Adapter CI and native CI passed; release published; phone runtime validation pending",
+  "modes": {
+    "0": "SDR8",
+    "1": "sRGB SDR10",
+    "2": "BT2020 PQ HDR10",
+    "3": "Display-P3 SDR10"
+  },
+  "p3_gate": [
+    "Single display reports DISPLAY_P3",
+    "Native 10-bit P3 tag setter and color-space readback succeed",
+    "Vulkan import succeeds",
+    "Browser acknowledges current probe generation before capability publication"
+  ],
+  "fallback": "Optional P3 allocation/tag rejection restores previous verified output; no P3 capability advertised",
+  "headroom": "Use current system headroom capped by maximum; content white remains 203 nit. Log changes of physical brightness/current/max headroom and mapped content peak. Existing foreground refresh retained.",
+  "tests": "Existing Adapter CI covers extended packet validation, P3 tag aliases, capability-gated transitions and HDR-to-P3 queue retirement",
+  "fixture": "docs/test-pages/color-output/index.html",
+  "not_verified": [
+    "Phone physical P3 color output and HDR transitions",
+    "Phone WebGL blank output cause; diagnostic fixture added, no backend switch",
+    "Native P3 output on Pad/PC (not changed in this patch)"
+  ],
+  "phone_operated": false,
+  "ci_code_modified": false,
+  "local_native_compile": false,
+  "native_ci_status": "success",
+  "release": "https://github.com/miramira8295/chromium-hmos/releases/tag/build-59c64b66",
+  "acceptance": [
+    "OHOS P3 display probe: supported=1",
+    "OHOS phone P3 capability: verified=1",
+    "WCG color space reports P3 with sRGB transfer",
+    "First NativeBuffer frame active mode=3 on P3 SDR content",
+    "Ordinary sRGB returns to mode=1; HDR to mode=2 without repeated unintended oscillation",
+    "Brightness bridge changed logs and output luminance updates agree on current headroom",
+    "Diagnostic WebGL draw/read errors are zero and the physical canvas is visible"
+  ],
+  "sdk_references": [
+    "https://github.com/openharmony/window_window_manager/blob/master/dm/src/oh_display_manager.cpp",
+    "https://github.com/openharmony/docs/blob/master/en/application-dev/reference/apis-arkui/capi-nativedisplaymanager-displaycolorspace.md"
+  ],
+  "latest_test_source": "b5060f1fd309ce5fd4d66b2b1d7bd602547e61f2",
+  "latest_release": "https://github.com/miramira8295/chromium-hmos/releases/tag/build-b5060f1f",
+  "latest_ci": {
+    "native": 38891943770,
+    "adapter": 38891943691,
+    "both_status": "success"
+  },
+  "webgl_comparison": "Pad RGBA16F blank canvas reproduced on 060f7e9d and fixed on b5060f1f. Six-mode smoke and 12 alternating 8-bit/float samples passed with physical screenshot checks; phone remains unverified.",
+  "runtime_handoff": {
+    "preconditions": [
+      "Phone explicitly handed back for testing; current HDC target known.",
+      "Keep device silent and awake; preserve existing tabs and settings.",
+      "Install a phone-authorized HAP containing the verified b5060f1f CI native library; do not install Pad-only signed HAP on phone."
+    ],
+    "capture": [
+      "Start full hilog before application launch; save SystemInfo and chrome://gpu before and after each scenario.",
+      "Serve docs/test-pages/color-output over an HDC reverse port, retaining GLES WebGL and Skia Vulkan.",
+      "Record returned Canvas attributes and actual screen captures, not requested attributes alone."
+    ],
+    "p3": [
+      "Confirm display probe, P3 NativeBuffer tag readback, Vulkan import and current-generation capability acknowledgement.",
+      "Compare ordinary sRGB, Display-P3 2D and Display-P3 WebGL; record content output mode and first presented frame.",
+      "Require ordinary sRGB mode 1 and P3 SDR mode 3 without PQ/HDR metadata; capability description must report P3.",
+      "Screen captures prove presentation only; screenshots alone do not measure physical panel gamut."
+    ],
+    "hdr": [
+      "Use known HDR content; confirm actual mode 2 and presented HDR frame before judging dynamic headroom.",
+      "Correlate brightness bridge sdr_nits/current_headroom/max_headroom with native brightness, output luminance and mode logs.",
+      "Repeat SDR\u2192HDR\u2192SDR, foreground/background and brightness changes; verify normal webpages recover without persistent dimming.",
+      "Do not substitute maximum headroom for current available headroom or assume a panel peak."
+    ],
+    "webgl": [
+      "Run all WebGL diagnostic modes; require setup/draw/read errors zero and visible physical canvas.",
+      "For float mode require RGBA16F, alpha enabled and values above 1 preserved in readback.",
+      "Recheck original TestUFO scenario separately; intended test-text flashing is not whole-page flicker."
+    ],
+    "completion": "All phone evidence above is still missing. Pad success and CI success do not satisfy phone runtime acceptance."
+  },
+  "connection_audit": {
+    "connected_targets": [
+      "192.168.8.136:38905"
+    ],
+    "phone_available": false,
+    "phone_operated": false
+  }
+}

@@ -12,7 +12,7 @@
     "backend": "GaneshVulkan",
     "phone_fork": true
   },
-  "overall": "INCOMPLETE: 218e7694 passes native NV12/P010 SDR and PQ numeric color gates. Long lifecycle acceptance is next; complete WebGPU conformance, native P3 SDR and performance remain unaccepted.",
+  "overall": "PAUSED AT USER REQUEST; acceptance INCOMPLETE. Native NV12/P010 SDR and PQ numeric color gates passed on 218e7694. Long lifecycle run was interrupted by user device use; remaining WebGPU conformance, native P3 SDR, HLG and sustained performance are not accepted.",
   "main10": {
     "status": "failed",
     "cases": [
@@ -2669,8 +2669,8 @@
                 "status": "fail",
                 "timems": 205.301,
                 "logs": [
-                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                            1,0,0                            0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                      00 00 00 00                      00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.400000,1.00000 0.00000,0.400000,0.00000,1.00000 0.400000,0.00000,0.00000,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                          0,0,0,0                          0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                      0,0,102,255                      0,102,0,255                      102,0,0,255 ...\n\n         tolerance \u00b1 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                             0,0,-102,-255                    0,-102,0,-255                    -102,0,0,-255 ...\n  at (elided: below max severity)",
-                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                               1,0,0                                0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                         00 00 00 00                          00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000     0.00000,0.00000,0.00000,0.00000      0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.384314,1.00000 0.164706,0.392157,0.0980392,1.00000 0.364706,0.0549020,0.0274510,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                             0,0,0,0                              0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                       0,0,98,255                       42,100,25,255                          93,14,7,255 ...\n\n         tolerance \u00b1 3 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                              0,0,-98,-255                   -42,-100,-25,-255                      -93,-14,-7,-255 ...\n  at (elided: below max severity)",
+                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                            1,0,0                            0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                      00 00 00 00                      00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000  0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.400000,1.00000 0.00000,0.400000,0.00000,1.00000 0.400000,0.00000,0.00000,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                          0,0,0,0                          0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                      0,0,102,255                      0,102,0,255                      102,0,0,255 ...\n\n         tolerance ± 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                             0,0,-102,-255                    0,-102,0,-255                    -102,0,0,-255 ...\n  at (elided: below max severity)",
+                  "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,1,0 inclusive:\n                            coords ==   X,Y,Z:                            0,0,0                               1,0,0                                0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                      00 00 00 00                         00 00 00 00                          00 00 00 00 ...\n                       act. colors == R,G,B,A:  0.00000,0.00000,0.00000,0.00000     0.00000,0.00000,0.00000,0.00000      0.00000,0.00000,0.00000,0.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.384314,1.00000 0.164706,0.392157,0.0980392,1.00000 0.364706,0.0549020,0.0274510,1.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                          0,0,0,0                             0,0,0,0                              0,0,0,0 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                       0,0,98,255                       42,100,25,255                          93,14,7,255 ...\n\n         tolerance ± 3 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                              0,0,-98,-255                   -42,-100,-25,-255                      -93,-14,-7,-255 ...\n  at (elided: below max severity)",
                   "EXCEPTION: OperationError: A valid external Instance reference no longer exists.\nOperationError: A valid external Instance reference no longer exists."
                 ]
               }
@@ -4479,13 +4479,13 @@
         {
           "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:transferToImageBitmap_unconfigured_nonzero_size:readbackCanvasType=\"onscreen\"",
           "errors": [
-            "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,2,0 inclusive:\n                            coords ==   X,Y,Z:                           0,0,0                           1,0,0                           0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                     00 00 00 ff                     00 00 00 ff                     00 00 00 ff ...\n                       act. colors == R,G,B,A: 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                       0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                         0,0,0,0                         0,0,0,0                         0,0,0,0 ...\n\n         tolerance \u00b1 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                                0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n    at readPixelsFrom2DCanvasAndCompare (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:244:7)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:526:3)"
+            "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,2,0 inclusive:\n                            coords ==   X,Y,Z:                           0,0,0                           1,0,0                           0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                     00 00 00 ff                     00 00 00 ff                     00 00 00 ff ...\n                       act. colors == R,G,B,A: 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                       0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                         0,0,0,0                         0,0,0,0                         0,0,0,0 ...\n\n         tolerance ± 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                                0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n    at readPixelsFrom2DCanvasAndCompare (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:244:7)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:526:3)"
           ]
         },
         {
           "query": "webgpu:web_platform,canvas,readbackFromWebGPUCanvas:transferToImageBitmap_unconfigured_nonzero_size:readbackCanvasType=\"offscreen\"",
           "errors": [
-            "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,2,0 inclusive:\n                            coords ==   X,Y,Z:                           0,0,0                           1,0,0                           0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                     00 00 00 ff                     00 00 00 ff                     00 00 00 ff ...\n                       act. colors == R,G,B,A: 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                       0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                         0,0,0,0                         0,0,0,0                         0,0,0,0 ...\n\n         tolerance \u00b1 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                                0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n    at readPixelsFrom2DCanvasAndCompare (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:244:7)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:526:3)"
+            "EXPECTATION FAILED: Canvas had unexpected contents:\n between 0,0,0 and 1,2,0 inclusive:\n                            coords ==   X,Y,Z:                           0,0,0                           1,0,0                           0,1,0 ...\n  act. texel bytes (little-endian) ==      0x:                     00 00 00 ff                     00 00 00 ff                     00 00 00 ff ...\n                       act. colors == R,G,B,A: 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 0.00000,0.00000,0.00000,1.00000 ...\n                       exp. colors == R,G,B,A: 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 0.00000,0.00000,0.00000,0.00000 ...\n\n        act. normal-ULPs-from-zero == R,G,B,A:                       0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n        exp. normal-ULPs-from-zero == R,G,B,A:                         0,0,0,0                         0,0,0,0                         0,0,0,0 ...\n\n         tolerance ± 0 normal-ULPs\n   diff (act - exp) in normal-ULPs ==                                0,0,0,255                       0,0,0,255                       0,0,0,255 ...\n    at readPixelsFrom2DCanvasAndCompare (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:244:7)\n    at RunCaseSpecific.fn (http://127.0.0.1:18080/cts-source/out/webgpu/web_platform/canvas/readbackFromWebGPUCanvas.spec.js:526:3)"
           ]
         }
       ],
@@ -18003,6 +18003,13 @@
       },
       "change": "Capture canvas pixels in the same video frame callback as rendering, before canvas texture expiry. Original failed run preserved and not counted as acceptance.",
       "long_run_status": "Restarted; not complete."
+    },
+    "lifecycle_status": {
+      "outcome": "interrupted_by_user_device_use",
+      "last_completed_stage": "continuous-pq-520",
+      "pass": false,
+      "note": "Incomplete run. Transport/control timeouts must not be classified as an established Chromium/GPU fault. Prior numeric color and short lifetime gates remain independent evidence.",
+      "user_clarification": "User explicitly stated they were controlling the phone and caused the disconnect; then asked for only log/code analysis while they continue using it."
     }
   },
   "pending_atc_optimization_probe": {
@@ -18011,7 +18018,100 @@
     "default_enabled": false,
     "scope": "OHOS Huawei Maleoon; alpha-to-coverage enabled; all effective color masks zero; no depth writes.",
     "change": "Add VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT before cache-key serialization; log once when exercised.",
-    "status": "Source apply and byte comparison pass; native CI and A/B device result pending. Not a production fix.",
-    "validation_plan": "After 218 long lifecycle run ends, compare existing occlusion CTS and endpoint diagnostic with probe enabled; verify actual toggle/use logging; restore standard HAP afterward."
+    "status": "c9ca539f native CI 38818110363 SUCCESS; adapter CI 38818110342 SUCCESS. Standard signed package prepared, not installed. Probe defaults OFF. Runtime A/B not run; not a production fix.",
+    "validation_plan": "After explicit phone handback, compare standard and enabled probe using pinned 244-case occlusion CTS and endpoint diagnostic. Verify actual toggle warning; restore standard HAP after diagnostic testing."
+  },
+  "device_control_state": {
+    "at_utc": "2026-10-15T22:50:35.843463+00:00",
+    "state": "Paused at explicit user request. User needs phone for other tasks. Resume only after user hands phone back. No phone commands, installs, tests, settings, restarts, capture or keepawake.",
+    "host_action": "Owned keepawake and hilog capture stopped; lifecycle runner ended. Those processes were verified absent before recording this handoff."
+  },
+  "pause_handoff": {
+    "recorded_at_utc": "2026-10-15T22:50:35.843463+00:00",
+    "user_request": "我需要手机处理别的事情，先把当前情况记录下来吧，手机回来你再继续",
+    "status": "paused_until_user_hands_phone_back",
+    "goal_tool_state": "No active goal returned by get_goal; pause recorded in this report and local handoff.",
+    "worktree": "/data/dev/chromium-hmos-sdr-web",
+    "head": "c9ca539fdeb54698f425fefc6a970e7ad93eca5e",
+    "branch": "codex/sdr-web-output",
+    "pushed_branch": "origin/codex/phone-fork-renderers",
+    "last_known_installed_phone_build": "STANDARD218e7694; current device state not inspected while user uses phone",
+    "ready_uninstalled_package": {
+      "run": "38818110363",
+      "source": "c9ca539f",
+      "har_sha256": "25e65c502004a2c79a46fb97d148ae3a86de10e3437d4a0b5c3cc53a7c5b7ce8",
+      "engine_sha256": "18b267f9cd7538b7d498b7abeed1af4472b57905decaec7ba44d7bc52bc31b02",
+      "hap_sha256": "baa32f83b750740d2d18c0cb0b941e3b31dcafda679f140431ba874662a87f6d",
+      "hap": "/data/dev/chromium-hmos-sdr-web/out/install-c9ca539f/phone-c9ca539f-signed.hap"
+    },
+    "long_soak": {
+      "outcome": "interrupted_by_user_device_use",
+      "last_successful_checkpoint": "continuous-pq-520",
+      "result": "INCOMPLETE, not a pass and not established GPU/kernel failure",
+      "total_video_frames": 29177,
+      "dropped_video_frames": 7409,
+      "sampled_frames": 22931,
+      "limits": "Later fullscreen/background/switch/cleanup stages incomplete; no leak-free or full sustained-performance conclusion."
+    },
+    "remaining": [
+      "ATC occlusion query: 212/244 pass, 32 failures; c9 diagnostic A/B pending",
+      "large_draw: 4 failures with device loss; general backend fix pending",
+      "Complete lifecycle soak, full screen, background resume, seeks, video switches and cleanup memory checks",
+      "Isolated playback and dual-render performance measurements",
+      "Native Display-P3 SDR output missing; do not reuse HDR10 for SDR web pages",
+      "HLG native WebGPU path and physical HDR/SDR display validation",
+      "Full WebGPU conformance remains unaccepted"
+    ],
+    "constraints": [
+      "Never edit CI code/workflows/build orchestration",
+      "Native Chromium compilation only via push-triggered existing CI",
+      "Local retrieval of CI artifacts and Lumie packaging allowed; verify engine hash",
+      "Only current and neighboring repositories authorized",
+      "No phone operation until user returns phone; authorized tests must remain silent and keep phone awake",
+      "No push or new build requested by this record-only handoff"
+    ],
+    "resume_order": [
+      "Wait for explicit phone handback",
+      "Reconfirm connection, silence, keepawake and installed package before tests",
+      "Run c9 standard/probe ATC A/B and restore standard build",
+      "Resume fixed-harness lifecycle soak and remaining acceptance checks"
+    ]
+  },
+  "offline_performance_analysis": {
+    "source": "out/phone-validation-20261015/19a-short-native-sync-trace.json",
+    "scope": "Existing 30-second dual-render stress trace; offline analysis only, no new device test",
+    "native_imports": 1650,
+    "shared_image_creations": 1650,
+    "timings_us": {
+      "ConvertBrowserFrame": {
+        "count": 1650,
+        "median": 1928,
+        "p95": 8239
+      },
+      "AcquireSurfaceFrame": {
+        "count": 1650,
+        "median": 2097,
+        "p95": 8407
+      },
+      "OnCreateSharedImageWithBuffer": {
+        "count": 1650,
+        "median": 1596,
+        "p95": 3858
+      },
+      "GpuChannelHost_VerifyFlush": {
+        "count": 5276,
+        "median": 582,
+        "p95": 2873
+      }
+    },
+    "timing_caveat": "Inclusive and overlapping durations: AcquireSurfaceFrame includes conversion. Do not add these timings.",
+    "buffering_events": {
+      "HAVE_ENOUGH": 263,
+      "DECODER_UNDERFLOW": 253,
+      "DEMUXER_UNDERFLOW": 9
+    },
+    "interpretation": "Frame-supply starvation observed under dual-render stress. Trace shows native zero-copy; no proof of CPU pixel-format fallback. Causality and optimization benefit require controlled device A/B.",
+    "source_finding": "Vulkan import cache is deliberately disabled because VkImage retains the acquired Surface lease; naive caching can pin decoder queues. Per-frame shared-image creation, socket/lease management and sync verification remain.",
+    "candidate_not_implemented": "Separate persistent imported allocation lifetime from each frame Surface lease, with allocation/epoch/color/format cache identity, producer fence and all-reader completion, reset and GPU-loss handling. Do not simply enable cache or remove fences/flushes. Does not address VP9 software decode."
   }
 }

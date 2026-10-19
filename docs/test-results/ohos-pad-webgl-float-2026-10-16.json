@@ -310,8 +310,459 @@
   "preferred_read_type": 5131,
   "candidate_fix": "Accept driver GL_HALF_FLOAT read token for RGBA_F16 SharedImage described with GL_HALF_FLOAT_OES; preserve half-float bytes.",
   "limitations": [
-    "Candidate fix requires CI build and device retest.",
     "Pad 2D HDR request returned standard tone mapping; not an HDR output pass.",
-    "Phone not operated; phone P3 and HDR headroom validation pending."
-  ]
+    "Phone not operated; phone P3, HDR headroom and WebGL validation pending.",
+    "Short targeted regression only; does not replace sustained HDR/video tests."
+  ],
+  "fixed_source": "b5060f1fd309ce5fd4d66b2b1d7bd602547e61f2",
+  "native_ci": {
+    "id": 38891943770,
+    "status": "success"
+  },
+  "adapter_ci": {
+    "id": 38891943691,
+    "status": "success"
+  },
+  "installed_package": {
+    "native_source": "b5060f1f",
+    "native_ci": "38891943770",
+    "engine_sha256": "46783c66ee0e7aba1bf223bee362428c86fe280881517111677a48be6b1640a8",
+    "hap": "/data/dev/chromium-hmos-sdr-web/out/pad-fix-20261015/b506-float.hap",
+    "hap_sha256": "6b6bf3ba3d045897563f749b430c8cd8123dd673ef758ff096341e40e50dca34",
+    "pad_authorized_profile": true,
+    "native_compile": false
+  },
+  "retest": {
+    "pad-b506-colors": {
+      "samples": 6,
+      "error": null,
+      "physical_pixels": [
+        {
+          "mode": "2d-srgb",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "2d-p3",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "2d-p3-hdr",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-srgb",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-p3",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-p3-float",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "gpu_crashes": 0,
+      "skia": "GaneshVulkan"
+    },
+    "pad-b506-repeat": {
+      "samples": 12,
+      "error": null,
+      "physical_pixels": [
+        {
+          "mode": "webgl2-srgb",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-p3-float",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-srgb",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-p3-float",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-srgb",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-p3-float",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-srgb",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-p3-float",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-srgb",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-p3-float",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-srgb",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "mode": "webgl2-p3-float",
+          "physical": [
+            {
+              "x": 366,
+              "y": 938,
+              "rgb": [
+                0,
+                254,
+                1
+              ]
+            },
+            {
+              "x": 1062,
+              "y": 938,
+              "rgb": [
+                254,
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "gpu_crashes": 0,
+      "skia": "GaneshVulkan"
+    }
+  },
+  "status": "Fixed and verified on Pad: float canvas visible, 12/12 alternating 8-bit/float samples pass, GPU crash count zero."
 }

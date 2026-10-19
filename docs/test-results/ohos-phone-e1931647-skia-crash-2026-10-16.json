@@ -1,0 +1,56 @@
+{
+  "build": "e1931647",
+  "build_id": "d93473b27a188d2ce183b733f1f0c772594c81d0",
+  "symbols_sha256_verified": true,
+  "symbol_build_id_matches_crash": true,
+  "fault_pc": "0xa61ed44",
+  "fault_function": "gpu::(anonymous namespace)::HandlePersistentCacheError",
+  "error": {
+    "value": 2,
+    "enum": "persistent_cache::TransactionError::kPermanent",
+    "action": "ScopedIncrement(use_shader_cache_shm_count) followed by base::ImmediateCrash()"
+  },
+  "confirmed": "GPU 53477 explicitly traps in persistent cache permanent-error handler after successful 10-bit output negotiation; GPU 53857 subsequently presents through OpenGL SDR8. Not a confirmed 10-bit buffer incompatibility.",
+  "unknown": "Original logs omit the SQLite error code. SQLITE_ERROR/CORRUPT/IOERR/NOTADB all map to kPermanent. File corruption, schema or I/O causes cannot be distinguished from the supplied archive; added stage/raw-code diagnostics are required.",
+  "evidence": "out/phone-crash-e1931647",
+  "device_operated": false,
+  "source_modified": true,
+  "ci_modified": false,
+  "fix": {
+    "commit": "79a96c4b760345711ccdc2febe6dcc6d7c5440cf",
+    "native_ci": 38875175243,
+    "adapter_ci": 38875175378,
+    "status": "Native CI and Adapter CI passed; release published; phone runtime verification pending",
+    "behavior": [
+      "OHOS persistent disk-cache permanent errors no longer call ImmediateCrash",
+      "Latch the failed backend under the cache operation mutex before waking other operations; later disk loads miss and disk stores skip",
+      "Keep memory shader cache and compilation available",
+      "Log initialize/find/insert stage with original SQLite error code",
+      "Regression test drops the SQLite entries table, triggers a miss, restores the table and checks memory operation continues without disk writes",
+      "Broadcast completion to all waiting cache operations so retirement cannot strand queued writes"
+    ],
+    "validation": [
+      "Patch applies cleanly to pinned upstream files",
+      "git diff --check passes",
+      "Native CI 38875175243 success",
+      "Adapter CI 38875175378 success"
+    ],
+    "tests_not_run": [
+      "Native GPU unit test not run locally; no local Chromium compilation",
+      "Phone device reproduction remains pending"
+    ],
+    "ci_code_changed": false,
+    "prior_native_build": {
+      "commit": "86a091d",
+      "ci": 38874781191,
+      "result": "success"
+    },
+    "release": "https://github.com/miramira8295/chromium-hmos/releases/tag/build-79a96c4b",
+    "device_acceptance": [
+      "Capture stage and sqlite_error if cache failure recurs; retain cache initially rather than deleting diagnostic evidence",
+      "Verify original Vulkan GPU reaches first presentation without SIGTRAP/restart",
+      "Verify Skia backend GaneshVulkan and SDR10 presentation for an ordinary webpage",
+      "Verify HDR content presentation and SDR recovery separately; negotiation alone is insufficient"
+    ]
+  }
+}

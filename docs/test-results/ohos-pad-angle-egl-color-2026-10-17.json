@@ -1,0 +1,929 @@
+{
+  "status": "Pad SDR/P3/HDR and native video/WebGPU zero-copy validated in scoped checks; current HDR drops accepted by user; intermittent Skia GL + ANGLE Vulkan device loss remains unresolved",
+  "updatedUTC": "2026-10-17T14:09:35.267810+00:00",
+  "scope": "Pad native EGL window output with GaneshGL + ANGLE Vulkan; retain phone fork GL route",
+  "source": "ca904c79c05b24db63970dc11239e1edee76ad02",
+  "changes": [
+    "OHOS ANGLE RGB10_A2 window configuration",
+    "EGL P3 passthrough and BT2020 PQ attributes, gated by enabled Vulkan swapchain-colorspace API; exact native pair validated by WindowSurfaceVk",
+    "Allocate P3 and PQ probe swapchains then restore SDR before first frame",
+    "Per-live-output compositor color capabilities; popups retain SDR8",
+    "Actual default framebuffer format during first-frame bootstrap",
+    "Native window colorspace readback, trusted current HDR luminance, SDR metadata reset",
+    "Recreate EGLSurface on immutable colorspace transition",
+    "Failure revokes output capability and persists bounded SDR8 fallback",
+    "Log actual allocated VkFormat and VkColorSpaceKHR"
+  ],
+  "validation": {
+    "source": "b510e9d7cd3a2fbd78d0ddc42234103206c5f78d",
+    "angle": "e12217f3e133cb1029b050d893b1806d141483be",
+    "fresh_apply": true,
+    "reverse_check": true,
+    "refresh_old_patch": true,
+    "native_compile": false
+  },
+  "device": {
+    "pad": "192.168.8.136:38905",
+    "audio": "Verified MUSIC0 mute1, RING0 mute1, SILENT",
+    "keepAwake": "Pad only wakeup every20sec",
+    "phone": "Untouched; awaiting explicit handback"
+  },
+  "phone_same_combination": {
+    "passed": false,
+    "reason": "Phone fork launches ANGLE GLES and uses a separate GL pbuffer/NativeBuffer surface, not ordinary EGL WSI. Prior phone Skia Vulkan P3/HDR results do not validate this GL+ANGLE Vulkan route."
+  },
+  "ci_code_modified": false,
+  "local_native_compile": false,
+  "pending": [
+    "Root-cause and fix Skia GL + ANGLE Vulkan cold-start device loss; current present-idle candidate and diagnostics did not eliminate it",
+    "GL cold-start and sustained interop acceptance remains incomplete until device loss is fixed",
+    "Phone latest-build regression paused; generic normal-VSync change untested on phone",
+    "Longer playback/memory coverage beyond recorded90-second runs remains unclaimed"
+  ],
+  "lumieSource": "55dc431",
+  "ci": {
+    "02102d63": {
+      "native": 39021922156,
+      "adapter": 39021922217,
+      "pass": true
+    },
+    "fa9b95e5": {
+      "native": 39023182543,
+      "adapter": 39023182550,
+      "pass": true
+    },
+    "d5f67bab": {
+      "native": 39023487696,
+      "adapter": 39023487643,
+      "nativePending": false,
+      "nativePass": false,
+      "error": "GPUCanvasContext needed complete SharedImageCapabilities header; fixed48dd"
+    },
+    "eee71a0a": {
+      "native": 39023895524,
+      "adapter": 39023895526,
+      "nativePending": false,
+      "nativePass": false,
+      "error": "Same missing complete-type include; already queued48dd fix"
+    },
+    "48dd1f06": {
+      "native": 39024438735,
+      "adapter": 39024438710,
+      "adapterPass": true,
+      "nativePending": false,
+      "nativePass": true
+    },
+    "ca904c79": {
+      "native": 39024730522,
+      "adapter": 39024730517,
+      "nativePass": true,
+      "adapterPass": true,
+      "engineSHA256": "d8d7dffde5aaba4442dc3499db8d30eae12da216d9dc5340c096d6b070b81ff6",
+      "buildID": "7f82616b6fbfb147576ae4dfe4f5c54a872f0bdb",
+      "dawnEntries": 184,
+      "installedHAP": "out/pad-fix-20261015/pad-ca9-final.hap"
+    }
+  },
+  "nativeGL0210": {
+    "engineSHA256": "ff8cf37ec6e96634e6348ef9465be8987ed19e8adf4fb5c0b9b6dc1ca9915047",
+    "dawnBinaryTable": {
+      "entries": 184,
+      "pass": true,
+      "buildId": "3eb39eeef3f7d0658429da470b37a5ad788b21d4"
+    },
+    "actualAllocations": {
+      "format": 64,
+      "rgbaBits": "10/10/10/2",
+      "srgbColorSpace": 0,
+      "displayP3NonlinearColorSpace": 1000104001,
+      "hdr10ST2084ColorSpace": 1000104008
+    },
+    "capabilities": {
+      "p3": true,
+      "hdr": true
+    },
+    "matrix": {
+      "pass": true,
+      "modes": 8,
+      "evidence": "out/pad-followup-20261017/0210-gl-color-report.json"
+    },
+    "nativeScreenshots": {
+      "nativeSamples": [
+        {
+          "mode": "2d-srgb",
+          "green": [
+            0,
+            254,
+            1
+          ],
+          "red": [
+            254,
+            0,
+            0
+          ],
+          "nonblank": true
+        },
+        {
+          "mode": "2d-p3",
+          "green": [
+            0,
+            254,
+            1
+          ],
+          "red": [
+            254,
+            0,
+            0
+          ],
+          "nonblank": true
+        },
+        {
+          "mode": "2d-p3-hdr",
+          "green": [
+            11,
+            168,
+            3
+          ],
+          "red": [
+            255,
+            3,
+            12
+          ],
+          "nonblank": true
+        },
+        {
+          "mode": "2d-srgb",
+          "green": [
+            0,
+            254,
+            1
+          ],
+          "red": [
+            254,
+            0,
+            0
+          ],
+          "nonblank": true
+        }
+      ],
+      "allNonblank": true,
+      "sdrBeforeAfterIdentical": true,
+      "scope": "System-composited screenshot correctness and SDR recovery; no photometry or physical gamut measurement."
+    },
+    "lifecycle": {
+      "pass": true,
+      "steps": 19,
+      "backgroundCycles": 2,
+      "popupOpenedAndClosed": true,
+      "evidence": "out/pad-followup-20261017/0210-gl-lifecycle-report.json"
+    },
+    "fullscreen": {
+      "pass": true,
+      "trustedNativeTap": true,
+      "evidence": "out/pad-followup-20261017/0210-gl-fullscreen-report.json"
+    },
+    "stress": {
+      "pass": true,
+      "transitions": 80,
+      "allP3HdrCapabilitiesTrue": true,
+      "evidence": "out/pad-followup-20261017/0210-gl-native-stress.json"
+    },
+    "gpuCrashes": 0,
+    "continuousHDR": {
+      "pass": true,
+      "elapsedMs": 123065.79999998212,
+      "frames": 14696,
+      "averageRafFps": 119.41579220223763,
+      "maxFrameGapMs": 316.6000000000349,
+      "memory": [
+        {
+          "sample": 0,
+          "browserPssKB": 610147,
+          "dmaKB": 62908
+        },
+        {
+          "sample": 5,
+          "browserPssKB": 590244,
+          "dmaKB": 62908
+        },
+        {
+          "sample": 11,
+          "browserPssKB": 621499,
+          "dmaKB": 62908
+        }
+      ],
+      "scope": "123s sustained Canvas2D HDR correctness; not extended playback or 24-hour leak acceptance",
+      "evidence": "out/pad-followup-20261017/0210-gl-soak.json"
+    },
+    "hevcSourceSwitch": {
+      "correctnessPass": true,
+      "performanceAccepted": false,
+      "frameProgress": [
+        {
+          "clip": "sdr-1080p60.mp4",
+          "total": 370,
+          "dropped": 135,
+          "displayedFps": 37.97672915319974
+        },
+        {
+          "clip": "pq-1080p60.mp4",
+          "total": 369,
+          "dropped": 104,
+          "displayedFps": 43.10344827586207
+        },
+        {
+          "clip": "sdr-1080p60.mp4",
+          "total": 369,
+          "dropped": 143,
+          "displayedFps": 36.80182380719752
+        }
+      ],
+      "nativeDecoder": "OMX.hisi.video.decoder.hevc Main10",
+      "path": "CPU buffer mode: GPU import/fences unavailable",
+      "evidence": "out/pad-followup-20261017/0210-gl-video.json"
+    }
+  },
+  "nativeSkiaVulkan0210": {
+    "matrix8Pass": true,
+    "gpuCrashes": 0,
+    "evidence": "out/pad-followup-20261017/0210-vk-color-report.json"
+  },
+  "webgpuFollowup": {
+    "symptom": "Compute passes but canvas shared-image creation fails, followed by device destroyed / external Instance expired",
+    "firstNativeError": "Could not find SharedImageBackingFactory for RGBA8888/BGRA8888 with Gles2Read RasterRead DisplayRead WebgpuRead Write SwapChain usage",
+    "fa9Runtime": {
+      "syncFdHardwareProbe": true,
+      "eglNativeFenceExposed": false,
+      "canvasPass": false,
+      "gpuCrashes": 0
+    },
+    "root": "Both Renderer feature probe and DisplayVk EGL extension platform guards omitted ANGLE_PLATFORM_OHOS",
+    "fixes": [
+      "fa9 renderer probe uses actual SYNC_FD import/export properties",
+      "eee DisplayVk exposes verified nativeFenceSyncANDROID",
+      "d5 native F16 capability carried through Mojo; Canvas retains float presentation/HDR on verified ANGLE Vulkan import route"
+    ],
+    "invalidHarness": [
+      "Initial WebGPU helper used top-level await in Runtime.evaluate without replMode; SyntaxError before GPU activity. Excluded from product failure counts."
+    ],
+    "pending": "Latest native CI and actual device verification"
+  },
+  "testUfoFa9": {
+    "cases": 4,
+    "renderers": [
+      "Canvas2D",
+      "WebGL2 default AA enabled"
+    ],
+    "spaces": [
+      "Display-P3",
+      "Rec2100PQ"
+    ],
+    "allNativeScreenshotsNonblank": true,
+    "webglNoErrorNotLost": true,
+    "evidence": "out/pad-followup-20261017/fa9-testufo-nonblank.json",
+    "scope": "Not physical gamut/photometry or flash behavior verification"
+  },
+  "interimCleanup": {
+    "remainingTabs": 14,
+    "originalTestUfoTabRetained": true,
+    "sdrPageVisible": true,
+    "evidence": "out/pad-followup-20261017/fa9-interim-cleanup.json"
+  },
+  "nativeFenceAndFloat48dd": {
+    "pass": true,
+    "compute": "out/webgpu-20261016/48dd-gl-webgpu-baseline.json",
+    "canvasColor": "out/webgpu-20261016/48dd-gl-webgpu-color.json",
+    "rawFP16Red2Bits": [
+      16384,
+      0,
+      0,
+      15360
+    ],
+    "actualRGBA16FNativeFormat": 39,
+    "actualVkFormat": 97,
+    "actualPQSwapchain": [
+      64,
+      1000104008
+    ],
+    "video": "out/pad-followup-20261017/48dd-gl-video.json",
+    "hevcMain10CPUOutputCopies": 0,
+    "hdrPerformance": "out/pad-followup-20261017/48dd-gl-hdr-soak.json",
+    "hdrPerformancePass": false,
+    "hdrFPS": 56.2666,
+    "hdrDropRatio": 0.044299,
+    "glNativeOnlyVideoGate": "out/pad-followup-20261017/48dd-gl-native-color-gates.json",
+    "glNativeOnlyVideoGatePass": false
+  },
+  "latestRegression": {
+    "firstGLMatrix": {
+      "pass": false,
+      "report": "out/pad-followup-20261017/ca9-gl-color-report.json",
+      "mode": "2d-p3",
+      "firstFailureUTC": "2026-10-17T10:44:21Z",
+      "browserPID": 40475,
+      "firstFailure": "CommandQueue::queueSubmitLocked VK_ERROR_DEVICE_LOST (-4), then eglCreateSyncKHR/context-loss errors",
+      "memoryDetail": "Failed to retrieve device fault details with error -2; this does not prove initial OOM",
+      "log": "out/angle-color-20261017/pad-native.log"
+    },
+    "glAfterRestart": {
+      "matrix": "out/pad-followup-20261017/ca9-gl-repeat-color-report.json",
+      "matrixModes": 8,
+      "stress": "out/pad-followup-20261017/ca9-gl-stress-stress.json",
+      "transitions": 80,
+      "lifecycle": "out/pad-followup-20261017/ca9-gl-repeat-lifecycle-report.json",
+      "lifecycleSteps": 19,
+      "fullscreen": "out/pad-followup-20261017/ca9-gl-repeat-fullscreen-report.json",
+      "pass": true,
+      "doesNotResolveInitialLoss": true
+    },
+    "skiaVulkan": {
+      "matrix": "out/pad-followup-20261017/ca9-vk-color-report.json",
+      "matrixModes": 8,
+      "lifecycle": "out/pad-followup-20261017/ca9-vk-lifecycle-report.json",
+      "lifecycleSteps": 19,
+      "nativeVideoColorGate": "out/pad-followup-20261017/ca9-vk-native-color-gates.json",
+      "nv12P010PQGatePass": true,
+      "allThreeCasesNativeAndZeroCopyImport": true,
+      "fullscreen": "out/pad-followup-20261017/ca9-vk-fullscreen-report.json",
+      "fullscreenPass": true,
+      "webgpuFloatColor": "out/webgpu-20261016/ca9-vk-webgpu-color.json",
+      "webgpuFloatColorPass": true,
+      "video": "out/pad-followup-20261017/ca9-vk-video.json",
+      "videoFunctionalPass": true,
+      "videoPerformanceNotAccepted": true,
+      "videoFrameProgress": [
+        {
+          "clip": "sdr-1080p60.mp4",
+          "total": 363,
+          "dropped": 2,
+          "displayedFps": 59.629996696399076
+        },
+        {
+          "clip": "pq-1080p60.mp4",
+          "total": 358,
+          "dropped": 9,
+          "displayedFps": 57.925311203319495
+        },
+        {
+          "clip": "sdr-1080p60.mp4",
+          "total": 369,
+          "dropped": 4,
+          "displayedFps": 59.41722285528244
+        }
+      ]
+    }
+  },
+  "allTestsPassed": false,
+  "handoff": {
+    "settings": {
+      "skia": "GaneshVulkan",
+      "angle": "Vulkan",
+      "webgpu": "enabled",
+      "gpuProcess": "separate",
+      "diagnosticOverrides": false,
+      "frameBudget": 4,
+      "refreshPolicy": "original adaptive60..120"
+    },
+    "audio": "Verified MUSIC0/mute1, RING0, SILENT",
+    "phone": "Not operated; paused",
+    "tabs": "14targets remain; original TestUFO retained; own current color page restored toSDR; extra own pages closed",
+    "cleanup": "out/pad-followup-20261017/499-final-cleanup.json",
+    "nativeBuild": "Existing push-triggered CI only; no CI code edited; no local C++ compile",
+    "status": "Pad primary native-Vulkan scoped checks passed under user-accepted drop rate; GL device loss remains unresolved; not all tests passed",
+    "installedNative": "4998f0343019616242ae5a7602057e2cb8249073",
+    "installedHap": "out/pad-fix-20261015/pad-499-production-restore.hap",
+    "finalSystem": "out/pad-followup-20261017/499-final-system-info.json",
+    "controllers": {
+      "padKeepAwakePID": 279716,
+      "nativeLoggerPID": 279786,
+      "staticServerPID": 279773
+    },
+    "diagnosticLimits": "Device kernel/faultlog access denied, and EXT_device_fault query failed; initial device-loss cause not proven"
+  },
+  "continuation": {
+    "status": "CI source fixes pending runtime validation",
+    "sources": {
+      "transitionBarrier": "c52843ab8c057689bd635d27f6d1561e248f3166",
+      "unknownVideoCadence": "9f8ab64024ee413589951e76590543082141f4c8"
+    },
+    "ci": {
+      "transitionBarrier": {
+        "native": 39031527113,
+        "adapter": 39031527088,
+        "success": true
+      },
+      "unknownVideoCadence": {
+        "native": 39031824073,
+        "adapter": 39031824093,
+        "pending": false,
+        "success": true
+      }
+    },
+    "baselineReadback": {
+      "alternatingSDRP3HDR": "out/pad-followup-20261017/continue-gl-readback-stress.json",
+      "pass": false,
+      "failure": "VK_ERROR_DEVICE_LOST, finishResourceUse; HDR-to-SDR transition after first3 captures",
+      "fixedSDR30Pass": true,
+      "fixedP3_30Pass": true,
+      "fixedHDR30Pass": true,
+      "log": "out/pad-followup-20261017/continue-native.log",
+      "barrierIsCandidateMitigationNotConfirmedRootCause": true
+    },
+    "baselineVideo": {
+      "profile": "out/pad-followup-20261017/continue-gl-profile.json",
+      "sdrFPS": 60.172872340425535,
+      "hdrFPS": 56.18163738813391,
+      "hdrRateSwitchesIn6sec": 15,
+      "sdrRateSwitchesIn6sec": 1,
+      "detailedInputs": "out/pad-followup-20261017/continue-gl-input-pq-1080p60.mp4-trace.json",
+      "invalidVideoIntervalsIn6sec": 6,
+      "decider": "OnlyVideo emitted zero intervals; provider interpreted them as max120Hz",
+      "fix": "Avoid range/zero division; retain recent valid interval for at most250ms without extending age; default after timeout; input and other damage still boost immediately",
+      "unitTestsAdded": 3,
+      "nativeUnitTestsExecuted": false
+    },
+    "phone": "Not operated",
+    "ciCodeEdited": false,
+    "localNativeCompile": false,
+    "barrierRuntime": {
+      "report": "out/pad-followup-20261017/c528-gl-readback-stress.json",
+      "pass": true,
+      "cycles": 30,
+      "captures": 90,
+      "oldKernelFailedFirstCycle": true,
+      "engineSHA256": "1882c0da0ddd108833f9045e36751c8dbdfc6716eec375bcb6a524d2d637e07a",
+      "buildID": "3b83c15c121bb73ba08338ef5de180e92e3bf37a",
+      "nativeUnitTestsExecuted": false,
+      "globalStabilityPass": false,
+      "limitation": "9f build subsequently lost device during initial tab restoration before video profile; 90 transitions passed but mitigation is not a complete fix"
+    },
+    "nativeGLDawn": {
+      "source": "c89511d",
+      "status": "51d CI build and Pad GL native NV12/P010/PQ analytic gate passed; long-term interop/performance pending",
+      "scope": "ANGLE Vulkan + WebGPU opt-in, GL decoder native NV12/P010, opaque YCbCr hardware sampler",
+      "synchronization": "Exclusive Ozone access per Dawn submit batch, GENERAL/FOREIGN handoff, sync-fd import/export",
+      "lifetime": "Uncached per-frame original decoder lease; asynchronous completion-fence polling; quarantine on unknown completion",
+      "performanceRisk": "GL import cache deliberately bypassed for WebGPU-enabled native video; sustained playback must be remeasured",
+      "phoneForkGLES": "No new opt-in; phone not operated",
+      "ci": {
+        "native": 39032527085,
+        "adapter": 39032527086,
+        "pending": true
+      },
+      "friendSource": "51d66190d55dfb53c89ee33a5c1f044a9a6ddbff",
+      "friendNativeCI": 39032934692,
+      "friendNativeCIPass": true,
+      "report": "out/pad-followup-20261017/51-gl-native-color-gates.json",
+      "allThreeNativeZeroCopyColorPass": true,
+      "leaseCompletionEventsObserved": true,
+      "quarantineErrorsObserved": false,
+      "engineSHA256": "f4bc63defa39ad6a5faab0a0e83039750ba8f9fc4d8ff434dc69215b644fc397",
+      "buildID": "5ae1a2613a232fc12c155ab9f109823a8a4a2ad1",
+      "videoReport": "out/pad-followup-20261017/51-gl-video.json",
+      "shortVideoFunctionalPass": true,
+      "shortVideoProgress": [
+        {
+          "clip": "sdr-1080p60.mp4",
+          "total": 369,
+          "dropped": 0,
+          "displayedFps": 60.09771986970684
+        },
+        {
+          "clip": "pq-1080p60.mp4",
+          "total": 358,
+          "dropped": 6,
+          "displayedFps": 58.4717607973422
+        },
+        {
+          "clip": "sdr-1080p60.mp4",
+          "total": 367,
+          "dropped": 1,
+          "displayedFps": 59.960681520314544
+        }
+      ],
+      "sustained": {
+        "report": "out/pad-followup-20261017/51-gl-interop-soak.json",
+        "functionalPass": true,
+        "renderedFrames": 3830,
+        "traceNativeImports": 296,
+        "traceZeroCopyImports": 297,
+        "traceLeaseCompletions": 576,
+        "uncapturedErrors": 0,
+        "gpuProcessCrashes": 0,
+        "performanceAccepted": false
+      }
+    },
+    "cadenceRuntime": {
+      "source": "9f8ab640",
+      "status": "Native unknown cadence no longer emitted; rate oscillation reduced, but HDR performance still fails",
+      "firstLoss": "2026-10-17T12:28:45.729Z",
+      "pid": 29899,
+      "firstError": "finishResourceUse VK_ERROR_DEVICE_LOST; no HDR profiling conclusion",
+      "report": "out/pad-followup-20261017/9f-gl-input-profile.json",
+      "retry": "out/pad-followup-20261017/9f-gl-input-retry-profile.json",
+      "retryFPS": 54.067460317460316,
+      "rateRequestsIn6sec": {
+        "60": 2,
+        "120": 1
+      },
+      "zeroVideoMetadataIn6sec": 20,
+      "passive90sec": "out/pad-followup-20261017/9f-gl-input-retry-hdr-soak.json",
+      "passiveFPS": 52.47755893861178,
+      "passiveDropRatio": 0.094553706505295,
+      "passivePass": false,
+      "pulse120Control": "out/pad-followup-20261017/9f-gl-pulse-hdr-soak.json",
+      "pulse120FPS": 59.33004882769542,
+      "pulse120DropRatio": 0.005163193804167435,
+      "pulse120Pass": true,
+      "pulse120Scope": "Diagnostic tiny compositor animation, not a production fix or equivalent passive-video test"
+    },
+    "nextSources": {
+      "defaultFramebufferContract": "9f8c54a",
+      "decoderBudgetDiagnostic": "b7a16b2",
+      "defaultBudgetChanged": false,
+      "reason": "GL bit-depth queries during reshape may inspect a bound offscreen FBO; derive default format from verified native window. Expose existing4..8 frame-budget diagnostic to non-fork Pad GL for matched A/B.",
+      "nativeCI": 39033396311,
+      "adapterCI": 39033396312,
+      "ciPass": true
+    },
+    "budgetAB": {
+      "source": "b7a16b2265b781d349765a1f4d12c001cf57637c",
+      "engineSHA256": "d018095af6dc561609e056962a8f5820c7de73e49ebe17dd1eb51153f6737f67",
+      "materialSHA256": "ddaf7d7da42580260fb93a649b337672d68e21bc7b21ca3c1d6a1507fc5801af",
+      "budget4": {
+        "report": "out/pad-followup-20261017/b7-gl-budget4-budget-soak.json",
+        "fps": 57.74804419359759,
+        "dropRatio": 0.021598670851024553,
+        "performancePass": false,
+        "memoryCollectionValid": false,
+        "memoryNote": "Initial harness used incorrect hidumper argument; error-only files excluded"
+      },
+      "budget6": {
+        "report": "out/pad-followup-20261017/b7-gl-budget6-budget-soak.json",
+        "status": "Interrupted by device loss before warm-up; no performance conclusion",
+        "pid": 45793,
+        "firstLossUTC": "2026-10-17T12:57:38.847Z",
+        "firstError": "finishResourceUse VK_ERROR_DEVICE_LOST after PQ swapchain allocated",
+        "memoryLiveFirst": "Captured after device loss; not a normal playback memory baseline"
+      },
+      "defaultBudgetChanged": false
+    },
+    "hardwareVsyncFix": {
+      "source": "b5d9354",
+      "status": "CI passed; first default-four-buffer runtime failed with Vulkan device loss during initial video load; no performance samples",
+      "reason": "NativeVSync requested continuously without presentation timestamp/frame-completion DVSync contract; explicitly select normal hardware VSync",
+      "officialContract": "https://developer.huawei.com/consumer/cn/doc/doccenter-references/api/capi-native-vsync-h",
+      "phoneRuntime": "Not tested; phone remains untouched",
+      "nativeCI": 39034889486,
+      "adapterCI": 39034889496,
+      "nativeCIPass": true,
+      "adapterCIPass": true,
+      "engineSHA256": "464b5fa8de75089afdc3e25633c1df47d273be104376e23f0dd6f773b3612561",
+      "buildID": "ecd58510510c6d21c9dfceabbcf50b12c5a242e2",
+      "dawnEntries184Pass": true,
+      "runtime": {
+        "report": "out/pad-followup-20261017/b5-gl-default4-budget-soak.json",
+        "pid": 53034,
+        "firstDeviceLossUTC": "2026-10-17T13:14:47.950Z",
+        "nativeError": "VK_ERROR_DEVICE_LOST at finishResourceUse:733; subsequent EGL_BAD_DISPLAY retries",
+        "action": "Force-stopped Pad app to stop retry storm",
+        "performanceConclusion": null
+      },
+      "extraFenceDiagnostic": {
+        "status": "Diagnostic ANGLE feature confirmed enabled; first start still device-lost; isolated color/video regression passed; passive HDR performance failed",
+        "switch": "enable-angle-features=enableExtraSubmitFence",
+        "hap": "out/pad-fix-20261015/pad-b5-extra-fence.hap",
+        "sha256": "9ac236dbbb9889ebbd74f363e07e7cdb7a825c830a2bbb6aff2b54dea493e0f7",
+        "nativeSource": "b5d9354f",
+        "productionDefaultChanged": false,
+        "firstFailure": {
+          "pid": 58869,
+          "utc": "2026-10-17T13:24:48.012Z",
+          "site": "CommandQueue.cpp queueSubmitLocked:1026",
+          "note": "The -2 allocation failure is from collecting post-device-loss fault details; not proof initial loss was OOM",
+          "report": "out/pad-followup-20261017/b5-extra-fence-default4-budget-soak.json"
+        },
+        "isolatedReadback": {
+          "report": "out/pad-followup-20261017/b5-extra-fence-isolated-stress.json",
+          "pass": true,
+          "captures": 90
+        },
+        "isolatedVideo": {
+          "report": "out/pad-followup-20261017/b5-extra-fence-isolated-video.json",
+          "functionalPass": true
+        },
+        "switchVerification": "chrome://gpu reports enableExtraSubmitFence (Vulkan workarounds): Enabled; report out/pad-followup-20261017/b5-extra-fence-about-gpu.txt",
+        "passiveHDR": {
+          "report": "out/pad-followup-20261017/b5-extra-fence-isolated-passive-budget-soak.json",
+          "durationSeconds": 90,
+          "functionalPass": true,
+          "performancePass": false,
+          "displayedFps": 58.53278121327285,
+          "dropRatio": 0.013148148148148148,
+          "memoryBefore": "out/pad-followup-20261017/b5-extra-fence-isolated-passive-memory-before.txt",
+          "memoryAfter": "out/pad-followup-20261017/b5-extra-fence-isolated-passive-memory-after.txt"
+        }
+      }
+    },
+    "zeroCopyDisabledDiagnostic": {
+      "nativeSource": "b5d9354f",
+      "switch": "disable-features=OhosZeroCopyVideo",
+      "productionDefaultChanged": false,
+      "passiveHDR": {
+        "report": "out/pad-followup-20261017/b5-no-zero-copy-passive-budget-soak.json",
+        "functionalPass": true,
+        "performancePass": false,
+        "displayedFps": 55.383941286011606,
+        "dropRatio": 0.006289308176100629
+      },
+      "rapidColor": {
+        "report": "out/pad-followup-20261017/b5-no-zero-copy-rapid-color-stress.json",
+        "steps": 300,
+        "pass": true
+      },
+      "conclusion": "This control did not lose device in one run, but was slower; does not establish the cause or justify disabling native video"
+    },
+    "budget6Repeat": {
+      "report": "out/pad-followup-20261017/b5-budget6-isolated-passive-budget-soak.json",
+      "source": "b5d9354f",
+      "diagnosticSwitch": "ohos-video-surface-max-acquired=6",
+      "functionalPass": true,
+      "performancePass": true,
+      "displayedFps": 59.60322461484974,
+      "dropRatio": 0.001819505094614265,
+      "productionDefaultChanged": false,
+      "status": "One 90-second performance pass; second attempt lost device during initial load. Not a stability fix; keep default4",
+      "secondAttempt": {
+        "report": "out/pad-followup-20261017/b5-budget6-repeat-passive-budget-soak.json",
+        "pid": 6396,
+        "status": "Device lost during initial load; no performance samples"
+      }
+    },
+    "default4B5Control": {
+      "report": "out/pad-followup-20261017/b5-default4-isolated-control-budget-soak.json",
+      "pid": 3870,
+      "status": "First attempt lost device after first P010 frame; no performance conclusion; restarted for a separate retry",
+      "firstDeviceLossUTC": "2026-10-17T13:36:27.459Z",
+      "site": "CommandQueue.cpp finishResourceUse:733",
+      "cpuOutputCopies": 0,
+      "queueCapacity": 12,
+      "maxAcquired": 4,
+      "retry": {
+        "report": "out/pad-followup-20261017/b5-default4-control-retry-budget-soak.json",
+        "pid": 4147,
+        "status": "Device lost during initial load; stopped retry storm; no performance samples"
+      }
+    },
+    "b5NativeVulkanRegression": {
+      "source": "b5d9354f",
+      "nativeColorGates": {
+        "pass": true,
+        "cases": [
+          {
+            "name": "nv12-chroma",
+            "colorPass": true,
+            "gpuStable": true,
+            "nativeImports": 1,
+            "zeroCopyImports": 1,
+            "pass": true
+          },
+          {
+            "name": "p010-chroma",
+            "colorPass": true,
+            "gpuStable": true,
+            "nativeImports": 1,
+            "zeroCopyImports": 1,
+            "pass": true
+          },
+          {
+            "name": "pq-gray",
+            "colorPass": true,
+            "gpuStable": true,
+            "nativeImports": 1,
+            "zeroCopyImports": 1,
+            "pass": true
+          }
+        ],
+        "report": "out/pad-followup-20261017/b5-native-vulkan-native-color-gates.json"
+      },
+      "webgpuOutput": {
+        "pass": true,
+        "stages": 4,
+        "report": "out/webgpu-20261016/b5-native-vulkan-webgpu-color.json"
+      },
+      "passiveHDRDefault4": {
+        "report": "out/pad-followup-20261017/b5-native-vulkan-default4-budget-soak.json",
+        "functionalPass": true,
+        "performancePass": false,
+        "displayedFps": 58.52295582783401,
+        "dropRatio": 0.012474775270592552
+      },
+      "budget6Control": {
+        "report": "out/pad-followup-20261017/b5-native-vulkan-budget6-budget-soak.json",
+        "functionalPass": true,
+        "performancePass": false,
+        "displayedFps": 58.15102793885082,
+        "dropRatio": 0.017260579064587972,
+        "conclusion": "No improvement over default4 in this native-Vulkan control; do not change default"
+      },
+      "colorLifecycle": {
+        "report": "out/pad-followup-20261017/b5-native-vulkan-color-lifecycle.json",
+        "pass": true,
+        "steps": 20,
+        "backgroundRestoreCycles": 2,
+        "fullscreen": true,
+        "backend": "GaneshVulkan"
+      },
+      "profile": {
+        "report": "out/pad-followup-20261017/b5-native-vulkan-profile-profile.json",
+        "analysis": "out/pad-followup-20261017/b5-native-vulkan-profile-pq-1080p60.mp4-trace-analysis.json",
+        "note": "6-second traced diagnostic, not performance acceptance; observed stable60Hz request, GPU swaps median1.778ms/p95 3.605ms"
+      },
+      "animation120HzControl": {
+        "report": "out/pad-followup-20261017/b5-native-vulkan-profile-hdr-soak.json",
+        "pass": true,
+        "displayedFps": 59.448779787856374,
+        "dropRatio": 0.0025925925925925925,
+        "scope": "Diagnostic animated scene, not passive-video acceptance"
+      },
+      "memoryScopeCorrection": "Prior native-Vulkan soak memory samples used browser PID only; separate GPU memory was not covered. New restored-build soak will capture both."
+    },
+    "presentIdleCandidate": {
+      "source": "36b3962ac73ffd0c850764194ae11310fb7a4e4e",
+      "nativeCI": 39037747858,
+      "adapterCI": 39037747888,
+      "status": "First90-second GL run passed, but cold-start cycle0 lost device; candidate is not a complete fix",
+      "nativeCompileLocal": false,
+      "ciCodeModified": false,
+      "change": "OHOS-only vkDeviceWaitIdle under submission/presentation mutex before destroying a presented swapchain without maintenance1; not a formal present-completion guarantee; teardown only",
+      "patchChecks": {
+        "fresh": true,
+        "reverse": true,
+        "incrementalRefresh": true,
+        "report": "out/angle-color-20261017/present-patch-check.json"
+      },
+      "risk": "May increase color-transition/teardown latency; cause and effectiveness unproven",
+      "engineSHA256": "3c23c8545233e0276a4a3bab4236efcb9561b3d9c6dfa33df83d7c82072840db",
+      "harSHA256": "b89d6404ad3b1c5d5e237adaeaecca13ed6b06bb6410e94ec15ec04d047766a3",
+      "buildID": "a985b6eed6f7d0d1372950d8e0c9995e54651c2f",
+      "dawnEntries184Pass": true,
+      "firstRuntime": {
+        "report": "out/pad-followup-20261017/36-gl-first-load-budget-soak.json",
+        "guard": "out/pad-followup-20261017/36-gl-first-load-guard.json",
+        "functionalPass": true,
+        "acceptedPass": true,
+        "displayedFps": 58.07158910266951,
+        "dropRatio": 0.01852881230313137,
+        "performanceRequired": false,
+        "note": "First 90-second GL/default4 run passed under updated user acceptance; no device loss. Repeated cold starts pending"
+      },
+      "coldStarts": {
+        "report": "out/pad-followup-20261017/36-gl-present-idle-cold-starts.json",
+        "pass": false,
+        "failedCycle": 0,
+        "pid": 20500,
+        "firstFatal": "10-17 21:55:42.028 20500 21159 W A0C233/com.miramira8295.lumiebrowser/Chromium: [20500:21159:1017/215542.028318:WARNING:ui/gl/angle_platform_impl.cc:39] ContextVk.cpp:7034 (handleError): Internal Vulkan error (-4): The logical or physical device has been lost.",
+        "automaticStop": true
+      }
+    },
+    "doubleVideoTickCandidate": {
+      "source": "a4a9cdaefb255e36a162ac93497f66942b16f0d7",
+      "nativeCI": 39038235336,
+      "adapterCI": 39038235344,
+      "status": "Reverted on user acceptance of current HDR dropped frames; not installed/tested as production",
+      "reason": "Both GL and native-Vulkan controls passed near60 only when120Hz requested; pure-video60Hz requests failed performance",
+      "change": "OHOS60/59.94fps video requests a second scheduling tick when within native60..120 range; 24/25/30/50/90/120fps cadence behavior retained; idle policy retained",
+      "powerTradeoff": "Higher requested display refresh during60fps video; actual granted timing remains authoritative",
+      "unitSourceUpdated": true,
+      "nativeUnitTargetExecuted": false,
+      "localNativeCompile": false,
+      "phoneRuntime": "Paused; generic OHOS scheduling change remains untested on phone",
+      "revertedBy": "4998f03",
+      "active": false
+    },
+    "shaderDiskCacheControl": {
+      "source": "36b3962a",
+      "switch": "disable-gpu-shader-disk-cache",
+      "pass": false,
+      "report": "out/pad-followup-20261017/36-gl-no-shader-cache-cold-starts.json",
+      "fatal": "10-17 21:59:33.021 24011 24452 W A0C233/com.miramira8295.lumiebrowser/Chromium: [24011:24452:1017/215933.021058:WARNING:ui/gl/angle_platform_impl.cc:39] ContextVk.cpp:7034 (handleError): Internal Vulkan error (-4): The logical or physical device has been lost.",
+      "firstCycleFailed": true,
+      "switchVerified": true,
+      "gpuPreferenceBytesChanged": {
+        "offset": 10,
+        "before": 0,
+        "after": 20
+      },
+      "cacheOrDataCleared": false,
+      "conclusion": "Disk-cache use is not necessary to trigger this device loss; disabling it did not eliminate failure"
+    },
+    "restorePlan": {
+      "source": "4998f034",
+      "nativeCI": 39038395763,
+      "adapterCI": 39038395797,
+      "status": "Installed and checked; no diagnostic overrides; latest scoped native-Vulkan regression passed under accepted HDR drops",
+      "productionFlags": "Skia Vulkan ON, ANGLE Vulkan ON, WebGPU ON; original adaptive refresh; default4buffer budget; no shader-cache diagnostic override",
+      "engineSHA256": "760b044e5309f3445c2a2e544e80c3c05262d74c184e71ca9540f959fbe5ef8f",
+      "harSHA256": "98e2bcdaabc88361667487e7d2df1b3bbfd5e2d8e3e2476240293f8e10cf34a7",
+      "buildID": "9788efbc3fe06827988c11a531359c5514a72c88",
+      "dawnEntries184Pass": true,
+      "hapSHA256": "6fffc56f7614bea5e0d8921356e45fe31f9857d5339950b34351c43c0b3664e3"
+    },
+    "driverDiagnostics": {
+      "kernelRead": "dmesg: klogctl: Operation not permitted",
+      "faultlogRead": "/data/log/faultlog/faultlogger: Permission denied",
+      "deviceFaultAPI": "VK_EXT_device_fault query reports -2 after loss; initial cause not established",
+      "validationLayerInInstalledOptSDK": "No VkLayer validation binary found under /opt",
+      "rootOrSystemPrivilegesChanged": false
+    },
+    "restored499Regression": {
+      "nativeSource": "4998f034",
+      "nativeColorGates": {
+        "report": "out/pad-followup-20261017/499-native-vulkan-native-color-gates.json",
+        "pass": true,
+        "all3NativeZeroCopy": true
+      },
+      "sustainedHDR": {
+        "report": "out/pad-followup-20261017/499-native-vulkan-budget-soak.json",
+        "functionalPass": true,
+        "acceptedPass": true,
+        "durationSeconds": 90,
+        "displayedFps": 58.4676322404431,
+        "dropRatio": 0.013041880969875092,
+        "oldPerformanceThresholdPass": false,
+        "currentDropAcceptedByUser": true,
+        "browserPID": 29610,
+        "gpuPID": 30029,
+        "gpuPIDAfter": 30029,
+        "memoryBefore": {
+          "browser": {
+            "pid": 29610,
+            "path": "out/pad-followup-20261017/499-native-vulkan-memory-browser-before.txt"
+          },
+          "gpu": {
+            "pid": 30029,
+            "path": "out/pad-followup-20261017/499-native-vulkan-memory-gpu-before.txt"
+          }
+        },
+        "memoryAfter": {
+          "browser": {
+            "pid": 29610,
+            "path": "out/pad-followup-20261017/499-native-vulkan-memory-browser-after.txt"
+          },
+          "gpu": {
+            "pid": 30029,
+            "path": "out/pad-followup-20261017/499-native-vulkan-memory-gpu-after.txt"
+          }
+        },
+        "memoryNote": "Both browser and separate GPU captured correctly. GPU DMA148308KB before/after, GPU PSS363877->363845KB. This is a90-second scope, not proof of longer-duration leak freedom."
+      },
+      "lifecycle": {
+        "report": "out/pad-followup-20261017/499-native-vulkan-color-lifecycle.json",
+        "pass": true,
+        "steps": 20,
+        "backgroundRestoreCycles": 2,
+        "fullscreenEnterExit": true
+      },
+      "webgpuOutput": {
+        "report": "out/webgpu-20261016/499-native-vulkan-webgpu-color.json",
+        "pass": true,
+        "stages": 4,
+        "rgba16floatExtendedRawRed": 2
+      },
+      "scopedAcceptancePass": true,
+      "scope": "Pad restored Skia Vulkan + ANGLE Vulkan + WebGPU;3native color/zero-copy gates,4WebGPU output stages,20lifecycle checks,90seconds playback. Does not cover GL cold-start failures or phone."
+    }
+  },
+  "acceptanceUpdate": {
+    "utc": "2026-10-17T13:53:39.720339+00:00",
+    "userInstruction": "hdr掉帧我选择允许当前掉帧情况",
+    "hdrDropRateIsBlocking": false,
+    "historicalPerformanceFailuresRetained": true,
+    "required": [
+      "No GPU/renderer crashes or context loss",
+      "Correct SDR/P3/HDR buffer and color configuration",
+      "Native high-bit-depth preservation and zero-copy correctness",
+      "Playback progresses and remains muted",
+      "Background restore/fullscreen stability"
+    ],
+    "frameRatePolicy": "Retain pre-existing adaptive policy, no forced120Hz to meet previous thresholds",
+    "revertCommit": "4998f0343019616242ae5a7602057e2cb8249073",
+    "sourceEquivalentTo36b3962": true,
+    "acceptanceRecorded": true
+  },
+  "systemArkWebUserSample": {
+    "source": "User-provided YouTube playback JSON; not collected by operating the phone",
+    "timestamp": 1792245070381,
+    "videoId": "qBw8XyPN9iA",
+    "fmt": "315",
+    "quality": "2160p60",
+    "gpu": "Maleoon_920",
+    "advertisedBrowserVersion": "144.0.0.0",
+    "droppedFrames": 49,
+    "totalVideoFrames": 2135,
+    "dropRatio": 0.022950819672131147,
+    "classification": "This session selected a conventional non-HDR2160p stream; not proof the entire ArkWeb engine lacks HDR support",
+    "formatMapping": "https://github.com/pytube/pytube/blob/master/pytube/itags.py",
+    "phoneOperated": false
+  }
+}
