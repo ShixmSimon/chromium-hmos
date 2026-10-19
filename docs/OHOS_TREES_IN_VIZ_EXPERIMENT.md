@@ -1,7 +1,9 @@
 # TreesInViz experiment (2026-10-19)
 
-Status: opt-in shell control built; device validation pending. Do not treat the
-previous Graphite video acceptance as TreesInViz acceptance.
+Status: phone compatibility checks passed with TreesInViz actually enabled.
+Testing ended at the user’s request; the OFF performance comparison was not run.
+There is no established performance benefit yet. The flag remains default-off;
+the user’s phone retains its explicit ON preference.
 
 ## Reproducible baseline
 
@@ -17,7 +19,8 @@ previous Graphite video acceptance as TreesInViz acceptance.
 
 The first comparison uses identical native libraries with TreesInViz off/on.
 No native code changes are required just to request the existing upstream
-feature. Whether more OHOS adaptation is needed remains a device-test question.
+feature. The tested phone paths passed without additional TreesInViz-specific native changes;
+this does not establish coverage for other devices or media entry points.
 
 ## What the switch does
 
@@ -78,10 +81,44 @@ leases must remain authoritative; do not infer safety just from a displayed fram
   superseded by the check after dependency installation and the successful builds.
 - Phone and tablet signed HAP builds passed. Both packages' libweb_engine.so and
   libnweb_render.so match the native CI HAR byte for byte.
-- Native libraries were reused rather than rebuilt, so this is not a new native CI run.
-- Phone reconnected; the primary-workspace build installed successfully with
-  `devecocli run` (Smoke: PASS). P3/video regressions, actual TreesInViz activation
-  and performance comparison are still pending.
+- The primary-workspace phone build installed with `devecocli run` (Smoke: PASS).
+  Installed native libraries match the verified `680d1a99` HAR. Subsequent default
+  branch native CI [39213533801](https://github.com/miramira8295/chromium-hmos/actions/runs/39213533801)
+  and adapter CI [39213533918](https://github.com/miramira8295/chromium-hmos/actions/runs/39213533918)
+  passed; those results do not mean a newer native artifact was installed.
+- Mate 70 Pro+: actual `GraphiteDawnVulkan`, `trees_in_viz=enabled_on`, separate
+  GPU process and zero reported GPU crashes. Scroll trace: 774 tree sends,
+  774 Viz updates and 773 draws.
+- HEVC Main10 SDR: 185.698 seconds, 5558 frames, 11 dropped (0.198%).
+  HEVC Main10 PQ: 619.212 seconds, 18539 frames, 38 dropped (0.205%).
+  Both used verified 1280×720, 30 fps, 10-bit HEVC clips looped without audio.
+- SDR and PQ fullscreen enter/exit: five rounds each passed. Five rounds of
+  seeking and SDR/HDR switching, and 30-second video background recovery passed.
+- Native logs report `CPU output copies=0`. Video traces include
+  `OhosGraphiteDecoderBufferImported`, `OhosNativeVideoReadResume`,
+  `OhosNativeVideoReadSuspend`, `OhosNativeVideoLeaseCompleted`, and
+  `OhosGraphiteVideoMetadataReceived`, alongside TreesInViz activity.
+  Continuous traces use a 64 MiB ring buffer and retain the tail; independent
+  playback samples establish the full playback duration.
+- CSS/Canvas P3 and sRGB selection passed three rounds. Native output modes
+  alternate P3 SDR10 / SDR10, and mixed P3/PQ playback transitions
+  P3 SDR10 → HDR10 → P3 SDR10, then ordinary page → SDR10.
+- At minimum brightness 1 with auto brightness off, five ordinary-page
+  background/resume rounds (30 seconds each) passed. Gray patches matched the
+  baseline after each resume and after exiting HDR. Brightness was restored to
+  the session’s original 108 with auto brightness off.
+- Three ON scrolling runs completed without rAF intervals over 33.34 ms.
+  These are renderer callbacks, not physical presentation FPS. OFF runs were
+  cancelled at the user’s request, so no A/B performance conclusion is claimed.
+- Testing stopped at the user’s request. Test server/log capture stopped,
+  temporary keep-awake disabled, media volume remains 0, and TreesInViz remains ON.
+
+## Coverage limits
+
+Pad runtime, 4K, YouTube/WebRTC, physical panel color accuracy, and actual
+safe-start UI recovery were not verified. Safe-start gating has automated test
+coverage only. HDR whole-page brightness linkage remains a known limitation;
+restoration after HDR passed. Performance benefit remains unverified.
 
 Local evidence: `chromium-hmos/artifacts/trees-in-viz-review/`, including
 `package-proof.json`, `arkts-focused.log`, `signed-build.log` and pinned upstream
