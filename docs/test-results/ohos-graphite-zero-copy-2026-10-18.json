@@ -1,6 +1,6 @@
 {
-  "updatedUTC": "2026-10-18T23:27:03.653181+00:00",
-  "state": "IMPLEMENTED_HOST_CHECKS_PASSED_NATIVE_CI_PENDING_DEVICE_OFFLINE",
+  "updatedUTC": "2026-10-19T03:10:07.971675+00:00",
+  "state": "NATIVE_CI_PASSED_PHONE_USER_TESTING_PAD_ASSISTANT_TEST_PENDING",
   "scope": "Graphite native decoder Surface sampling shared by Pad and phone fork; Ganesh default retained",
   "implemented": [
     "Pad decoder Surface -> Ozone SharedImage -> Dawn SharedTextureMemory -> typed Graphite hardware YCbCr sampler",
@@ -19,11 +19,10 @@
     "CIWorkflowsModified": false
   },
   "device": {
-    "pad": "192.168.8.136:38905 connection failed; hdc list targets empty; current address requested",
-    "phone": "No device operations; latest Graphite zero-copy not validated"
+    "pad": "Deferred until user returns home in the evening; assistant to install/validate on Pad when device is available. Last known HDC 192.168.8.136:38905, not freshly verified.",
+    "phone": "Device is with user; this round is phone-only manual validation of the CI-built Graphite native-video path. Results pending."
   },
   "requiredAcceptance": [
-    "Native CI must compile this exact revision",
     "Install exact CI engine on Pad; verify silence and keep-awake before playback",
     "Actual Surface decode and Graphite import logs; CPU output copies=0; P010 and actual driver descriptor; no Ganesh fallback",
     "Native screenshots and frame advancement for H264 SDR, HEVC Main10 SDR and PQ; software VP9 regression",
@@ -32,5 +31,37 @@
     "Sustained playback and FD/PSS; GPU crash -> Ganesh fallback; default Ganesh regression",
     "Phone fork regression separately when phone is available"
   ],
-  "acceptance": "NOT YET ACCEPTED: no native compile or device playback result for this implementation"
+  "acceptance": "Native compilation PASS on 827c3ef. Device zero-copy/runtime acceptance remains PENDING: user validates phone this round; assistant validates Pad after evening return.",
+  "compileVerification": {
+    "sourceCommit": "827c3ef4630606347d8bdbe1cd4c23647c42ce07",
+    "nativeCI": 39186182571,
+    "nativeResult": "PASS",
+    "adapterCI": 39186182519,
+    "adapterResult": "PASS",
+    "fixes": [
+      "Carry YCbCr metadata through OHOS Viz resource declaration, Mojo schema/traits and compositor receiver (e41c579).",
+      "Check previous fence validity before reading initial native-video writer state (827c3ef)."
+    ],
+    "nativeCompiledLocally": false,
+    "CIWorkflowsModified": false
+  },
+  "priorPadConnectionAttempt": "192.168.8.136:38905 connection failed; hdc list targets empty; current address requested",
+  "handoff": {
+    "userInstruction": "本次手机测试，Pad 晚上回去后由助手操作验证。",
+    "phoneOwner": "user",
+    "padOwner": "assistant",
+    "padPrerequisite": "User returns and Pad is reachable; verify current HDC target/model before device control.",
+    "deviceRules": [
+      "Keep device awake during testing; Pad easily sleeps.",
+      "Media volume 0 and video muted; verify silence before playback.",
+      "Preserve user tabs and app data.",
+      "Native engine build only through push-triggered CI; no CI code changes."
+    ],
+    "padChecklist": [
+      "Confirm exact CI engine and actual GraphiteDawnVulkan backend.",
+      "HEVC Main10 SDR/PQ native decoder import, Graphite sampling and completion-fence evidence.",
+      "Fullscreen transitions with delayed exit checks, seeking, source changes and background recovery.",
+      "Canvas/WebGL/WebGPU video interop, sustained playback, memory/FDs and Ganesh fallback."
+    ]
+  }
 }
