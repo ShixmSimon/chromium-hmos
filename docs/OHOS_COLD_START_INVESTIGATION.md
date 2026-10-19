@@ -1,3 +1,8 @@
+> 最终验收（2026-10-19 UTC）：内核 `ad1e9e45`、Lumie `5caf1aa` 已安装手机与 Pad。
+> 启动确认、后台计时、GPU 失败标记残留、恢复导航和 Pad 软件 VP9 通道重置均已修复并验证。
+> 活动诊断探针已撤除；手机系统 EGL 查询等待仍是已知限制，当前公开 SDK 未找到受支持的仓内消除方式。
+> 本文按调查顺序保留历史失败和证据，最终 CI、测试范围与限制见末节。
+
 # 手机 EGL 冷启动调查
 
 2026-10-19，PLA-AL10 / Maleoon 920。调查工作区为 `hmos-154-adapter`
@@ -387,3 +392,80 @@ Graphite 原有软件帧选择、八位软件路径、GLES 和其他平台保持
 VideoFrameOutputFormat 方法，确认旧策略在同一能力输入下选择 P010，
 新策略保留十/十二位 Vulkan 软件帧、保留八位 NV12、GLES P010、Graphite 选择
 和其他平台行为。原生编译与实际媒体回归继续走推送触发的 CI。
+
+## 最终 CI 与设备验收（2026-10-19 UTC）
+
+最终内核代码 `ad1e9e458fdb7550e2d7b57539761557d4583fe5`：
+NativeCI **39319305905**、Adapter CI **39319306089** 均完整通过。
+Lumie main 为 `5caf1aabd04e5d20a2952e5a8bc44f7669ea677f`。
+两设备最终安装的是标准包，临时故障注入包均已替换。
+本轮没有修改 workflows / CI 脚本，也没有本地编译 Chromium；外壳组装逐一核对
+原生 so 与 CI HAR 字节哈希一致。
+
+- CI HAR：`3938e9bd8a2239b00b88a48d10494a1441e66ce7b82996af9466ab2c7a58efcc`。
+- libweb_engine.so：`0dd8ef786767f153176e753307fa14ff7105ac62cfb68ea99ffd0d84077f56fb`。
+- libnweb_render.so：`2f530f9997f2d9682d1736f8aa2db615aae4b37a2a7d7e2923e0703b0c83720a`。
+
+### 启动与失败保护
+
+手机三次受控冷启动、40 秒后台启动/恢复、恢复后的再次冷启动通过，始终是
+GraphiteDawnVulkan / 独立 GPU / 零 GPU 进程崩溃；原生 GpuChildFailed 标记
+在成功呈现后清除，下一轮没有误回退。最终媒体策略修复包又各做一次手机和
+Pad 冷启动，实际后端分别保持 GraphiteDawnVulkan / GaneshVulkan，标记均不存在。
+
+省略第一次 navigate 并发送错误 token 的 frame/cancel 的手机测试包，仍通过
+合法 frame 重试恢复目标页；记录到一次性 navigate 命令为零，错误 token 的
+目标 URL 未被服务器访问，生产日志确认 window presented。
+
+Pad 普通包的 INFO 日志不可用导致一次测试工具不能证明 presented；原始结果
+保留，没有把缺日志当成产品失败或擅自标为通过。随后使用临时原生确认专用包：
+禁用旧文本回退、省略第一次 navigate、发送错误 token，并建立不改变设置的
+正式模式事务。后台 40 秒时事务仍 pending/attempted；切回后事务由启动确认
+清除，稳定期结束且失败标记消失。这样无需重新加入探针也能证明原生首帧路径。
+事务完成后的模式 JSON 与测试前相同，随后恢复标准包，再冷启动通过。
+旧引擎文本兼容、请求归属/取消和生命周期计时由 46 项宿主回归覆盖；没有宣称
+旧内核因此拥有新版本的恢复导航能力。
+
+### 最终媒体与图形回归
+
+| 验收项 | 手机 | Pad |
+| --- | --- | --- |
+| H.264、Main10 SDR/PQ、VP9 HDR → WebGPU HTMLVideoElement/VideoFrame 交替导入 | 四项通过 | 四项通过 |
+| VP9 新页面单独导入 | 四来源矩阵覆盖 | 修复前失败，最终单独复测通过 |
+| HEVC Main10 平台硬解 | 播放/导入通过 | Media 属性仍为平台解码；GPU 不透明帧，PQ/BT.2020 保留 |
+| VP9 软件高位深 | 播放/导入通过 | 明确为 VpxVideoDecoder、I420P10、PQ/BT.2020，无八位 YV12 重打包 |
+| Main10 SDR → PQ → SDR 原生截图灰阶 | 通过 | 通过 |
+| Canvas 2D / WebGL2 七组 SDR、P3、HDR API/原生截图色块 | 七项通过 | 七项通过 |
+| 最后关闭 HDR 内容再显示 SDR 灰阶 | 通过 | 通过 |
+
+VP9 修复前只提交第一帧后 Dawn 实例失效；最终 Pad 单独复测在八秒有 246 次
+绘制、126 次 HTMLVideoElement 与 120 次 VideoFrame 导入，device lost=null、
+无未捕获错误、像素非空。最终四来源矩阵和普通播放的浏览器日志均无
+SharedImageBackingFactory 创建失败。HEVC Main10 仍是平台解码，硬解原生
+缓冲导入实现没有改成软件解码来通过测试。
+
+这些是目标路径短时回归，不是完整 Chromium 测试套件，也不替代长时播放、
+面板亮度/色域仪器测量或所有媒体格式性能验收。HDR 原有掉帧接受范围未改变。
+受控文档 DOM 就绪由外部 CDP 测量，不能等同物理屏幕首次显示时间。
+移除计时探针后使用标准 GPUInfo 初始化字段：最终手机 1.599259s、Pad
+0.075197s；这不是单独的 eglInitialize 耗时。此前手机 EGL 阶段约 1.5 秒的
+系统服务查询重试定位仍成立，尚未取得其私有 IPC 查询的具体返回码或 fork 内
+关闭 FD 的具体回调，不声称系统等待已经消除。
+
+### 探针撤除与状态保全
+
+新 HAR 两份 so 中均未检出已撤除计时、BundleMgr 工作线程、FD 文件追踪和
+Dawn 初始化枚举的字符串；旧 2cccb7c3 HAR 作为阳性对照可检出五类原有诊断。
+源代码不存在这些诊断调用和头文件。手机历史 FD 日志跨最终内核多次启动后
+字节哈希不变，保留为历史证据，不再被创建/截断/写入。
+正式启动握手、失败保护和设备能力协商保留，不能把它们当日志探针删除。
+
+手机原六个、Pad 原八个页面 URL 完整保留，测试页已关闭，未清除标签、缓存或
+个人数据。手机按用户最新要求保持亮屏、未锁定、SILENT、MUSIC/RING 音量零且
+静音；Pad 完成后停止保活并锁屏熄屏（SLEEP、display State=0）。自建 18919
+素材服务器已停止，原 18080 服务未动。
+
+证据、安装清单、失败原件和校验 JSON 均在 `out/startup-cleanup-20261019/`；
+最终媒体矩阵另见 `out/{phone,pad}-validation-20261019/final-ad1-regression-webgpu-video.json`。
+固定上游方法参考：
+[VideoFrameOutputFormat（Chromium 固定 revision）](https://github.com/chromium/chromium/blob/b510e9d7cd3a2fbd78d0ddc42234103206c5f78d/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc)。
