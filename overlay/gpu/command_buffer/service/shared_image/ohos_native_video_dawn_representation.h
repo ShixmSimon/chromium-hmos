@@ -202,8 +202,10 @@ class OhosNativeVideoDawnRepresentation final : public DawnImageRepresentation {
     // Graphite and separate WebGPU devices all use kWebGPU, so its same-stream
     // optimization must not omit the previous device's completion fence. Even
     // same-device imports can safely wait on this already-submitted sync file.
-    if (backing_->last_write_stream_ == OzoneImageBacking::AccessStream::kWebGPU &&
-        !backing_->write_fence_.is_null()) {
+    // On the first access there may be no writer yet. A valid write fence
+    // implies EndAccess has initialized last_write_stream_.
+    if (!backing_->write_fence_.is_null() &&
+        backing_->last_write_stream_ == OzoneImageBacking::AccessStream::kWebGPU) {
       auto previous = backing_->write_fence_.Clone();
       if (previous.is_null()) {
         Fail();
