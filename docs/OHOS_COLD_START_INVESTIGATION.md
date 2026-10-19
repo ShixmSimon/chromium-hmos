@@ -55,8 +55,8 @@ libsamgr_proxy.z.so   d4334f863db7fd2fa907d46d0c6634ea43c23ba48902de7248346dfb16
 
 ## 外壳等待与测量限制
 
-手机已安装包实际使用新的 startup handshake；当前 Lumie 主分支仍是旧的
-PageTextRequests / StartupHealth 实现，不能据本地主分支猜测设备的等待路径。
+调查初期手机已安装包实际使用新的 startup handshake；当时 Lumie 主分支仍是旧的
+PageTextRequests / StartupHealth 实现。后续主分支接入和验证见本文末尾，不能把这一历史状态当作当前状态。
 PID 12367 / 15229 两轮从外壳 health_start 到 mask_release_requested 分别为
 2505 / 2483 ms；后者在恢复文档的 WindowPresented 确认后解除遮罩。
 这是日志中的状态变更时间，不是物理屏幕呈现时间。
@@ -292,3 +292,30 @@ H.264、HEVC Main10 SDR/HDR、VP9 HDR 的 HTMLVideoElement / VideoFrame
 两设备 Main10 SDR/HDR 与 SDR 恢复短测通过，原手机六页和 Pad 八页保留。
 Pad 已停止保活并锁屏熄屏（SLEEP、display State=0）；用户最新要求手机
 不要锁屏，故手机保持亮屏静音，有限时保活仍运行，测试媒体已停止。
+
+
+## 诊断撤除与修复边界
+
+应用侧可修复的启动确认和后台计时问题已修复，并在两设备验证。
+手机 EGL 内部的系统查询等待仍存在；当前结论是受已验证证据限制的定位，
+不是把整个约 1.5 秒都解释为 Binder 休眠，也未确定 fork 内究竟哪个回调关闭 FD。
+
+再次核对本机 API 26 SDK 的 IPCKit：ResetCallingIdentity 只恢复调用者身份，
+不是重置 Binder 连接；没有公开的 fork 后连接/进程骨架重建入口。
+设备 BinderConnector 的缓存行为和首个 fork 后 FD 记录不支持“仅调整自己的
+FD 清理白名单”这一修复。不能将调用私有析构器、重写实例内存或跳过 libc
+fork 回调作为可交付修复。现有受支持子进程 API 还受设备能力约束；不能依据
+Pad 支持就改写手机进程路线。保留当前设备适配和默认渲染后端。
+
+撤除范围：base 计时头及全部调用、BundleMgr 诊断工作线程及命令行转发、
+每次启动的 PhoneForkFdTrace 文件生成/FD 扫描、Skia/Dawn FD 钩子、Dawn
+vkCreateInstance 前的额外 layer 枚举。错误日志和正式启动健康保护保留。
+Dawn 的生产视频导入、布局、Tint 修复未改动。
+
+遵守“不改 CI”约束，现有两个诊断补丁路径继续作为迁移入口：内容只在原插入点
+保留兼容注释，以使持久构建树先撤回旧探针，再应用新版本。验证覆盖旧版本
+不能跳过迁移、迁移后原文件仅多注释、干净树可直接应用；没有空补丁或未定义
+探针函数。HDR 补丁中的 FD 调用也已移除，它沿用既有撤回/重叠流程。
+构建脚本与 workflows 均未改动。Linux 宿主 fork transport 测试 127 项通过，
+包括 RELRO 原始 FD 保留、fstat EACCES、子进程丢失和退出清理；没有本地
+编译 Chromium。清理版本仍需推送触发 CI 后再验证产物和真机。

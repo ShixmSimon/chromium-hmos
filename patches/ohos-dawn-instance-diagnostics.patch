@@ -1,74 +1,14 @@
 diff --git a/src/dawn/native/vulkan/BackendVk.cpp b/src/dawn/native/vulkan/BackendVk.cpp
 --- a/src/dawn/native/vulkan/BackendVk.cpp
 +++ b/src/dawn/native/vulkan/BackendVk.cpp
-@@ -31,6 +31,11 @@
- #include <string>
- #include <utility>
- 
-+#if defined(__OHOS__)
-+#include <hilog/log.h>
-+extern "C" void OHOS_TraceForkDescriptors(const char* stage) __attribute__((weak));
-+#endif
-+
- #include "dawn/native/VulkanBackend.h"
- #include "src/dawn/common/GPUInfo.h"
- #include "src/dawn/common/SystemUtils.h"
-@@ -353,6 +358,11 @@
+@@ -353,6 +353,7 @@
  }
  
  MaybeError VulkanInstance::Initialize(const InstanceBase* instance, ICD icd) {
-+#if defined(__OHOS__)
-+    if (OHOS_TraceForkDescriptors) {
-+        OHOS_TraceForkDescriptors("dawn-before-loader");
-+    }
-+#endif
++    // OHOS startup diagnostics retired; preserve normal loader initialization.
      // These environment variables need only be set while loading procs and gathering device
      // info.
      ScopedEnvironmentVar vkICDFilenames;
-@@ -527,8 +537,43 @@
-         createInfoChain.Add(&validationFeatures, VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT);
-     }
- 
-+#if defined(__OHOS__)
-+    // This path is also entered by adapter diagnostics, independently of Skia.
-+    // Record both explicit and available layers before entering the loader: a
-+    // loader signal cannot be reported through Dawn's ordinary error callback.
-+    OH_LOG_Print(LOG_APP, LOG_WARN, 0xC233, "OHOSVulkan",
-+                 "Dawn vkCreateInstance begin: requested_layers=%{public}u api=%{public}u",
-+                 createInfo.enabledLayerCount, appInfo.apiVersion);
-+    for (const char* layer : layerNames) {
-+        OH_LOG_Print(LOG_APP, LOG_WARN, 0xC233, "OHOSVulkan", "Dawn requested layer: %{public}s",
-+                     layer);
-+    }
-+    uint32_t layerCount = 0;
-+    if (mFunctions.EnumerateInstanceLayerProperties(&layerCount, nullptr) == VK_SUCCESS &&
-+        layerCount) {
-+        std::vector<VkLayerProperties> availableLayers(layerCount);
-+        if (mFunctions.EnumerateInstanceLayerProperties(&layerCount, availableLayers.data()) ==
-+            VK_SUCCESS) {
-+            for (const auto& layer : availableLayers) {
-+                OH_LOG_Print(LOG_APP, LOG_WARN, 0xC233, "OHOSVulkan",
-+                             "Dawn available layer: %{public}s", layer.layerName);
-+            }
-+        }
-+    }
-+#endif
-+#if defined(__OHOS__)
-+    if (OHOS_TraceForkDescriptors) {
-+        OHOS_TraceForkDescriptors("dawn-before-vkCreateInstance");
-+    }
-+#endif
-     DAWN_TRY(CheckVkSuccess(mFunctions.CreateInstance(&createInfo, nullptr, &mInstance),
-                             "vkCreateInstance"));
-+#if defined(__OHOS__)
-+    if (OHOS_TraceForkDescriptors) {
-+        OHOS_TraceForkDescriptors("dawn-after-vkCreateInstance");
-+    }
-+    OH_LOG_Print(LOG_APP, LOG_WARN, 0xC233, "OHOSVulkan", "Dawn vkCreateInstance succeeded");
-+#endif
-     DAWN_INVALID_IF(mInstance == VK_NULL_HANDLE, "Failed to create VkInstance");
- 
-     return usedKnobs;
 diff --git a/src/dawn/native/vulkan/TextureVk.cpp b/src/dawn/native/vulkan/TextureVk.cpp
 --- a/src/dawn/native/vulkan/TextureVk.cpp
 +++ b/src/dawn/native/vulkan/TextureVk.cpp

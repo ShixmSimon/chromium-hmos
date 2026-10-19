@@ -27,7 +27,6 @@
 #include "base/process/fork_server_ohos.h"
 #include "base/process/launch_ohos.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
-#include "ohos_nweb/src/aura_shell/ohos_startup_bundle_probe.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
@@ -316,15 +315,6 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
                  "already initialized; startup refused");
       return false;
     }
-    const base::FilePath trace_directory(config.user_data_dir);
-    const bool fd_trace =
-        !trace_directory.empty() && base::CreateDirectory(trace_directory) &&
-        base::internal::ConfigureOhosForkFdTrace(
-            trace_directory.AppendASCII("PhoneForkFdTrace.log").value());
-    AURA_LOG_I(
-        "AuraShell phone FD trace enabled=%{public}d file=PhoneForkFdTrace.log "
-        "in user-data-dir",
-        fd_trace);
     if (config.gpu_process == "separate") {
       const bool prepared = ui::phone_gpu::PrepareSharedBufferAllocator();
       AURA_LOG_I("AuraShell phone GPU shared-buffer allocator prepared=%{public}d", prepared);
@@ -726,11 +716,6 @@ void OhosChromeMainRunner::RunChromeMainOnThread() {
   }
 
   logging::SetLogMessageHandler(&ForwardChromiumLogToHilog);
-  // The early fork server is already running. Install logging before the
-  // diagnostic worker: a fast browser reply otherwise precedes the handler.
-  if (base::CommandLine(arguments).HasSwitch(kStartupBundleProbeSwitch)) {
-    StartStartupBundleProbe("browser");
-  }
   if (!InitializeIcuFromRawFile(startup_config) ||
       !ConfigureRuntimePaths(startup_config)) {
     if (startup_config.experimental_phone_fork)

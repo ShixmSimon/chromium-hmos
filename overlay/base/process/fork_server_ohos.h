@@ -28,10 +28,6 @@ BASE_EXPORT bool IsOhosForkServerStarted();
 // True only in a child launched by this experimental server, not in its
 // browser or in an official appspawn/NCP child. Set before loading the shim.
 BASE_EXPORT bool IsOhosForkChild();
-// Optional phone diagnostic, opened before the first fork. No hilog/Chromium
-// logging is used in the server. The file is replaced for each browser session.
-BASE_EXPORT bool ConfigureOhosForkFdTrace(const std::string& path);
-BASE_EXPORT void TraceOhosForkDescriptors(const char* stage);
 BASE_EXPORT pid_t LaunchOhosForkChild(
     const std::string& encoded_params,
     const std::vector<std::pair<int, int>>& fds);

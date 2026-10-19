@@ -37,7 +37,6 @@
 #include "base/process/fork_server_ohos.h"
 #include "base/process/launch_ohos.h"
 #include "base/strings/string_number_conversions.h"
-#include "ohos_nweb/src/aura_shell/ohos_startup_bundle_probe.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
@@ -406,9 +405,6 @@ int RunNativeChild(const char* encoded_params,
   // in this process only. See ohos-angle.patch.
   if (gpu_child) {
     setenv("OHOS_ANGLE_WRAPPER_EXPORTS", "1", 1);
-    if (command_line.HasSwitch(ohos_nweb::kStartupBundleProbeSwitch)) {
-      ohos_nweb::StartStartupBundleProbe(phone_gpu ? "fork-gpu" : "native-gpu");
-    }
   }
 
 #if defined(__aarch64__)

@@ -20,7 +20,6 @@
 
 #include <array>
 #include <cstdio>
-#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -285,7 +284,6 @@ std::string RunOhosForkServerTests(const std::string& child_library) {
 #ifndef OHOS_FORK_TEST_EMBEDDED
 namespace {
 bool check_loader_fds = false;
-bool simulate_loader_fd_loss = false;
 bool deny_loader_fstat = false;
 std::array<int, 2> loader_fds{-1, -1};
 std::array<struct stat, 2> loader_files{};
@@ -293,20 +291,6 @@ std::array<int, 4> application_fds{-1, -1, -1, -1};
 constexpr off_t kRelroOffset = 0x3e000;
 constexpr int kRelroMarker = 0x52454c52;
 
-bool HasTrace(const std::string& contents,
-              const std::string& stage,
-              int fd,
-              const std::string& expected) {
-  std::istringstream lines(contents);
-  std::string line;
-  while (std::getline(lines, line)) {
-    if (line.find("stage=" + stage + " fd=" + std::to_string(fd) + " ") !=
-            std::string::npos &&
-        line.find(expected) != std::string::npos)
-      return true;
-  }
-  return false;
-}
 }  // namespace
 
 // Model the phone's getattr denial without changing readlink/fcntl/mmap.
@@ -323,18 +307,6 @@ extern "C" int __wrap_fstat(int fd, struct stat* info) {
 // Called by the test DSO's constructor, during the real child's dlopen.
 extern "C" __attribute__((visibility("default"))) bool
 ForkTestCheckLoaderFds() {
-  if (simulate_loader_fd_loss) {
-    int replacement = syscall(SYS_memfd_create, "shared-memory-region", 1);
-    if (replacement < 0 || ftruncate(replacement, 4096))
-      return false;
-    if (replacement != loader_fds[0]) {
-      if (dup2(replacement, loader_fds[0]) < 0)
-        return false;
-      close(replacement);
-    }
-    TraceOhosForkDescriptors("test-reused-before-vulkan");
-    return true;
-  }
   if (!check_loader_fds)
     return true;
   for (int fd : application_fds) {
@@ -374,52 +346,10 @@ ForkTestCheckLoaderFds() {
   }
   for (int fd : replacements)
     close(fd);
-  TraceOhosForkDescriptors("test-loader-constructor");
   return ok;
 }
 
 int main(int argc, char** argv) {
-  if (argc == 3 && std::string(argv[2]) == "--trace-fd-loss") {
-    loader_fds[0] = syscall(SYS_memfd_create, "relro_cache", 1);
-    if (loader_fds[0] < 0)
-      return 1;
-    char path[] = "/tmp/ohos-fd-loss-XXXXXX";
-    int file = mkstemp(path);
-    if (file < 0)
-      return 1;
-    close(file);
-    if (!ConfigureOhosForkFdTrace(path))
-      return 1;
-    simulate_loader_fd_loss = true;
-    cached_runtime_fd = loader_fds[0];
-    if (pthread_atfork(nullptr, nullptr, CloseCachedRuntimeFd) ||
-        !StartOhosForkServer(argv[1]))
-      return 1;
-    pid_t child = LaunchOhosForkChild("exit23", {});
-    int code = -1;
-    bool ok = child > 0 &&
-              WaitForOhosForkChild(child, 5000, &code).value_or(false) &&
-              code == 23;
-    StopOhosForkServer();
-    std::ifstream input(path);
-    std::string trace((std::istreambuf_iterator<char>(input)), {});
-    ok &= HasTrace(trace, "browser-before-server-fork", loader_fds[0],
-                   "keep_relro=1");
-    ok &= HasTrace(trace, "server-after-fork", loader_fds[0], "stat_errno=9");
-    ok &=
-        HasTrace(trace, "server-after-cleanup", loader_fds[0], "stat_errno=9");
-    ok &= HasTrace(trace, "test-reused-before-vulkan", loader_fds[0],
-                   "target=/memfd:shared-memory-region (deleted)");
-    errno = EDOM;
-    TraceOhosForkDescriptors("test-errno-preserved");
-    ok &= errno == EDOM;
-    unlink(path);
-    close(loader_fds[0]);
-    puts(ok ? "PASS trace distinguishes atfork FD loss from cleanup and later "
-              "reuse"
-            : "FAIL trace FD lifecycle");
-    return ok ? 0 : 1;
-  }
   if (argc == 3 && (std::string(argv[2]) == "--loader-fds" ||
                     std::string(argv[2]) == "--loader-fstat-denied")) {
     for (size_t i = 0; i < loader_fds.size(); ++i) {
@@ -439,13 +369,6 @@ int main(int argc, char** argv) {
       return 1;
     check_loader_fds = true;
     deny_loader_fstat = std::string(argv[2]) == "--loader-fstat-denied";
-    char trace_path[] = "/tmp/ohos-fd-preserved-XXXXXX";
-    int trace_file_fd = mkstemp(trace_path);
-    if (trace_file_fd < 0)
-      return 1;
-    close(trace_file_fd);
-    if (!ConfigureOhosForkFdTrace(trace_path))
-      return 1;
     if (!StartOhosForkServer(argv[1]))
       return 1;
     bool ok = true;
@@ -457,20 +380,6 @@ int main(int argc, char** argv) {
             code == 23;
     }
     StopOhosForkServer();
-    std::ifstream trace_file_input(trace_path);
-    std::string trace((std::istreambuf_iterator<char>(trace_file_input)), {});
-    for (int fd : loader_fds) {
-      ok &= HasTrace(trace, "browser-before-server-fork", fd, "keep_relro=1");
-      ok &= HasTrace(trace, "server-after-cleanup", fd, "keep_relro=1");
-      ok &= HasTrace(trace, "test-loader-constructor", fd, "keep_relro=1");
-      if (deny_loader_fstat) {
-        for (const char* stage :
-             {"browser-before-server-fork", "server-after-cleanup",
-              "test-loader-constructor"})
-          ok &= HasTrace(trace, stage, fd, "stat_errno=13");
-      }
-    }
-    unlink(trace_path);
     for (int fd : application_fds) {
       ok &= fcntl(fd, F_GETFD) >= 0;
       close(fd);

@@ -35,7 +35,6 @@ source_set("aura_shell_core") {
     "ohos_chrome_main_runner.h",
     "ohos_mcp_server.cc",
     "ohos_mcp_server.h",
-    "ohos_startup_bundle_probe.h",
   ]
 
   deps = [
