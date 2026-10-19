@@ -241,3 +241,54 @@ WebNN 失败出现在 `OH_NNModel_GetAvailableOperations` 的能力判断阶段�
 三份 `binder-*-device-disassembly.txt` 与 `PhoneForkFdTrace-final.log`。
 设备库 SHA-256 在上述 JSON 中；原始二进制和应用日志只保存在本地 out。
 本轮未修改渲染路径、系统配置或 CI，没有进行本地原生编译。
+
+## 2026-10-19：外壳接入、窗口隐藏与 ANGLE Vulkan 对照
+
+Lumie main 已推送 `9e85046`、`ab9ac8d`、`04876e2`：外壳接入内核已有
+window-scoped StartupHandoff，按 token / requestId 校验 ready 与恢复文档
+presented；只有 presented 才释放启动遮罩并确认模式，稳定标记另计前台时间。
+旧内核的文本兼容仅在尚无 native ack 时启用，不作为首帧呈现的证明。
+
+真机早期 Home 测试先后暴露 UI Monitor 延迟、以及 AbilityManager 仍报告
+FOREGROUND 而桌面已显示的情况；仅 Ability 生命周期计时不足。
+`04876e2` 订阅窗口 SHOWN/HIDDEN/DESTROYED，挂载后读取 isWindowShowing，
+以 Ability 前台且窗口未隐藏为累计时间条件；焦点变化不等同后台。
+45 项相关宿主测试通过。Pad 新包实测启动后立刻 Home，40 秒后
+safeNext=false、failures=0；切回后才出现 ReadyAck / WindowPresented，
+随后 starting=false。前两次失败日志保留；仅在应用停止时恢复本轮测试前
+process-mode 记录并读回核对，没有清理用户标签、缓存或设置。
+
+Pad 固定本地恢复页 `startup-handoff.html` 单次启动：ReadyReceive 1.705s、
+ReadyAck 1.867s、DocumentSubmitted 1.994s、WindowPresented 2.006s。
+原有首标签为另一端口 localhost 测试页，不能拿它的恢复等待时间充当受控的
+网络条件，也不能把外壳等待全部归于 EGL。恢复后 HEVC Main10 SDR/HDR
+与 SDR 像素检查通过，GaneshVulkan 稳定，原八个页面保留。
+
+手机同一 CI 内核另做诊断包，仅追加现有 `use-angle=vulkan` 开关：
+
+| 路径 | EGL 墙钟 | EGL 线程 CPU | GPU 初始化 |
+| --- | --- | --- | --- |
+| 标准 ANGLE GLES | 1.502800s | 0.254354s | 1.638032s |
+| 诊断 ANGLE Vulkan | 1.466665s | 0.246621s | 1.527820s |
+
+这是各一轮诊断，外壳客户端版本也不同，不能作为统计性能验收。
+实际 GL implementation 确认 angle=vulkan，GraphiteDawnVulkan、独立 GPU
+和零崩溃状态保留，但约 1.5 秒 EGL 等待没有消失，不据此更改默认 GLES。
+诊断路径七组 Canvas / WebGL SDR/P3/HDR 原生截图色块与 API 检查通过；
+H.264、HEVC Main10 SDR/HDR、VP9 HDR 的 HTMLVideoElement / VideoFrame
+到 WebGPU 短时导入均有非空像素、无 device lost / uncaptured errors。
+这些检查不证明长期稳定性、面板峰值亮度或所有链路零拷贝。
+
+手机恢复标准 GLES 包后，同样的启动后 Home、后台等待 40 秒、切回测试通过：
+后台未设置 safeNext，首帧确认仅在切回后发生，稳定期后 starting=false。
+
+上述包只组装外壳；原生库严格沿用 NativeCI 39264709757 的 2cccb7c3，
+两份 so 均逐字节哈希核对。没有本地内核编译或 CI 文件改动。
+原始失败、模式回滚读回、逐项真机数据和安装元数据保存在
+`out/startup-handoff-20261019/`；手机色彩与导入结果另在
+`out/phone-validation-20261019/phone-angle-startup-*`。
+
+最终恢复手机标准 GLES 包，GraphiteDawnVulkan / 独立 GPU / 零崩溃确认，
+两设备 Main10 SDR/HDR 与 SDR 恢复短测通过，原手机六页和 Pad 八页保留。
+Pad 已停止保活并锁屏熄屏（SLEEP、display State=0）；用户最新要求手机
+不要锁屏，故手机保持亮屏静音，有限时保活仍运行，测试媒体已停止。
