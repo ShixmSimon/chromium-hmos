@@ -38,7 +38,7 @@ struct Completion {
   std::condition_variable changed;
   bool done = false;
 };
-} // namespace startup_bundle_probe
+}  // namespace startup_bundle_probe
 
 // Explicit diagnostic only. Run the browser side AFTER creating the early fork
 // server, so loading BundleMgr here cannot prime the server's IPC snapshot.
@@ -46,7 +46,7 @@ struct Completion {
 // CheckSystemAbility/Binder return code. errno is diagnostic context only.
 // Neither the caller nor startup readiness waits for this potentially blocking
 // API. A deadline reports an outstanding call; it cannot safely cancel it.
-inline void StartStartupBundleProbe(const char *role) {
+inline void StartStartupBundleProbe(const char* role) {
   static std::atomic<bool> started{false};
   if (started.exchange(true, std::memory_order_relaxed))
     return;
@@ -60,7 +60,7 @@ inline void StartStartupBundleProbe(const char *role) {
     errno = 0;
     // Keep this handle for process lifetime: the system library may retain IPC
     // registrations. Missing API is reported, not replaced by a private ABI.
-    void *library = dlopen("libbundle_ndk.z.so", RTLD_NOW | RTLD_LOCAL);
+    void* library = dlopen("libbundle_ndk.z.so", RTLD_NOW | RTLD_LOCAL);
     auto query = library
                      ? reinterpret_cast<decltype(&OH_NativeBundle_IsDebugMode)>(
                            dlsym(library, "OH_NativeBundle_IsDebugMode"))
@@ -99,6 +99,6 @@ inline void StartStartupBundleProbe(const char *role) {
   errno = saved_errno;
 }
 
-} // namespace ohos_nweb
+}  // namespace ohos_nweb
 
-#endif // OHOS_NWEB_SRC_AURA_SHELL_OHOS_STARTUP_BUNDLE_PROBE_H_
+#endif  // OHOS_NWEB_SRC_AURA_SHELL_OHOS_STARTUP_BUNDLE_PROBE_H_

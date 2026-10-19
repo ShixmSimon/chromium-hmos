@@ -345,9 +345,6 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
     AURA_LOG_I("AuraShell experimental phone fork server ready before ChromeMain; "
                "same UID, no renderer sandbox");
   }
-  if (startup_command_line.HasSwitch(kStartupBundleProbeSwitch)) {
-    StartStartupBundleProbe("browser");
-  }
   started_ = true;
   if (!config.headless) {
     mcp_server_.Start();
@@ -729,6 +726,11 @@ void OhosChromeMainRunner::RunChromeMainOnThread() {
   }
 
   logging::SetLogMessageHandler(&ForwardChromiumLogToHilog);
+  // The early fork server is already running. Install logging before the
+  // diagnostic worker: a fast browser reply otherwise precedes the handler.
+  if (base::CommandLine(arguments).HasSwitch(kStartupBundleProbeSwitch)) {
+    StartStartupBundleProbe("browser");
+  }
   if (!InitializeIcuFromRawFile(startup_config) ||
       !ConfigureRuntimePaths(startup_config)) {
     if (startup_config.experimental_phone_fork)

@@ -111,3 +111,16 @@ page 的 URL 多重集合一致，额外 service worker targets 不算新增用�
 
 本轮探针不重置 IPC、不保留额外继承 FD、不创建或预热 EGL。原始 Binder
 错误码仍需系统日志或专门追踪获取；不伪造接口无法提供的字段。
+
+### 首轮对照（61e2308a 的 CI 产物）
+
+- Pad GEM-W00：browser 查询成功，1274 us；native-gpu 查询成功，1763 us。
+  当前 Pad 的 ANGLE 为 Vulkan，单次 EGL scope 为 100123 us。
+- 手机 PLA-AL10：fork-gpu 的公开 API 查询失败，1393346 us，api_errno=9；
+  同轮 EGL scope 为 1551751 us。errno 9 是该公开调用后的线程状态，不能当成
+  原始 Binder 返回码，也不能仅凭它证明所有查询失败都由同一 FD 导致。
+- 首轮 browser worker 可能在 Chromium 日志转发安装前完成，导致手机父进程
+  日志缺失。已将 browser 探针移到安装日志转发之后，仍晚于 early fork server
+  创建。需要新 CI 包补齐父进程记录；缺日志不算查询失败。
+- Pad 系统子进程成功已排除“只有主进程可以查询”的笼统结论。手机 fork 状态
+  与正常 native child 的差异仍是重点；此轮没有重置 Binder 或修改系统层。
