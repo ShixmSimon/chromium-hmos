@@ -9,8 +9,11 @@ previous Graphite video acceptance as TreesInViz acceptance.
 - Native adapter: `680d1a992e9070810a31f83884c632a256258189`, including the
   phone Graphite fullscreen resource-return fix, based on `827c3ef4`.
 - Native CI: https://github.com/miramira8295/chromium-hmos/actions/runs/39197840196.
-- Lumie experiment: `00fef900e312353d02586a0293ca6992a68d5e4f`, branch
-  `codex/trees-in-viz`, based on `ab3b152`.
+- Lumie experiment: originally `00fef900e312353d02586a0293ca6992a68d5e4f`,
+  integrated into `main` as `5c0c75d` and merged with its original history.
+- Native fix is also integrated into the default `hmos-154-adapter` branch.
+  Development and testing now use the primary workspaces; merged topic branches
+  are removed at the user's request.
 
 The first comparison uses identical native libraries with TreesInViz off/on.
 No native code changes are required just to request the existing upstream
@@ -76,8 +79,9 @@ leases must remain authoritative; do not infer safety just from a displayed fram
 - Phone and tablet signed HAP builds passed. Both packages' libweb_engine.so and
   libnweb_render.so match the native CI HAR byte for byte.
 - Native libraries were reused rather than rebuilt, so this is not a new native CI run.
-- HDC reported no connected devices; install, smoke test, P3/video regressions,
-  actual TreesInViz activation and performance comparison are still pending.
+- Phone reconnected; the primary-workspace build installed successfully with
+  `devecocli run` (Smoke: PASS). P3/video regressions, actual TreesInViz activation
+  and performance comparison are still pending.
 
 Local evidence: `chromium-hmos/artifacts/trees-in-viz-review/`, including
 `package-proof.json`, `arkts-focused.log`, `signed-build.log` and pinned upstream
