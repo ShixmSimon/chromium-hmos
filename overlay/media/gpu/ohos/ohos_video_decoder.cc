@@ -1318,7 +1318,17 @@ void OhosVideoDecoder::ConvertBrowserFrame(
     frame->set_color_space(output.color_space);
     frame->set_hdr_metadata(output.hdr_metadata);
     frame->metadata().power_efficient = true;
-    frame->metadata().read_lock_fences_enabled = true;
+    // Graphite native reads retain the imported pixmap until the exported
+    // Dawn completion fence signals (ohos_native_video::Retire).
+    // WaitBrowserFrameLease consequently cannot return the decoder buffer
+    // until both the SharedImage references and those GPU reads are gone.
+    // Use ordinary resource-return sync tokens here: additionally requiring
+    // Viz's recording-finished callback can strand the small decoder queue
+    // when HDR fullscreen adds an intermediate render pass. The native fence
+    // remains authoritative even after Viz returns the resource.
+    frame->metadata().read_lock_fences_enabled =
+        !browser_sii_->GetCapabilities()
+             .supports_ohos_graphite_video_native_buffers;
     frame->metadata().is_webgpu_compatible = allow_webgpu_native_video_;
   }
   WaitBrowserFrameLease(generation, std::move(receiver), std::move(pixmap),
