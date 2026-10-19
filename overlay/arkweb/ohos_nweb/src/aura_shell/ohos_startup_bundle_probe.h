@@ -7,6 +7,7 @@
 #include <bundle/native_interface_bundle.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <sys/syscall.h>
 #include <time.h>
@@ -85,6 +86,25 @@ inline void StartStartupBundleProbe(const char* role) {
       completion->done = true;
     }
     completion->changed.notify_one();
+    // Separate permission evidence from the public API's errno. Wait until
+    // normal startup has finished; do not replace the IPC library's cached
+    // descriptor, issue ioctls, or create/reuse any remote proxy.
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    const int64_t open_begin = startup_bundle_probe::MonoUs();
+    errno = 0;
+    const int binder = open("/dev/binder", O_RDWR | O_CLOEXEC);
+    const int open_errno = binder < 0 ? errno : 0;
+    if (binder >= 0)
+      close(binder);
+    const int64_t open_end = startup_bundle_probe::MonoUs();
+    LOG(WARNING) << "OHOS BundleIpcProbe phase=fresh_binder role=" << role
+                 << " pid=" << getpid() << " tid=" << syscall(SYS_gettid)
+                 << " mono_us=" << open_end << " elapsed_us="
+                 << (open_begin >= 0 && open_end >= 0 ? open_end - open_begin
+                                                      : -1)
+                 << " fresh_open_ok=" << (binder >= 0)
+                 << " open_errno=" << open_errno
+                 << " ioctl_attempted=0 proxy_reused=0";
   }).detach();
   std::thread([completion, role] {
     std::unique_lock<std::mutex> lock(completion->mutex);

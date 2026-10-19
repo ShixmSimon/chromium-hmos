@@ -124,3 +124,10 @@ page 的 URL 多重集合一致，额外 service worker targets 不算新增用�
   创建。需要新 CI 包补齐父进程记录；缺日志不算查询失败。
 - Pad 系统子进程成功已排除“只有主进程可以查询”的笼统结论。手机 fork 状态
   与正常 native child 的差异仍是重点；此轮没有重置 Binder 或修改系统层。
+
+后续 FD dump 显示手机 browser 有 `/dev/binder`，fork GPU 没有；Pad 正常
+native GPU 有 `/dev/binder`。为区分旧连接缓存与新连接权限，探针在公开 API
+结束至少 5 秒后增加一次 `open("/dev/binder", O_RDWR | O_CLOEXEC)` / close，
+独立记录 `phase=fresh_binder` 的成功与 open_errno。它不发送 ioctl、不构造
+proxy、不替换系统 IPC 单例中的 FD；不能把“打开成功”解释成 SA 查询已修复。
+这是显式诊断开关的一部分，普通包不会执行。
