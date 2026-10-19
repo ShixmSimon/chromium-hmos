@@ -258,8 +258,8 @@ struct LaunchHistory {
 };
 
 LaunchHistory& History() {
-  static LaunchHistory history;
-  return history;
+  static base::NoDestructor<LaunchHistory> history;
+  return *history;
 }
 
 void NoteGpuChildInDoubt() {

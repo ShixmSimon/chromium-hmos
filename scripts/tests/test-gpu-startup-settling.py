@@ -31,6 +31,10 @@ int deletes = 0, writes = 0;
 namespace base {
 using Lock = std::mutex;
 using AutoLock = std::lock_guard<Lock>;
+template<class T> struct NoDestructor {
+  T* value = new T;
+  T& operator*() { return *value; }
+};
 struct FilePath {
   std::string value;
   FilePath() = default;
