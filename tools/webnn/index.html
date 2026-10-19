@@ -1,0 +1,90 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WebNN NNRt 验证</title>
+<style>
+body{font:16px system-ui;margin:24px;max-width:800px;background:#fafafa;color:#222}
+button{font:inherit;padding:12px 20px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eee;padding:16px}
+</style>
+<h1>WebNN NNRt 验证</h1>
+<p>在 lumie://flags 开启 WebNN 后完整重启。此页只验证 float32 Add 原型。
+请用 localhost 或 HTTPS 打开。页面结果需结合原生日志确认实际执行后端。</p>
+<button id="run">运行验证</button><pre id="result">等待运行</pre>
+<script type="module">
+const button = document.querySelector('#run'), output = document.querySelector('#result');
+const report = { started: null, checks: [] };
+window.webnnReport = report;
+function record(name, detail) {
+  report.checks.push({name, detail, time: new Date().toISOString()});
+  output.textContent = JSON.stringify(report, null, 2);
+}
+async function reject(name, fn) {
+  let rejected = false;
+  try { await fn(); } catch (e) { rejected = true; record(name, {error:e.name, message:e.message}); }
+  if (!rejected) throw Error(name + ': unexpectedly accepted');
+}
+async function run() {
+  button.disabled = true;
+  report.started = new Date().toISOString(); report.checks = []; report.result = 'RUNNING';
+  try {
+    if (!isSecureContext || !navigator.ml) throw Error('需要安全上下文和启用了 WebNN 的新内核');
+    // CPU must fail in this NNRt-only build; success would invalidate the
+    // assumption that this is testing the restricted backend.
+    await reject('CPU context is not advertised', async () => {
+      const cpu = await navigator.ml.createContext({deviceType:'cpu'});
+      cpu.destroy();
+    });
+    for (let round = 0; round < 2; ++round) {
+      const context = await navigator.ml.createContext({deviceType:'npu'});
+      const tensors = []; let graph;
+      try {
+        record('context created', {round, limits:context.opSupportLimits()});
+        const builder = new MLGraphBuilder(context);
+        const descriptor = {dataType:'float32',shape:[1,2,2,1]};
+        const lhs = builder.input('lhs', descriptor), rhs = builder.input('rhs', descriptor);
+        graph = await builder.build({sum:builder.add(lhs,rhs)});
+        const a = await context.createTensor({...descriptor,writable:true}); tensors.push(a);
+        const b = await context.createTensor({...descriptor,writable:true}); tensors.push(b);
+        const y = await context.createTensor({...descriptor,readable:true}); tensors.push(y);
+        for (let iteration = 0; iteration < 10; ++iteration) {
+          const av = new Float32Array([iteration,-2,0.25,1024]);
+          const bv = new Float32Array([3,iteration*0.5,-0.125,-512]);
+          context.writeTensor(a,av); context.writeTensor(b,bv);
+          const start = performance.now();
+          context.dispatch(graph,{lhs:a,rhs:b},{sum:y});
+          const values = new Float32Array(await context.readTensor(y));
+          if (values.length !== av.length) throw Error('Unexpected output size');
+          for (let i=0;i<values.length;i++) {
+            const expected = Math.fround(av[i]+bv[i]);
+            if (!Number.isFinite(values[i]) || Math.abs(values[i]-expected)>1e-5)
+              throw Error(`Numerical mismatch at ${i}: ${values[i]} vs ${expected}`);
+          }
+          record('Add passed', {round,iteration,values:[...values],milliseconds:performance.now()-start});
+        }
+        await reject('Mul unsupported', async () => {
+          const other = new MLGraphBuilder(context);
+          const x = other.input('x',descriptor), z = other.input('z',descriptor);
+          const unexpected = await other.build({y:other.mul(x,z)}); unexpected.destroy();
+        });
+        await reject('Broadcast outside prototype', async () => {
+          const other = new MLGraphBuilder(context);
+          const x = other.input('x',descriptor), z = other.input('z',{dataType:'float32',shape:[1]});
+          const unexpected = await other.build({y:other.add(x,z)}); unexpected.destroy();
+        });
+      } finally {
+        for (const tensor of tensors) tensor.destroy();
+        graph?.destroy(); context.destroy();
+      }
+      record('context released', round);
+    }
+    report.result = 'PASS (page correctness; verify native backend logs separately)';
+  } catch (e) {
+    report.result = 'FAIL'; report.error = {name:e.name,message:e.message,stack:e.stack};
+  } finally {
+    report.finished = new Date().toISOString();
+    output.textContent = JSON.stringify(report,null,2); button.disabled = false;
+  }
+}
+button.addEventListener('click',run);
+window.runWebnnTest = run;
+</script>

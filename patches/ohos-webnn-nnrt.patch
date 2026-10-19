@@ -1,0 +1,103 @@
+diff --git a/services/webnn/BUILD.gn b/services/webnn/BUILD.gn
+--- a/services/webnn/BUILD.gn
++++ b/services/webnn/BUILD.gn
+@@ -134,6 +134,16 @@
+     "//services/webnn/public/mojom",
+     "//third_party/tflite:buildflags",
+   ]
++
++  if (is_ohos) {
++    sources += [
++      "ohos/context_impl_ohos.cc",
++      "ohos/context_impl_ohos.h",
++      "ohos/nnrt_add_model.cc",
++      "ohos/nnrt_add_model.h",
++    ]
++    libs = [ "neural_network_core", "neural_network_runtime" ]
++  }
+ 
+   if (is_apple) {
+     sources += [
+diff --git a/services/webnn/webnn_context_impl.h b/services/webnn/webnn_context_impl.h
+--- a/services/webnn/webnn_context_impl.h
++++ b/services/webnn/webnn_context_impl.h
+@@ -75,7 +75,8 @@
+     kLiteRT = 3,
+     kONNXRuntime = 4,
+     kDirectML_Obsolete = 5,
+-    kMaxValue = kDirectML_Obsolete,
++    kOhosNnrt = 6,
++    kMaxValue = kOhosNnrt,
+   };
+   // LINT.ThenChange(//tools/metrics/histograms/metadata/webnn/enums.xml:ContextBackendUma)
+ 
+diff --git a/tools/metrics/histograms/metadata/webnn/enums.xml b/tools/metrics/histograms/metadata/webnn/enums.xml
+--- a/tools/metrics/histograms/metadata/webnn/enums.xml
++++ b/tools/metrics/histograms/metadata/webnn/enums.xml
+@@ -34,6 +34,7 @@
+   <int value="3" label="LiteRT"/>
+   <int value="4" label="ONNXRuntime"/>
+   <int value="5" label="DirectML(Obsolete)"/>
++  <int value="6" label="OHOS NNRt"/>
+ </enum>
+ 
+ <!-- LINT.ThenChange(//services/webnn/webnn_context_impl.h:ContextBackendUma) -->
+diff --git a/services/webnn/webnn_context_provider_impl.cc b/services/webnn/webnn_context_provider_impl.cc
+--- a/services/webnn/webnn_context_provider_impl.cc
++++ b/services/webnn/webnn_context_provider_impl.cc
+@@ -51,6 +51,10 @@
+ #include "base/mac/mac_util.h"
+ #endif
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "services/webnn/ohos/context_impl_ohos.h"  // nogncheck
++#endif
++
+ #if BUILDFLAG(IS_APPLE)
+ #include "services/webnn/coreml/context_impl_coreml.h"  // nogncheck
+ #endif
+@@ -436,6 +440,15 @@
+                             {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
+                              base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN});
+ 
++#if BUILDFLAG(IS_OHOS)
++  const bool use_ohos_nnrt =
++      base::FeatureList::IsEnabled(ohos::kOhosWebNN) &&
++      options->device == mojom::Device::kNpu && !g_backend_for_testing;
++  if (use_ohos_nnrt) {
++    owning_task_runner = ohos::ContextImplOhos::GetNnrtTaskRunner();
++  }
++#endif
++
+   // Each context gets a GPU sequence that must be destroyed on the GPU main
+   // thread. See `sequences_` and `pending_sequences_` comments in the header
+   // for the full sequence lifecycle.
+@@ -468,6 +481,28 @@
+   pending_sequences_.insert(sequence_id);
+ 
+   RecordDeviceType(options->device);
++
++#if BUILDFLAG(IS_OHOS)
++  if (use_ohos_nnrt) {
++    mojo::PendingRemote<mojom::WebNNContext> remote;
++    auto receiver = remote.InitWithNewPipeAndPassReceiver();
++    // No renderer fallback: an NPU probe must not silently execute on CPU.
++    owning_task_runner->PostTaskAndReplyWithResult(
++        FROM_HERE,
++        base::BindOnce(&ohos::ContextImplOhos::Create, std::move(receiver),
++                       AsWeakPtr(), std::move(options),
++                       std::move(gpu_task_scheduler), std::move(memory_tracker),
++                       owning_task_runner,
++                       base::Unretained(shared_image_manager_.get()),
++                       main_thread_task_runner_),
++        base::BindOnce(&WebNNContextProviderImpl::OnCreateWebNNContextImpl,
++                       AsWeakPtr(), std::move(callback), std::move(remote),
++                       mojo::ScopedDataPipeProducerHandle(),
++                       mojo::ScopedDataPipeConsumerHandle(), sequence_id,
++                       command_buffer_id));
++    return;
++  }
++#endif
+ 
+ #if BUILDFLAG(IS_WIN)
+   if (ort::ShouldTryCreateOrtContext()) {

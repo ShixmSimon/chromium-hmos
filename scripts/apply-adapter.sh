@@ -72,6 +72,7 @@ git -C "${chromium_src}" apply \
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-video-zero-copy.patch"
 git -C "${chromium_src}" apply "${project_root}/patches/ohos-phone-vulkan-video.patch"
+git -C "${chromium_src}" apply "${project_root}/patches/ohos-webnn-nnrt.patch"
 while read -r deps_path deps_patch; do
   [[ -z "${deps_path}" || "${deps_path}" == \#* ]] && continue
   git -C "${chromium_src}/${deps_path}" apply --binary \

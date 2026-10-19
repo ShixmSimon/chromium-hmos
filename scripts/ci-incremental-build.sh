@@ -223,6 +223,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-csv-import-lifecycle.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-memfd-shared-memory.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-child-exit-observation.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-webnn-nnrt.patch"
   # Video import layers over browser media and cached-upload capabilities.
   # Unstack it before validating those prerequisite patches; preserve mtimes
   # so an unchanged Mojo schema does not rebuild the whole browser.
