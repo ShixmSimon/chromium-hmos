@@ -678,6 +678,14 @@ bool ForwardGpuChildLogToHilog(int severity,
 }  // namespace
 
 void AttachOhosGpuChildLogging() {
+  // GpuMain has already installed its deferred log handler before Ozone GPU
+  // initialization. Keep it in a phone fork child: direct hilog writes from
+  // this child can disappear, whereas Viz later relays the queued messages
+  // through the browser. Replacing it here loses all GL/Dawn startup logs.
+  if (IsOhosPhoneGpuChild() && logging::GetLogMessageHandler()) {
+    LOG(WARNING) << "OHOS phone GPU: retaining deferred startup logging";
+    return;
+  }
   logging::SetLogMessageHandler(&ForwardGpuChildLogToHilog);
   logging::SetMinLogLevel(
       std::min(logging::GetMinLogLevel(), logging::LOGGING_WARNING));
