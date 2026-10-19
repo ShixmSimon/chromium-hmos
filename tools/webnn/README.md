@@ -46,3 +46,16 @@ zero-copy claim. All NNRt API calls, native ownership and synchronous dispatches
 run on one dedicated worker thread shared by the contexts, not the Viz main
 thread. Native failures invalidate the context; subsequent reads cannot return
 an old successful result as if the failed dispatch had succeeded.
+
+## Build verification (2026-10-19)
+
+Native commit `0d778a088f15195435479d4a4f16d9d549ee21d0`:
+[ARM64 native CI](https://github.com/miramira8295/chromium-hmos/actions/runs/39221206546)
+and [adapter CI](https://github.com/miramira8295/chromium-hmos/actions/runs/39221206499)
+both passed. Lumie flag commit: `96552ed` on `main`; 36 relevant Node tests and
+the focused ArkTS check passed. Host NNRt tests pass ASan/UBSan, including
+31 construction and 10 execution failure points. The standalone ARM64 probe
+also cross-compiles and links successfully. Device execution is still pending.
+
+The downloaded `build-0d778a08/engine.har` matches the release SHA256SUMS:
+`1f2a1d8e642f9d688eecab05eced72f6accba6b55f36d52ece72d19e4b61f350`.
