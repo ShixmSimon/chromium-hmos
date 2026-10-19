@@ -3273,7 +3273,23 @@ class StartupHandoff {
     if (phase_ == "frame") {
       // A successful probe must precede this phase. Never expose the probe
       // document, including a restored copy of it in another tab.
-      if (probe_url_.is_empty() || frame->GetLastCommittedURL() == probe_url_) {
+      if (probe_url_.is_empty()) {
+        Reply("waiting");
+        return;
+      }
+      if (frame->GetLastCommittedURL() == probe_url_) {
+        // A one-shot shell navigation can be coalesced/overwritten during
+        // startup. Carry its destination with the retried frame request. Only
+        // recover from this transaction's authenticated probe document; the
+        // pending-entry guard above prevents restarting an in-flight load.
+        const std::string* resume_url = command.FindString("url");
+        if (resume_url) {
+          const GURL destination(*resume_url);
+          if (destination.is_valid() && destination != probe_url_) {
+            NavigateOnUiThread(widget_, destination,
+                               ui::PAGE_TRANSITION_AUTO_TOPLEVEL, 0);
+          }
+        }
         Reply("waiting");
         return;
       }
