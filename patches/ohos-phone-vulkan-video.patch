@@ -2945,3 +2945,106 @@ index cd6929b..194285d 100644
    transfer_resource.is_backed_by_surface_view =
        video_frame->metadata().in_surface_view;
  #endif
+diff --git a/components/viz/common/resources/transferable_resource.h b/components/viz/common/resources/transferable_resource.h
+--- a/components/viz/common/resources/transferable_resource.h
++++ b/components/viz/common/resources/transferable_resource.h
+@@ -23,7 +23,7 @@
+ #include "ui/gfx/geometry/size.h"
+ #include "ui/gfx/hdr_metadata.h"
+ 
+-#if BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+ #include "gpu/vulkan/vulkan_ycbcr_info.h"
+ #endif
+ 
+@@ -238,10 +238,12 @@
+   // different synchronization types based on their needs.
+   SynchronizationType synchronization_type = SynchronizationType::kSyncToken;
+ 
+-#if BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+   // YCbCr info for resources backed by YCbCr Vulkan images.
+   std::optional<gpu::VulkanYCbCrInfo> ycbcr_info;
+-
++#endif
++
++#if BUILDFLAG(IS_ANDROID)
+   // Indicates whether this resource may be overlaid on Android via legacy
+   // overlay flow, since it's backed by a SurfaceView. It's good to find this
+   // out in advance, since one has no fallback path for displaying a
+diff --git a/components/viz/common/resources/transferable_resource.cc b/components/viz/common/resources/transferable_resource.cc
+--- a/components/viz/common/resources/transferable_resource.cc
++++ b/components/viz/common/resources/transferable_resource.cc
+@@ -92,12 +92,14 @@
+   value->SetBoolean("is_overlay_candidate", GetIsOverlayCandidate());
+   value->SetInteger("synchronization_type",
+                     static_cast<int>(synchronization_type));
+-#if BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+   if (ycbcr_info) {
+     value->BeginDictionary("ycbcr_info");
+     ycbcr_info->AsValueInto(value);
+     value->EndDictionary();
+   }
++#endif
++#if BUILDFLAG(IS_ANDROID)
+   value->SetBoolean("is_backed_by_surface_view", is_backed_by_surface_view);
+ #endif
+ #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_WIN)
+diff --git a/services/viz/public/mojom/compositing/transferable_resource.mojom b/services/viz/public/mojom/compositing/transferable_resource.mojom
+--- a/services/viz/public/mojom/compositing/transferable_resource.mojom
++++ b/services/viz/public/mojom/compositing/transferable_resource.mojom
+@@ -72,7 +72,7 @@
+   gfx.mojom.HDRMetadata hdr_metadata;
+   bool needs_detiling;
+ 
+-  [EnableIf=is_android]
++  [EnableIf=is_android|is_ohos]
+   gpu.mojom.VulkanYCbCrInfo? ycbcr_info;
+ 
+   ResourceSource resource_source;
+diff --git a/services/viz/public/cpp/compositing/transferable_resource_mojom_traits.h b/services/viz/public/cpp/compositing/transferable_resource_mojom_traits.h
+--- a/services/viz/public/cpp/compositing/transferable_resource_mojom_traits.h
++++ b/services/viz/public/cpp/compositing/transferable_resource_mojom_traits.h
+@@ -15,7 +15,7 @@
+ #include "services/viz/public/mojom/compositing/transferable_resource.mojom-shared.h"
+ #include "skia/public/mojom/image_info_mojom_traits.h"
+ 
+-#if BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+ #include "gpu/ipc/common/vulkan_ycbcr_info_mojom_traits.h"
+ #include "gpu/vulkan/vulkan_ycbcr_info.h"
+ #endif
+@@ -109,7 +109,7 @@
+     return resource.needs_detiling;
+   }
+ 
+-#if BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+   static const std::optional<gpu::VulkanYCbCrInfo>& ycbcr_info(
+       const viz::TransferableResource& resource) {
+     return resource.ycbcr_info;
+diff --git a/services/viz/public/cpp/compositing/transferable_resource_mojom_traits.cc b/services/viz/public/cpp/compositing/transferable_resource_mojom_traits.cc
+--- a/services/viz/public/cpp/compositing/transferable_resource_mojom_traits.cc
++++ b/services/viz/public/cpp/compositing/transferable_resource_mojom_traits.cc
+@@ -185,7 +185,7 @@
+   if (!data.ReadResourceSource(&out->resource_source)) {
+     return base::unexpected(DeserializationError());
+   }
+-#if BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+   if (!data.ReadYcbcrInfo(&out->ycbcr_info)) {
+     return base::unexpected(DeserializationError());
+   }
+diff --git a/components/viz/service/display/external_use_client.cc b/components/viz/service/display/external_use_client.cc
+--- a/components/viz/service/display/external_use_client.cc
++++ b/components/viz/service/display/external_use_client.cc
+@@ -33,7 +33,7 @@
+       color_space_(resource.GetColorSpace()),
+       origin_(resource.GetOrigin()),
+       resource_source_(resource.resource_source) {
+-#if BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+   ycbcr_info_ = resource.ycbcr_info;
+ #endif
+ }
