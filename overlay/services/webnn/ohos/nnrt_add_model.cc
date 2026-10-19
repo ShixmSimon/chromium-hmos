@@ -91,7 +91,10 @@ bool FindNnrtAccelerator(NnrtDevice& device, std::string& error) {
       continue;
     }
     const char* name = nullptr;
-    if (!Check(OH_NNDevice_GetName(ids[i], &name), "GetName", error) || !name) {
+    if (!Check(OH_NNDevice_GetName(ids[i], &name), "GetName", error)) {
+      return false;
+    }
+    if (!name) {
       error = "NNRt accelerator has no device name";
       return false;
     }
@@ -134,8 +137,10 @@ std::unique_ptr<NnrtAddModel> NnrtAddModel::Create(
   }
   // Recheck the selected device, including callers of the standalone probe.
   OH_NN_DeviceType type = OH_NN_OTHERS;
-  if (!Check(OH_NNDevice_GetType(device.id, &type), "GetType", error) ||
-      type != OH_NN_ACCELERATOR) {
+  if (!Check(OH_NNDevice_GetType(device.id, &type), "GetType", error)) {
+    return nullptr;
+  }
+  if (type != OH_NN_ACCELERATOR) {
     error = "Selected NNRt device is not an accelerator";
     return nullptr;
   }
