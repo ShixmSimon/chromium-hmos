@@ -33,7 +33,7 @@ so switching here as well would leave the two disagreeing after a restart.
 diff --git a/chrome/app/chrome_command_ids.h b/chrome/app/chrome_command_ids.h
 --- a/chrome/app/chrome_command_ids.h
 +++ b/chrome/app/chrome_command_ids.h
-@@ -596,4 +596,17 @@
+@@ -596,5 +596,17 @@
  // Context Menu submenus
  #define IDC_SPELLCHECK_MENU 57329
  #define IDC_WRITING_DIRECTION_MENU 57328
@@ -49,21 +49,19 @@ diff --git a/chrome/app/chrome_command_ids.h b/chrome/app/chrome_command_ids.h
 +// bookmark and asked a delegate that only exists once the bookmark
 +// submenu has been opened, so hovering the item dereferenced null.
 +#define IDC_OHOS_USE_SHELL_UI 57331
-+#define IDC_OHOS_RESOURCES 57332
 +
  // macOS Top-Level Menu Bar containers
 diff --git a/chrome/browser/ui/toolbar/app_menu_model.cc b/chrome/browser/ui/toolbar/app_menu_model.cc
 --- a/chrome/browser/ui/toolbar/app_menu_model.cc
 +++ b/chrome/browser/ui/toolbar/app_menu_model.cc
-@@ -86,3 +86,7 @@
+@@ -86,3 +86,6 @@
  #include "chrome/browser/ui/toolbar/app_menu_icon_controller.h"
  #include "chrome/browser/ui/toolbar/bookmark_sub_menu_model.h"
 +#if BUILDFLAG(IS_OHOS)
 +#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
-+#include "chrome/browser/ohos/resource_collector.h"
 +#endif
  #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
-@@ -2478,5 +2478,20 @@
+@@ -2478,6 +2478,19 @@
  #endif
  #endif
 
@@ -73,8 +71,6 @@ diff --git a/chrome/browser/ui/toolbar/app_menu_model.cc b/chrome/browser/ui/too
 +  static_assert(IDC_OHOS_USE_SHELL_UI < COMMAND_ID_FIRST_UNBOUNDED,
 +                "a bounded command must stay below the unbounded range, "
 +                "which this menu hands out to bookmarks");
-+  const std::u16string resource_label = chrome::ohos::resources::MenuLabel();
-+  if (!resource_label.empty()) AddItem(IDC_OHOS_RESOURCES, resource_label);
 +  const std::u16string shell_ui_label = chrome::ohos::AuraShellUiMenuLabel();
 +  if (!shell_ui_label.empty() &&
 +      chrome::ohos::IsAuraShellNativeChromeChosen()) {
@@ -88,24 +84,20 @@ diff --git a/chrome/browser/ui/toolbar/app_menu_model.cc b/chrome/browser/ui/too
 diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
 --- a/chrome/browser/ui/browser_command_controller.cc
 +++ b/chrome/browser/ui/browser_command_controller.cc
-@@ -60,3 +60,8 @@
+@@ -60,3 +60,7 @@
  #include "chrome/browser/ui/browser_commands.h"
  #include "chrome/browser/ui/browser_element_identifiers.h"
 +#if BUILDFLAG(IS_OHOS)
 +#include "base/task/single_thread_task_runner.h"
 +#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
-+#include "chrome/browser/ohos/resource_collector.h"
 +#endif
  #include "chrome/browser/ui/browser_select_file_dialog_controller.h"
-@@ -1285,7 +1285,17 @@
+@@ -1285,7 +1285,14 @@
      case IDC_PERFORMANCE:
        ShowSettingsSubPage(webui::GetBrowserForOpeningWebUi(browser_),
                            chrome::kPerformanceSubPage);
        break;
 +#if BUILDFLAG(IS_OHOS)
-+    case IDC_OHOS_RESOURCES:
-+      chrome::ohos::resources::RequestOpen(browser_);
-+      break;
 +    case IDC_OHOS_USE_SHELL_UI:
 +      // Asked for, not done here: the shell keeps this setting and writes it
 +      // back at the next launch, so it has to be the one that changes it.
@@ -115,12 +107,11 @@ diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui
      case IDC_OPTIONS:
        ShowSettings(webui::GetBrowserForOpeningWebUi(browser_));
        break;
-@@ -2090,5 +2097,9 @@
+@@ -2090,5 +2097,8 @@
    command_updater->UpdateCommandEnabled(IDC_IMPORT_SETTINGS,
                                          !forced_incognito && !is_guest);
 +#if BUILDFLAG(IS_OHOS)
 +  command_updater->UpdateCommandEnabled(IDC_OHOS_USE_SHELL_UI, true);
-+  command_updater->UpdateCommandEnabled(IDC_OHOS_RESOURCES, true);
 +#endif
    command_updater->UpdateCommandEnabled(IDC_OPTIONS,
                                          !forced_incognito || is_guest);

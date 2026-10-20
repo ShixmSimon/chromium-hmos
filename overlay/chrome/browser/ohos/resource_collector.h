@@ -10,6 +10,9 @@ class BrowserWindowInterface;
 namespace chrome::ohos {
 struct ShellCommandContext;
 namespace resources {
+// Keep this platform-local: changing chrome_command_ids.h would invalidate
+// unrelated UI build inputs. This bounded ID follows the existing OHOS item.
+inline constexpr int kMenuCommand = 57332;
 std::u16string MenuLabel();
 void RequestOpen(BrowserWindowInterface* browser);
 void InstallFactory(content::RenderFrameHost* frame, network::URLLoaderFactoryBuilder& builder);

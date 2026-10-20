@@ -251,3 +251,56 @@ diff --git a/chrome/renderer/url_loader_throttle_provider_impl.cc b/chrome/rende
  
    // Some throttles have already been added in the browser for frame resources.
    // Don't add them for frame requests.
+
+diff --git a/chrome/browser/ui/toolbar/app_menu_model.cc b/chrome/browser/ui/toolbar/app_menu_model.cc
+--- a/chrome/browser/ui/toolbar/app_menu_model.cc
++++ b/chrome/browser/ui/toolbar/app_menu_model.cc
+@@ -88,6 +88,7 @@
+ #include "chrome/browser/ui/toolbar/bookmark_sub_menu_model.h"
+ #if BUILDFLAG(IS_OHOS)
+ #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#include "chrome/browser/ohos/resource_collector.h"
+ #endif
+ #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
+ #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
+@@ -2487,6 +2488,10 @@
+   static_assert(IDC_OHOS_USE_SHELL_UI < COMMAND_ID_FIRST_UNBOUNDED,
+                 "a bounded command must stay below the unbounded range, "
+                 "which this menu hands out to bookmarks");
++  static_assert(chrome::ohos::resources::kMenuCommand < COMMAND_ID_FIRST_UNBOUNDED);
++  const std::u16string resource_label = chrome::ohos::resources::MenuLabel();
++  if (!resource_label.empty())
++    AddItem(chrome::ohos::resources::kMenuCommand, resource_label);
+   const std::u16string shell_ui_label = chrome::ohos::AuraShellUiMenuLabel();
+   if (!shell_ui_label.empty() &&
+       chrome::ohos::IsAuraShellNativeChromeChosen()) {
+
+diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
+--- a/chrome/browser/ui/browser_command_controller.cc
++++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -62,6 +62,7 @@
+ #if BUILDFLAG(IS_OHOS)
+ #include "base/task/single_thread_task_runner.h"
+ #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#include "chrome/browser/ohos/resource_collector.h"
+ #endif
+ #include "chrome/browser/ui/browser_select_file_dialog_controller.h"
+ #include "chrome/browser/ui/browser_window.h"
+@@ -1310,6 +1311,9 @@
+                           chrome::kPerformanceSubPage);
+       break;
+ #if BUILDFLAG(IS_OHOS)
++    case chrome::ohos::resources::kMenuCommand:
++      chrome::ohos::resources::RequestOpen(browser_);
++      break;
+     case IDC_OHOS_USE_SHELL_UI:
+       // Asked for, not done here: the shell keeps this setting and writes it
+       // back at the next launch, so it has to be the one that changes it.
+@@ -2121,6 +2125,7 @@
+                                         !forced_incognito && !is_guest);
+ #if BUILDFLAG(IS_OHOS)
+   command_updater->UpdateCommandEnabled(IDC_OHOS_USE_SHELL_UI, true);
++  command_updater->UpdateCommandEnabled(chrome::ohos::resources::kMenuCommand, true);
+ #endif
+   command_updater->UpdateCommandEnabled(IDC_OPTIONS,
+                                         !forced_incognito || is_guest);
