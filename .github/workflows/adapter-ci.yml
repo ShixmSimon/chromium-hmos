@@ -25,6 +25,8 @@ jobs:
         run: scripts/test-ohos-fork-server.sh
       - name: Check experimental phone GPU frame transport
         run: scripts/test-ohos-phone-gpu.sh
+      - name: Check startup handoff retry scheduling and cancellation
+        run: python3 scripts/tests/test-startup-handoff-retry.py
       - name: Check native extension update result semantics
         run: scripts/test-extension-updates.sh
       - name: Check memfd write-seal contract
