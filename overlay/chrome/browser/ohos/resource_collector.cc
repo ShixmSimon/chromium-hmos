@@ -22,6 +22,7 @@
 #include "components/download/public/common/download_url_parameters.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "content/public/browser/download_manager.h"
+#include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/page.h"
 #include "content/public/browser/render_frame_host.h"
@@ -234,11 +235,20 @@ WEB_CONTENTS_USER_DATA_KEY_IMPL(PageResources);
 
 // The body pipe and loader control channel pass through untouched. Only
 // response metadata is inspected, on the browser UI sequence.
+struct SourceDocument {
+  content::GlobalRenderFrameHostId frame;
+  int64_t navigation = 0;
+  content::RenderFrameHost* Resolve() const {
+    auto* source = content::RenderFrameHost::FromID(frame);
+    return source && source->IsActive() && source->GetNavigationId() == navigation ? source : nullptr;
+  }
+};
+
 class ResponseObserver : public network::mojom::URLLoaderClient {
  public:
   static mojo::PendingRemote<network::mojom::URLLoaderClient> Create(
       mojo::PendingRemote<network::mojom::URLLoaderClient> client,
-      content::WeakDocumentPtr document, const network::ResourceRequest& request) {
+      SourceDocument document, const network::ResourceRequest& request) {
     mojo::PendingRemote<network::mojom::URLLoaderClient> remote;
     auto observer = std::make_unique<ResponseObserver>(std::move(client), std::move(document), request);
     auto* raw = observer.get();
@@ -250,7 +260,7 @@ class ResponseObserver : public network::mojom::URLLoaderClient {
     return remote;
   }
   ResponseObserver(mojo::PendingRemote<network::mojom::URLLoaderClient> client,
-                   content::WeakDocumentPtr document, const network::ResourceRequest& request)
+                   SourceDocument document, const network::ResourceRequest& request)
       : client_(std::move(client)), document_(std::move(document)), request_(request) {}
   void OnReceiveEarlyHints(network::mojom::EarlyHintsPtr hints) override {
     client_->OnReceiveEarlyHints(std::move(hints));
@@ -258,7 +268,7 @@ class ResponseObserver : public network::mojom::URLLoaderClient {
   void OnReceiveResponse(network::mojom::URLResponseHeadPtr head,
       mojo::ScopedDataPipeConsumerHandle body,
       std::optional<mojo_base::BigBuffer> metadata) override {
-    auto* frame = document_.AsRenderFrameHostIfValid();
+    auto* frame = document_.Resolve();
     if (frame && head->headers) {
       auto response = std::make_unique<ResourceResponse>();
       response->url = request_.url;
@@ -295,7 +305,7 @@ class ResponseObserver : public network::mojom::URLLoaderClient {
  private:
   mojo::Remote<network::mojom::URLLoaderClient> client_;
   mojo::SelfOwnedReceiverRef<network::mojom::URLLoaderClient> self_;
-  content::WeakDocumentPtr document_;
+  SourceDocument document_;
   network::ResourceRequest request_;
 };
 
@@ -303,7 +313,7 @@ class ResourceFactory : public network::mojom::URLLoaderFactory {
  public:
   ResourceFactory(mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
                   mojo::PendingRemote<network::mojom::URLLoaderFactory> target,
-                  content::WeakDocumentPtr document)
+                  SourceDocument document)
       : target_(std::move(target)), document_(std::move(document)) {
     receivers_.Add(this, std::move(receiver));
     receivers_.set_disconnect_handler(base::BindRepeating(&ResourceFactory::Disconnected, base::Unretained(this)));
@@ -320,8 +330,7 @@ class ResourceFactory : public network::mojom::URLLoaderFactory {
     const bool eligible = request.destination == D::kEmpty || request.destination == D::kVideo ||
         request.destination == D::kAudio || request.destination == D::kImage ||
         request.destination == D::kObject || request.destination == D::kEmbed;
-    if (eligible && request.method == "GET" && request.url.SchemeIsHTTPOrHTTPS() &&
-        document_.AsRenderFrameHostIfValid())
+    if (eligible && request.method == "GET" && request.url.SchemeIsHTTPOrHTTPS())
       client = ResponseObserver::Create(std::move(client), document_, request);
     target_->CreateLoaderAndStart(std::move(loader), id, options, request, std::move(client), annotation);
   }
@@ -330,14 +339,22 @@ class ResourceFactory : public network::mojom::URLLoaderFactory {
   void TargetLost() { receivers_.Clear(); delete this; }
   mojo::ReceiverSet<network::mojom::URLLoaderFactory> receivers_;
   mojo::Remote<network::mojom::URLLoaderFactory> target_;
-  content::WeakDocumentPtr document_;
+  SourceDocument document_;
 };
 }  // namespace
 
 void InstallFactory(content::RenderFrameHost* frame, network::URLLoaderFactoryBuilder& builder) {
   if (!frame) return;
+  // A subresource factory can be built before commit. WeakDocumentPtr captured
+  // here may still name the replaced document when the RFH is reused. Bind the
+  // factory to its pending navigation, then validate that committed identity on
+  // each response. Ambiguous overlapping commits are conservatively excluded.
+  const auto pending = frame->GetPendingCommitCrossDocumentNavigations();
+  if (pending.size() > 1) return;
+  SourceDocument source{frame->GetGlobalId(), pending.empty()
+      ? frame->GetNavigationId() : pending.front()->GetNavigationId()};
   auto [receiver, target] = builder.Append();
-  new ResourceFactory(std::move(receiver), std::move(target), frame->GetWeakDocumentPtr());
+  new ResourceFactory(std::move(receiver), std::move(target), source);
 }
 
 std::u16string MenuLabel() { return ResourceMenuLabel(); }
