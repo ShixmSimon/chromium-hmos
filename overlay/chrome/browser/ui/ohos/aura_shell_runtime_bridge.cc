@@ -3217,7 +3217,10 @@ class StartupHandoff {
  public:
   explicit StartupHandoff(TabStripModel* tabs) : tabs_(tabs) {}
 
-  void Invalidate() {
+  void Invalidate(const char* reason) {
+    if (!token_.empty()) {
+      Trace(pending_ ? "invalidate_pending" : "invalidate_idle", reason);
+    }
     weak_factory_.InvalidateWeakPtrs();
     pending_ = false;
   }
@@ -3231,7 +3234,7 @@ class StartupHandoff {
     }
     if (*phase == "cancel") {
       if (*token == token_) {
-        Invalidate();
+        Invalidate("shell_cancel");
         token_.clear();
         probe_url_ = GURL();
       }
@@ -3244,7 +3247,7 @@ class StartupHandoff {
       if (*phase != "ready") {
         return;
       }
-      Invalidate();
+      Invalidate("token_replaced");
       token_ = *token;
       probe_url_ = GURL();
     }
@@ -3258,7 +3261,7 @@ class StartupHandoff {
       Trace("request", "coalesced_pending");
       return;
     }
-    Invalidate();
+    Invalidate(pending_ ? "request_timeout_or_phase_change" : "request_prepare");
     phase_ = *phase;
     content::WebContents* contents = tabs_->GetActiveWebContents();
     if (!contents) {
@@ -3390,7 +3393,8 @@ class StartupHandoff {
     Reply("presented");
   }
 
-  void Reply(std::string_view status) {
+  void Reply(const char* status) {
+    Trace("reply", status);
     base::DictValue event;
     event.Set("event", "startupAck");
     event.Set("startupToken", token_);
@@ -3469,17 +3473,21 @@ class BrowserStateWatcher : public TabStripModelObserver,
   }
   void DidStartNavigation(content::NavigationHandle* handle) override {
     if (handle->IsInPrimaryMainFrame()) {
-      startup_.Invalidate();
+      startup_.Invalidate(handle->IsSameDocument() ? "same_document_start"
+                                                 : "main_document_start");
     }
   }
   void DidFinishNavigation(content::NavigationHandle* handle) override {
     if (handle->IsInPrimaryMainFrame()) {
-      startup_.Invalidate();
+      startup_.Invalidate(
+          handle->IsSameDocument() ? "same_document_finish"
+          : handle->HasCommitted() ? "main_document_committed"
+                                   : "main_document_not_committed");
     }
     RequestBrowserStateUpdate();
   }
   void PrimaryPageChanged(content::Page& page) override {
-    startup_.Invalidate();
+    startup_.Invalidate("primary_page_changed");
     RequestBrowserStateUpdate();
   }
   void RenderViewHostChanged(content::RenderViewHost* old_host,
@@ -3503,7 +3511,7 @@ class BrowserStateWatcher : public TabStripModelObserver,
     RequestBrowserStateUpdate();
   }
   void WebContentsDestroyed() override {
-    startup_.Invalidate();
+    startup_.Invalidate("contents_destroyed");
     // Not through Follow(): the distiller's driver may already be gone, and
     // asking to remove an observer from it would make a new one.
     if (zoom_) {
@@ -3533,7 +3541,7 @@ class BrowserStateWatcher : public TabStripModelObserver,
     if (contents == web_contents()) {
       return;
     }
-    startup_.Invalidate();
+    startup_.Invalidate("active_contents_changed");
     if (content::WebContents* previous = web_contents()) {
       if (zoom_) {
         zoom_->RemoveObserver(this);
