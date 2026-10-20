@@ -29,6 +29,11 @@ media, or turn an MSE blob URL into a complete file.
 
 ## Shell commands and events
 
+Lumie exposes the list in its page menu. With Chromium native browser chrome,
+the app supplies a localized label through `setResourceMenuLabel {name}`; the
+native menu emits a window-targeted `resourcesRequested` event. The shell draws
+only the resource overlay, without switching browser chrome or restarting.
+
 - `listResources {requestId, tabId}` -> `resourceList {requestId, ok,
   protocolVersion:1, tabId, navigationId, resources, truncated}`.
 - Each resource: opaque `id`, `name`, `url`, `kind` (`video`, `audio`, `image`,
@@ -44,7 +49,7 @@ media, or turn an MSE blob URL into a complete file.
 Commands are resolved against the requesting window's active tab. Stale tab,
 document, resource and manifest downloads are rejected. Downloads are created
 through the source RenderFrameHost, retaining Chromium security checks and its
-storage partition. Original referrer/policy, credentials mode, request mode and
+storage partition. Original referrer/policy, credentials mode and
 explicit Authorization are retained; Cookie is not extracted. Redirected
 cross-origin requests drop captured Authorization. Range is not replayed, so
 ordinary partial-file responses can request the full resource. Signed query

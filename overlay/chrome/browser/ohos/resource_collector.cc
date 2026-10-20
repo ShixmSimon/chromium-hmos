@@ -30,6 +30,7 @@
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "net/http/http_content_disposition.h"
+#include "net/http/http_util.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "url/gurl.h"
 
@@ -91,9 +92,11 @@ class PageResources : public content::WebContentsObserver,
         r->url.has_username() || r->url.has_password() || r->url.spec().size() > 8192 ||
         r->mime_type.size() > 256 || r->disposition.size() > 2048 ||
         r->authorization.size() > 8192 || r->referrer.spec().size() > 8192 ||
+        (!r->referrer.is_empty() && !r->referrer.SchemeIsHTTPOrHTTPS()) ||
         r->content_range.size() > 128 || r->referrer_policy < 0 ||
         r->referrer_policy > static_cast<int32_t>(net::ReferrerPolicy::MAX) ||
-        r->authorization.find_first_of("\r\n") != std::string::npos) return;
+        !net::HttpUtil::IsValidHeaderValue(r->authorization) ||
+        r->mode == network::mojom::RequestMode::kNavigate) return;
     auto kind = Classify(r->url.path(), r->mime_type, r->disposition, r->status, r->method);
     if (kind.empty()) return;
     r->url = r->url.GetWithoutRef();
@@ -129,7 +132,7 @@ class PageResources : public content::WebContentsObserver,
     entry.name = net::HttpContentDisposition(r->disposition, "UTF-8").filename();
     if (entry.name.empty()) entry.name = r->url.ExtractFileName();
     if (entry.name.empty()) entry.name = r->url.host();
-    entry.name = entry.name.substr(0, 256);
+    entry.name = base::UTF16ToUTF8(base::UTF8ToUTF16(entry.name).substr(0, 128));
     entry.total = TotalBytes(r->status, r->content_length, r->content_range);
     entry.metadata_bytes = bytes;
     entry.document = frame.GetWeakDocumentPtr();
@@ -254,7 +257,6 @@ bool HandleCommand(const ShellCommandContext& context, std::string_view name,
       params->set_has_user_gesture(true);
       params->set_referrer(r->referrer);
       params->set_referrer_policy(static_cast<net::ReferrerPolicy>(r->referrer_policy));
-      params->set_fetch_request_mode(r->mode);
       params->set_credentials_mode(r->credentials_mode);
       if (!r->authorization.empty()) params->add_request_header("Authorization", r->authorization);
       params->set_callback(base::BindOnce(

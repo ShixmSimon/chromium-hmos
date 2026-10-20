@@ -10,10 +10,11 @@
 #include "net/url_request/redirect_info.h"
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
-#include "third_party/blink/public/common/browser_interface_broker_proxy.h"
+#include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/common/loader/url_loader_throttle.h"
 #include "third_party/blink/public/common/loader/resource_type_util.h"
 #include "third_party/blink/public/web/web_local_frame.h"
+#include "url/origin.h"
 
 namespace chrome::ohos::resources {
 namespace {
@@ -30,7 +31,7 @@ class Throttle : public blink::URLLoaderThrottle {
       const network::mojom::URLResponseHead&, bool*,
       network::HttpRequestHeadersUpdateParams*) override {
     // Authorization must not be replayed across a redirect to a new origin.
-    if (request_.url.DeprecatedGetOriginAsURL() != info->new_url.DeprecatedGetOriginAsURL())
+    if (url::Origin::Create(request_.url) != url::Origin::Create(info->new_url))
       request_.headers.RemoveHeader("Authorization");
     request_.UpdateOnRedirect(*info);
   }
