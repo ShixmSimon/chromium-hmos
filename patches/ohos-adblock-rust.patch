@@ -25,18 +25,15 @@ diff --git a/chrome/browser/universal_web_contents_observers.cc b/chrome/browser
 diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
 --- a/chrome/browser/BUILD.gn
 +++ b/chrome/browser/BUILD.gn
-@@ -1732,6 +1732,15 @@
-       "ohos/url_protection/rule_sources.cc",
-       "ohos/url_protection/rule_sources.h",
-     ]
+@@ -1735,3 +1735,12 @@
 +    deps += [ "//chrome/common/ohos/adblock:mojom", "//chrome/common/ohos/adblock:execution", "//third_party/adblock_rust:runtime" ]
 +    sources += [
-+      "ohos/resource_collector.cc",
-+      "ohos/resource_collector.h",
 +      "ohos/adblock/adblock.cc",
 +      "ohos/adblock/adblock.h",
 +      "ohos/adblock/engine.cc",
 +      "ohos/adblock/engine.h",
++      "ohos/resource_collector.cc",
++      "ohos/resource_collector.h",
 +    ]
      sources += [
        "icon_loader_ohos.cc",

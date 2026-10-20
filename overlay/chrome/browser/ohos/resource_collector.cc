@@ -6,12 +6,15 @@
 #include <string>
 #include <utility>
 #include "base/functional/bind.h"
+#include "base/no_destructor.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/timer/timer.h"
 #include "base/unguessable_token.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
+#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/common/ohos/resource_policy.h"
 #include "components/download/public/common/download_interrupt_reasons.h"
@@ -35,6 +38,10 @@ namespace {
 constexpr size_t kMaxEntries = 128;
 constexpr size_t kMaxImages = 32;
 constexpr size_t kMaxMetadataBytes = 512 * 1024;
+std::u16string& ResourceMenuLabel() {
+  static base::NoDestructor<std::u16string> label;
+  return *label;
+}
 constexpr net::NetworkTrafficAnnotationTag kDownloadAnnotation =
     net::DefineNetworkTrafficAnnotation("ohos_detected_resource_download", R"(
       semantics {
@@ -192,8 +199,23 @@ void Bind(content::RenderFrameHost* frame,
   if (frame) new Observer(*frame, std::move(receiver));
 }
 
+std::u16string MenuLabel() { return ResourceMenuLabel(); }
+
+void RequestOpen(BrowserWindowInterface* browser) {
+  auto* contents = browser ? browser->GetTabStripModel()->GetActiveWebContents() : nullptr;
+  if (!contents) return;
+  base::DictValue event;
+  event.Set("event", "resourcesRequested");
+  DispatchAuraShellRuntimeEvent(contents, std::move(event));
+}
+
 bool HandleCommand(const ShellCommandContext& context, std::string_view name,
                    const base::DictValue& command) {
+  if (name == "setResourceMenuLabel") {
+    if (const auto* label = command.FindString("name"); label && label->size() <= 160)
+      ResourceMenuLabel() = base::UTF8ToUTF16(*label);
+    return true;
+  }
   if (name != "listResources" && name != "downloadResource" && name != "clearResources") return false;
   auto* contents = context.browser ? context.browser->GetTabStripModel()->GetActiveWebContents() : nullptr;
   auto* page = contents ? PageResources::Get(contents) : nullptr;

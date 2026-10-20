@@ -38,6 +38,7 @@ struct ShellServiceCommand {
 
 constexpr ShellServiceCommand kShellServiceCommands[] = {
     {"listResources", &resources::HandleCommand},
+    {"setResourceMenuLabel", &resources::HandleCommand},
     {"downloadResource", &resources::HandleCommand},
     {"clearResources", &resources::HandleCommand},
     {"getTranslationCapabilities", &translation::HandleCommand},
