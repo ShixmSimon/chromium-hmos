@@ -4,8 +4,10 @@
 #include "chrome/common/ohos/adblock/adblock.mojom.h"
 #include "chrome/common/ohos/resource_policy.h"
 #include "content/public/renderer/render_frame.h"
+#include "content/public/renderer/render_frame_observer.h"
+#include "content/public/renderer/render_frame_observer_tracker.h"
 #include "content/public/renderer/render_thread.h"
-#include "mojo/public/cpp/bindings/remote.h"
+#include "mojo/public/cpp/bindings/shared_remote.h"
 #include "net/http/http_response_headers.h"
 #include "net/url_request/redirect_info.h"
 #include "services/network/public/cpp/resource_request.h"
@@ -14,15 +16,39 @@
 #include "third_party/blink/public/common/loader/url_loader_throttle.h"
 #include "third_party/blink/public/common/loader/resource_type_util.h"
 #include "third_party/blink/public/web/web_local_frame.h"
+#include "third_party/blink/public/web/web_document.h"
 #include "url/origin.h"
 
 namespace chrome::ohos::resources {
 namespace {
+// Share one document-bound pipe across its loads. SharedRemote also supports
+// synchronous XHR throttles moved to a loading sequence by Blink.
+class Reporter : public content::RenderFrameObserver,
+                 public content::RenderFrameObserverTracker<Reporter> {
+ public:
+  explicit Reporter(content::RenderFrame* frame)
+      : RenderFrameObserver(frame), RenderFrameObserverTracker<Reporter>(frame) {}
+  void OnDestruct() override { delete this; }
+  mojo::SharedRemote<adblock::mojom::ResourceObserver> Remote() {
+    const auto document = render_frame()->GetWebFrame()->GetDocument().Token();
+    if (!remote_.is_bound() || token_ != document) {
+      token_ = document;
+      mojo::PendingRemote<adblock::mojom::ResourceObserver> pending;
+      render_frame()->GetBrowserInterfaceBroker().GetInterface(pending.InitWithNewPipeAndPassReceiver());
+      remote_ = mojo::SharedRemote<adblock::mojom::ResourceObserver>(std::move(pending));
+    }
+    return remote_;
+  }
+ private:
+  blink::DocumentToken token_;
+  mojo::SharedRemote<adblock::mojom::ResourceObserver> remote_;
+};
+
 class Throttle : public blink::URLLoaderThrottle {
  public:
-  Throttle(mojo::PendingRemote<adblock::mojom::ResourceObserver> remote,
+  Throttle(mojo::SharedRemote<adblock::mojom::ResourceObserver> remote,
            const network::ResourceRequest& request)
-      : pending_(std::move(remote)), request_(request) {}
+      : remote_(std::move(remote)), request_(request) {}
   void DetachFromCurrentSequence() override {}
   void WillStartRequest(network::ResourceRequest* request, bool*) override {
     request_ = *request;
@@ -50,18 +76,19 @@ class Throttle : public blink::URLLoaderThrottle {
     value->content_range = head->headers->GetNormalizedHeader("content-range").value_or("");
     value->content_length = head->content_length;
     value->method = request_.method;
-    value->referrer = request_.referrer;
+    const bool same_request_origin =
+        url::Origin::Create(request_.url) == url::Origin::Create(url);
+    value->referrer = same_request_origin ? request_.referrer : GURL();
     value->referrer_policy = static_cast<int32_t>(request_.referrer_policy);
     value->mode = request_.mode;
     value->credentials_mode = request_.credentials_mode;
-    value->authorization = request_.headers.GetHeader("Authorization").value_or("");
+    value->authorization = same_request_origin
+        ? request_.headers.GetHeader("Authorization").value_or("") : "";
     if (value->authorization.size() > 8192 || value->content_range.size() > 128) return;
-    if (pending_) remote_.Bind(std::move(pending_));
-    if (remote_.is_connected()) remote_->Record(std::move(value));
+    if (remote_.is_bound()) remote_->Record(std::move(value));
   }
  private:
-  mojo::PendingRemote<adblock::mojom::ResourceObserver> pending_;
-  mojo::Remote<adblock::mojom::ResourceObserver> remote_;
+  mojo::SharedRemote<adblock::mojom::ResourceObserver> remote_;
   network::ResourceRequest request_;
 };
 }  // namespace
@@ -79,8 +106,8 @@ std::unique_ptr<blink::URLLoaderThrottle> CreateThrottle(
   auto* web_frame = blink::WebLocalFrame::FromFrameToken(token.value());
   auto* frame = web_frame ? content::RenderFrame::FromWebFrame(web_frame) : nullptr;
   if (!frame) return nullptr;
-  mojo::PendingRemote<adblock::mojom::ResourceObserver> remote;
-  frame->GetBrowserInterfaceBroker().GetInterface(remote.InitWithNewPipeAndPassReceiver());
-  return std::make_unique<Throttle>(std::move(remote), request);
+  auto* reporter = Reporter::Get(frame);
+  if (!reporter) reporter = new Reporter(frame);
+  return std::make_unique<Throttle>(reporter->Remote(), request);
 }
 }  // namespace chrome::ohos::resources
