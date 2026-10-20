@@ -21,7 +21,6 @@
 #include "components/download/public/common/download_item.h"
 #include "components/download/public/common/download_url_parameters.h"
 #include "components/sessions/content/session_tab_helper.h"
-#include "content/public/browser/document_service.h"
 #include "content/public/browser/download_manager.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/page.h"
@@ -31,9 +30,21 @@
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "net/http/http_content_disposition.h"
+#include "net/http/http_response_headers.h"
 #include "net/http/http_util.h"
+#include "net/url_request/redirect_info.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
+#include "mojo/public/cpp/bindings/receiver_set.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "mojo/public/cpp/bindings/self_owned_receiver.h"
+#include "mojo/public/cpp/base/big_buffer.h"
+#include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/cpp/url_loader_completion_status.h"
+#include "services/network/public/cpp/url_loader_factory_builder.h"
+#include "services/network/public/mojom/url_loader_factory.mojom.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
 #include "url/gurl.h"
+#include "url/origin.h"
 
 namespace chrome::ohos::resources {
 namespace {
@@ -60,9 +71,18 @@ constexpr net::NetworkTrafficAnnotationTag kDownloadAnnotation =
         policy_exception_justification: "Not implemented."
       })");
 
+struct ResourceResponse {
+  GURL url, referrer;
+  std::string mime_type, disposition, content_range, method, authorization;
+  int status = 0;
+  int64_t content_length = -1;
+  int32_t referrer_policy = 0;
+  network::mojom::CredentialsMode credentials_mode = network::mojom::CredentialsMode::kInclude;
+};
+
 struct Entry {
   std::string id, kind, name;
-  adblock::mojom::ResourceResponsePtr response;
+  std::unique_ptr<ResourceResponse> response;
   content::WeakDocumentPtr document;
   int64_t total = -1;
   size_t metadata_bytes = 0;
@@ -86,7 +106,7 @@ class PageResources : public content::WebContentsObserver,
     return base::NumberToString(sessions::SessionTabHelper::IdForTab(web_contents()).id());
   }
   const std::string& navigation() const { return navigation_; }
-  void Record(content::RenderFrameHost& frame, adblock::mojom::ResourceResponsePtr r) {
+  void Record(content::RenderFrameHost& frame, std::unique_ptr<ResourceResponse> r) {
     if (!frame.IsActive() || frame.GetOutermostMainFrame() != web_contents()->GetPrimaryMainFrame() ||
         !web_contents()->GetLastCommittedURL().SchemeIsHTTPOrHTTPS() ||
         !r->url.is_valid() || !r->url.SchemeIsHTTPOrHTTPS() ||
@@ -96,8 +116,7 @@ class PageResources : public content::WebContentsObserver,
         (!r->referrer.is_empty() && !r->referrer.SchemeIsHTTPOrHTTPS()) ||
         r->content_range.size() > 128 || r->referrer_policy < 0 ||
         r->referrer_policy > static_cast<int32_t>(net::ReferrerPolicy::MAX) ||
-        !net::HttpUtil::IsValidHeaderValue(r->authorization) ||
-        r->mode == network::mojom::RequestMode::kNavigate) return;
+        !net::HttpUtil::IsValidHeaderValue(r->authorization)) return;
     auto kind = Classify(r->url.path(), r->mime_type, r->disposition, r->status, r->method);
     if (kind.empty()) return;
     Prune();
@@ -212,22 +231,112 @@ class PageResources : public content::WebContentsObserver,
 };
 WEB_CONTENTS_USER_DATA_KEY_IMPL(PageResources);
 
-class Observer : public content::DocumentService<adblock::mojom::ResourceObserver> {
+// The body pipe and loader control channel pass through untouched. Only
+// response metadata is inspected, on the browser UI sequence.
+class ResponseObserver : public network::mojom::URLLoaderClient {
  public:
-  Observer(content::RenderFrameHost& frame,
-           mojo::PendingReceiver<adblock::mojom::ResourceObserver> receiver)
-      : DocumentService(frame, std::move(receiver)) {}
-  void Record(adblock::mojom::ResourceResponsePtr response) override {
-    auto& frame = render_frame_host();
-    auto* contents = content::WebContents::FromRenderFrameHost(&frame);
-    if (contents) PageResources::Get(contents)->Record(frame, std::move(response));
+  static mojo::PendingRemote<network::mojom::URLLoaderClient> Create(
+      mojo::PendingRemote<network::mojom::URLLoaderClient> client,
+      content::WeakDocumentPtr document, const network::ResourceRequest& request) {
+    mojo::PendingRemote<network::mojom::URLLoaderClient> remote;
+    auto observer = std::make_unique<ResponseObserver>(std::move(client), std::move(document), request);
+    auto* raw = observer.get();
+    raw->self_ = mojo::MakeSelfOwnedReceiver(std::move(observer), remote.InitWithNewPipeAndPassReceiver());
+    raw->client_.set_disconnect_handler(base::BindOnce(
+        [](mojo::SelfOwnedReceiverRef<network::mojom::URLLoaderClient> self) {
+          if (self) self->Close();
+        }, raw->self_));
+    return remote;
   }
+  ResponseObserver(mojo::PendingRemote<network::mojom::URLLoaderClient> client,
+                   content::WeakDocumentPtr document, const network::ResourceRequest& request)
+      : client_(std::move(client)), document_(std::move(document)), request_(request) {}
+  void OnReceiveEarlyHints(network::mojom::EarlyHintsPtr hints) override {
+    client_->OnReceiveEarlyHints(std::move(hints));
+  }
+  void OnReceiveResponse(network::mojom::URLResponseHeadPtr head,
+      mojo::ScopedDataPipeConsumerHandle body,
+      std::optional<mojo_base::BigBuffer> metadata) override {
+    auto* frame = document_.AsRenderFrameHostIfValid();
+    if (frame && head->headers) {
+      auto response = std::make_unique<ResourceResponse>();
+      response->url = request_.url;
+      response->mime_type = head->mime_type;
+      response->status = head->headers->response_code();
+      response->content_length = head->content_length;
+      response->disposition = head->headers->GetNormalizedHeader("content-disposition").value_or("");
+      response->content_range = head->headers->GetNormalizedHeader("content-range").value_or("");
+      response->method = request_.method;
+      response->referrer = request_.referrer.SchemeIsHTTPOrHTTPS() ? request_.referrer : GURL();
+      response->referrer_policy = static_cast<int32_t>(request_.referrer_policy);
+      response->credentials_mode = request_.credentials_mode;
+      response->authorization = request_.headers.GetHeader("Authorization").value_or("");
+      auto* contents = content::WebContents::FromRenderFrameHost(frame);
+      if (contents) PageResources::Get(contents)->Record(*frame, std::move(response));
+    }
+    client_->OnReceiveResponse(std::move(head), std::move(body), std::move(metadata));
+  }
+  void OnReceiveRedirect(const net::RedirectInfo& info,
+                         network::mojom::URLResponseHeadPtr head) override {
+    if (url::Origin::Create(request_.url) != url::Origin::Create(info.new_url))
+      request_.headers.RemoveHeader("Authorization");
+    request_.UpdateOnRedirect(info);
+    client_->OnReceiveRedirect(info, std::move(head));
+  }
+  void OnUploadProgress(int64_t current, int64_t total, OnUploadProgressCallback callback) override {
+    client_->OnUploadProgress(current, total, std::move(callback));
+  }
+  void OnTransferSizeUpdated(int32_t diff) override { client_->OnTransferSizeUpdated(diff); }
+  void OnComplete(const network::URLLoaderCompletionStatus& status) override {
+    client_->OnComplete(status);
+    if (self_) self_->Close();
+  }
+ private:
+  mojo::Remote<network::mojom::URLLoaderClient> client_;
+  mojo::SelfOwnedReceiverRef<network::mojom::URLLoaderClient> self_;
+  content::WeakDocumentPtr document_;
+  network::ResourceRequest request_;
+};
+
+class ResourceFactory : public network::mojom::URLLoaderFactory {
+ public:
+  ResourceFactory(mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
+                  mojo::PendingRemote<network::mojom::URLLoaderFactory> target,
+                  content::WeakDocumentPtr document)
+      : target_(std::move(target)), document_(std::move(document)) {
+    receivers_.Add(this, std::move(receiver));
+    receivers_.set_disconnect_handler(base::BindRepeating(&ResourceFactory::Disconnected, base::Unretained(this)));
+    target_.set_disconnect_handler(base::BindOnce(&ResourceFactory::TargetLost, base::Unretained(this)));
+  }
+  void Clone(mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver) override {
+    receivers_.Add(this, std::move(receiver));
+  }
+  void CreateLoaderAndStart(mojo::PendingReceiver<network::mojom::URLLoader> loader,
+      int32_t id, uint32_t options, const network::ResourceRequest& request,
+      mojo::PendingRemote<network::mojom::URLLoaderClient> client,
+      const net::MutableNetworkTrafficAnnotationTag& annotation) override {
+    using D = network::mojom::RequestDestination;
+    const bool eligible = request.destination == D::kEmpty || request.destination == D::kVideo ||
+        request.destination == D::kAudio || request.destination == D::kImage ||
+        request.destination == D::kObject || request.destination == D::kEmbed;
+    if (eligible && request.method == "GET" && request.url.SchemeIsHTTPOrHTTPS() &&
+        document_.AsRenderFrameHostIfValid())
+      client = ResponseObserver::Create(std::move(client), document_, request);
+    target_->CreateLoaderAndStart(std::move(loader), id, options, request, std::move(client), annotation);
+  }
+ private:
+  void Disconnected() { if (receivers_.empty()) delete this; }
+  void TargetLost() { receivers_.Clear(); delete this; }
+  mojo::ReceiverSet<network::mojom::URLLoaderFactory> receivers_;
+  mojo::Remote<network::mojom::URLLoaderFactory> target_;
+  content::WeakDocumentPtr document_;
 };
 }  // namespace
 
-void Bind(content::RenderFrameHost* frame,
-          mojo::PendingReceiver<adblock::mojom::ResourceObserver> receiver) {
-  if (frame) new Observer(*frame, std::move(receiver));
+void InstallFactory(content::RenderFrameHost* frame, network::URLLoaderFactoryBuilder& builder) {
+  if (!frame) return;
+  auto [receiver, target] = builder.Append();
+  new ResourceFactory(std::move(receiver), std::move(target), frame->GetWeakDocumentPtr());
 }
 
 std::u16string MenuLabel() { return ResourceMenuLabel(); }
