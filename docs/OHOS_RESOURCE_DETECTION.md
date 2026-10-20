@@ -9,12 +9,16 @@ media, or turn an MSE blob URL into a complete file.
 
 ## Integration
 
-- A standalone renderer `URLLoaderThrottle` is installed alongside adblock's
-  throttle, independently of adblock settings. It filters by response MIME,
-  path and disposition; only candidate metadata crosses Mojo. Scripts, CSS and
-  font destinations do not allocate observation pipes.
-- The Mojo receiver is a frame-bound `DocumentService`, destroyed across
-  cross-document navigation. It never trusts a renderer-supplied tab ID.
+- A browser-side URLLoaderFactoryBuilder interceptor is installed for document
+  subresource factories, independently of adblock settings. It also sees loads
+  issued by Blink background fetch threads. Worker-owned factories are excluded.
+- The factory captures the source frame ID and committed/pending navigation ID.
+  Clones retain that identity; responses must resolve to the same active,
+  committed document. This avoids capturing the old WeakDocumentPtr before a
+  reused frame commits. Accepted entries retain a WeakDocumentPtr for downloads.
+  Ambiguous overlapping pending commits are excluded. A response
+  observer inspects only headers, and forwards the original body pipe, metadata,
+  loader control, redirects, progress and completion without buffering the body.
 - Browser-owned per-WebContents state accepts active frames belonging to the
   current primary page, including cross-origin iframes. Primary page changes
   clear the collection and replace its opaque navigation identity. Request
@@ -62,12 +66,15 @@ Known `.ts`, `.m4s` and segment MIME responses are excluded. A response whose
 MIME/URL resembles a normal file can still be an application-specific stream
 fragment; metadata alone cannot prove completeness or DRM status. Worker-only
 requests, requests satisfied entirely by Blink memory cache, top-level file
-navigation and response bodies are not covered by this throttle. Ordinary
+navigation and response bodies are not covered by this factory interceptor. Ordinary
 top-level downloads continue through Chromium as before. Disk-cache and
 Service Worker behavior require device fixtures; no universal coverage claim.
 
 Run `python3 scripts/tests/test-resource-policy.py` for the production classifier
-and Content-Range parser (host-only C++). Lumie's
+and Content-Range parser (host-only C++).
+`python3 scripts/tests/test-resource-document.py` compiles the production
+identity resolver with a small host frame harness to exercise pending commits,
+RFH reuse, inactivity and destruction. Lumie's
 `node --test scripts/tests/resource-store.test.mjs` covers document/tab/request
 identity, private/runtime isolation, old-engine timeouts, cancellation, manifest
 rejection and coalesced refresh. Native compilation must run through the
@@ -76,3 +83,38 @@ existing push-triggered CI; do not modify CI workflows to add these tests.
 Device validation should cover direct/signed/ranged media, iframe navigation,
 redirects, wrong MIME/error responses, disabled adblock, private windows,
 expired identities, manifest copy-only behavior and normal download creation.
+
+
+## Verified build — 2026-10-20
+
+Engine source `ef0c649f`, Lumie source `2f8abfad`:
+[Native CI](https://github.com/miramira8295/chromium-hmos/actions/runs/39445403190)
+and [Adapter CI](https://github.com/miramira8295/chromium-hmos/actions/runs/39445403262)
+both completed successfully. Native binaries came from push-triggered CI; no CI
+code was changed. Signed normal phone and Pad packages were assembled from that
+HAR. The Pad package was installed; phone physical validation remains pending
+because the phone was offline.
+
+| Pad fixture check | Result |
+| --- | --- |
+| Video/audio, image, PDF, redirects, HLS/DASH classification | Passed: 9 expected entries |
+| Signed URL, Cookie and Authorization download context | Passed: exact 2048-byte file |
+| HTTP 206 size and subsequent full-file download without Range | Passed: 2048-byte total and exact file |
+| HTML/error responses and known stream fragments | Excluded as expected |
+| Cross-origin iframe, iframe navigation and primary navigation | Correct collection and expired-entry removal |
+| Image, entry and accounted-metadata limits | Passed: 32 images, 128 entries, 512 KiB metadata limit |
+| Same URL changes from video to HLS | Old download permission revoked |
+| Chromium native menu opens shared resource UI | Passed on final build |
+| Existing tabs and Vulkan backend | Original 9 tabs retained; Ganesh Vulkan; zero GPU crashes |
+
+The exhaustive collector fixtures ran on `f6345843`; the production collector
+and classification policy are byte-identical in final `ef0c649f`. The final
+build additionally passed startup, nine-resource collection and native menu/UI
+checks. Host production-policy and document-identity harnesses pass, as do all
+179 Lumie Node tests. Test downloads and fixture cookies were removed.
+
+These fixtures use synthetic local HTTP payloads to check response metadata,
+body delivery and download integrity. They do not establish real-media decode,
+DRM, stream merging, universal cache/worker coverage, or a complete Chromium
+regression pass. Evidence and package provenance are retained under
+`out/resource-detection-20261020/` locally (not committed).
