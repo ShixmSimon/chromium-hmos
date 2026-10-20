@@ -33,6 +33,42 @@ export interface BookmarkNode {
   path?: string[];
 }
 
+/** Response metadata only; identities are scoped to one tab/document. */
+export interface DetectedResource {
+  id: string;
+  name: string;
+  url: string;
+  kind: 'video' | 'audio' | 'image' | 'file' | 'hls' | 'dash';
+  mimeType: string;
+  totalBytes: number;
+  downloadable: boolean;
+}
+
+export interface ResourceListEvent extends ShellServiceEvent {
+  event: 'resourceList';
+  ok: boolean;
+  protocolVersion?: number;
+  tabId?: string;
+  navigationId?: string;
+  resources?: DetectedResource[];
+  truncated?: boolean;
+  reason?: string;
+}
+
+export interface ResourceChangedEvent extends ShellServiceEvent {
+  event: 'resourcesChanged';
+  tabId: string;
+  navigationId: string;
+}
+
+export interface ResourceActionResultEvent extends ShellServiceEvent {
+  event: 'resourceActionResult';
+  ok: boolean;
+  tabId?: string;
+  navigationId?: string;
+  reason?: string;
+}
+
 export interface HistoryItem {
   url: string;
   title: string;

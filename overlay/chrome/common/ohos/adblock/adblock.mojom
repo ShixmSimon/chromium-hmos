@@ -2,6 +2,27 @@
 module chrome.ohos.adblock.mojom;
 import "url/mojom/url.mojom";
 import "third_party/blink/public/mojom/tokens/tokens.mojom";
+import "services/network/public/mojom/fetch_api.mojom";
+
+// Independent of filtering. Bound to the requesting document, never a process
+// or the currently active tab. No Cookie header or response body crosses IPC.
+struct ResourceResponse {
+  url.mojom.Url url;
+  string mime_type;
+  string disposition;
+  string content_range;
+  int32 status;
+  int64 content_length;
+  string method;
+  url.mojom.Url referrer;
+  int32 referrer_policy;
+  network.mojom.RequestMode mode;
+  network.mojom.CredentialsMode credentials_mode;
+  string authorization;
+};
+interface ResourceObserver {
+  Record(ResourceResponse response);
+};
 
 struct Decision {
   bool blocked;

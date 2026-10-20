@@ -25,12 +25,14 @@ diff --git a/chrome/browser/universal_web_contents_observers.cc b/chrome/browser
 diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
 --- a/chrome/browser/BUILD.gn
 +++ b/chrome/browser/BUILD.gn
-@@ -1732,6 +1732,13 @@
+@@ -1732,6 +1732,15 @@
        "ohos/url_protection/rule_sources.cc",
        "ohos/url_protection/rule_sources.h",
      ]
 +    deps += [ "//chrome/common/ohos/adblock:mojom", "//chrome/common/ohos/adblock:execution", "//third_party/adblock_rust:runtime" ]
 +    sources += [
++      "ohos/resource_collector.cc",
++      "ohos/resource_collector.h",
 +      "ohos/adblock/adblock.cc",
 +      "ohos/adblock/adblock.h",
 +      "ohos/adblock/engine.cc",
@@ -94,12 +96,13 @@ diff --git a/chrome/browser/chrome_content_browser_client_receiver_bindings.cc b
 diff --git a/chrome/renderer/BUILD.gn b/chrome/renderer/BUILD.gn
 --- a/chrome/renderer/BUILD.gn
 +++ b/chrome/renderer/BUILD.gn
-@@ -244,6 +244,10 @@
+@@ -244,6 +244,11 @@
    }
  
    data_deps = [ "//tools/v8_context_snapshot" ]
 +  if (is_ohos) {
-+    sources += [ "ohos/adblock.cc", "ohos/adblock.h" ]
++    sources += [ "ohos/adblock.cc", "ohos/adblock.h",
++                 "ohos/resource_throttle.cc", "ohos/resource_throttle.h" ]
 +    deps += [ "//chrome/common/ohos/adblock:mojom", "//chrome/common/ohos/adblock:execution", "//chrome/renderer/ohos/adblock_resources:runtime" ]
 +  }
  
@@ -229,14 +232,56 @@ diff --git a/chrome/renderer/url_loader_throttle_provider_impl.cc b/chrome/rende
  }
  
  std::vector<std::unique_ptr<blink::URLLoaderThrottle>>
-@@ -182,6 +197,10 @@
+@@ -182,6 +197,12 @@
  #endif
  
    std::vector<std::unique_ptr<blink::URLLoaderThrottle>> throttles;
 +#if BUILDFLAG(IS_OHOS)
++  if (auto throttle = chrome::ohos::resources::CreateThrottle(local_frame_token, request))
++    throttles.push_back(std::move(throttle));
 +  if (auto throttle = adblock_->Create(local_frame_token, request))
 +    throttles.push_back(std::move(throttle));
 +#endif
  
    // Some throttles have already been added in the browser for frame resources.
    // Don't add them for frame requests.
+
+diff --git a/chrome/renderer/url_loader_throttle_provider_impl.cc b/chrome/renderer/url_loader_throttle_provider_impl.cc
+--- a/chrome/renderer/url_loader_throttle_provider_impl.cc
++++ b/chrome/renderer/url_loader_throttle_provider_impl.cc
+@@ -3,6 +3,10 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/renderer/url_loader_throttle_provider_impl.h"
++#include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/renderer/ohos/resource_throttle.h"
++#endif
+ 
+ #include <memory>
+ #include <utility>
+diff --git a/chrome/browser/chrome_browser_interface_binders.cc b/chrome/browser/chrome_browser_interface_binders.cc
+--- a/chrome/browser/chrome_browser_interface_binders.cc
++++ b/chrome/browser/chrome_browser_interface_binders.cc
+@@ -3,6 +3,10 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/chrome_browser_interface_binders.h"
++#include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ohos/resource_collector.h"
++#endif
+ 
+ #include <utility>
+ 
+@@ -457,6 +461,10 @@
+ void PopulateChromeFrameBinders(
+     mojo::BinderMapWithContext<content::RenderFrameHost*>* map,
+     content::RenderFrameHost* render_frame_host) {
++#if BUILDFLAG(IS_OHOS)
++  map->Add<chrome::ohos::adblock::mojom::ResourceObserver>(
++      &chrome::ohos::resources::Bind);
++#endif
+   map->Add<glic::mojom::WebClientHandler>(&glic::BindGlicWebClientHandler);
+   // Defense in depth: privileged capability interfaces are not even registered
+   // for a frame outside a privileged process, so a non-PWC frame cannot
