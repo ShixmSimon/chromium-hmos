@@ -41,6 +41,7 @@
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/url_loader_completion_status.h"
 #include "services/network/public/cpp/url_loader_factory_builder.h"
+#include "services/network/public/mojom/early_hints.mojom.h"
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "url/gurl.h"
