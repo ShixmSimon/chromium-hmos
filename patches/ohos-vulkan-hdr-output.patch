@@ -507,7 +507,7 @@ diff --git a/content/browser/gpu/gpu_process_host.cc b/content/browser/gpu/gpu_p
 diff --git a/gpu/vulkan/ohos/vulkan_implementation_ohos.cc b/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
 --- a/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
 +++ b/gpu/vulkan/ohos/vulkan_implementation_ohos.cc
-@@ -4,9 +4,11 @@
+@@ -4,9 +4,10 @@
  
  #include "gpu/vulkan/ohos/vulkan_implementation_ohos.h"
  
@@ -515,17 +515,15 @@ diff --git a/gpu/vulkan/ohos/vulkan_implementation_ohos.cc b/gpu/vulkan/ohos/vul
  #include "base/files/file_path.h"
  #include "base/logging.h"
  #include "base/notimplemented.h"
-+#include "base/process/fork_server_ohos.h"
  #include "gpu/vulkan/vulkan_device_queue.h"
  #include "gpu/vulkan/vulkan_function_pointers.h"
  #include "gpu/vulkan/vulkan_image.h"
-@@ -35,8 +37,33 @@
+@@ -35,8 +37,30 @@
        VK_KHR_SURFACE_EXTENSION_NAME, "VK_OHOS_surface"};
    // Said at ERROR either way: when Vulkan was asked for and this fails,
    // Chromium falls back to GL quietly, and the reason is otherwise lost.
 -  const bool initialized = vulkan_instance_.Initialize(
 -      base::FilePath("libvulkan.so"), required_extensions, {});
-+  base::internal::TraceOhosForkDescriptors("skia-before-loader");
 +  if (!vulkan_instance_.BindUnassignedFunctionPointers(
 +          base::FilePath("libvulkan.so")))
 +    return false;
@@ -548,10 +546,8 @@ diff --git a/gpu/vulkan/ohos/vulkan_implementation_ohos.cc b/gpu/vulkan/ohos/vul
 +               << "swapchain_colorspace=" << extended_colors;
 +  // Initialize's third argument is required LAYERS, not optional extensions.
 +  // Enable colorspace only after enumeration, and request no validation layers.
-+  base::internal::TraceOhosForkDescriptors("skia-before-vkCreateInstance");
 +  const bool initialized =
 +      vulkan_instance_.InitializeInstance(required_extensions, {});
-+  base::internal::TraceOhosForkDescriptors("skia-after-vkCreateInstance");
    LOG(ERROR) << "OHOS Vulkan: instance "
                 << (initialized ? "initialized" : "failed to initialize");
    return initialized;

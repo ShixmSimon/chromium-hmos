@@ -245,6 +245,8 @@ base::FilePath GpuChildFailedMarker() {
 }
 
 struct LaunchHistory {
+  // Serialize marker writes and deletion with generation changes.
+  base::Lock marker_lock;
   // A start that failed outright: not tried again in this run. Chromium
   // retries a failed launch many times, and each retry here was a new
   // native child -- the system counted fifty.
@@ -256,8 +258,8 @@ struct LaunchHistory {
 };
 
 LaunchHistory& History() {
-  static LaunchHistory history;
-  return history;
+  static base::NoDestructor<LaunchHistory> history;
+  return *history;
 }
 
 void NoteGpuChildInDoubt() {
@@ -268,11 +270,24 @@ void NoteGpuChildInDoubt() {
 }
 
 void ClearGpuChildDoubtIfSettled(uint64_t generation) {
-  // A stale generation only means a later launch took over.
-  if (History().generation.load() != generation || History().fell_back.load() ||
-      (base::CommandLine::ForCurrentProcess()->HasSwitch(
-           base::internal::kOhosPhoneFork) &&
-       !OhosPhoneGpuHasPresented())) {
+  auto& history = History();
+  base::AutoLock lock(history.marker_lock);
+  // A stale generation only means a later launch took over. Do not delete its
+  // marker, even if this check was already queued when that launch began.
+  if (history.generation.load() != generation || history.fell_back.load() ||
+      history.start_failed) {
+    return;
+  }
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          base::internal::kOhosPhoneFork) &&
+      !OhosPhoneGpuHasPresented()) {
+    // Starting in the background can delay the first frame beyond ten seconds.
+    // Keep the failure guard until a frame arrives, but retry: a one-shot check
+    // would leave a healthy GPU marked failed for the next app launch.
+    base::ThreadPool::PostDelayedTask(
+        FROM_HERE, {base::MayBlock()},
+        base::BindOnce(&ClearGpuChildDoubtIfSettled, generation),
+        base::Seconds(1));
     return;
   }
   const base::FilePath marker = GpuChildFailedMarker();
@@ -407,26 +422,30 @@ base::ProcessId StartGpuChild(const std::string& encoded_params,
 base::ProcessId LaunchGpuChild(const std::string& encoded_params,
                                const std::vector<std::pair<int, int>>& fds) {
   LaunchHistory& history = History();
-  if (history.start_failed) {
-    return base::kNullProcessId;
+  uint64_t generation;
+  {
+    base::AutoLock lock(history.marker_lock);
+    if (history.start_failed) {
+      return base::kNullProcessId;
+    }
+    // The launch after the last GL mode has failed. It is still a child worth
+    // starting, but it must not clear the failure guard for the next app run.
+    if (encoded_params.find("--use-gl=disabled") != std::string::npos) {
+      history.fell_back = true;
+    }
+    generation = ++history.generation;
+    NoteGpuChildInDoubt();
   }
-  // The launch after the last GL mode has failed. It is still a child
-  // worth starting -- without it Chromium gives up altogether -- but the
-  // run counts as a failure.
-  if (encoded_params.find("--use-gl=disabled") != std::string::npos) {
-    history.fell_back = true;
-  }
-  NoteGpuChildInDoubt();
   const bool phone_fork = base::CommandLine::ForCurrentProcess()->HasSwitch(
       base::internal::kOhosPhoneFork);
   const base::ProcessId pid = phone_fork
                                   ? LaunchOhosPhoneGpuChild(encoded_params, fds)
                                   : StartGpuChild(encoded_params, fds);
   if (pid == base::kNullProcessId) {
+    base::AutoLock lock(history.marker_lock);
     history.start_failed = true;
     return pid;
   }
-  const uint64_t generation = ++history.generation;
   base::ThreadPool::PostDelayedTask(
       FROM_HERE, {base::MayBlock()},
       base::BindOnce(&ClearGpuChildDoubtIfSettled, generation),

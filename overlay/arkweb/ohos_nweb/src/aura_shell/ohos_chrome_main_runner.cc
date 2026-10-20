@@ -315,15 +315,6 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
                  "already initialized; startup refused");
       return false;
     }
-    const base::FilePath trace_directory(config.user_data_dir);
-    const bool fd_trace =
-        !trace_directory.empty() && base::CreateDirectory(trace_directory) &&
-        base::internal::ConfigureOhosForkFdTrace(
-            trace_directory.AppendASCII("PhoneForkFdTrace.log").value());
-    AURA_LOG_I(
-        "AuraShell phone FD trace enabled=%{public}d file=PhoneForkFdTrace.log "
-        "in user-data-dir",
-        fd_trace);
     if (config.gpu_process == "separate") {
       const bool prepared = ui::phone_gpu::PrepareSharedBufferAllocator();
       AURA_LOG_I("AuraShell phone GPU shared-buffer allocator prepared=%{public}d", prepared);

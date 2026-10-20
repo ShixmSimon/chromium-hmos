@@ -51,7 +51,6 @@
 #include "base/memory/ref_counted_memory.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/no_destructor.h"
-#include "base/ohos_startup_probe.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_number_conversions.h"
@@ -3274,7 +3273,23 @@ class StartupHandoff {
     if (phase_ == "frame") {
       // A successful probe must precede this phase. Never expose the probe
       // document, including a restored copy of it in another tab.
-      if (probe_url_.is_empty() || frame->GetLastCommittedURL() == probe_url_) {
+      if (probe_url_.is_empty()) {
+        Reply("waiting");
+        return;
+      }
+      if (frame->GetLastCommittedURL() == probe_url_) {
+        // A one-shot shell navigation can be coalesced/overwritten during
+        // startup. Carry its destination with the retried frame request. Only
+        // recover from this transaction's authenticated probe document; the
+        // pending-entry guard above prevents restarting an in-flight load.
+        const std::string* resume_url = command.FindString("url");
+        if (resume_url) {
+          const GURL destination(*resume_url);
+          if (destination.is_valid() && destination != probe_url_) {
+            NavigateOnUiThread(widget_, destination,
+                               ui::PAGE_TRANSITION_AUTO_TOPLEVEL, 0);
+          }
+        }
         Reply("waiting");
         return;
       }
@@ -3286,7 +3301,6 @@ class StartupHandoff {
     }
     pending_ = true;
     started_ = base::TimeTicks::Now();
-    OHOS_STARTUP_MARK("Startup.ReadyReceive", request_id_);
     frame->ExecuteJavaScriptInIsolatedWorld(
         u"document.documentElement && "
         u"document.documentElement.getAttribute('data-lumie-startup') || ''",
@@ -3312,7 +3326,6 @@ class StartupHandoff {
       return;
     }
     probe_url_ = document_.AsRenderFrameHostIfValid()->GetLastCommittedURL();
-    OHOS_STARTUP_MARK("Startup.ReadyAck", request_id_);
     Reply("ready");
   }
 
@@ -3328,7 +3341,6 @@ class StartupHandoff {
       Reply("waiting");
       return;
     }
-    OHOS_STARTUP_MARK("Startup.DocumentSubmitted", request_id_);
     host->compositor()->RequestSuccessfulPresentationTimeForNextFrame(
         base::BindOnce(&StartupHandoff::OnPresented, weak_factory_.GetWeakPtr()));
     // Static/blank/error pages may have no further damage of their own.
@@ -3341,7 +3353,6 @@ class StartupHandoff {
       Reply("waiting");
       return;
     }
-    OHOS_STARTUP_MARK("Startup.WindowPresented", request_id_);
     Reply("presented");
   }
 
@@ -4491,13 +4502,11 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     // The shell's summarizer reads the page's text. An isolated world keeps
     // the page's own scripts from seeing, or tampering with, the read.
     const int request_id = command.FindInt("requestId").value_or(0);
-    OHOS_STARTUP_MARK("PageText.NativeReceive", request_id);
     active->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
         u"(document.body && document.body.innerText || '').slice(0, 20000)",
         base::BindOnce(
             [](gfx::AcceleratedWidget widget, int request_id,
                base::Value result) {
-              OHOS_STARTUP_MARK("PageText.ScriptReply", request_id);
               base::DictValue event;
               event.Set("event", "pageText");
               event.Set("requestId", request_id);

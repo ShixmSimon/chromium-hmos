@@ -5,50 +5,10 @@ diff --git a/gpu/ipc/service/gpu_init.cc b/gpu/ipc/service/gpu_init.cc
  #include "base/memory/raw_ptr.h"
  #include "base/metrics/field_trial_params.h"
  #include "base/metrics/histogram_macros.h"
-+#include "base/ohos_startup_probe.h"
++// OHOS startup diagnostics retired; use the standard trace events below.
  #include "base/path_service.h"
  #include "base/strings/pattern.h"
  #include "base/strings/string_number_conversions.h"
-@@ -120,6 +121,7 @@
- 
- namespace {
- bool CollectGraphicsInfo(GPUInfo* gpu_info) {
-+  OHOS_STARTUP_SCOPE(startup_probe, "Gpu.CollectGraphicsInfo");
-   DCHECK(gpu_info);
-   TRACE_EVENT("gpu,startup", "Collect Graphics Info");
-   bool success = CollectContextGraphicsInfo(gpu_info);
-@@ -441,6 +443,7 @@
- bool GpuInit::InitializeAndStartSandbox(base::CommandLine* command_line,
-                                         const GpuPreferences& gpu_preferences) {
-   TRACE_EVENT("gpu,startup", "gpu::GpuInit::InitializeAndStartSandbox");
-+  OHOS_STARTUP_SCOPE(startup_probe, "Gpu.InitializeAndStartSandbox");
- #if BUILDFLAG(IS_CHROMEOS)
-   LOG(WARNING) << "Starting gpu initialization.";
- #endif  //  BUILDFLAG(IS_CHROMEOS)
-@@ -1115,6 +1118,7 @@
- 
- void GpuInit::InitializeInProcess(base::CommandLine* command_line,
-                                   const GpuPreferences& gpu_preferences) {
-+  OHOS_STARTUP_SCOPE(startup_probe, "Gpu.InitializeInProcess");
-   gpu_preferences_ = gpu_preferences;
-   init_successful_ = true;
- 
-@@ -1423,6 +1427,7 @@
- bool GpuInit::InitializeDawn() {
- #if BUILDFLAG(SKIA_USE_DAWN)
-   TRACE_EVENT("gpu,startup", "gpu::GpuInit::InitializeDawn");
-+  OHOS_STARTUP_SCOPE(startup_probe, "Gpu.InitializeDawn");
-   if (gpu_feature_info_.status_values[GPU_FEATURE_TYPE_SKIA_GRAPHITE] !=
-           kGpuFeatureStatusEnabled &&
-       !gpu::DawnContextProvider::DefaultForceFallbackAdapter()) {
-@@ -1492,6 +1497,7 @@
- bool GpuInit::InitializeVulkan() {
- #if BUILDFLAG(ENABLE_VULKAN)
-   TRACE_EVENT("gpu,startup", "gpu::GpuInit::InitializeVulkan");
-+  OHOS_STARTUP_SCOPE(startup_probe, "Gpu.InitializeVulkan");
-   DCHECK(gpu_feature_info_.status_values[GPU_FEATURE_TYPE_VULKAN] ==
-              kGpuFeatureStatusEnabled ||
-          gpu_feature_info_
 diff --git a/ui/gl/gl_display.cc b/ui/gl/gl_display.cc
 --- a/ui/gl/gl_display.cc
 +++ b/ui/gl/gl_display.cc
@@ -56,50 +16,17 @@ diff --git a/ui/gl/gl_display.cc b/ui/gl/gl_display.cc
  #include "base/logging.h"
  #include "base/metrics/histogram_macros.h"
  #include "base/notreached.h"
-+#include "base/ohos_startup_probe.h"
++// OHOS startup diagnostics retired; use the standard trace events below.
  #include "base/strings/string_number_conversions.h"
  #include "base/strings/string_split.h"
  #include "base/synchronization/atomic_flag.h"
-@@ -586,6 +587,7 @@
-                                      EGLDisplayPlatform native_display,
-                                      gl::GLDisplayEGL* existing_display) {
-   TRACE_EVENT("gpu,startup", "gl::GLDisplayEGL::InitializeDisplay");
-+  OHOS_STARTUP_SCOPE(startup_probe, "GL.InitializeDisplay");
-   if (display_ != EGL_NO_DISPLAY)
-     return true;
- 
-@@ -645,6 +647,7 @@
- 
-     {
-       TRACE_EVENT("gpu,startup", "eglInitializeFn display");
-+      OHOS_STARTUP_SCOPE(egl_probe, "GL.eglInitialize");
-       if (!eglInitialize(display, nullptr, nullptr)) {
-         bool is_last = disp_index == init_displays.size() - 1;
- 
 diff --git a/ui/gl/init/gl_factory.cc b/ui/gl/init/gl_factory.cc
 --- a/ui/gl/init/gl_factory.cc
 +++ b/ui/gl/init/gl_factory.cc
-@@ -11,6 +11,7 @@
- 
+@@ -11,5 +11,6 @@
  #include "base/command_line.h"
  #include "base/logging.h"
-+#include "base/ohos_startup_probe.h"
++// OHOS startup diagnostics retired; use the standard trace events below.
  #include "base/strings/string_util.h"
  #include "base/trace_event/trace_event.h"
  #include "build/build_config.h"
-@@ -143,6 +144,7 @@
-                                           gl::GpuPreference gpu_preference) {
-   TRACE_EVENT1("gpu,startup", "gl::init::InitializeNoExtensionsOneOff",
-                "init_bindings", init_bindings);
-+  OHOS_STARTUP_SCOPE(startup_probe, "GL.NoExtensions");
-   if (init_bindings) {
-     if (!InitializeStaticGLBindingsOneOff())
-       return nullptr;
-@@ -157,6 +159,7 @@
- bool InitializeStaticGLBindingsOneOff() {
-   DCHECK_EQ(kGLImplementationNone, GetGLImplementation());
-   TRACE_EVENT("gpu,startup", "gl::init::InitializeStaticGLBindingsOneOff");
-+  OHOS_STARTUP_SCOPE(startup_probe, "GL.StaticBindings");
- 
-   GLImplementationParts impl = GetRequestedGLImplementation();
-   if (impl.gl == kGLImplementationDisabled) {

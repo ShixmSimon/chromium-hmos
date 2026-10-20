@@ -17,7 +17,6 @@
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
-#include "base/ohos_startup_probe.h"
 #include "base/process/fork_server_ohos.h"
 #include "base/synchronization/lock.h"
 #include "base/synchronization/waitable_event.h"
@@ -287,7 +286,6 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
               reply.result =
                   static_cast<uint32_t>(phone_gpu::Result::kPresented);
               if (!connection->presented.exchange(true)) {
-                OHOS_STARTUP_MARK("Frame.PhoneNativeBufferAccepted", 0);
                 LOG(WARNING) << "OHOS phone GPU: first frame presented using "
                                 "shared NativeBuffer";
               }
@@ -404,7 +402,6 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
     }
     if (reply.result == phone_gpu::Result::kPresented &&
         !connection->presented.exchange(true)) {
-      OHOS_STARTUP_MARK("Frame.PhoneReadbackAccepted", 0);
       LOG(WARNING) << "OHOS phone GPU: first frame presented widget="
                    << frame.widget << " size=" << frame.width << "x"
                    << frame.height;

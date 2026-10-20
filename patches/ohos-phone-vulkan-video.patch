@@ -2296,7 +2296,7 @@ diff --git a/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc b/media/
  #include "gpu/ipc/client/command_buffer_proxy_impl.h"
  #include "gpu/ipc/client/gpu_channel_host.h"
  #include "media/base/decoder.h"
-@@ -278,6 +279,17 @@
+@@ -278,6 +279,27 @@
      return OutputFormat::UNDEFINED;
    }
  #endif
@@ -2308,6 +2308,16 @@ diff --git a/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc b/media/
 +    // textures yet. Keep decoder CPU frames intact instead of repacking them
 +    // into NV12/P010 native images in MappableSharedImageVideoFramePool. In
 +    // particular, falling through to YV12 would discard high-bit-depth data.
++    return OutputFormat::UNDEFINED;
++  }
++  if (media::BitDepth(pixel_format) > 8 &&
++      gpu_channel_host_->gpu_feature_info()
++              .status_values[gpu::GPU_FEATURE_TYPE_VULKAN] ==
++          gpu::kGpuFeatureStatusEnabled) {
++    // Ganesh can sample decoder-owned P010, but the CPU-mappable pool has no
++    // backing for this format's CPU read/write usage. Keep software planes
++    // intact for the high-bit-depth upload path; do not lose the GPU channel
++    // to an unsupported native P010 allocation or repack to 8-bit YV12.
 +    return OutputFormat::UNDEFINED;
 +  }
 +#endif
