@@ -108,7 +108,7 @@ Found by reading, not by running. Each is real in
 
 ## There is a Chromium tree on the original dev machine -- at 144
 
-`/Volumes/OnshuoData/chromium/ohos-144-sync/src` is a full checkout at
+The local `ohos-144-sync/src` directory is a full checkout at
 **144.0.7559.59**, the ArkWeb sync tree. It is not the 154 this port targets,
 so every signature in it has to be treated as a hint rather than an answer;
 the 154 signatures below were read from the tag itself and are the ones to

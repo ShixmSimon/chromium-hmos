@@ -197,7 +197,7 @@ Brave's fully trusted personal-filter provider, as required by the shell handoff
 - Release: https://github.com/miramira8295/chromium-hmos/releases/tag/build-4d7bb521.
 - HAR SHA256: `d5235a62f95dbbdbe1a588e689e275c016bc0857c56ffceaccb9391861fd3464`.
 - Engine ELF Build ID: `d81ded0152e0c04611753bbe04aeacd87536cffd`.
-- Local delivery: `/Users/anshuo/Downloads/Lumie-adblock-Brave-4d7bb521/`;
+- Local delivery directory: `Lumie-adblock-Brave-4d7bb521/`;
   `TESTING.md`, standalone probe, capability matrix and evidence accompany the HAR.
 
 The final native run completed the remaining ten build steps, including linking,

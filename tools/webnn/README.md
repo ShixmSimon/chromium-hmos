@@ -16,7 +16,7 @@ an enumerated `OH_NN_ACCELERATOR`; there is no application-side CPU fallback.
 - The Chromium integration must pass the native CI build. Building the probe
   alone does **not** validate the Chromium/Mojo C++ integration.
 
-## Device validation (not performed yet)
+## Device validation procedure
 
 1. Use a Lumie package containing the new native engine and the new shell flag.
    Enable experimental multiprocess on phones (Skia Vulkan on tablets), enable
@@ -55,7 +55,40 @@ and [adapter CI](https://github.com/miramira8295/chromium-hmos/actions/runs/3922
 both passed. Lumie flag commit: `96552ed` on `main`; 36 relevant Node tests and
 the focused ArkTS check passed. Host NNRt tests pass ASan/UBSan, including
 31 construction and 10 execution failure points. The standalone ARM64 probe
-also cross-compiles and links successfully. Device execution is still pending.
+also cross-compiles and links successfully. See the device result below.
 
 The downloaded `build-0d778a08/engine.har` matches the release SHA256SUMS:
 `1f2a1d8e642f9d688eecab05eced72f6accba6b55f36d52ece72d19e4b61f350`.
+
+## Mate 70 Pro+ result (2026-10-19): execution NOT passed
+
+Installed the verified phone HAP containing native `0d778a08`; launch smoke
+passed. With both WebNN features enabled, a separate GPU process and
+GraphiteDawnVulkan/TreesInViz preserved, `createContext({deviceType:'npu'})`
+succeeded. The trace contains `OhosWebNNDeviceSelected` and
+`OhosWebNNCompile` on the dedicated worker thread.
+
+The first Add graph was rejected with `NotSupportedError: Selected accelerator
+does not support this float32 Add graph`. This is the guard following a
+successful `OH_NNModel_GetAvailableOperations` call: the current diagnostic
+does not distinguish a null support array, unexpected operation count or a
+false support bit. Six shapes (ranks 1–4, including `[1,3,224,224]`) reproduced
+the rejection. There are **no dispatch/completion events or numerical results**.
+This does not establish that the phone cannot run Add on its NPU: device
+enumeration/selection and graph compatibility still need diagnosis. In
+particular, the prototype selects the first enumerated accelerator, and this
+capture does not include its name or the complete device list.
+
+CPU context rejection, unsupported Mul/broadcast rejection, tensor write/read
+after graph rejection, explicit context destruction and rejection of subsequent
+use all behaved as expected. Returning from the background allowed new context
+and graph requests, which reproduced the same support-query rejection; successful
+inference recovery and native execution-failure handling remain unverified.
+The standalone shell probe was blocked by the OS with `Permission denied`, so
+it provided no NNRt execution evidence.
+
+WebNN was switched OFF and the app restarted after testing: `navigator.ml` is
+undefined again; TreesInViz and GraphiteDawnVulkan remain enabled. Temporary
+keep-awake, server and log capture were stopped. Pad was not connected.
+Local evidence: `artifacts/webnn-device-20261019/` (report, Chrome GPU report,
+command lines, page results, hilog and `webnn` trace).

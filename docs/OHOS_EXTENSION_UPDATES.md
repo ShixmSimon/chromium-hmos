@@ -6,7 +6,7 @@
 
 ## 外壳协议 v1
 
-与 `/Users/anshuo/Downloads/LUMIE-EXTENSION-UPDATES-HANDOFF.md` 对齐：
+与本地交接文档 `LUMIE-EXTENSION-UPDATES-HANDOFF.md` 对齐：
 
 - `getExtensionUpdateCapabilities { requestId }` → `extensionUpdateCapabilities`
   含 `protocolVersion:1`、`supported`、运行期随机 `contextId`。

@@ -79,6 +79,6 @@ PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chrome node
 - [Adapter CI 38860976942](https://github.com/miramira8295/chromium-hmos/actions/runs/38860976942) 通过。
 - HAR SHA256：`f1ad21b2e198facbcc0143c7d2f068f8ec96c3540cedd1e3cc4c3c42b29c894e`。
 - 引擎 Build ID：`d93473b27a188d2ce183b733f1f0c772594c81d0`。
-- 本地交付：`/Users/anshuo/Downloads/Lumie-viewport-translation-e1931647/engine.har`；同目录 TESTING.md、PROTOCOL.md、假 provider、合成页面、截图和 evidence.zip。
+- 本地交付目录：`Lumie-viewport-translation-e1931647/engine.har`；同目录 TESTING.md、PROTOCOL.md、假 provider、合成页面、截图和 evidence.zip（不入库）。
 - 已验证 HAR 内 8 个原生命令、文档握手标记、TranslationTypes/NativeContext 声明和导出；二进制内嵌执行器与实际测试源码逐字节一致。
 - 真机未操作，手机/平板与真实 provider 验收仍待用户完成。文档后续提交不改变交付内核的 commit。

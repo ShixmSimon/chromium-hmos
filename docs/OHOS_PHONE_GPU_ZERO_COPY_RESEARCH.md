@@ -192,7 +192,7 @@ P99 5.474 ms；包含取 buffer 等待的整轮 P95 12.751 ms、P99 18.405 ms。
 本轮为系统 GLES，ANGLE、Chromium/Skia 输出 FBO、崩溃恢复和长期稳定性仍待接入验证。
 
 完整报告与证据：
-`/Users/anshuo/Downloads/Lumie-phone-gpu-zero-copy-20261013/REPORT.md`。
+本地交付目录 `Lumie-phone-gpu-zero-copy-20261013/REPORT.md`（不入库）。
 
 
 ## Chromium 接入与外壳验收（2026-10-13）
