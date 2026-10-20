@@ -23,6 +23,7 @@
 #include "components/sessions/content/session_tab_helper.h"
 #include "content/public/browser/document_service.h"
 #include "content/public/browser/download_manager.h"
+#include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/page.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/weak_document_ptr.h"
@@ -99,6 +100,7 @@ class PageResources : public content::WebContentsObserver,
         r->mode == network::mojom::RequestMode::kNavigate) return;
     auto kind = Classify(r->url.path(), r->mime_type, r->disposition, r->status, r->method);
     if (kind.empty()) return;
+    Prune();
     r->url = r->url.GetWithoutRef();
     const auto origin = frame.GetLastCommittedOrigin().Serialize();
     const std::string key = origin + "\n" + r->url.spec();
@@ -160,11 +162,28 @@ class PageResources : public content::WebContentsObserver,
   }
   bool truncated() const { return truncated_; }
   void PrimaryPageChanged(content::Page&) override { Clear(); }
+  void DidFinishNavigation(content::NavigationHandle* handle) override {
+    if (handle->HasCommitted() && !handle->IsSameDocument()) Prune();
+  }
+  void RenderFrameDeleted(content::RenderFrameHost* frame) override { Prune(frame); }
 
  private:
   explicit PageResources(content::WebContents* contents)
       : content::WebContentsObserver(contents), content::WebContentsUserData<PageResources>(*contents) {}
   friend class content::WebContentsUserData<PageResources>;
+  void Prune(content::RenderFrameHost* removed = nullptr) {
+    bool changed = false;
+    for (auto it = entries_.begin(); it != entries_.end();) {
+      auto* frame = it->second.document.AsRenderFrameHostIfValid();
+      if (!frame || frame == removed) {
+        metadata_bytes_ -= it->second.metadata_bytes;
+        if (it->second.kind == "image") --images_;
+        it = entries_.erase(it);
+        changed = true;
+      } else { ++it; }
+    }
+    if (changed) Changed();
+  }
   void Changed() {
     if (!notification_.IsRunning()) notification_.Start(FROM_HERE, base::Milliseconds(500),
         base::BindOnce(&PageResources::Notify, base::Unretained(this)));
