@@ -105,6 +105,15 @@ class PageResources : public content::WebContentsObserver,
     const auto origin = frame.GetLastCommittedOrigin().Serialize();
     const std::string key = origin + "\n" + r->url.spec();
     auto found = entries_.find(key);
+    // A URL can change from a direct file to a manifest within one document.
+    // Retire its old capability instead of retaining a stale Download button.
+    if (found != entries_.end() && found->second.kind != kind) {
+      metadata_bytes_ -= found->second.metadata_bytes;
+      if (found->second.kind == "image") --images_;
+      entries_.erase(found);
+      found = entries_.end();
+      Changed();
+    }
     const size_t bytes = key.size() + r->url.spec().size() + r->mime_type.size() +
         r->disposition.size() + r->referrer.spec().size() + r->authorization.size() + 512;
     if (found != entries_.end()) {
