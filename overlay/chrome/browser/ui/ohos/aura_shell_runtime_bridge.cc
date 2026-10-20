@@ -61,6 +61,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "base/values.h"
 #include "cc/input/browser_controls_offset_tag_modifications.h"
 #include "cc/input/browser_controls_state.h"
@@ -3254,26 +3255,40 @@ class StartupHandoff {
     }
     if (pending_ && phase_ == *phase &&
         base::TimeTicks::Now() - started_ < base::Seconds(4)) {
+      Trace("request", "coalesced_pending");
       return;
     }
     Invalidate();
     phase_ = *phase;
     content::WebContents* contents = tabs_->GetActiveWebContents();
-    if (!contents || contents->GetVisibility() != content::Visibility::VISIBLE ||
-        contents->GetController().GetPendingEntry()) {
+    if (!contents) {
+      Trace("request", "no_active_contents");
+      Reply("waiting");
+      return;
+    }
+    if (contents->GetVisibility() != content::Visibility::VISIBLE) {
+      Trace("request", "contents_hidden");
+      Reply("waiting");
+      return;
+    }
+    if (contents->GetController().GetPendingEntry()) {
+      Trace("request", "navigation_pending");
       Reply("waiting");
       return;
     }
     content::RenderFrameHost* frame = contents->GetPrimaryMainFrame();
     if (!frame || !frame->IsRenderFrameLive()) {
+      Trace("request", "frame_not_live");
       Reply("waiting");
       return;
     }
     document_ = frame->GetWeakDocumentPtr();
+    ++document_id_;
     if (phase_ == "frame") {
       // A successful probe must precede this phase. Never expose the probe
       // document, including a restored copy of it in another tab.
       if (probe_url_.is_empty()) {
+        Trace("request", "probe_not_ready");
         Reply("waiting");
         return;
       }
@@ -3290,17 +3305,22 @@ class StartupHandoff {
                                ui::PAGE_TRANSITION_AUTO_TOPLEVEL, 0);
           }
         }
+        Trace("request", "probe_document");
         Reply("waiting");
         return;
       }
       pending_ = true;
       started_ = base::TimeTicks::Now();
+      ++work_id_;
+      Trace("request", "frame_accepted");
       frame->InsertVisualStateCallback(base::BindOnce(
           &StartupHandoff::OnSubmitted, weak_factory_.GetWeakPtr()));
       return;
     }
     pending_ = true;
     started_ = base::TimeTicks::Now();
+    ++work_id_;
+    Trace("request", "ready_accepted");
     frame->ExecuteJavaScriptInIsolatedWorld(
         u"document.documentElement && "
         u"document.documentElement.getAttribute('data-lumie-startup') || ''",
@@ -3321,7 +3341,11 @@ class StartupHandoff {
 
   void OnReady(base::Value value) {
     pending_ = false;
-    if (!Matches() || !value.is_string() || value.GetString() != token_) {
+    const bool matches = Matches();
+    const bool authenticated = value.is_string() && value.GetString() == token_;
+    Trace("ready_callback",
+          matches && authenticated ? "authenticated" : "rejected");
+    if (!matches || !authenticated) {
       Reply("waiting");
       return;
     }
@@ -3330,26 +3354,36 @@ class StartupHandoff {
   }
 
   void OnSubmitted(bool success) {
-    if (!success || !Matches()) {
+    const bool matches = Matches();
+    Trace("visual_state_callback",
+          success ? (matches ? "submitted" : "document_changed")
+                  : "submission_failed");
+    if (!success || !matches) {
       pending_ = false;
       Reply("waiting");
       return;
     }
     auto* host = aura::WindowTreeHost::GetForAcceleratedWidget(widget_);
     if (!host || !host->compositor()) {
+      Trace("presentation_request", "no_compositor");
       pending_ = false;
       Reply("waiting");
       return;
     }
+    Trace("presentation_request", "registered");
     host->compositor()->RequestSuccessfulPresentationTimeForNextFrame(
-        base::BindOnce(&StartupHandoff::OnPresented, weak_factory_.GetWeakPtr()));
+        base::BindOnce(&StartupHandoff::OnPresented,
+                       weak_factory_.GetWeakPtr()));
     // Static/blank/error pages may have no further damage of their own.
     host->compositor()->ScheduleFullRedraw();
   }
 
   void OnPresented(const viz::FrameTimingDetails&) {
     pending_ = false;
-    if (!Matches()) {
+    const bool matches = Matches();
+    Trace("presentation_callback",
+          matches ? "document_matched" : "document_changed");
+    if (!matches) {
       Reply("waiting");
       return;
     }
@@ -3366,6 +3400,15 @@ class StartupHandoff {
     DispatchRuntimeEvent(widget_, std::move(event));
   }
 
+  void Trace(const char* stage, const char* detail) const {
+    // Trace-only diagnostics: correlate retries and callbacks without exposing
+    // the restored URL or the shell's authentication token.
+    TRACE_EVENT_INSTANT("startup", "OhosStartupHandoff", "stage", stage,
+                        "detail", detail, "phase", phase_, "request_id",
+                        request_id_, "work_id", work_id_, "document_id",
+                        document_id_);
+  }
+
   const raw_ptr<TabStripModel> tabs_;
   gfx::AcceleratedWidget widget_ = gfx::kNullAcceleratedWidget;
   std::string token_;
@@ -3373,6 +3416,8 @@ class StartupHandoff {
   GURL probe_url_;
   content::WeakDocumentPtr document_;
   int request_id_ = 0;
+  uint64_t work_id_ = 0;
+  uint64_t document_id_ = 0;
   bool pending_ = false;
   base::TimeTicks started_;
   base::WeakPtrFactory<StartupHandoff> weak_factory_{this};
