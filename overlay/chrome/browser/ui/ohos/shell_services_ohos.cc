@@ -9,6 +9,7 @@
 
 #include "base/logging.h"
 #include "chrome/browser/ohos/adblock/adblock.h"
+#include "chrome/browser/ohos/resource_collector.h"
 #include "chrome/browser/ohos/translation/translation.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
@@ -36,6 +37,10 @@ struct ShellServiceCommand {
 };
 
 constexpr ShellServiceCommand kShellServiceCommands[] = {
+    {"listResources", &resources::HandleCommand},
+    {"setResourceMenuLabel", &resources::HandleCommand},
+    {"downloadResource", &resources::HandleCommand},
+    {"clearResources", &resources::HandleCommand},
     {"getTranslationCapabilities", &translation::HandleCommand},
     {"getTranslationState", &translation::HandleCommand},
     {"startTranslation", &translation::HandleCommand},

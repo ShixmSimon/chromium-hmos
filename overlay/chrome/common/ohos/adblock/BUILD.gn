@@ -8,7 +8,7 @@ mojom("mojom") {
 }
 
 source_set("execution") {
-  sources = [ "decision_throttle.cc", "decision_throttle.h" ]
+  sources = [ "decision_throttle.cc", "decision_throttle.h", "../resource_policy.h" ]
   deps = [ ":mojom", "//base", "//net", "//mojo/public/cpp/bindings",
            "//services/network/public/cpp", "//services/network/public/cpp:web_platform",
            "//third_party/blink/public/common", "//url" ]

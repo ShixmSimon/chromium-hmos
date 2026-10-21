@@ -207,7 +207,8 @@ export interface BrowserRuntimeEvent {
   startupPhase?: 'ready' | 'frame';
   startupStatus?: 'waiting' | 'ready' | 'presented';
   version: number;
-  event: 'startupAck' | 'pictureInPictureState' | 'systemPrintReady' | 'systemPrintFailed' | 'shareRequested' |
+  event: 'resourceList' | 'resourcesChanged' | 'resourceActionResult' | 'resourcesRequested' |
+    'startupAck' | 'pictureInPictureState' | 'systemPrintReady' | 'systemPrintFailed' | 'shareRequested' |
     'castRequested' | 'filePickerRequested' | 'pwaInstalled' | 'pwaMenuModel' |
     'pwaMenuClosed' | 'inputRecovered' | 'systemActionRequested' |
     'permissionsRequested' | 'sitePermissionRequested' |
