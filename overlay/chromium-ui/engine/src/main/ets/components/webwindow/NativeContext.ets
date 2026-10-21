@@ -492,6 +492,7 @@ export interface BrowserCommandPayload {
   batchId?: string;
   sourceLanguage?: string;
   targetLanguage?: string;
+  uiLanguage?: string;
   style?: TranslationStyle;
   prefetchViewportRatio?: number;
   maxSegments?: number;
