@@ -246,11 +246,13 @@ class Page : public content::WebContentsObserver,
       }
       const auto target = Str(input, "targetLanguage"),
                  source = Str(input, "sourceLanguage"),
+                 ui_language = Str(input, "uiLanguage"),
                  style = Str(input, "style");
       const double prefetch =
           input.FindDouble("prefetchViewportRatio").value_or(0.0);
       if (!Language(target, false) || !Language(source, true) ||
-          !Style(style) || prefetch < 0 || prefetch > 0.5) {
+          !Language(ui_language, true) || !Style(style) || prefetch < 0 ||
+          prefetch > 0.5) {
         reject("invalidRequest");
         return;
       }
@@ -270,6 +272,7 @@ class Page : public content::WebContentsObserver,
       source_attempts_.clear();
       c.Set("op", "start");
       c.Set("targetLanguage", target);
+      c.Set("uiLanguage", ui_language);
       c.Set("style", style);
       c.Set("prefetchViewportRatio", prefetch);
       timer_.Start(FROM_HERE, base::Milliseconds(300), this, &Page::Poll);
