@@ -380,11 +380,11 @@
       span.quote{border-inline-start:4px solid currentColor;padding-inline-start:.75em}
       span.gray{background:light-dark(#eee,#303030);color:light-dark(#171717,#eee);padding:.5em .7em;border-radius:.3em}
       span.loading{font-size:.9em}
-      @supports(background-clip:text){span.loading{background-image:linear-gradient(110deg,currentColor 25%,#008e96 43%,#83cbe9 50%,currentColor 65%);background-size:200% 100%;background-clip:text;-webkit-text-fill-color:transparent;animation:lumie-shimmer 1.8s linear infinite}}
-      @keyframes lumie-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
-      @media(prefers-reduced-motion:reduce){span.loading{animation:none}}`);
+      span.loading::before{content:"";display:inline-block;box-sizing:border-box;width:1em;height:1em;border:2px solid currentColor;border-inline-end-color:transparent;border-radius:50%;vertical-align:-.125em;animation:lumie-spin .8s linear infinite}
+      @keyframes lumie-spin{to{transform:rotate(360deg)}}
+      @media(prefers-reduced-motion:reduce){span.loading::before{animation:none}}`);
     a.loading=loading;content.className='translation '+s.style+(loading?' loading':'');content.lang=s.target;content.dir='auto';
-    if(loading) {content.lang=s.uiLanguage;content.textContent=s.loadingLabel;content.setAttribute('role','status');content.setAttribute('aria-busy','true');}
+    if(loading) {content.lang=s.uiLanguage;content.setAttribute('aria-label',s.loadingLabel);content.setAttribute('role','status');content.setAttribute('aria-busy','true');}
     else appendResult(content,a,a.parts.map(p=>p.result).join(''));
     shadow.adoptedStyleSheets=[style];shadow.append(content);
     // Native references only: never recover an anchor from a page DOM id.
