@@ -31,6 +31,8 @@
 
 `applied` 表示通过当前版本验证并接受结果；DOM 插入在后续分片任务中完成，插入前再次校验源文。同一段落所有片段齐备才显示组合译文；部分片段失败不展示半段。`translated` 统计已接受片段，不代表整篇文章或所有段落已经显示。`discovered` 是累计创建的内容版本片段数，包含因动态变化失效的版本；`inFlight/translated/failed` 为当前映射状态。
 
+可见段落被发现后，在原文下方插入本地 CSS 转圈占位；完整译文准备好后替换占位，不显示半段结果。终止失败、鉴权/额度错误、原文变更和关闭会话会移除对应加载占位。显示原文时隐藏占位；遵循 prefers-reduced-motion，不请求 GIF、图片或其他外部资源。引用样式在译文外侧使用 4px currentColor 逻辑起始边线，跟随文本方向及继承颜色。
+
 异步事件：translationStateChanged、translationWorkAvailable（无正文，变化时合并）、translationBatchInvalidated、translationSessionEnded。session 内 sequence 单调递增；查询 state 不推进序号。只在 take 回包中出现源文；其他通知不含正文。外壳不要完全依赖通知：恢复前台、批次结束、收到 busy 时在 300–500 ms 后查询/拉取。take 空数组成功表示当前没工作；不可当成整篇翻译结束。
 
 状态包括 idle/waiting/translating/paused/error/stopped。release reason 只允许 providerError/rateLimited/authentication/quota/cancelled/timeout。鉴权/额度失败将会话置 error 并暂停派发，用户处理后重新 start；不会自动换 provider。其他可重试释放有 2/4/8 秒退避，每片最多 3 次领取。429 外壳须按服务商 Retry-After 延后拉取，内核不解析服务商响应。
@@ -71,6 +73,12 @@ PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs CHROME_PATH=/path/to/chrome node
 - HAR 类型及外壳假 provider 样例：定向 ArkTS 检查 4 个文件无错误。全项目扫描仍有 entry 模块现存的 11 个 engine 导出解析错误，不能把定向检查称为全项目检查通过；最终 HAR 打包结果另行核对。
 - macOS arm64、480×800 视口、4500 段合成正文、20 轮滚动：20 批成功应用；take p95 0.9 ms、apply p95 0.3 ms，执行器定时任务 p95 0.3 ms、最大 0.7 ms，未记录到 >50 ms 长任务。样本少且带测试计时开销，不构成手机 120 Hz 帧预算保证；一次性总内存、页面 DOM 清理和真实手机 p95 仍待验收。
 - 标准/引用/灰背景、深色截图由宿主受控页面生成，不是真机截图；原生 IPC、手机/平板生命周期验收仍待用户完成。
+
+## 2026-10-21 加载占位与引用边线（源码验证，尚未交付 HAR）
+
+- Chrome 155.0.8059.85 实际隔离世界执行器 31 项通过，新增加载动画、减少动态效果、加载替换、终止失败及鉴权失败清理检查，并检查加载/完成状态截图。
+- 4500 段合成页面的 20 轮滚动全部取得并应用批次；take p95 0.9ms、apply p95 0.2ms，未记录到 >50ms 长任务。该结果仅为宿主测试，不代表鸿蒙真机性能。
+- 改动位于内嵌 renderer runtime，需要重新编译内核及打包 HAR 后才能进入手机；本轮没有操作手机、提交或触发远端构建。
 
 ## 原生交付（2026-10-16）
 

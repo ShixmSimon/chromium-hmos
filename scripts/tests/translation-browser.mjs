@@ -12,6 +12,8 @@ async function init(html) {
  await page.setContent(html);
  const {frameTree}=await client.send('Page.getFrameTree');
  ({executionContextId:contextId}=await client.send('Page.createIsolatedWorld',{frameId:frameTree.frame.id,worldName:'translation-test'}));
+ // Capture closed roots only in the test world; production keeps them closed.
+ await evaluate(`if(!globalThis.testRoots){globalThis.testRoots=new WeakMap();const attach=Element.prototype.attachShadow;Element.prototype.attachShadow=function(options){const root=attach.call(this,options);testRoots.set(this,root);return root;};}`);
  await evaluate(source);
 }
 async function evaluate(expression) {
@@ -26,6 +28,33 @@ const apply=(b,id='b')=>call({op:'apply',batchId:id,segments:b.segments.map(s=>(
 let passed=0;
 function ok(name){console.log('PASS',name);passed++;}
 try {
+ await init('<style>body{font:18px/1.6 sans-serif}</style><p id="loading">A paragraph waiting for translation.</p>');
+ await start({style:'quote'});await page.waitForTimeout(300);
+ const content=`testRoots.get(document.querySelector('#loading').nextElementSibling)?.querySelector('span')`;
+ assert.equal(await evaluate(`(${content}).getAttribute('aria-busy')`),'true');
+ assert.equal(await evaluate(`getComputedStyle(${content},'::before').animationName`),'lumie-spin');
+ assert.equal(await evaluate(`getComputedStyle(${content}).borderInlineStartWidth`),'4px');
+ await page.screenshot({path:'artifacts/translation/loading-quote.png'});
+ await page.emulateMedia({reducedMotion:'reduce'});
+ assert.equal(await evaluate(`getComputedStyle(${content},'::before').animationName`),'none');
+ await page.emulateMedia({reducedMotion:'no-preference'});
+ await call({op:'presentation',style:'gray',showTranslation:false});
+ assert.equal(await evaluate(`getComputedStyle(document.querySelector('#loading').nextElementSibling).display`),'none');
+ await call({op:'presentation',style:'quote',showTranslation:true});
+ let loadingBatch=await take();await apply(loadingBatch);await page.waitForTimeout(150);
+ assert.equal(await evaluate(`(${content}).getAttribute('aria-busy')`),null);
+ assert.equal(await evaluate(`getComputedStyle(${content},'::before').animationName`),'none');
+ assert.equal(await evaluate(`getComputedStyle(${content}).borderInlineStartStyle`),'solid');
+ await page.screenshot({path:'artifacts/translation/completed-quote.png'});
+ ok('pending paragraph animates, respects reduced motion and becomes a quoted translation');
+ await init('<p id="loading">A failing paragraph.</p>');await start();await page.waitForTimeout(250);
+ loadingBatch=await take();await call({op:'release',batchId:'b',retryable:false,reason:'providerError'});await page.waitForTimeout(100);
+ assert.equal(await evaluate('document.querySelector("p + span")'),null);
+ ok('terminal failure removes the loading indicator');
+ await init('<p>A credential failure.</p><p>Another waiting paragraph.</p>');await start();await page.waitForTimeout(250);
+ await take('auth-loading',{maxSegments:1});await call({op:'release',batchId:'auth-loading',retryable:true,reason:'authentication'});
+ assert.equal(await evaluate('document.querySelectorAll("p + span").length'),0);
+ ok('authentication failure removes all pending indicators');
  await init(`<style>body{font:18px/1.6 sans-serif;margin:20px}p{min-height:170px}</style>${Array.from({length:40},(_,i)=>`<p id="p${i}">Paragraph ${i} text for viewport translation.</p>`).join('')}`);
  assert.equal(await page.evaluate(()=>typeof globalThis.__lumieTranslation),'undefined');ok('isolated-world API is absent from page global');
  await start();await page.waitForTimeout(400);
@@ -42,7 +71,10 @@ try {
  await call({op:'presentation',style:'gray',showTranslation:false});assert.equal((await take()).segments.length,0);
  await call({op:'presentation',style:'gray',showTranslation:true});ok('original-only view pauses work and restores cached translation');
  await page.evaluate(()=>scrollTo(0,document.body.scrollHeight));assert.equal((await take('fast')).segments.length,0);
- await page.waitForTimeout(500);b=await take('tail');assert(b.segments.some(s=>s.text.includes('Paragraph 39')));assert(b.segments.length<10);ok('fast scroll settles on current viewport without queued middle article');
+ await page.waitForTimeout(500);
+ // Newly inserted pending rows add height below the original paragraphs.
+ await page.locator('#p39').scrollIntoViewIfNeeded();await page.waitForTimeout(500);
+ b=await take('tail');assert(b.segments.some(s=>s.text.includes('Paragraph 39')));assert(b.segments.length<10);ok('fast scroll settles on current viewport without queued middle article');
  await page.evaluate(()=>document.querySelector('#p39').textContent='Recycled virtual row');
  applied=await apply(b,'tail');assert(applied.results.some(r=>r.reason==='staleSegment'));ok('changed source rejects late results');
  assert.equal((await apply(b,'tail')).reason,'batchExpired');ok('settled batch cannot be replayed');
