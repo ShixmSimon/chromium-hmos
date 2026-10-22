@@ -12,7 +12,28 @@ readonly seed=/root/chromium-154/src
 readonly revision="${CHROMIUM_REVISION:?Pinned revision is required}"
 mkdir -p "$root" "$repo_root/build-status"
 exec > >(tee -a "$repo_root/build-status/preparation-155.log") 2>&1
-export PATH="$src/third_party/depot_tools:$PATH"
+# gclient manages src/third_party/depot_tools as a DEPS checkout. Running
+# from that directory lets sync remove/replace its own Python scripts.
+# Keep the bootstrap tool outside src and outside the stable 154 tree.
+readonly tools="$root/depot_tools"
+prepare_tools() {
+if [[ ! -f "$tools/.ohos-bootstrap-ready" ]]; then
+  mkdir -p "$tools"
+  rsync -a "$seed/third_party/depot_tools/" "$tools/"
+  tools_revision=$(python3 - "$src/DEPS" <<'PY'
+import re, sys
+from pathlib import Path
+s = Path(sys.argv[1]).read_text()
+s = s[s.index("'src/third_party/depot_tools':"):]
+print(re.search(r'[0-9a-f]{40}', s).group())
+PY
+  )
+  git -C "$tools" -c gc.auto=0 fetch --depth=1 origin "$tools_revision"
+  git -C "$tools" reset --hard "$tools_revision"
+  touch "$tools/.ohos-bootstrap-ready"
+fi
+}
+export PATH="$tools:$PATH"
 export DEPOT_TOOLS_UPDATE=0
 export DEPOT_TOOLS_METRICS=0
 
@@ -66,6 +87,7 @@ PY
     git -C "$src" -c gc.auto=0 fetch --depth=1 origin "$revision"
     git -C "$src" reset --hard "$revision"
   fi
+  prepare_tools
   # gclient verifies the checkout URL against its solution configuration.
   sed -i 's#https://chromium.googlesource.com/chromium/src.git#https://github.com/chromium/chromium.git#' "$root/.gclient"
   (cd "$root" && gclient sync --nohooks --noprehooks --reset --force -D --revision "src@$revision")
