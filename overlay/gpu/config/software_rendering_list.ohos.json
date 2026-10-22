@@ -1,0 +1,234 @@
+[
+  {
+    "id": 76,
+    "description": "WebGL is disabled on Android unless the GPU runs in a separate process or reset notification is supported",
+    "os": {
+      "type": "android"
+    },
+    "in_process_gpu": true,
+    "exceptions": [
+      {
+        "gl_reset_notification_strategy": "33362"
+      },
+      {
+        "gl_renderer": "Mali-4.*",
+        "gl_extensions": ".*EXT_robustness.*"
+      }
+    ],
+    "features": [
+      "accelerated_webgl"
+    ]
+  },
+  {
+    "id": 96,
+    "description": "Blocklist GPU raster/canvas on all except known good GPUs and newer Android releases",
+    "cr_bugs": [
+      362779,
+      424970
+    ],
+    "os": {
+      "type": "android"
+    },
+    "exceptions": [
+      {
+        "os": {
+          "type": "android"
+        },
+        "gl_renderer": "Adreno \\(TM\\) 3.*"
+      },
+      {
+        "os": {
+          "type": "android"
+        },
+        "gl_renderer": "Mali-4.*"
+      },
+      {
+        "os": {
+          "type": "android"
+        },
+        "gl_renderer": "NVIDIA.*"
+      },
+      {
+        "os": {
+          "type": "android"
+        },
+        "gl_type": "gles",
+        "gl_version": {
+          "op": ">=",
+          "value": "3.0"
+        }
+      },
+      {
+        "os": {
+          "type": "android"
+        },
+        "gl_renderer": ".*Google.*"
+      },
+      {
+        "os": {
+          "type": "android"
+        },
+        "gl_type": "angle_gles"
+      },
+      {
+        "os": {
+          "type": "android"
+        },
+        "gl_type": "angle_vulkan"
+      }
+    ],
+    "features": [
+      "gpu_tile_rasterization",
+      "accelerated_2d_canvas"
+    ]
+  },
+  {
+    "id": 100,
+    "description": "GPU rasterization and canvas is blocklisted on Nexus 10",
+    "cr_bugs": [
+      407144
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": ".*Mali-T604.*",
+    "features": [
+      "gpu_tile_rasterization",
+      "accelerated_2d_canvas"
+    ]
+  },
+  {
+    "id": 102,
+    "description": "Accelerated 2D canvas and Ganesh broken on Galaxy Tab 2",
+    "cr_bugs": [
+      416910
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "PowerVR SGX 540",
+    "features": [
+      "accelerated_2d_canvas",
+      "gpu_tile_rasterization"
+    ]
+  },
+  {
+    "id": 104,
+    "description": "GPU raster broken on PowerVR Rogue",
+    "cr_bugs": [
+      436331,
+      483574,
+      684586
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "PowerVR Rogue.*",
+    "driver_version": {
+      "op": "<",
+      "value": "1.8"
+    },
+    "features": [
+      "accelerated_2d_canvas",
+      "gpu_tile_rasterization"
+    ]
+  },
+  {
+    "id": 105,
+    "description": "GPU raster broken on PowerVR SGX even on Lollipop",
+    "cr_bugs": [
+      461456,
+      1243361
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "PowerVR SGX \\d+",
+    "features": [
+      "accelerated_2d_canvas",
+      "gpu_tile_rasterization"
+    ]
+  },
+  {
+    "id": 106,
+    "description": "GPU raster broken on ES2-only Adreno 3xx drivers",
+    "cr_bugs": [
+      480149
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "Adreno \\(TM\\) 3.*",
+    "gl_version": {
+      "op": "<=",
+      "value": "2.0"
+    },
+    "features": [
+      "accelerated_2d_canvas",
+      "gpu_tile_rasterization"
+    ]
+  },
+  {
+    "id": 108,
+    "description": "GPU rasterization image color broken on Vivante",
+    "cr_bugs": [
+      560587
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": ".*Vivante.*",
+    "features": [
+      "gpu_tile_rasterization",
+      "accelerated_2d_canvas"
+    ]
+  },
+  {
+    "id": 179,
+    "cr_bugs": [
+      1253962
+    ],
+    "description": "Older Adreno 4xx drivers drop draws sometimes with oop-c",
+    "os": {
+      "type": "android"
+    },
+    "driver_version": {
+      "op": "<",
+      "value": "145"
+    },
+    "gl_renderer": ".*Adreno \\(TM\\) 4.*",
+    "features": [
+      "accelerated_2d_canvas"
+    ]
+  },
+  {
+    "id": 185,
+    "cr_bugs": [
+      1354201,
+      1356906,
+      1362720
+    ],
+    "description": "Disable DrDc on multiple gpus.",
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": ".*PowerVR Rogue.*|Adreno \\(TM\\) 730|Mali-G57 MC2|Mali-G68 MC4|Mali-G77 MC9",
+    "features": [
+      "direct_rendering_display_compositor"
+    ]
+  },
+  {
+    "id": 189,
+    "cr_bugs": [
+      496616828
+    ],
+    "description": "Disable Graphite on PowerVR due to rendering glitches",
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": ".*PowerVR.*",
+    "features": [
+      "skia_graphite"
+    ]
+  }
+]

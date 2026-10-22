@@ -1,0 +1,1020 @@
+[
+  {
+    "id": 1,
+    "description": "Imagination driver doesn't like uploading lots of buffer data constantly",
+    "cr_bugs": [
+      178093
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "gl_type": "gles",
+    "gl_version": {
+      "op": "<",
+      "value": "3.0"
+    },
+    "features": [
+      "use_client_side_arrays_for_stream_buffers"
+    ]
+  },
+  {
+    "id": 2,
+    "description": "ARM driver doesn't like uploading lots of buffer data constantly",
+    "cr_bugs": [
+      178093
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "ARM.*",
+    "gl_type": "gles",
+    "gl_version": {
+      "op": "<",
+      "value": "3.0"
+    },
+    "features": [
+      "use_client_side_arrays_for_stream_buffers"
+    ]
+  },
+  {
+    "id": 21,
+    "description": "Vivante GPUs are buggy with context switching",
+    "cr_bugs": [
+      179250,
+      235935
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_extensions": ".*GL_VIV_shader_binary.*",
+    "features": [
+      "unbind_fbo_on_context_switch"
+    ]
+  },
+  {
+    "id": 22,
+    "description": "Imagination drivers are buggy with context switching",
+    "cr_bugs": [
+      230896
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "unbind_fbo_on_context_switch"
+    ]
+  },
+  {
+    "id": 24,
+    "cr_bugs": [
+      231082
+    ],
+    "description": "Mali-4xx drivers throw an error when a buffer object's size is set to 0",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "ARM.*",
+    "gl_renderer": ".*Mali-4.*",
+    "features": [
+      "use_non_zero_size_for_client_side_stream_buffers"
+    ]
+  },
+  {
+    "id": 31,
+    "cr_bugs": [
+      154715,
+      10068,
+      269829,
+      294779,
+      285292,
+      1018528,
+      179815,
+      179250,
+      229643,
+      230896,
+      163464,
+      233612,
+      289461,
+      369316,
+      678508
+    ],
+    "description": "Always use virtualized contexts on Android",
+    "os": {
+      "type": "android"
+    },
+    "features": [
+      "use_virtualized_gl_contexts"
+    ]
+  },
+  {
+    "id": 42,
+    "cr_bugs": [
+      290876,
+      488463
+    ],
+    "description": "Framebuffer discarding causes flickering on older IMG drivers",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "gl_renderer": "PowerVR SGX 5.*",
+    "features": [
+      "disable_discard_framebuffer"
+    ]
+  },
+  {
+    "id": 43,
+    "cr_bugs": [
+      299494
+    ],
+    "description": "Framebuffer discarding doesn't accept trivial attachments on Vivante",
+    "os": {
+      "type": "android"
+    },
+    "gl_extensions": ".*GL_VIV_shader_binary.*",
+    "features": [
+      "disable_discard_framebuffer"
+    ]
+  },
+  {
+    "id": 49,
+    "cr_bugs": [
+      309734
+    ],
+    "description": "The first draw operation from an idle state is slow",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Qualcomm.*",
+    "features": [
+      "wake_up_gpu_before_drawing"
+    ]
+  },
+  {
+    "id": 91,
+    "cr_bugs": [
+      150500,
+      414816
+    ],
+    "description": "ETC1 non-power-of-two sized textures crash older IMG drivers",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": ".*Imagination.*",
+    "gl_renderer": ".*PowerVR SGX 5.*",
+    "features": [
+      "etc1_power_of_two_only"
+    ]
+  },
+  {
+    "id": 93,
+    "description": "The GL implementation on the Android emulator has problems with PBOs.",
+    "cr_bugs": [
+      340882
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "VMware.*",
+    "gl_renderer": "Gallium.*",
+    "gl_type": "gles",
+    "gl_version": {
+      "op": "=",
+      "value": "3.0"
+    },
+    "features": [
+      "disable_async_readpixels"
+    ]
+  },
+  {
+    "id": 95,
+    "cr_bugs": [
+      421271,
+      471017396
+    ],
+    "description": "glClear does not always work on these drivers",
+    "os": {
+      "type": "android"
+    },
+    "gl_version": {
+      "op": "<=",
+      "value": "3.0"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "gl_clear_broken"
+    ]
+  },
+  {
+    "id": 97,
+    "description": "Multisampling has poor performance in Intel BayTrail",
+    "cr_bugs": [
+      443517
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Intel.*",
+    "gl_renderer": "Intel.*BayTrail",
+    "features": [
+      "disable_chromium_framebuffer_multisample"
+    ]
+  },
+  {
+    "id": 98,
+    "description": "PowerVR SGX 540 drivers throw GL_OUT_OF_MEMORY error when a buffer object's size is set to 0",
+    "cr_bugs": [
+      451501
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "gl_renderer": "PowerVR SGX 540",
+    "features": [
+      "use_non_zero_size_for_client_side_stream_buffers"
+    ]
+  },
+  {
+    "id": 102,
+    "description": "Adreno 420 driver loses FBO attachment contents on bound FBO deletion",
+    "cr_bugs": [
+      457027
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "Adreno \\(TM\\) 4.*",
+    "features": [
+      "unbind_attachments_on_bound_render_fbo_delete"
+    ]
+  },
+  {
+    "id": 103,
+    "description": "Adreno 420 driver drops draw calls after FBO invalidation",
+    "cr_bugs": [
+      443060
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "Adreno \\(TM\\) 4.*",
+    "features": [
+      "disable_discard_framebuffer"
+    ]
+  },
+  {
+    "id": 105,
+    "cr_bugs": [
+      449488,
+      451230
+    ],
+    "description": "Framebuffer discarding causes corruption on Mali-4xx",
+    "gl_renderer": "Mali-4.*",
+    "os": {
+      "type": "android"
+    },
+    "features": [
+      "disable_discard_framebuffer"
+    ]
+  },
+  {
+    "id": 117,
+    "description": "GL_KHR_blend_equation_advanced breaks blending on Adreno 4xx",
+    "cr_bugs": [
+      488485
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Qualcomm.*",
+    "gl_renderer": ".*4\\d\\d",
+    "features": [
+      "disable_blend_equation_advanced"
+    ]
+  },
+  {
+    "id": 119,
+    "description": "Context lost recovery often fails on Mali-400/450 on Android.",
+    "cr_bugs": [
+      496438
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "ARM.*",
+    "gl_renderer": ".*Mali-4.*",
+    "features": [
+      "exit_on_context_lost"
+    ]
+  },
+  {
+    "id": 125,
+    "description": "glFinish doesn't clear caches on Android",
+    "cr_bugs": [
+      509727
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "Adreno.*",
+    "features": [
+      "unbind_egl_context_to_flush_driver_caches"
+    ]
+  },
+  {
+    "id": 126,
+    "description": "Program binaries contain incorrect bound attribute locations on Adreno 3xx GPUs",
+    "cr_bugs": [
+      510637
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": ".*Adreno \\(TM\\) 3.*",
+    "features": [
+      "disable_program_cache"
+    ]
+  },
+  {
+    "id": 127,
+    "description": "Android Adreno crashes on binding incomplete cube map texture to FBO",
+    "cr_bugs": [
+      518889
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "Adreno.*",
+    "features": [
+      "force_cube_map_positive_x_allocation"
+    ]
+  },
+  {
+    "id": 137,
+    "description": "NVIDIA fails glReadPixels from incomplete cube map texture",
+    "cr_bugs": [
+      518889
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "NVIDIA.*",
+    "features": [
+      "force_cube_complete"
+    ]
+  },
+  {
+    "id": 162,
+    "cr_bugs": [
+      601753
+    ],
+    "description": "Framebuffer discarding not useful on NVIDIA Kepler architecture and later",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "NVIDIA.*",
+    "gl_version": {
+      "op": ">=",
+      "value": "3.0"
+    },
+    "features": [
+      "disable_discard_framebuffer"
+    ]
+  },
+  {
+    "id": 176,
+    "description": "glClear does not work on Acer Predator GT-810",
+    "cr_bugs": [
+      633634
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Intel.*",
+    "gl_renderer": ".*Atom.*x5/x7.*",
+    "features": [
+      "gl_clear_broken"
+    ]
+  },
+  {
+    "id": 180,
+    "cr_bugs": [
+      579060,
+      632461
+    ],
+    "description": "eglCreateImageKHR fails for one component textures on PowerVR",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "gl_renderer": "PowerVR .*",
+    "features": [
+      "avoid_one_component_egl_images"
+    ]
+  },
+  {
+    "id": 212,
+    "description": "Program binaries don't contain transform feedback varyings on Qualcomm GPUs",
+    "cr_bugs": [
+      658074
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "Adreno.*",
+    "features": [
+      "disable_program_caching_for_transform_feedback"
+    ]
+  },
+  {
+    "id": 216,
+    "cr_bugs": [
+      698926
+    ],
+    "description": "Pack parameters work incorrectly with pack buffer bound",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "NVIDIA.*",
+    "features": [
+      "pack_parameters_workaround_with_pack_buffer"
+    ]
+  },
+  {
+    "id": 217,
+    "cr_bugs": [
+      698926
+    ],
+    "description": "Alignment works incorrectly with unpack buffer bound",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "NVIDIA.*",
+    "features": [
+      "unpack_alignment_workaround_with_unpack_buffer"
+    ]
+  },
+  {
+    "id": 218,
+    "description": "Certain Adreno 4xx and 5xx drivers often crash in glProgramBinary.",
+    "cr_bugs": [
+      699122
+    ],
+    "os": {
+      "type": "android"
+    },
+    "driver_version": {
+      "op": ">=",
+      "value": "103.0"
+    },
+    "gl_renderer": "Adreno \\(TM\\) [45].*",
+    "features": [
+      "disable_program_disk_cache"
+    ]
+  },
+  {
+    "id": 221,
+    "description": "Very large instanced draw calls crash on some Adreno 3xx drivers",
+    "cr_bugs": [
+      701682
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "Adreno \\(TM\\) 3.*",
+    "features": [
+      "disallow_large_instanced_draw"
+    ]
+  },
+  {
+    "id": 231,
+    "description": "Multisampled color renderbuffers can't be resized on Qualcomm 4xx/5xx",
+    "cr_bugs": [
+      696126
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "Adreno \\(TM\\) [45].*",
+    "features": [
+      "multisample_renderbuffer_resize_emulation"
+    ]
+  },
+  {
+    "id": 241,
+    "description": "On Intel GPUs MSAA performance is not acceptable for GPU rasterization. Duplicate of 132 for Android",
+    "cr_bugs": [
+      759471
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": ".*Intel.*",
+    "features": [
+      "msaa_is_slow"
+    ]
+  },
+  {
+    "id": 246,
+    "description": "Code produced by initializing variables using loops can trigger crashes on some Adreno drivers.",
+    "cr_bugs": [
+      784817
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "Adreno \\(TM\\) *",
+    "features": [
+      "dont_use_loops_to_initialize_variables"
+    ]
+  },
+  {
+    "id": 251,
+    "description": "Vivante GPUs shader cache breaks rendering",
+    "cr_bugs": [
+      780498
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_extensions": ".*GL_VIV_shader_binary.*",
+    "features": [
+      "disable_program_cache"
+    ]
+  },
+  {
+    "id": 262,
+    "description": "Program fails in PowerVR*GX6250 drivers if gl_Position is not set",
+    "cr_bugs": [
+      286468,
+      416670
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "gl_renderer": "PowerVR.*GX6250",
+    "features": [
+      "init_gl_position_in_vertex_shader"
+    ]
+  },
+  {
+    "id": 263,
+    "description": "Program fails in PowerVR SGX54x drivers if gl_Position is not set",
+    "cr_bugs": [
+      286468,
+      416670
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "gl_renderer": "PowerVR SGX 54.*",
+    "features": [
+      "init_gl_position_in_vertex_shader"
+    ]
+  },
+  {
+    "id": 264,
+    "description": "Program fails in PowerVR G6200 drivers if gl_Position is not set",
+    "cr_bugs": [
+      286468,
+      416670
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "gl_renderer": "PowerVR.*G6200.*",
+    "features": [
+      "init_gl_position_in_vertex_shader"
+    ]
+  },
+  {
+    "id": 268,
+    "cr_bugs": [
+      797243
+    ],
+    "description": "Limit MSAA to 4x on Android devices",
+    "os": {
+      "type": "android"
+    },
+    "features": [
+      "max_msaa_sample_count_4"
+    ]
+  },
+  {
+    "id": 272,
+    "cr_bugs": [
+      858879
+    ],
+    "description": "A deleted query id for GL_TIMESTAMP cannot be reused for other query targets",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Qualcomm.*",
+    "features": [
+      "disable_timestamp_queries"
+    ]
+  },
+  {
+    "id": 280,
+    "description": "ReadPixels is broken with EXT_multisampled_render_to_texture on recent Adreno drivers.",
+    "cr_bugs": [
+      890002
+    ],
+    "os": {
+      "type": "android"
+    },
+    "driver_version": {
+      "op": ">",
+      "value": "237.0"
+    },
+    "gl_renderer": "Adreno \\(TM\\) .*",
+    "features": [
+      "use_copyteximage2d_instead_of_readpixels_on_multisampled_textures"
+    ]
+  },
+  {
+    "id": 290,
+    "description": "Round down glBindBufferRange size to a multiple of 4 on Qualcomm Adreno GPUs for uniform buffers",
+    "cr_bugs": [
+      906743
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "Adreno \\(TM\\) .*",
+    "features": [
+      "round_down_uniform_bind_buffer_range_size"
+    ]
+  },
+  {
+    "id": 292,
+    "description": "adjust src/dst region if blitting pixels outside framebuffer on Android NVIDIA",
+    "cr_bugs": [
+      830046
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "NVIDIA.*",
+    "features": [
+      "adjust_src_dst_region_for_blitframebuffer"
+    ]
+  },
+  {
+    "id": 299,
+    "description": "Context lost recovery often fails on PowerVR Rogue GE8* GPUs on Android.",
+    "cr_bugs": [
+      942106
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "gl_renderer": "PowerVR Rogue GE8.*",
+    "features": [
+      "exit_on_context_lost"
+    ]
+  },
+  {
+    "id": 306,
+    "description": "Program binaries don't contain transform feedback varyings on Mali GPUs",
+    "cr_bugs": [
+      961950
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "ARM.*",
+    "gl_renderer": "Mali.*",
+    "features": [
+      "disable_program_caching_for_transform_feedback"
+    ]
+  },
+  {
+    "id": 312,
+    "cr_bugs": [
+      991869
+    ],
+    "description": "Crash on Mali-T8x when using glTexImage2D",
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": ".*Mali-T8.*",
+    "features": [
+      "prefer_draw_to_copy"
+    ]
+  },
+  {
+    "id": 320,
+    "cr_bugs": [
+      709351
+    ],
+    "description": "Remove dynamic indexing for swizzled vectors on Android",
+    "os": {
+      "type": "android"
+    },
+    "features": [
+      "remove_dynamic_indexing_of_swizzled_vector"
+    ]
+  },
+  {
+    "id": 334,
+    "description": "Some drivers seem to require as to use original texture whenever possible",
+    "cr_bugs": [
+      1052114,
+      1117370
+    ],
+    "os": {
+      "type": "android"
+    },
+    "features": [
+      "dont_delete_source_texture_for_egl_image"
+    ]
+  },
+  {
+    "id": 358,
+    "cr_bugs": [
+      1127387
+    ],
+    "description": "Always assume float formats are renderable on Android except RGB32F",
+    "os": {
+      "type": "android"
+    },
+    "features": [
+      "force_enable_color_buffer_float_except_rgb32f"
+    ]
+  },
+  {
+    "id": 365,
+    "description": "Context lost recovery often fails on Adreno with SkiaRenderer GL.",
+    "cr_bugs": [
+      1079161
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "Adreno.*",
+    "features": [
+      "exit_on_context_lost"
+    ]
+  },
+  {
+    "id": 367,
+    "cr_bugs": [
+      1180962
+    ],
+    "description": "ANGLE cannot recover from context lost",
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": "ANGLE.*",
+    "features": [
+      "exit_on_context_lost"
+    ]
+  },
+  {
+    "id": 399,
+    "description": "On pre-Ice Lake Intel GPUs MSAA performance is not acceptable for GPU rasterization. Duplicate of 398 for Android",
+    "cr_bugs": [
+      759471
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": ".*Intel.*",
+    "intel_gpu_generation": {
+      "op": "<",
+      "value": "11"
+    },
+    "features": [
+      "msaa_is_slow_2"
+    ]
+  },
+  {
+    "id": 425,
+    "cr_bugs": [
+      1512211
+    ],
+    "description": "Single component images fail on some embedded Intel GPUs",
+    "os": {
+      "type": "android"
+    },
+    "gl_renderer": ".*HD Graphics 500.*",
+    "features": [
+      "avoid_one_component_egl_images"
+    ]
+  },
+  {
+    "id": 456,
+    "description": "Limit max texure size to 8192 on Android.",
+    "os": {
+      "type": "android"
+    },
+    "features": [
+      "webgl_or_caps_max_texture_size_limit_8192"
+    ]
+  },
+  {
+    "id": 466,
+    "description": "Program binaries don't contain transform feedback varyings on Imagination GPUs",
+    "cr_bugs": [
+      442879525
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "gl_renderer": "PowerVR.*",
+    "features": [
+      "disable_program_caching_for_transform_feedback"
+    ]
+  },
+  {
+    "id": 471,
+    "description": "IMG drivers can sometimes reference previously bound complete framebuffers.",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "ensure_previous_framebuffer_not_deleted"
+    ]
+  },
+  {
+    "id": 472,
+    "description": "Validate GL_MAX_*_UNIFORM_BLOCKS at compile time instead of link time to work around compiler bugs.",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "validate_max_per_stage_uniform_blocks_at_compile_time"
+    ]
+  },
+  {
+    "id": 476,
+    "description": "Qualcomm GPUs crash when invalidating incomplete framebuffers",
+    "cr_bugs": [
+      507508103
+    ],
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Qualcomm.*",
+    "driver_version": {
+      "op": "<",
+      "value": "881"
+    },
+    "features": [
+      "dont_invalidate_incomplete_fbos"
+    ]
+  },
+  {
+    "id": 482,
+    "cr_bugs": [
+      496807874
+    ],
+    "description": "Split full-image level 0 PBO uploads via TexSubImage2D into two calls to work around driver bugs.",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "split_level_0_pbo_full_sub_image_2d"
+    ]
+  },
+  {
+    "id": 483,
+    "cr_bugs": [
+      528131939
+    ],
+    "description": "Reset texture base level before calling glCompressedTexSubImage2D for ASTC textures to work around PowerVR driver bug.",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "reset_base_level_for_astc_sub_image"
+    ]
+  },
+  {
+    "id": 485,
+    "cr_bugs": [
+      529991907
+    ],
+    "description": "Limit the number of declared varying output components at compile time to work around a PowerVR driver bug.",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "limit_output_varyings_at_compile_time"
+    ]
+  },
+  {
+    "id": 486,
+    "cr_bugs": [
+      534903095
+    ],
+    "description": "Changing BASE_LEVEL of NPOT immutable texture triggers driver bug on PowerVR GPUs.",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "dont_change_base_level_for_npot_immutable_textures"
+    ]
+  },
+  {
+    "id": 487,
+    "cr_bugs": [
+      499602793
+    ],
+    "description": "Reattach texture to FBO after layer count increase on PowerVR GPUs.",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "reattach_texture_to_fbo_after_layer_increase"
+    ]
+  },
+  {
+    "id": 490,
+    "cr_bugs": [
+      551573368
+    ],
+    "description": "Reset texture base level before calling glTexStorage2D to work around PowerVR driver bug.",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "reset_tex_storage_base_level"
+    ]
+  },
+  {
+    "id": 491,
+    "cr_bugs": [
+      548085797
+    ],
+    "description": "Limit max texture image units to 13 on PowerVR GPUs.",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "max_texture_image_units_13"
+    ]
+  },
+  {
+    "id": 492,
+    "cr_bugs": [
+      548127218
+    ],
+    "description": "Upload oversized nonzero mip levels via unpack buffer on PowerVR GPUs",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "features": [
+      "upload_oversized_mip_levels_via_unpack_buffer"
+    ]
+  },
+  {
+    "id": 493,
+    "cr_bugs": [
+      546252753
+    ],
+    "description": "Issue a glFinish before calling glBlitFramebuffer if the draw framebuffer has multiple color attachments or any color attachment's texture has base_level > 0.",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "ARM.*",
+    "gl_renderer": "Mali-G.*",
+    "features": [
+      "finish_before_blit_framebuffer_multi_attachment"
+    ]
+  },
+  {
+    "id": 496,
+    "cr_bugs": [
+      556870863
+    ],
+    "description": "Program binary cache entries can collide in Imagination's GLES driver",
+    "os": {
+      "type": "android"
+    },
+    "gl_vendor": "Imagination.*",
+    "gl_type": "angle_gles",
+    "features": [
+      "disable_program_cache"
+    ]
+  }
+]

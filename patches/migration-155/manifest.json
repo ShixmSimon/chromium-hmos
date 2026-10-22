@@ -74,5 +74,55 @@
       "sha256": "d9cef50cf66f17de19d9ec561246eb82c6075394e9cfb0ce5326e9ffcc161d53",
       "bytes": 3641
     }
+  ],
+  "added_native_files": [
+    {
+      "path": "base/ohos_startup_probe.h",
+      "sha256": "2d36ddc1f458c67960167e2d99fb29b3382bc2fd4eb7bb39c75ea7f2d87b2fe7"
+    },
+    {
+      "path": "chrome/renderer/ohos/resource_throttle.cc",
+      "sha256": "bea3ef649c73fd2bcf05bf0f2e1c61989552f4052d10e4c6164ccafda848efdc"
+    },
+    {
+      "path": "chrome/renderer/ohos/resource_throttle.h",
+      "sha256": "146bcd80d368334831c3e1e6fa3c9d2a12b9dd1d65c03fde886d4c8b5b373e14"
+    },
+    {
+      "path": "gpu/config/gpu_driver_bug_list.ohos.json",
+      "sha256": "752a9ce6831cf995f7c4b95edb7546811eecca231d4b6e00e5b8943775f52aca"
+    },
+    {
+      "path": "gpu/config/software_rendering_list.ohos.json",
+      "sha256": "2e052b5292c09d78552010b5f480771d83bb79a3d31a7150dda92e6108ff3f3c"
+    },
+    {
+      "path": "gpu/vulkan/ohos/BUILD.gn",
+      "sha256": "5c43d16d2122921304ecb57cae8fe164ee872fa68fe2a45b52383823864cad89"
+    },
+    {
+      "path": "gpu/vulkan/ohos/vulkan_implementation_ohos.cc",
+      "sha256": "34f005ac98d147d723c7c1abcf6a0d1fc93f871ffabeaa44b2f657d338e3bbdb"
+    },
+    {
+      "path": "gpu/vulkan/ohos/vulkan_implementation_ohos.h",
+      "sha256": "cfd11746331b4fb8c5d2f1579348f8eb5367ee6e9fb85e119cac9c31eaf2cd44"
+    },
+    {
+      "path": "ui/ozone/platform/ohos/ohos_gpu_capability_probe.cc",
+      "sha256": "0eb15b6545182ec1cd7daf6953077a4e82ddede57662607a9160b8704f4c1a4c"
+    },
+    {
+      "path": "ui/ozone/platform/ohos/ohos_gpu_capability_probe.h",
+      "sha256": "548648d4b9e5e031210841e59d8f79889e3a58abd0b4f1650c33b096ef493cf3"
+    },
+    {
+      "path": "ui/ozone/platform/ohos/ohos_native_buffer_probe.cc",
+      "sha256": "b570eb10d7d1fa25e7a1a22aa101190c739da928c808b215696503748a4604c6"
+    },
+    {
+      "path": "ui/ozone/platform/ohos/ohos_native_buffer_probe.h",
+      "sha256": "f4b77a77b032440296d270eff551293c93faad8edb1d4e160ef87ce663fada27"
+    }
   ]
 }

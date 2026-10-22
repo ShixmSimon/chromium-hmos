@@ -1,0 +1,22 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//gpu/vulkan/features.gni")
+
+assert(enable_vulkan)
+
+source_set("ohos") {
+  sources = [
+    "vulkan_implementation_ohos.cc",
+    "vulkan_implementation_ohos.h",
+  ]
+
+  defines = [ "IS_VULKAN_OHOS_IMPL" ]
+
+  deps = [
+    "//base",
+    "//gpu/vulkan:vulkan",
+    "//ui/gfx",
+  ]
+}

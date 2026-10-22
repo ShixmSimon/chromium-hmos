@@ -29,6 +29,10 @@ with tempfile.TemporaryDirectory(prefix='adapter-155-') as folder:
     if result.returncode == 0:
         result = git('fetch', '--depth=1', '--filter=blob:none', 'origin', manifest['repositories'][0]['base'], check=False)
     if result.returncode == 0:
+        result = git('checkout', '-q', '--detach', manifest['repositories'][0]['base'], check=False)
+    if result.returncode == 0:
+        result = git('checkout', '-q', '--detach', revision, check=False)
+    if result.returncode == 0:
         result = git('apply', '--3way', '--whitespace=nowarn', str(patch), check=False)
     compatible = result.returncode == 0
     details = result.stdout[-18000:]
