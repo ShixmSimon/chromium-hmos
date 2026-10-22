@@ -90,7 +90,7 @@ PY
   prepare_tools
   # gclient verifies the checkout URL against its solution configuration.
   sed -i 's#https://chromium.googlesource.com/chromium/src.git#https://github.com/chromium/chromium.git#' "$root/.gclient"
-  (cd "$root" && gclient sync --nohooks --noprehooks --reset --force -D --revision "src@$revision")
+  (cd "$root" && gclient sync --nohooks --noprehooks --no-history --shallow --jobs=8 --reset --force -D --revision "src@$revision")
   touch "$root/.deps-$revision"
 fi
 
