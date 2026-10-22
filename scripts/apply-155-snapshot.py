@@ -2,7 +2,9 @@
 """Three-way port the complete, successfully built 154 native adaptation."""
 import hashlib
 import json
+import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -12,6 +14,31 @@ PATCHES = ROOT / 'patches/migration-155'
 
 def run(*args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
+
+
+def apply_snapshot(target, patch):
+    """Retry from upstream while keeping unchanged compiler inputs untouched."""
+    paths = set(subprocess.check_output(
+        ['git', '-C', str(target), 'diff', '--name-only', '-z', 'HEAD']).decode().split('\0'))
+    paths.update(re.findall(r'^diff --git a/\S+ b/(\S+)$', patch.read_text(), re.M))
+    saved = {}
+    for name in paths - {''}:
+        path = target / name
+        if path.is_file() and not path.is_symlink():
+            stat = path.stat()
+            saved[name] = (hashlib.sha256(path.read_bytes()).digest(), stat.st_atime_ns, stat.st_mtime_ns)
+    try:
+        run('git', '-C', str(target), 'reset', '--hard', 'HEAD')
+        if patch.stat().st_size:
+            run('git', '-C', str(target), 'apply', '--3way', '--whitespace=nowarn', str(patch))
+    finally:
+        restored = 0
+        for name, (digest, atime, mtime) in saved.items():
+            path = target / name
+            if path.is_file() and not path.is_symlink() and hashlib.sha256(path.read_bytes()).digest() == digest:
+                os.utime(path, ns=(atime, mtime))
+                restored += 1
+        print(f'Preserved timestamps for {restored} unchanged compiler inputs', flush=True)
 
 
 def main():
@@ -42,12 +69,8 @@ def main():
         # subsequent pushed fix must retry from this repository's pinned
         # upstream revision, rather than stack over that half-applied patch.
         # This path is confined to 155 and never deletes untracked build data.
-        run('git', '-C', str(target), 'reset', '--hard', 'HEAD')
         print(f'Migrating {entry["path"]} ({len(data)} bytes)', flush=True)
-        if data:
-            # The old base blobs are present in the copied Git objects; retain
-            # both upstream 155 changes and the complete OHOS modifications.
-            run('git', '-C', str(target), 'apply', '--3way', '--whitespace=nowarn', str(patch))
+        apply_snapshot(target, patch)
         receipt.write_text(digest + '\n')
 
 

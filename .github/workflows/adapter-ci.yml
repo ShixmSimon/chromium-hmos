@@ -22,6 +22,8 @@ jobs:
         run: python3 scripts/select-ci-engine.py
       - name: Verify branch isolation
         run: python3 scripts/tests/test-ci-engine-selection.py
+      - name: Preserve completed 155 objects across snapshot retries
+        run: python3 scripts/tests/test-155-snapshot.py
       - name: Verify public tree
         run: scripts/verify-public-tree.sh
       - name: Check scripts

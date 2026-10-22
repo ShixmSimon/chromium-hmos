@@ -28,7 +28,9 @@ separate. No native compiler is run from the interactive development session.
 The 155 incremental build skips the legacy 154 incremental replay because
 the complete snapshot already includes those changes. Future native edits
 must update the migrated snapshot or overlay. The snapshot receipt avoids
-reapplying identical patches on every build.
+reapplying identical patches on every build. When a pushed fix changes a
+snapshot, identical input contents retain their timestamps after replay, so
+already completed compilation is preserved.
 
 Migration is complete only after patch/dependency migration, GN generation,
 the full native build, runtime packaging and native rule-validation tests
