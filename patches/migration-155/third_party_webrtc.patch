@@ -80,7 +80,7 @@ index 20bf4afc44c82cfa659ee14666984f92f9c713ed..1ef3b9565fb38972d1eb62d46e664c66
  #elif defined(WEBRTC_MAC) || defined(WEBRTC_IOS)
    pthread_setname_np(name);
 diff --git a/webrtc.gni b/webrtc.gni
-index 044438dadae1056fbc837d8cbb0402b715558848..d5a4d825f14d10af135ef3e5102a5331d3b00394 100644
+index 82cb3af9df6fd469203447a5d3364b3e61ec6481..bc7ca4f975035a3066c0651e48cc45fae6d92903 100644
 --- a/webrtc.gni
 +++ b/webrtc.gni
 @@ -338,7 +338,8 @@ rtc_opus_dir = "//third_party/opus"

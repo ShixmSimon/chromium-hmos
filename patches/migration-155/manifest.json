@@ -15,65 +15,74 @@
     {
       "path": "v8",
       "patch": "v8.patch",
-      "base": "b3d6849efaf11696198e15b32290e6d6b0d540c1",
-      "sha256": "2d620b160a4165196c098a76411bdee5b3dafa83ea99228b11e7c013a6875a9d",
-      "bytes": 14676
+      "base": "712e1808de2d7416f1276d0deb1ee4ac978132b8",
+      "sha256": "0f0e282bd57e146aa3a29eab83130237b5c3813f2c57096ec76708c7b435609e",
+      "bytes": 14676,
+      "source_base": "b3d6849efaf11696198e15b32290e6d6b0d540c1"
     },
     {
       "path": "third_party/angle",
       "patch": "third_party_angle.patch",
-      "base": "e12217f3e133cb1029b050d893b1806d141483be",
-      "sha256": "157c6c41b38af395c4052eff76c1facc8acf0bc897a7c87848da42da8adafb00",
-      "bytes": 41176
+      "base": "cccf60cde32c911b017a315b82235df61da5057b",
+      "sha256": "e897927c9ec337504b714d3f801cac85329c9861b41177096cd04129f6f49e3a",
+      "bytes": 41176,
+      "source_base": "e12217f3e133cb1029b050d893b1806d141483be"
     },
     {
       "path": "third_party/dawn",
       "patch": "third_party_dawn.patch",
-      "base": "38bc7fb0b3a024d05212958ae843e4ddf8c44ff1",
-      "sha256": "975b43ffd6145faebe48ddd80a449c601d2dfc762be99e73e6447c9ecead7cea",
-      "bytes": 124849
+      "base": "42d0e90fe3552a2a8e95ca8e506bc19bbda12729",
+      "sha256": "f2ad4bf56d74841f90305a96bc8631fb9159c063307d72d8be1720da387e742e",
+      "bytes": 124844,
+      "source_base": "38bc7fb0b3a024d05212958ae843e4ddf8c44ff1"
     },
     {
       "path": "third_party/ffmpeg",
       "patch": "third_party_ffmpeg.patch",
-      "base": "a06d51a20a28f980b2ddc6b7d73d69b2d29bf323",
+      "base": "ba5e7eaea38b6a54157870e0085b2e8c75aa6bcb",
       "sha256": "de682aaedd69b26cc1e7ca9034d315d576d4f114bb03821c92d95b99a5440c96",
-      "bytes": 1002
+      "bytes": 1002,
+      "source_base": "a06d51a20a28f980b2ddc6b7d73d69b2d29bf323"
     },
     {
       "path": "third_party/pdfium",
       "patch": "third_party_pdfium.patch",
-      "base": "2358b16c1947eff67f0732754af6b3c4e1715ff9",
-      "sha256": "b026de4e2dab514d1ae365b516f022474f6df551480f1bc1f5a271fe58d3aa54",
-      "bytes": 2617
+      "base": "39f0ed4a657e53ed743a16d10d77dec086a08e03",
+      "sha256": "c9cc5123cd7a58647ee9f39e500eab7c35869dfe92af1dd7f9f4f484bb42e75d",
+      "bytes": 2464,
+      "source_base": "2358b16c1947eff67f0732754af6b3c4e1715ff9"
     },
     {
       "path": "third_party/perfetto",
       "patch": "third_party_perfetto.patch",
-      "base": "5dbeaad4ceb91470a835426b52e0cb43a3e5ef10",
+      "base": "d10115a34cfa887efd75606c460f541d1b854e23",
       "sha256": "052f25473ee1498092003166f1df51306af43f3bcbdf36dbe25e78d7a9e317fb",
-      "bytes": 811
+      "bytes": 811,
+      "source_base": "5dbeaad4ceb91470a835426b52e0cb43a3e5ef10"
     },
     {
       "path": "third_party/skia",
       "patch": "third_party_skia.patch",
-      "base": "2466dcf3937437e217e7f284afe0e1aae15891ce",
+      "base": "29ed1e87a0a50f3d8347e988842d9d59e7573efa",
       "sha256": "8e106a3c028198ad7ac4d8e71b77dc4e914212ad29b58ca73e4fc61acca857d2",
-      "bytes": 11293
+      "bytes": 11293,
+      "source_base": "2466dcf3937437e217e7f284afe0e1aae15891ce"
     },
     {
       "path": "third_party/vulkan-loader/src",
       "patch": "third_party_vulkan-loader_src.patch",
-      "base": "07e50bb6cc89025c37586efd215e2b8280670978",
+      "base": "bde79ad2dd832db9180c4a6eca2e84ceb12b1bb0",
       "sha256": "0d1f9ffa819d9c09809cbe0e75721b16d164dbc03151ea14e81a100e52ca10c7",
-      "bytes": 455
+      "bytes": 455,
+      "source_base": "07e50bb6cc89025c37586efd215e2b8280670978"
     },
     {
       "path": "third_party/webrtc",
       "patch": "third_party_webrtc.patch",
-      "base": "dbaaaf413fe8c1d01c340af1a461c069960f43fc",
-      "sha256": "d9cef50cf66f17de19d9ec561246eb82c6075394e9cfb0ce5326e9ffcc161d53",
-      "bytes": 3641
+      "base": "5bd86a2f17a35dfc986b87d058f511e45805bd1d",
+      "sha256": "cf233507221db9a9e5f2f37a7553cddc7669af9bce27e15bbfc40b93f6a8316d",
+      "bytes": 3641,
+      "source_base": "dbaaaf413fe8c1d01c340af1a461c069960f43fc"
     }
   ],
   "added_native_files": [
@@ -153,5 +162,6 @@
   "resolved_root_conflicts": 29,
   "moved_native_files": {
     "components/viz/common/gpu/vulkan_in_process_context_provider.cc": "gpu/command_buffer/service/vulkan_in_process_context_provider.cc"
-  }
+  },
+  "resolved_deps_conflicts": 1
 }

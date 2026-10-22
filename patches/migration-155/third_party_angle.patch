@@ -1,8 +1,8 @@
 diff --git a/BUILD.gn b/BUILD.gn
-index 0b6b06dcbb00694726a03816207bc2b26dd3dd15..29d64a74714e29dc1af174b3d587e7878fcc6c1a 100644
+index ee762fed4973714062f2b60a606bf0edc61db07d..ce8ce43b76179cd9f9ce3e05e6a9ea2289b42871 100644
 --- a/BUILD.gn
 +++ b/BUILD.gn
-@@ -736,7 +736,7 @@ angle_static_library("angle_gpu_info_util") {
+@@ -738,7 +738,7 @@ angle_static_library("angle_gpu_info_util") {
      libs += [ "dxgi.lib" ]
    }
  
@@ -34,10 +34,10 @@ index bde26da1d5ad1d6660f6f93d01d53c7611cb4a66..c1a195e4675a4cc81735a4066c9ac1f6
  }
  
 diff --git a/include/EGL/eglext_angle.h b/include/EGL/eglext_angle.h
-index da3e47b6eefa5895151e765115a4edb454133fcf..e05354a84336bfa8e0baa402c1883528cd406266 100644
+index 2daad197724c08588957a0d0eca71b85eb7b3e9a..d4a236e6fb392f7741c3b38e381b70a0f5ee0aa1 100644
 --- a/include/EGL/eglext_angle.h
 +++ b/include/EGL/eglext_angle.h
-@@ -477,6 +477,13 @@ EGLAPI void EGLAPIENTRY eglSetValidationEnabledANGLE(EGLBoolean validationState)
+@@ -467,6 +467,13 @@ EGLAPI void EGLAPIENTRY eglSetValidationEnabledANGLE(EGLBoolean validationState)
  #define EGL_CONTEXT_PASSTHROUGH_SHADERS_ANGLE 0x3463
  #endif /* EGL_ANGLE_create_context_passthrough_shaders */
  
@@ -52,7 +52,7 @@ index da3e47b6eefa5895151e765115a4edb454133fcf..e05354a84336bfa8e0baa402c1883528
  
  #endif  // INCLUDE_EGL_EGLEXT_ANGLE_
 diff --git a/src/common/platform.h b/src/common/platform.h
-index 140101d98fb406132b5dff92d605a75f3781b1a4..8269aee3833d39f1be66d32c444046a563b0911f 100644
+index cae59a1940d044dc4957605820127a7fe1ec36cf..6292d1fe31e6c8c31c75fc08d81e71eb7f42b1ee 100644
 --- a/src/common/platform.h
 +++ b/src/common/platform.h
 @@ -20,6 +20,12 @@
@@ -81,7 +81,7 @@ index 465928cda81790f38f81b8b7a854e2d99f0a1f55..3e5b26200757262fc65009867f327cfd
  
          default:
 diff --git a/src/libANGLE/Caps.cpp b/src/libANGLE/Caps.cpp
-index 072d13dd741be2bf68ae4467587ee93fe81eec9c..174226066b1551ec2b4e21ed3701b6d16628be58 100644
+index 3fa2184affa421f905609df641bc3d11ff4c407d..6c2f7cddb50052f8a44c2a90562e3591e3044c6c 100644
 --- a/src/libANGLE/Caps.cpp
 +++ b/src/libANGLE/Caps.cpp
 @@ -1235,6 +1235,7 @@ std::vector<std::string> DisplayExtensions::getStrings() const
@@ -93,10 +93,10 @@ index 072d13dd741be2bf68ae4467587ee93fe81eec9c..174226066b1551ec2b4e21ed3701b6d1
      InsertExtensionString("EGL_NOK_texture_from_pixmap",                         textureFromPixmapNOK,               &extensionStrings);
      InsertExtensionString("EGL_NV_robustness_video_memory_purge",                robustnessVideoMemoryPurgeNV,       &extensionStrings);
 diff --git a/src/libANGLE/Caps.h b/src/libANGLE/Caps.h
-index 5e6c8f4704999b4037ad0103d899d09d5aa5b105..8a9a4c93265c0d513551842a256efaaa9e3cd211 100644
+index ab70456ca46362970b84c167bb75cc48e4f14485..bb5b4425c220430e92a19524edad02163b005f34 100644
 --- a/src/libANGLE/Caps.h
 +++ b/src/libANGLE/Caps.h
-@@ -663,6 +663,9 @@ struct DisplayExtensions
+@@ -667,6 +667,9 @@ struct DisplayExtensions
      // EGL_EXT_image_dma_buf_import
      bool imageDmaBufImportEXT = false;
  
@@ -107,10 +107,10 @@ index 5e6c8f4704999b4037ad0103d899d09d5aa5b105..8a9a4c93265c0d513551842a256efaaa
      bool imageDmaBufImportModifiersEXT = false;
  
 diff --git a/src/libANGLE/Display.cpp b/src/libANGLE/Display.cpp
-index f4b27dbe1dae851107f2ed5947d42795bfd826c4..ef48ff323fbb3d2305cdd01c6744cb0d71e6af75 100644
+index f272e0e36776cf514c79f1f8908c49f0e9fc45b7..c097cff1c38a25fd5a973314ca7f5d535aab5211 100644
 --- a/src/libANGLE/Display.cpp
 +++ b/src/libANGLE/Display.cpp
-@@ -76,6 +76,8 @@
+@@ -78,6 +78,8 @@
  #        endif
  #    elif defined(ANGLE_PLATFORM_ANDROID)
  #        include "libANGLE/renderer/gl/egl/android/DisplayAndroid.h"
@@ -119,7 +119,7 @@ index f4b27dbe1dae851107f2ed5947d42795bfd826c4..ef48ff323fbb3d2305cdd01c6744cb0d
  #    else
  #        error Unsupported OpenGL platform.
  #    endif
-@@ -599,6 +601,9 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
+@@ -597,6 +599,9 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
              impl = nullptr;
              break;
  
@@ -129,7 +129,7 @@ index f4b27dbe1dae851107f2ed5947d42795bfd826c4..ef48ff323fbb3d2305cdd01c6744cb0d
  #    else
  #        error Unsupported OpenGL platform.
  #    endif
-@@ -655,6 +660,11 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
+@@ -653,6 +658,11 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
              }
  #    elif defined(ANGLE_PLATFORM_ANDROID)
              impl = new rx::DisplayAndroid(state);
@@ -141,7 +141,7 @@ index f4b27dbe1dae851107f2ed5947d42795bfd826c4..ef48ff323fbb3d2305cdd01c6744cb0d
  #    else
              // No GLES support on this platform, fail display creation.
              impl = nullptr;
-@@ -732,6 +742,12 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
+@@ -730,6 +740,12 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
                  impl = rx::CreateVulkanAndroidDisplay(state);
              }
              break;
@@ -154,7 +154,7 @@ index f4b27dbe1dae851107f2ed5947d42795bfd826c4..ef48ff323fbb3d2305cdd01c6744cb0d
  #    elif defined(ANGLE_PLATFORM_FUCHSIA)
              if (rx::IsVulkanFuchsiaDisplayAvailable())
              {
-@@ -2279,7 +2295,10 @@ static ClientExtensions GenerateClientExtensions()
+@@ -2350,7 +2366,10 @@ static ClientExtensions GenerateClientExtensions()
      extensions.platformWaylandEXT = true;
  #endif
  
@@ -166,7 +166,7 @@ index f4b27dbe1dae851107f2ed5947d42795bfd826c4..ef48ff323fbb3d2305cdd01c6744cb0d
      extensions.platformSurfacelessMESA = true;
  #endif
  
-@@ -2326,7 +2345,10 @@ static ClientExtensions GenerateClientExtensions()
+@@ -2397,7 +2416,10 @@ static ClientExtensions GenerateClientExtensions()
      extensions.x11Visual = true;
  #endif
  
@@ -564,10 +564,10 @@ index 0bec8214a462c4afb3e9e4f5e8b42369628f53c8..9183b362403fa4c82d0953d73c81591a
                                                              const ResourceUse &use,
                                                              uint64_t timeout,
 diff --git a/src/libANGLE/renderer/vulkan/DisplayVk.cpp b/src/libANGLE/renderer/vulkan/DisplayVk.cpp
-index e9d44433955afee8c6fc2ba19fece8840c759569..0731c19371b42a0d1296db4bfb5bfcb44c21889e 100644
+index 93574e42fd7e1ede40feb2e9add9b89ccda3668d..c4ab4117a532d9b4f3dd594829eca92e57458bb6 100644
 --- a/src/libANGLE/renderer/vulkan/DisplayVk.cpp
 +++ b/src/libANGLE/renderer/vulkan/DisplayVk.cpp
-@@ -566,9 +566,10 @@ void DisplayVk::generateExtensions(egl::DisplayExtensions *outExtensions) const
+@@ -565,9 +565,10 @@ void DisplayVk::generateExtensions(egl::DisplayExtensions *outExtensions) const
      outExtensions->contextPriority = !getFeatures().allocateNonZeroMemory.enabled;
      outExtensions->noConfigContext = true;
  
@@ -660,7 +660,7 @@ index 0b21490619571a8d8168c1e2b94971c4df4f6741..ab9ff5738da8be5b5f9d50411c2d55de
      // We do not support external format for any platform other than Android.
      ASSERT(mIsExternalFormat == 0);
 diff --git a/src/libANGLE/renderer/vulkan/vk_helpers.cpp b/src/libANGLE/renderer/vulkan/vk_helpers.cpp
-index b5142fa15237b5543f3a03681049321ecc9b9498..4d7267819587c1fc009c7bbef4da6727c021ad3b 100644
+index 7c4b574f194ff47abfd93928134e4ecbe03ea07a..1943af756d96273497f416483c0e0d3d0cfee04e 100644
 --- a/src/libANGLE/renderer/vulkan/vk_helpers.cpp
 +++ b/src/libANGLE/renderer/vulkan/vk_helpers.cpp
 @@ -9,6 +9,7 @@
@@ -671,7 +671,7 @@ index b5142fa15237b5543f3a03681049321ecc9b9498..4d7267819587c1fc009c7bbef4da6727
  
  #include "common/unsafe_buffers.h"
  
-@@ -6191,8 +6192,31 @@ bool ImageHelper::FormatSupportsUsage(const Renderer *renderer,
+@@ -6190,8 +6191,31 @@ bool ImageHelper::FormatSupportsUsage(const Renderer *renderer,
      if (formatSupportCheck == FormatSupportCheck::RequireMultisampling)
      {
          // Some drivers return success but sampleCounts == 1 which means no MSRTT
@@ -706,10 +706,10 @@ index b5142fa15237b5543f3a03681049321ecc9b9498..4d7267819587c1fc009c7bbef4da6727
      return result == VK_SUCCESS;
  }
 diff --git a/src/libANGLE/renderer/vulkan/vk_renderer.cpp b/src/libANGLE/renderer/vulkan/vk_renderer.cpp
-index 0dd3692db47168515d4bd7bdf4a07d65607e4c17..11869faa32959b4de6eacd74ddb37ac6cf04d3b6 100644
+index 7e28563e7c1eb5747561ff4919dcad06b582dfa2..025d1aebb886fc1670945d34cf83e91cd0e7b4dc 100644
 --- a/src/libANGLE/renderer/vulkan/vk_renderer.cpp
 +++ b/src/libANGLE/renderer/vulkan/vk_renderer.cpp
-@@ -3939,6 +3939,20 @@ void Renderer::enableDeviceExtensionsNotPromoted(const vk::ExtensionNameList &de
+@@ -3955,6 +3955,20 @@ void Renderer::enableDeviceExtensionsNotPromoted(const vk::ExtensionNameList &de
      ASSERT(!mFeatures.supportsAndroidHardwareBuffer.enabled);
  #endif
  
@@ -730,7 +730,7 @@ index 0dd3692db47168515d4bd7bdf4a07d65607e4c17..11869faa32959b4de6eacd74ddb37ac6
      if (mFeatures.supportsExternalMemoryFd.enabled)
      {
          mEnabledDeviceExtensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
-@@ -5756,7 +5770,10 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+@@ -5783,7 +5797,10 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
          &mFeatures, supportsExternalFenceFd,
          ExtensionFound(VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME, deviceExtensionNames));
  
@@ -742,7 +742,7 @@ index 0dd3692db47168515d4bd7bdf4a07d65607e4c17..11869faa32959b4de6eacd74ddb37ac6
      if (mFeatures.supportsExternalFenceCapabilities.enabled &&
          mFeatures.supportsExternalSemaphoreCapabilities.enabled)
      {
-@@ -5801,7 +5818,13 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+@@ -5828,7 +5845,13 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
                                  (mFeatures.supportsExternalFenceFd.enabled &&
                                   mFeatures.supportsExternalSemaphoreFd.enabled));
      }
@@ -757,7 +757,7 @@ index 0dd3692db47168515d4bd7bdf4a07d65607e4c17..11869faa32959b4de6eacd74ddb37ac6
  
      // Disabled on SwiftShader due to http://crbug.com/40942995
      ANGLE_FEATURE_CONDITION(
-@@ -5885,6 +5908,17 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+@@ -5912,6 +5935,17 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
              !(isQualcommProprietary && driverVersion < angle::VersionTriple(512, 822, 0)) &&
              !isLavapipe);
  
@@ -775,7 +775,7 @@ index 0dd3692db47168515d4bd7bdf4a07d65607e4c17..11869faa32959b4de6eacd74ddb37ac6
      // Preferring the MSRTSS flag is for texture initialization. If the MSRTSS is not used at first,
      // it will be used (if available) when recreating the image if it is bound to an MSRTT
      // framebuffer.
-@@ -6094,6 +6128,20 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+@@ -6121,6 +6155,20 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
                                  (mFeatures.supportsDepthStencilResolve.enabled &&
                                   mFeatures.allowMultisampledRenderToTextureEmulation.enabled));
  
@@ -854,10 +854,10 @@ index f29c8084862f9ed73c9c4d87397d0f8c83590e31..1a5899868cf2a7f3419e5d37c557c1a3
    vulkan_backend_sources += [
      "win32/DisplayVkWin32.cpp",
 diff --git a/src/libANGLE/validationEGL.cpp b/src/libANGLE/validationEGL.cpp
-index dd0a706c7d814d4de0d8e1647db107ca71702910..20203003c57fab0a4e7e25463653abb5b43715a2 100644
+index 1871acf5f7b744a559c68ce2b9b6b3e01fb2d25f..06582bc11cea363f82d12fc21f86a27f1dc6a877 100644
 --- a/src/libANGLE/validationEGL.cpp
 +++ b/src/libANGLE/validationEGL.cpp
-@@ -4335,6 +4335,27 @@ bool ValidateCreateImage(const ValidationContext *val,
+@@ -4338,6 +4338,27 @@ bool ValidateCreateImage(const ValidationContext *val,
          }
          break;
  
@@ -886,10 +886,10 @@ index dd0a706c7d814d4de0d8e1647db107ca71702910..20203003c57fab0a4e7e25463653abb5
              if (!displayExtensions.imageD3D11Texture)
              {
 diff --git a/src/libGLESv2.gni b/src/libGLESv2.gni
-index edd1e0b4f57340c10b999742b4b61027d42d80ae..4bd0ddc2ec51a6b9380f328aa2e9822df4a6d37c 100644
+index 08a936e492f189891992d5b1ae8a7af5f5f12507..0ce1e02146a2335dd13a3cb695ce6112a836f22c 100644
 --- a/src/libGLESv2.gni
 +++ b/src/libGLESv2.gni
-@@ -119,7 +119,7 @@ if (is_android && angle_enable_unwind_backtrace_support) {
+@@ -120,7 +120,7 @@ if (is_android && angle_enable_unwind_backtrace_support) {
    libangle_common_sources += [ "src/common/backtrace_utils_noop.cpp" ]
  }
  

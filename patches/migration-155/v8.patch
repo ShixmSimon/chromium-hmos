@@ -1,8 +1,8 @@
 diff --git a/BUILD.gn b/BUILD.gn
-index 76391be1666b0b2e57c91bdac59070224e57ce24..3f2739377a75bc0bb8504e4a714ff8229f970be4 100644
+index c6132807ff6c488543b4df1f3ba8793d9dea98d5..866cf38c23f46ba1b4632ce364901b1f239cbf1e 100644
 --- a/BUILD.gn
 +++ b/BUILD.gn
-@@ -1179,6 +1179,11 @@ if (target_os == "android") {
+@@ -1201,6 +1201,11 @@ if (target_os == "android") {
  } else if (target_os == "chromeos") {
    enabled_external_v8_defines += [ "V8_HAVE_TARGET_OS" ]
    enabled_external_v8_defines += [ "V8_TARGET_OS_CHROMEOS" ]
@@ -14,7 +14,7 @@ index 76391be1666b0b2e57c91bdac59070224e57ce24..3f2739377a75bc0bb8504e4a714ff822
  }
  
  # Some V8_TARGET_ARCH_ defines that affect Api constants (see usages of
-@@ -5165,7 +5170,7 @@ v8_header_set("v8_internal_headers") {
+@@ -5381,7 +5386,7 @@ v8_header_set("v8_internal_headers") {
      if (v8_enable_webassembly) {
        # iOS Xcode simulator builds run on an x64 target. iOS and macOS are both
        # based on Darwin and thus POSIX-compliant to a similar degree.
@@ -23,7 +23,7 @@ index 76391be1666b0b2e57c91bdac59070224e57ce24..3f2739377a75bc0bb8504e4a714ff822
            target_os == "freebsd") {
          sources += [ "src/trap-handler/handler-inside-posix.h" ]
        } else if (is_win) {
-@@ -5233,7 +5238,7 @@ v8_header_set("v8_internal_headers") {
+@@ -5449,7 +5454,7 @@ v8_header_set("v8_internal_headers") {
        # Trap handling is enabled on arm64 Mac and Linux and in simulators on
        # x64 on Linux and Mac.
        if ((current_cpu == "arm64" &&
@@ -32,7 +32,7 @@ index 76391be1666b0b2e57c91bdac59070224e57ce24..3f2739377a75bc0bb8504e4a714ff822
            (current_cpu == "x64" && (is_linux || is_chromeos || is_mac))) {
          sources += [ "src/trap-handler/handler-inside-posix.h" ]
        }
-@@ -6671,7 +6676,7 @@ v8_cluster_source_set("v8_base_without_compiler") {
+@@ -6888,7 +6893,7 @@ v8_cluster_source_set("v8_base_without_compiler") {
      if (v8_enable_webassembly) {
        # iOS Xcode simulator builds run on an x64 target. iOS and macOS are both
        # based on Darwin and thus POSIX-compliant to a similar degree.
@@ -41,7 +41,7 @@ index 76391be1666b0b2e57c91bdac59070224e57ce24..3f2739377a75bc0bb8504e4a714ff822
            target_os == "freebsd") {
          sources += [
            "src/trap-handler/handler-inside-posix.cc",
-@@ -6723,7 +6728,8 @@ v8_cluster_source_set("v8_base_without_compiler") {
+@@ -6940,7 +6945,8 @@ v8_cluster_source_set("v8_base_without_compiler") {
      ]
      if (v8_enable_webassembly) {
        # Trap handling is enabled on arm64 and x64, on Linux, Mac and Windows.
@@ -51,7 +51,7 @@ index 76391be1666b0b2e57c91bdac59070224e57ce24..3f2739377a75bc0bb8504e4a714ff822
            (current_cpu == "x64" && (is_linux || is_chromeos || is_mac))) {
          sources += [
            "src/trap-handler/handler-inside-posix.cc",
-@@ -7398,7 +7404,7 @@ v8_component("v8_libbase") {
+@@ -7615,7 +7621,7 @@ v8_component("v8_libbase") {
      }
    }
  
@@ -61,7 +61,7 @@ index 76391be1666b0b2e57c91bdac59070224e57ce24..3f2739377a75bc0bb8504e4a714ff822
        "src/base/debug/stack_trace_posix.cc",
        "src/base/platform/platform-linux.cc",
 diff --git a/gni/v8.gni b/gni/v8.gni
-index 7ae927dc44f3f6181b606c47a8e3c8c1f1e25b52..3503e037ebf968ff8ff355ebc4036d804e30f43b 100644
+index aee7c82b48645cc8c9cb3fe103e75e14041ccf2d..98df1b11598f14305526379000229e1252e64922 100644
 --- a/gni/v8.gni
 +++ b/gni/v8.gni
 @@ -354,6 +354,7 @@ is_drumbrake_supported =

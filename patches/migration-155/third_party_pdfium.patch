@@ -1,5 +1,5 @@
 diff --git a/core/fxge/BUILD.gn b/core/fxge/BUILD.gn
-index c21a5f0807acb9d2bab7e6ea08788cc3b3b4025a..ed8d6b21b2080efb83196c8ea9e6e28873c31edb 100644
+index 00c8cfe942493658d332f0c360bcec3a20b4cb83..e63098c1666f7cc179891b405e7a57fa3a73dff6 100644
 --- a/core/fxge/BUILD.gn
 +++ b/core/fxge/BUILD.gn
 @@ -163,7 +163,7 @@ source_set("fxge") {
@@ -12,10 +12,10 @@ index c21a5f0807acb9d2bab7e6ea08788cc3b3b4025a..ed8d6b21b2080efb83196c8ea9e6e288
        "android/cfx_androidfontinfo.cpp",
        "android/cfx_androidfontinfo.h",
 diff --git a/core/fxge/cfx_face.cpp b/core/fxge/cfx_face.cpp
-index ecd58844300afb572497946fb091c5c8d731655a..cbb2a5b5ec8f348fd4b8eb06fa7949c9acb59302 100644
+index 5df12aa0b2e3ab418a535cf7eb2ee8ca3d1164e3..87444db02e1f0510e58568408e270946df2b2eb5 100644
 --- a/core/fxge/cfx_face.cpp
 +++ b/core/fxge/cfx_face.cpp
-@@ -732,7 +732,8 @@ std::optional<std::array<uint32_t, 4>> CFX_Face::GetOs2UnicodeRange() {
+@@ -534,7 +534,8 @@ std::optional<std::array<uint32_t, 4>> CFX_Face::GetOs2UnicodeRange() {
  }
  #endif  // defined(PDF_ENABLE_XFA)
  
@@ -23,9 +23,9 @@ index ecd58844300afb572497946fb091c5c8d731655a..cbb2a5b5ec8f348fd4b8eb06fa7949c9
 +#if defined(PDF_ENABLE_XFA) || BUILDFLAG(IS_ANDROID) || \
 +    BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OHOS)
  std::optional<std::array<uint32_t, 2>> CFX_Face::GetOs2CodePageRange() {
-   auto* os2 = static_cast<TT_OS2*>(FT_Get_Sfnt_Table(GetRec(), FT_SFNT_OS2));
-   std::optional<std::array<uint32_t, 2>> ft_result;
-@@ -1604,7 +1605,8 @@ void CFX_Face::AdjustVariationParams(int glyph_index,
+ #if defined(PDF_ENABLE_FONTATIONS)
+   if (IsFontations()) {
+@@ -1198,7 +1199,8 @@ void CFX_Face::AdjustVariationParams(int glyph_index,
    FT_Set_MM_Design_Coordinates(rec, 2, coords);
  }
  
@@ -36,7 +36,7 @@ index ecd58844300afb572497946fb091c5c8d731655a..cbb2a5b5ec8f348fd4b8eb06fa7949c9
    uint32_t style = 0;
    if (IsBold()) {
 diff --git a/core/fxge/cfx_face.h b/core/fxge/cfx_face.h
-index 6c225d0aca487e108fba7b0091c3c11a4be55f7d..f0be82d16e73ac2c706939fce586edd1f3441cad 100644
+index d80e910890521f757434a313d9e2a6fce3413411..10a020fccf81ec4a0872383506ad29194f9e3014 100644
 --- a/core/fxge/cfx_face.h
 +++ b/core/fxge/cfx_face.h
 @@ -138,7 +138,8 @@ class CFX_Face final : public Retainable, public Observable {
@@ -49,13 +49,12 @@ index 6c225d0aca487e108fba7b0091c3c11a4be55f7d..f0be82d16e73ac2c706939fce586edd1
    // Returns enum FontStyle values.
    uint32_t GetFontStyle();
  
-@@ -183,7 +184,8 @@ class CFX_Face final : public Retainable, public Observable {
-   // it is large enough to hold the data.
-   size_t GetSfntTable(uint32_t table, pdfium::span<uint8_t> buffer);
+@@ -187,7 +188,7 @@ class CFX_Face final : public Retainable, public Observable {
+   bool IsFontations() const;
+ #endif
  
 -#if defined(PDF_ENABLE_XFA) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
-+#if defined(PDF_ENABLE_XFA) || BUILDFLAG(IS_ANDROID) || \
-+    BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OHOS)
++#if defined(PDF_ENABLE_XFA) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OHOS)
    std::optional<std::array<uint8_t, 2>> GetOs2Panose();
  #endif
  
