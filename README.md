@@ -2,17 +2,17 @@
 
 [中文说明](README_ZH.md)
 
-This branch publishes the HarmonyOS adaptation used to build the local
-Chromium 150 test HAP. It is an independent, unofficial project and is not
+This branch targets the Chromium 155 HarmonyOS migration. The stable 154
+build stays on `hmos-154-adapter`. It is an independent, unofficial project and is not
 endorsed by Google, Chromium, Huawei, or the OpenHarmony project.
 
 ## Baseline
 
-- Chromium: `150.0.7871.114`
-- Upstream revision: `f405107495a07cb1bfcf687d4af8d91117098db6`
+- Chromium: `155.0.8059.91`
+- Upstream revision: `f043649a0ef1fd96e48d56ddbfc8a4a99aa2ca37`
 - Target OS: `ohos` (presented to Chromium as HarmonyOS)
 - Target CPU: `arm64`
-- Product: `plan_kirin_pc`
+- Product: `kirin_pc`; CI output: `out/ohos_arm64`
 - V8: JIT compilers in the build, used when the launch can map executable memory (tablets, 2in1); JITless otherwise (released phone packages), where WebAssembly runs on the DrumBrake interpreter
 - UI: Aura/Views on large screens; ArkUI mobile shell on phones
 - Media: AAC/H.264 build flags enabled; Widevine CDM disabled
@@ -34,8 +34,9 @@ endorsed by Google, Chromium, Huawei, or the OpenHarmony project.
 
 ## Repository Layout
 
-- `patches/chromium-154-harmonyos.patch`: all modifications to files tracked by
-  upstream Chromium.
+- `patches/migration-155/`: the complete native and DEPS adaptations rebased
+  onto the pinned 155 revisions; `manifest.json` records provenance and hashes.
+- `patches/chromium-154-harmonyos.patch`: the historical 154 baseline.
 - `patches/deps/`: OHOS changes to DEPS repositories (V8, ANGLE, Dawn, FFmpeg,
   PDFium, Skia, WebRTC, and others), listed in `patches/deps/series`. See
   [docs/OHOS_DEVICE_FIXES.md](docs/OHOS_DEVICE_FIXES.md).
@@ -46,29 +47,26 @@ endorsed by Google, Chromium, Huawei, or the OpenHarmony project.
 - `external/deps_code/webview/`: WebView interface sources required by the
   adapter.
 - `config/args.plan_kirin_pc.gn`: GN arguments used by the tested native build.
-- `scripts/apply-adapter.sh`: applies this snapshot to the pinned Chromium
-  revision.
-- `.github/workflows/upstream-stable.yml`: checks official Chromium Stable
-  every six hours and can dispatch a licensed self-hosted HAP build.
+- `scripts/prepare-chromium-155.sh`: prepares the isolated 155 checkout in CI.
+- `.github/workflows/incremental-build.yml`: builds only the 154 and 155
+  adapter branches, each using its own persistent source and output paths.
 - `licenses/`: applicable license texts and the generated third-party credits.
-- `SOURCE_MANIFEST.sha256`: SHA-256 checksums for every published regular file
-  except the manifest itself.
+- `SOURCE_MANIFEST.sha256`: the original source-publication checksum list;
+  current migration inputs are pinned by Git and the migration manifest.
 
-No HAP, native build output, HarmonyOS SDK, signing certificate, provisioning
-profile, device UDID, private key, or local signing configuration is published.
-Developers must configure their own HarmonyOS SDK and signing identity.
+The source tree excludes the private HarmonyOS SDK and signing material.
+Native HAR and symbol archives are produced by branch-scoped CI releases.
 
-## Apply
+## Build through CI
 
-Prepare a complete Chromium checkout at the pinned revision, including its
-DEPS, then run:
+Push source changes to `hmos-155-adapter`. CI prepares `/root/chromium-155/src`,
+synchronizes the pinned dependencies and toolchain, applies the migration,
+then builds and packages the engine HAR. The stable 154 source and output
+remain at `/root/chromium-154/src`.
 
-```bash
-./scripts/apply-adapter.sh /path/to/chromium/src
-cp config/args.plan_kirin_pc.gn /path/to/chromium/src/out/plan_kirin_pc/args.gn
-```
-
-Read [BUILDING.md](BUILDING.md) before generating or compiling the target.
+See [BUILDING.md](BUILDING.md) and the
+[migration notes](docs/CHROMIUM_155_MIGRATION.md) for the branch and path
+contract. `scripts/apply-adapter.sh` is retained for the historical 154 tree.
 DRM and codec boundaries are documented in [docs/DRM_AND_MEDIA.md](docs/DRM_AND_MEDIA.md),
 and the account/sync trust model is in [docs/HARMONYOS_SYNC.md](docs/HARMONYOS_SYNC.md).
 

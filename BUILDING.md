@@ -9,38 +9,45 @@
 - A compatible HarmonyOS SDK/NDK and Rust toolchain supplied by the developer.
 - DevEco Studio/Hvigor for the ArkUI HAP shell.
 
-The SDK and signing files are intentionally not redistributed by this project.
-Place or link the unpacked SDK at `src/ohos_sdk` after applying the adapter.
-The adapter also expects the WebView interface tree at
-`../deps_code/webview`; `scripts/apply-adapter.sh` installs the published copy.
-It also applies `patches/deps/` to the DEPS checkouts, which must be clean.
+## Isolated CI source trees
 
-The adapter links against the SDK's LLVM 19 runtime layout
-(`native/llvm/lib/clang/19/lib/aarch64-unknown-linux-ohos`). The public DevEco
-native SDK ships LLVM 15.0.4; aliasing the 15.0.4 runtimes to that layout links
-and runs on OpenHarmony 7.0, as described in the macOS container guide.
+This branch pins Chromium **155.0.8059.91** at
+`f043649a0ef1fd96e48d56ddbfc8a4a99aa2ca37`. The stable 154 baseline and its
+working build directory stay intact.
 
-## Prepare Chromium
+| Adapter branch | Native source | Native output |
+| --- | --- | --- |
+| `hmos-154-adapter` | `/root/chromium-154/src` | `out/ohos_arm64` inside 154 |
+| `hmos-155-adapter` | `/root/chromium-155/src` | `out/ohos_arm64` inside 155 |
 
-```bash
-ADAPTER_ROOT=/path/to/chromium-hmos-adapter
-git -C /path/to/chromium/src checkout f405107495a07cb1bfcf687d4af8d91117098db6
-gclient sync -D
-"${ADAPTER_ROOT}/scripts/apply-adapter.sh" /path/to/chromium/src
-mkdir -p /path/to/chromium/src/out/plan_kirin_pc
-cp "${ADAPTER_ROOT}/config/args.plan_kirin_pc.gn" \
-  /path/to/chromium/src/out/plan_kirin_pc/args.gn
-```
+Native compilation runs through push-triggered GitHub Actions. Push source
+changes to the corresponding adapter branch; `select-ci-engine.py` rejects
+other refs, and both branches share a serial build queue.
 
-## Native Targets
+## Chromium 155 preparation
 
-From the Chromium source directory:
+The 155 job runs `scripts/prepare-chromium-155.sh`. It seeds independent files
+and Git objects from the 154 checkout without its native outputs, synchronizes
+the new DEPS with shallow history, and uses a pinned bootstrap tool checkout
+at `/root/chromium-155/depot_tools`. Private SDK links are restored after
+upstream synchronization. The existing licensed SDK exposes its compiler
+runtime through `native/llvm/lib/clang/current/`; the 155 job reuses those
+links.
 
-```bash
-gn gen out/plan_kirin_pc
-autoninja -C out/plan_kirin_pc \
-  chrome libweb_engine web_render libnweb_render
-```
+The job verifies every revision and payload hash in
+`patches/migration-155/manifest.json`, applies the native and dependency
+snapshots, synchronizes the overlay by content and runs toolchain hooks.
+Unchanged compiler inputs retain their timestamps during retries.
+
+`scripts/apply-adapter.sh` and `patches/deps/series` describe the historical
+154 setup. The 155 workflow uses `patches/migration-155/` instead.
+
+## Native build
+
+CI generates `out/ohos_arm64` and validates V8 PGO/context snapshots, compiles
+critical OHOS graphics, video, certificate and browser objects first, and
+then builds `gn_all`. Compiler diagnostics are retained in `build-status/`.
+Native rule validation and engine HAR packaging follow a successful build.
 
 The build uses Chromium branding and includes the V8 JIT compilers
 (Sparkplug, Maglev and TurboFan). At launch the runner probes whether the
@@ -58,11 +65,10 @@ It also enables the Chromium AAC/H.264 build switches used by the validated
 test package. Those switches do not grant codec patent or distribution rights;
 distributors remain responsible for the licenses required in their markets.
 
-Incremental CI reuses the runner's `${CHROMIUM_SRC}/${OUT_DIR}/args.gn`
-(`OUT_DIR` defaults to `out/ohos_arm64`); it does not copy this repository's
-`config/args.plan_kirin_pc.gn`. That file is kept identical to the runner's
-`args.gn`; change both together, or the repository describes a build that CI
-does not make.
+The 155 bootstrap copies `config/args.plan_kirin_pc.gn` only when the output
+has no arguments file. Subsequent builds retain that tree's arguments; the
+profile helper synchronizes the repository's V8 PGO and context snapshot
+choices. The 154 workflow continues using its existing arguments file.
 
 ## HAP
 

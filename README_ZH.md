@@ -2,15 +2,15 @@
 
 [English](README.md)
 
-本分支公开本地 Chromium 150 HarmonyOS 测试 HAP 使用的通用适配代码。它是独立、非官方项目，不代表 Google、Chromium、华为或 OpenHarmony 官方立场。
+本分支用于 Chromium 155 的 HarmonyOS 适配迁移。154 稳定构建保留在 `hmos-154-adapter`。它是独立、非官方项目，不代表 Google、Chromium、华为或 OpenHarmony 官方立场。
 
 ## 基线
 
-- Chromium：`150.0.7871.114`
-- 上游提交：`f405107495a07cb1bfcf687d4af8d91117098db6`
+- Chromium：`155.0.8059.91`
+- 上游提交：`f043649a0ef1fd96e48d56ddbfc8a4a99aa2ca37`
 - 目标系统：`ohos`，产品界面统一表述为 HarmonyOS
 - 目标架构：`arm64`
-- 单一产品：`plan_kirin_pc`
+- 单一产品：`kirin_pc`；CI 输出目录为 `out/ohos_arm64`
 - V8：构建包含 JIT 编译器，启动时探测能否映射可执行内存，能则启用 JIT（平板、2in1），不能则以 JITless 运行（手机正式包）。JITless 时 WebAssembly 由 DrumBrake 解释器执行
 - UI：大屏使用 Chromium Aura/Views；手机使用 ArkUI 浏览器栏和 Chromium 内容层
 - 媒体：测试配置启用 AAC/H.264 构建开关；不包含 Widevine CDM
@@ -26,24 +26,22 @@
 
 ## 仓库内容
 
-- `patches/chromium-154-harmonyos.patch`：对 Chromium 上游已跟踪文件的完整修改。
+- `patches/migration-155/`：已重定位到固定 155 提交的主仓与依赖适配；清单记录来源和校验值。
+- `patches/chromium-154-harmonyos.patch`：保留的历史 154 基线。
 - `overlay/`：新增的 HarmonyOS、ArkWeb、Ozone、Aura shell 与 ArkUI 源码。
 - `external/deps_code/webview/`：适配层需要的 WebView 接口源码。
 - `config/args.plan_kirin_pc.gn`：本次原生构建使用的 GN 参数。
-- `scripts/apply-adapter.sh`：将适配快照应用到指定 Chromium 基线。
-- `.github/workflows/upstream-stable.yml`：检查 Chromium Stable，并可触发带授权 SDK 的自托管构建。
+- `scripts/prepare-chromium-155.sh`：在 CI 中准备独立的 155 源码。
+- `.github/workflows/incremental-build.yml`：仅构建 154／155 adapter 分支，各自使用独立源码和输出目录。
 - `licenses/`：许可证正文与第三方许可证清单。
-- `SOURCE_MANIFEST.sha256`：除清单自身外，所有公开常规文件的 SHA-256。
+- `SOURCE_MANIFEST.sha256`：原始源码公开快照的校验清单；当前迁移输入以 Git 提交和迁移清单为准。
 
-本分支不发布 HAP、原生编译产物、HarmonyOS SDK、签名证书、Profile、设备 UDID、私钥或本机签名配置。开发者需要自行安装 HarmonyOS SDK，并配置自己的签名。
+源码仓库不包含私有 HarmonyOS SDK 和签名材料。原生 HAR 与符号归档由对应分支的 CI release 生成。
 
-## 应用适配
+## 通过 CI 构建
 
-准备完整 Chromium checkout，切换到上述固定提交并同步 DEPS，然后执行：
+将源码改动推送到 `hmos-155-adapter`。CI 在 `/root/chromium-155/src` 同步固定依赖和工具链、应用迁移补丁，并编译和打包引擎 HAR。154 的源码及输出保留在 `/root/chromium-154/src`。
 
-```bash
-./scripts/apply-adapter.sh /path/to/chromium/src
-cp config/args.plan_kirin_pc.gn /path/to/chromium/src/out/plan_kirin_pc/args.gn
-```
+目录和分支约定见 [BUILDING.md](BUILDING.md) 和[迁移说明](docs/CHROMIUM_155_MIGRATION.md)。`scripts/apply-adapter.sh` 保留用于历史 154 源码树。
 
-继续构建前请阅读 [BUILDING.md](BUILDING.md)。许可证及对应源码说明见 [OPEN_SOURCE_NOTICES.md](OPEN_SOURCE_NOTICES.md) 与 [SOURCE_OFFER.md](SOURCE_OFFER.md)，DRM/编解码边界见 [docs/DRM_AND_MEDIA.md](docs/DRM_AND_MEDIA.md)，账号与同步信任模型见 [docs/HARMONYOS_SYNC.md](docs/HARMONYOS_SYNC.md)。
+许可证及对应源码说明见 [OPEN_SOURCE_NOTICES.md](OPEN_SOURCE_NOTICES.md) 与 [SOURCE_OFFER.md](SOURCE_OFFER.md)，DRM/编解码边界见 [docs/DRM_AND_MEDIA.md](docs/DRM_AND_MEDIA.md)，账号与同步信任模型见 [docs/HARMONYOS_SYNC.md](docs/HARMONYOS_SYNC.md)。
