@@ -286,11 +286,10 @@ stage_native_runtime() {
     ! -name '*_FEMININE.pak' ! -name '*_MASCULINE.pak' \
     ! -name '*_NEUTER.pak' -exec cp -a {} "${raw_dir}/locales/" \;
 
-  for optional_file in v8_context_snapshot.bin; do
-    if [[ -f "${out_dir}/${optional_file}" ]]; then
-      cp -a "${out_dir}/${optional_file}" "$raw_dir/"
-    fi
-  done
+  if grep -Eq '^[[:space:]]*use_v8_context_snapshot[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "${out_dir}/args.gn"; then
+    [[ -s "${out_dir}/v8_context_snapshot.bin" ]] || die 'missing V8 context snapshot'
+    cp -a "${out_dir}/v8_context_snapshot.bin" "$raw_dir/"
+  fi
 
   runtime_version=$(
     cd "$raw_dir"

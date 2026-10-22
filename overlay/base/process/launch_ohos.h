@@ -38,6 +38,10 @@ inline constexpr const char* kOhosRendererResourceNames[] = {
     kOhosIcuData,      kOhosLocalePak,    kOhosChrome100Pak,
     kOhosChrome200Pak, kOhosResourcesPak, kOhosV8Snapshot};
 BASE_EXPORT bool IsOhosIsolatedRenderer();
+// Content supplies its compiled snapshot choice before any renderer launch.
+// Keeps base independent of Blink's context snapshot buildflags.
+BASE_EXPORT void SetOhosV8ContextSnapshotEnabled(bool enabled);
+BASE_EXPORT const char* GetOhosV8SnapshotFileName();
 
 // Runtime-resolved NDK entry points. Keeping the launch transaction separate
 // lets tests exercise unavailable APIs and failures without starting a child.

@@ -74,6 +74,7 @@ def main():
     src, out, status = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
     config = (ROOT / 'config/args.plan_kirin_pc.gn').read_text()
     enabled = re.search(r'(?m)^v8_enable_builtins_optimization\s*=\s*(true|false)\s*$', config).group(1) == 'true'
+    context_snapshot = re.search(r'(?m)^use_v8_context_snapshot\s*=\s*(true|false)\s*$', config).group(1) == 'true'
     report = {'enabled': enabled}
     if enabled:
         report.update(prepare_profile(src))
@@ -81,6 +82,7 @@ def main():
     original = args.read_text()
     updated = setting(original, 'v8_enable_builtins_optimization', str(enabled).lower())
     updated = setting(updated, 'v8_builtins_profiling_log_file', json.dumps(PROFILE if enabled else 'default'))
+    updated = setting(updated, 'use_v8_context_snapshot', str(context_snapshot).lower())
     write_changed(args, updated.encode())
     if enabled or updated != original:
         subprocess.run([str(src / 'buildtools/linux64/gn'), 'gen', out], cwd=src, check=True)
@@ -91,6 +93,10 @@ def main():
     report['pending_by_action'] = dict(collections.Counter(tasks))
     status.mkdir(parents=True, exist_ok=True)
     (status / 'v8-builtins-pgo.json').write_text(json.dumps(report, indent=2) + '\n')
+    context_report = {'enabled': context_snapshot, 'file': 'v8_context_snapshot.bin',
+                      'pending_tasks': len(tasks)}
+    (status / 'v8-context-snapshot.json').write_text(json.dumps(context_report, indent=2) + '\n')
+    print('V8 context snapshot: ' + json.dumps(context_report), flush=True)
     print('V8 builtins PGO: ' + json.dumps(report), flush=True)
 
 

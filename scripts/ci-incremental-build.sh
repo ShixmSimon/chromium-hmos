@@ -380,8 +380,8 @@ else
     "$src" "${repo_root}/scripts/ci-input-mtime-repair.json" || die "input timestamp repair failed"
 
   # ---- build -----------------------------------------------------------------
-  # This tree keeps its own GN args across builds. Sync only the builtins PGO
-  # setting, validate its profile, and report the incremental rebuild size.
+  # This tree keeps its own GN args. Sync the builtins PGO and context
+  # snapshot choices, validate the profile, and report pending build work.
   python3 "${repo_root}/scripts/configure-v8-builtins-pgo.py" \
     "$src" "$out" "$status_dir" || die "V8 builtins PGO setup failed"
   say "building (-j ${jobs})"
@@ -775,6 +775,16 @@ else
   rm -f "$har_engine"
   [[ "$har_id" == "$build_id" ]] \
     || die "HAR carries engine ${har_id:-with no build-id}, expected ${build_id}"
+
+  if grep -Eq '^[[:space:]]*use_v8_context_snapshot[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "${src}/${out}/args.gn"; then
+    har_snapshot="$(mktemp)"
+    tar -xzOf "$har" package/src/main/resources/rawfile/chromium/v8_context_snapshot.bin \
+      >"$har_snapshot" 2>/dev/null || die 'HAR has no V8 context snapshot'
+    cmp -s "$har_snapshot" "${src}/${out}/v8_context_snapshot.bin" \
+      || die 'HAR V8 context snapshot differs from the native build'
+    rm -f "$har_snapshot"
+    say 'HAR V8 context snapshot matches the native build'
+  fi
 
   har_size=$(stat -c %s "$har")
   say "HAR $(basename "$har") ($((har_size / 1048576)) MB)"

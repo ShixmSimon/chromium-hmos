@@ -89,9 +89,11 @@ find "${out_dir}/locales" -maxdepth 1 -type f -name '*.pak' \
   ! -name '*_FEMININE.pak' ! -name '*_MASCULINE.pak' ! -name '*_NEUTER.pak' \
   -exec cp -a {} "${raw_dir}/locales/" \;
 
-for optional in v8_context_snapshot.bin; do
-  [[ -f "${out_dir}/${optional}" ]] && cp -a "${out_dir}/${optional}" "$raw_dir/"
-done
+# When enabled this is a required runtime asset, not an optional optimisation.
+if grep -Eq '^[[:space:]]*use_v8_context_snapshot[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "${out_dir}/args.gn"; then
+  [[ -s "${out_dir}/v8_context_snapshot.bin" ]] || die 'missing V8 context snapshot'
+  cp -a "${out_dir}/v8_context_snapshot.bin" "$raw_dir/"
+fi
 
 # Optional reviewed snapshot, covered by the final application's signing and
 # runtime.version. An absent asset is reported as missing, never as protection.

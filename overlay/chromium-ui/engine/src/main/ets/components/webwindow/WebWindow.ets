@@ -488,11 +488,11 @@ export struct WebWindow {
           `${runtimeDir}/${fileName}`
         );
       }
-      // A signed application may carry an optional public phishing snapshot.
+      // Extract the optional context snapshot and signed phishing assets.
       // Remove the previous version when the new package omits it; otherwise
       // an old extracted file could silently survive an app upgrade.
       const rawFiles = hostContext.resourceManager.getRawFileListSync('chromium');
-      for (const rulesName of ['ohos_phishing_rules.json', 'ohos_phishing_updates.json']) {
+      for (const rulesName of ['v8_context_snapshot.bin', 'ohos_phishing_rules.json', 'ohos_phishing_updates.json']) {
         const rulesPath = `${runtimeDir}/${rulesName}`;
         if (rawFiles.some((name: string): boolean =>
           name === rulesName || name === `chromium/${rulesName}`)) {
