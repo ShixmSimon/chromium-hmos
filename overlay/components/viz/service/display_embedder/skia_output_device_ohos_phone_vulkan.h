@@ -7,12 +7,16 @@
 #include "components/viz/service/display_embedder/skia_output_device.h"
 #include "gpu/ipc/common/surface_handle.h"
 
+namespace gpu {
+class VulkanContextProvider;
+}
+
 namespace viz {
 // Phone fork GPU only: the browser owns NativeWindow; this device imports its
 // leased buffers. No VkSurfaceKHR, swapchain, pixel IPC or final image blit.
 class SkiaOutputDeviceOhosPhoneVulkan final : public SkiaOutputDevice {
  public:
-  SkiaOutputDeviceOhosPhoneVulkan(VulkanContextProvider* provider,
+  SkiaOutputDeviceOhosPhoneVulkan(gpu::VulkanContextProvider* provider,
                                   gpu::SurfaceHandle widget,
                                   bool requires_alpha,
                                   gpu::MemoryTracker* memory_tracker,

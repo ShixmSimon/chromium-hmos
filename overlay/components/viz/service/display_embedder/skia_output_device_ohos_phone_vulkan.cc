@@ -98,7 +98,7 @@ struct SkiaOutputDeviceOhosPhoneVulkan::State {
     VkDeviceSize bytes = 0;
     sk_sp<SkSurface> surface;
   };
-  raw_ptr<VulkanContextProvider> provider;
+  raw_ptr<gpu::VulkanContextProvider> provider;
   raw_ptr<gpu::MemoryTypeTracker> tracker;
   uint64_t widget;
   ui::OhosOutputColor color;
@@ -275,7 +275,7 @@ struct SkiaOutputDeviceOhosPhoneVulkan::State {
 };
 
 SkiaOutputDeviceOhosPhoneVulkan::SkiaOutputDeviceOhosPhoneVulkan(
-    VulkanContextProvider* provider,
+    gpu::VulkanContextProvider* provider,
     gpu::SurfaceHandle widget,
     bool requires_alpha,
     gpu::MemoryTracker* memory_tracker,
