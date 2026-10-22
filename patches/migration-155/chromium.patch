@@ -33148,6 +33148,19 @@ index ea8271f8ff3f38cad8b00e48980da06167b348c0..3d763838bbace8aa0ec7af57628277e1
  #elif BUILDFLAG(IS_FUCHSIA)
  
  namespace {
+diff --git a/net/cert/internal/system_trust_store.h b/net/cert/internal/system_trust_store.h
+index 6c3696aaa6a3fcb2b005330f77808b1a27f2dd1c..5ef196643e4c122654a5d8a377c832d765af119b 100644
+--- a/net/cert/internal/system_trust_store.h
++++ b/net/cert/internal/system_trust_store.h
+@@ -115,7 +115,7 @@ NET_EXPORT std::unique_ptr<SystemTrustStore> CreateSslSystemTrustStore();
+ 
+ #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
+ #if BUILDFLAG(USE_NSS_SERVER_CERTS) || BUILDFLAG(IS_MAC) || \
+-    BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID)
++    BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+ // Creates an instance of SystemTrustStore that wraps the current platform's SSL
+ // trust store for user added roots, but uses the Chrome Root Store trust
+ // anchors. This cannot return nullptr.
 diff --git a/net/dns/public/BUILD.gn b/net/dns/public/BUILD.gn
 index 32bec8338d3ec6d6f4c91464886578d7037153fc..307555a4aa69152fd6266f6aa70dd7fc841d708c 100644
 --- a/net/dns/public/BUILD.gn
