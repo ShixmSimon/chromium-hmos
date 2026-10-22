@@ -405,10 +405,28 @@ else
   # sample and stream diagnostics instead of hiding them until ninja ends.
   # Check the new native execution paths before a public-header rebuild can
   # spend an hour reaching them. Ninja still regenerates GN inputs normally.
+  migration_checks=()
+  if [[ "${CHROMIUM_MAJOR:-154}" == 155 ]]; then
+    # Exercise the moved GPU interfaces and OHOS integration before the full
+    # browser link graph can spend hours reaching an incompatible declaration.
+    migration_checks=(
+      obj/gpu/command_buffer/service/gles2_sources/external_vk_image_backing.o
+      obj/gpu/command_buffer/service/gles2_sources/webgpu_decoder_impl.o
+      obj/gpu/command_buffer/service/gles2_sources/vulkan_in_process_context_provider.o
+      obj/gpu/command_buffer/service/gles2_sources/skia_vk_ozone_image_representation.o
+      obj/components/viz/service/service/skia_output_device_ohos_phone_vulkan.o
+      obj/components/viz/service/service/skia_output_device_ohos_graphite.o
+      obj/media/gpu/gpu/ohos_video_frame_converter.o
+      obj/ui/ozone/platform/ohos/ohos/ohos_native_pixmap.o
+      obj/ohos_nweb/src/aura_shell/aura_shell_core/ohos_chrome_main_runner.o
+      obj/third_party/angle/src/libANGLE/renderer/vulkan/angle_vulkan_backend/DisplayVkOhos.o
+      obj/third_party/angle/src/libANGLE/renderer/vulkan/angle_vulkan_backend/NativeBufferImageSiblingVkOhos.o
+    )
+  fi
   ( cd "$src" && third_party/ninja/ninja -C "$out" -j "$jobs" -k 1 \
       obj/chrome/common/ohos/adblock/execution/decision_throttle.o \
       obj/chrome/browser/core/adblock.o obj/chrome/renderer/renderer/adblock.o \
-      obj/chrome/browser/core/translation.o && \
+      obj/chrome/browser/core/translation.o "${migration_checks[@]}" && \
     third_party/ninja/ninja -C "$out" -j "$jobs" \
       -k "${NINJA_MAX_FAILURES:-20}" gn_all ) \
     2>&1 | tee "$log" \
