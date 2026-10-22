@@ -18,6 +18,7 @@ git init -q "${checkout}"
 git -C "${checkout}" remote add origin https://github.com/chromium/chromium.git
 git -C "${checkout}" sparse-checkout init --no-cone
 grep '^diff --git ' "${project_root}/patches/chromium-154-harmonyos.patch" \
+  "${project_root}/patches/ohos-mobile-ua-viewport.patch" \
   "${project_root}/patches/ohos-url-protection.patch" \
   "${project_root}/patches/ohos-url-protection-updates.patch" \
   "${project_root}/patches/ohos-rule-sources.patch" \
@@ -55,6 +56,10 @@ fi
 if [[ "${compatible}" == true ]]; then
   git -C "${checkout}" apply --binary \
     "${project_root}/patches/chromium-154-harmonyos.patch"
+  if ! git -C "${checkout}" apply \
+      "${project_root}/patches/ohos-mobile-ua-viewport.patch" 2>"${failure_log}"; then
+    compatible=false
+  fi
   if ! git -C "${checkout}" apply \
       "${project_root}/patches/ohos-url-protection.patch" 2>"${failure_log}"; then
     compatible=false

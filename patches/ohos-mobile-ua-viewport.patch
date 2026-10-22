@@ -1,0 +1,18 @@
+diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
+index fb82665..bfbaa75 100644
+--- a/chrome/browser/chrome_content_browser_client.cc
++++ b/chrome/browser/chrome_content_browser_client.cc
+@@ -4597,9 +4597,10 @@ bool ApplyOhosPhoneWebPreferences(WebContents* web_contents,
+   // width and lays out for a phone anyway -- the site was never the problem.
+   // content does this for us a few lines before it calls this, and then this
+   // runs and would put it back, so decide it here instead.
+-  content::NavigationEntry* entry =
+-      web_contents ? web_contents->GetController().GetVisibleEntry() : nullptr;
+-  const bool desktop_site = entry && entry->GetIsOverridingUserAgent();
++  // AppGallery compatibility and inherited phone UAs also use overrides.
++  // Only a desktop UA should disable the page's mobile viewport.
++  const bool desktop_site =
++      chrome::ohos::IsAuraShellRequestingDesktopSite(web_contents);
+ 
+   // The viewport machinery stays on in every case. Turning it off for WebUI
+   // was wrong twice over: the same machinery computes the right width for an

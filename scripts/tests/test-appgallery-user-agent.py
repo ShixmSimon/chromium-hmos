@@ -22,11 +22,16 @@ policy = function(source, 'bool IsHuaweiAppGallery(') + '\n' + function(source, 
 method = function(source, 'bool ApplyAppGalleryUserAgent(')
 classifier = function((ROOT / 'overlay/chrome/browser/ui/ohos/aura_shell_runtime_bridge.cc').read_text(),
                       'bool IsAuraShellRequestingDesktopSite(')
-viewport_patch = (ROOT / 'patches/ohos-phone-viewport.patch').read_text()
+viewport_patch = (ROOT / 'patches/ohos-mobile-ua-viewport.patch').read_text()
+for script in ['ci-incremental-build.sh', 'apply-adapter.sh', 'check-upstream-adapter.sh']:
+    assert 'patches/ohos-mobile-ua-viewport.patch' in (ROOT / 'scripts' / script).read_text(), script
 viewport_added = '\n'.join(line[1:] for line in viewport_patch.splitlines()
                            if line.startswith('+') and not line.startswith('+++'))
 viewport_desktop = re.search(r'  const bool desktop_site =[^;]+;', viewport_added)[0]
-viewport_meta = re.search(r'  const bool viewport_meta_enabled =[^;]+;', viewport_added)[0]
+base_patch = (ROOT / 'patches/chromium-154-harmonyos.patch').read_text()
+base_added = '\n'.join(line[1:] for line in base_patch.splitlines()
+                       if line.startswith('+') and not line.startswith('+++'))
+viewport_meta = re.search(r'  const bool viewport_meta_enabled =[^;]+;', base_added)[0]
 viewport = ('bool MobileViewportEnabled(content::WebContents* web_contents) {\n' +
             viewport_desktop + '\n' + viewport_meta + '\n  return viewport_meta_enabled;\n}')
 # The browser-client hook must use the same classifier as the shell UI.

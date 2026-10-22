@@ -36,6 +36,8 @@ done <"${deps_patch_root}/series"
 git -C "${chromium_src}" apply --binary \
   "${project_root}/patches/chromium-154-harmonyos.patch"
 git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-mobile-ua-viewport.patch"
+git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-url-protection.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-url-protection-updates.patch"
