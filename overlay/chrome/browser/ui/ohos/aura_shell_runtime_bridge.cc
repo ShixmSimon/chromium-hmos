@@ -3084,7 +3084,7 @@ void ShowBrowserControls(content::WebContents* contents) {
 FullscreenController* GetFullscreenController(
     BrowserWindowInterface* browser) {
   ExclusiveAccessManager* manager =
-      browser ? browser->GetFeatures().exclusive_access_manager() : nullptr;
+      browser ? ExclusiveAccessManager::From(browser) : nullptr;
   return manager ? manager->fullscreen_controller() : nullptr;
 }
 
