@@ -25,6 +25,54 @@ class IncrementalPatchTest(unittest.TestCase):
     def run_command(self, *args, cwd):
         return subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True).stdout
 
+    def test_refresh_preserves_unchanged_diff_with_later_dependent_context(self):
+        for installed in (True, False):
+            with self.subTest(installed=installed), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.run_command('git', 'init', '-q', cwd=root)
+                self.run_command('git', 'config', 'core.autocrlf', 'false', cwd=root)
+                build, feature = root / 'BUILD.gn', root / 'feature.cc'
+                base = 'if (is_ohos) {\n  deps = [\n    "base",\n  ]\n  sources = [\n    "main.cc",\n  ]\n}\n'
+                patched = base.replace('    "base",', '    "base",\n    "network",')
+                dependent = patched.replace('  sources = [', '  sources += [ "rules.cc" ]\n  sources = [')
+                build.write_text(base)
+                feature.write_text('base\n')
+                self.run_command('git', 'add', '.', cwd=root)
+                build.write_text(patched)
+                feature.write_text('old\n')
+                old = self.run_command('git', 'diff', cwd=root)
+                feature.write_text('new\n')
+                new = self.run_command('git', 'diff', cwd=root)
+                feature.write_text('old\n')
+                build.write_text(dependent if installed else base)
+                stamp = 1700000000000000000
+                os.utime(build, ns=(stamp, stamp))
+                if installed:
+                    # Reproduce the CI failure: reversing the old patch succeeds,
+                    # but replaying identical BUILD.gn hunks hits the later rule patch.
+                    subprocess.run(['git', 'apply', '-C0', '--reverse'], cwd=root,
+                                   input=old, text=True, check=True, capture_output=True)
+                    check = subprocess.run(['git', 'apply', '--check'], cwd=root,
+                                           input=new, text=True, capture_output=True)
+                    self.assertNotEqual(check.returncode, 0)
+                    build.write_text(dependent)
+                    feature.write_text('old\n')
+                    os.utime(build, ns=(stamp, stamp))
+                patch = root / 'new.patch'
+                patch.write_text(new)
+                result = subprocess.run([sys.executable, str(PROJECT / 'scripts/refresh-incremental-patch.py'),
+                                         str(root), str(patch)], input=old, text=True, capture_output=True)
+                if installed:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(build.read_text(), dependent)
+                    self.assertEqual(feature.read_text(), 'new\n')
+                else:
+                    # An identical diff must not be skipped if its changes are absent.
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(build.read_text(), base)
+                    self.assertEqual(feature.read_text(), 'old\n')
+                self.assertEqual(build.stat().st_mtime_ns, stamp)
+
     def test_default_and_deps_roots_first_repeat_and_upgrade(self):
         for deps in (False, True):
             with self.subTest(deps=deps), tempfile.TemporaryDirectory() as directory:

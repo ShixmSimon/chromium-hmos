@@ -8,10 +8,41 @@ replacement fails. No build-output timestamps are modified.
 import os
 import hashlib
 import json
+import re
 from pathlib import Path
 import stat
 import subprocess
 import sys
+
+
+def changed_sections(root, old, new):
+    """Keep identical per-file diffs applied when later patches changed context."""
+    def sections(data):
+        chunks = re.split(rb'(?m)(?=^diff --git )', data)
+        result = {}
+        for chunk in chunks:
+            if not chunk:
+                continue
+            if not chunk.startswith(b'diff --git '):
+                return None  # Legacy unified diffs retain the existing path.
+            key = chunk.split(b'\n', 1)[0]
+            if key in result:
+                return None
+            result[key] = chunk
+        return result
+
+    previous, updated = sections(old), sections(new)
+    if previous is None or updated is None:
+        return old, new
+    unchanged = {key for key in previous if key in updated and previous[key] == updated[key]}
+    if unchanged:
+        # Never skip unapplied changes. Context may differ, but their own added
+        # lines must still exist, just as the caller's old-revision check requires.
+        subprocess.run(['git', '-C', str(root), 'apply', '-C0', '--reverse', '--check'],
+                       input=b''.join(previous[key] for key in previous if key in unchanged), check=True)
+        print(f'kept {len(unchanged)} unchanged per-file patch section(s) applied')
+    return (b''.join(value for key, value in previous.items() if key not in unchanged),
+            b''.join(value for key, value in updated.items() if key not in unchanged))
 
 
 def refresh(root, old, new):
@@ -39,10 +70,13 @@ def refresh(root, old, new):
             before[path] = (path.read_bytes(), info)
         else:
             before[path] = None
+    old_changes, new_changes = changed_sections(root, old, new)
     try:
-        subprocess.run(['git', '-C', str(root), 'apply', '-C0', '--reverse'],
-                       input=old, check=True)
-        subprocess.run(['git', '-C', str(root), 'apply'], input=new, check=True)
+        if old_changes:
+            subprocess.run(['git', '-C', str(root), 'apply', '-C0', '--reverse'],
+                           input=old_changes, check=True)
+        if new_changes:
+            subprocess.run(['git', '-C', str(root), 'apply'], input=new_changes, check=True)
     except BaseException:
         for path, saved in before.items():
             if saved is None:
