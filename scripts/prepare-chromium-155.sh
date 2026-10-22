@@ -97,14 +97,16 @@ fi
 python3 "$repo_root/scripts/apply-155-snapshot.py" "$src" \
   2>&1 | tee "$repo_root/build-status/migration-155.log"
 rsync -a --checksum "$repo_root/overlay/" "$src/"
-mkdir -p "$root/deps_code/webview" "$src/out/ohos_arm64"
+mkdir -p "$root/deps_code/webview"
 rsync -a --checksum "$repo_root/external/deps_code/webview/" "$root/deps_code/webview/"
-if [[ ! -f "$src/out/ohos_arm64/args.gn" ]]; then
-  cp "$repo_root/config/args.plan_kirin_pc.gn" "$src/out/ohos_arm64/args.gn"
-fi
 # The copied tools belong to 154. Hooks install the exact 155 compiler, Rust,
 # GN and generated dependencies before anything is compiled.
 if [[ ! -f "$root/.hooks-$revision" ]]; then
   (cd "$root" && gclient runhooks)
   touch "$root/.hooks-$revision"
+fi
+# Landmine hooks may remove out/. Create arguments only after those hooks.
+mkdir -p "$src/out/ohos_arm64"
+if [[ ! -f "$src/out/ohos_arm64/args.gn" ]]; then
+  cp "$repo_root/config/args.plan_kirin_pc.gn" "$src/out/ohos_arm64/args.gn"
 fi

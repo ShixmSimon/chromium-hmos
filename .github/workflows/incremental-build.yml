@@ -90,7 +90,10 @@ jobs:
           # the HAP stays where the key is.
           SKIP_HAP: '1'
           SKIP_PACKAGE: ${{ (github.event_name == 'workflow_dispatch' && !inputs.package) && '1' || '' }}
-        run: bash scripts/ci-incremental-build.sh
+        run: |
+          mkdir -p build-status
+          set -o pipefail
+          bash scripts/ci-incremental-build.sh 2>&1 | tee build-status/native-build.log
 
       - name: Check native phishing rule validation
         run: bash scripts/test-url-protection-native.sh

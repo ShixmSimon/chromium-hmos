@@ -170,6 +170,7 @@ else
 
   if [[ "${CHROMIUM_MAJOR:-154}" == 155 ]]; then
     say "155 uses the complete migrated native snapshot"
+    bash "${repo_root}/scripts/setup-adblock-rust.sh" || die "Rust toolchain setup failed"
   else
   # ---- incremental patches ---------------------------------------------------
   # Every incremental patch up to hmos-154-adapter 398a5ed (and those applied

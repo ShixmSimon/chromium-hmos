@@ -33047,18 +33047,19 @@ index ec271d7489adb0d02d347ca33a8fbded84edd844..c99b6579bda25f7587801167d582051c
        enabled_features += [ "is_linux" ]
      } else if (is_mac) {
 diff --git a/net/BUILD.gn b/net/BUILD.gn
-index 54a40951c09aa31ff0d1b74757b201024939fc86..dfd716e85367543023bda740685879cfd36dacfc 100644
+index 54a40951c09aa31ff0d1b74757b201024939fc86..24650275047cb62cfcb13ce6dbef138cb5293b8d 100644
 --- a/net/BUILD.gn
 +++ b/net/BUILD.gn
-@@ -1703,6 +1703,13 @@ component("net") {
+@@ -1703,6 +1703,14 @@ component("net") {
      ]
    }
  
 +  if (is_ohos) {
-+    sources += [
-+      "base/platform_mime_util_ohos.cc",
-+      "cert/test_root_certs_builtin.cc",
-+    ]
++    sources += [ "base/platform_mime_util_ohos.cc" ]
++    # Chromium 155 includes this source for chrome_root_store_only above.
++    if (!chrome_root_store_only) {
++      sources += [ "cert/test_root_certs_builtin.cc" ]
++    }
 +  }
 +
    if (enable_unix_sockets) {
