@@ -380,6 +380,10 @@ else
     "$src" "${repo_root}/scripts/ci-input-mtime-repair.json" || die "input timestamp repair failed"
 
   # ---- build -----------------------------------------------------------------
+  # This tree keeps its own GN args across builds. Sync only the builtins PGO
+  # setting, validate its profile, and report the incremental rebuild size.
+  python3 "${repo_root}/scripts/configure-v8-builtins-pgo.py" \
+    "$src" "$out" "$status_dir" || die "V8 builtins PGO setup failed"
   say "building (-j ${jobs})"
   start=$(date +%s)
   # Keep bounded diagnostics from a previous interrupted build before tee
