@@ -94,6 +94,12 @@ PY
   touch "$root/.deps-$revision"
 fi
 
+# gclient -D removes private, unversioned SDK links while syncing upstream.
+# Restore the link directory after sync; never write through those links or
+# alter the licensed SDK used by the stable 154 checkout.
+mkdir -p "$src/ohos_sdk"
+rsync -a "$seed/ohos_sdk/" "$src/ohos_sdk/"
+
 python3 "$repo_root/scripts/apply-155-snapshot.py" "$src" \
   2>&1 | tee "$repo_root/build-status/migration-155.log"
 rsync -a --checksum "$repo_root/overlay/" "$src/"
