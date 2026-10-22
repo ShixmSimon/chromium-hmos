@@ -414,6 +414,7 @@ else
       obj/gpu/command_buffer/service/gles2_sources/webgpu_decoder_impl.o
       obj/gpu/command_buffer/service/gles2_sources/vulkan_in_process_context_provider.o
       obj/gpu/command_buffer/service/gles2_sources/skia_vk_ozone_image_representation.o
+      obj/gpu/ipc/service/service/gpu_channel_shared_image_interface.o
       obj/components/viz/service/service/skia_output_device_ohos_phone_vulkan.o
       obj/components/viz/service/service/skia_output_device_ohos_graphite.o
       obj/media/gpu/gpu/ohos_video_frame_converter.o

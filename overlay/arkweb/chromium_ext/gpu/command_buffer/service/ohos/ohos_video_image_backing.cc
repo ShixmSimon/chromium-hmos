@@ -129,8 +129,8 @@ gfx::Rect OhosVideoImageBacking::ClearedRect() const {
 
 void OhosVideoImageBacking::SetClearedRect(const gfx::Rect& cleared_rect) {}
 
-void OhosVideoImageBacking::Update(std::unique_ptr<gfx::GpuFence> in_fence) {
-  DCHECK(!in_fence);
+void OhosVideoImageBacking::Update(gfx::GpuFenceHandle in_fence) {
+  DCHECK(in_fence.is_null());
 }
 //LCOV_EXCL_STOP
 

@@ -31552,7 +31552,7 @@ index 661ec6c7216e9f34649b211854d0f8eecfdb631d..77761d0b153cba9ef16443afea40b3a1
  }
  
 diff --git a/gpu/ipc/service/gpu_channel_shared_image_interface.cc b/gpu/ipc/service/gpu_channel_shared_image_interface.cc
-index d820085d2305b59a7b33716a555265df02186351..e54a920fb0206a0803937bfd4c9f9947e95f1fb6 100644
+index d820085d2305b59a7b33716a555265df02186351..10b8fc4e6daf17d571431291b5a291853dd2083f 100644
 --- a/gpu/ipc/service/gpu_channel_shared_image_interface.cc
 +++ b/gpu/ipc/service/gpu_channel_shared_image_interface.cc
 @@ -24,6 +24,16 @@
@@ -31622,7 +31622,7 @@ index d820085d2305b59a7b33716a555265df02186351..e54a920fb0206a0803937bfd4c9f9947
 +  }
 +  backing->SetCleared();
 +  if (!acquire_fence.is_null()) {
-+    backing->Update(std::make_unique<gfx::GpuFence>(std::move(acquire_fence)));
++    backing->Update(std::move(acquire_fence));
 +  }
 +  if (context->context_lost()) {
 +    return nullptr;
