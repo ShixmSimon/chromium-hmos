@@ -62,6 +62,12 @@ void SetPref(const ShellCommandContext& context,
              const base::DictValue& command);
 
 // shell_site_settings_ohos.cc
+void GetPageInfo(const ShellCommandContext& context,
+                 const base::DictValue& command);
+void SetPagePermission(const ShellCommandContext& context,
+                       const base::DictValue& command);
+void ClearPageSiteData(const ShellCommandContext& context,
+                       const base::DictValue& command);
 void GetSiteSettings(const ShellCommandContext& context,
                      const base::DictValue& command);
 void GetSiteSettingsForOrigin(const ShellCommandContext& context,

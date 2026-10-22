@@ -31,29 +31,44 @@
 // There is no 'autoplay': ContentSettingsType::AUTOPLAY exists, but nothing
 // in desktop Chromium enforces it -- 'sound' is the control that works.
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
+#include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "base/values.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "chrome/browser/ui/ohos/shell_settings_ohos_internal.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "components/blocked_content/popup_blocker_tab_helper.h"  // nogncheck
+#include "components/browsing_data/content/browsing_data_model.h"
 #include "components/content_settings/core/browser/content_settings_info.h"
 #include "components/content_settings/core/browser/content_settings_registry.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_pattern.h"
 #include "components/content_settings/core/common/content_settings_types.h"
-#include "components/blocked_content/popup_blocker_tab_helper.h"  // nogncheck
+#include "components/sessions/content/session_tab_helper.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/storage_partition.h"
+#include "content/public/browser/web_contents.h"
+#include "net/base/ip_address.h"
 #include "net/base/is_potentially_trustworthy.h"
+#include "net/base/schemeful_site.h"
+#include "net/cert/cert_status_flags.h"
+#include "net/cert/x509_certificate.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -313,6 +328,244 @@ void ResetSiteSettings(const ShellCommandContext& context,
   profile->GetDefaultStoragePartition()->ClearDataForOrigin(
       content::StoragePartition::REMOVE_DATA_MASK_ALL, *origin,
       base::DoNothing());
+}
+
+// Page-info commands are scoped to the active committed tab/document. They
+// intentionally use the sending window's Profile, including off-the-record,
+// rather than SettingsProfile (the settings pages edit regular preferences).
+namespace {
+
+content::WebContents* PageForInfo(const ShellCommandContext& context,
+                               const base::DictValue& command,
+                               bool require_navigation) {
+  auto* contents =
+      context.browser
+          ? context.browser->GetTabStripModel()->GetActiveWebContents()
+          : nullptr;
+  const auto* expected_tab = command.FindString("tabId");
+  if (!contents || !context.profile ||
+      contents->GetBrowserContext() != context.profile || !expected_tab ||
+      *expected_tab !=
+          base::NumberToString(
+              sessions::SessionTabHelper::IdForTab(contents).id())) {
+    return nullptr;
+  }
+  auto* entry = contents->GetController().GetLastCommittedEntry();
+  if (!entry || !entry->GetURL().SchemeIsHTTPOrHTTPS()) {
+    return nullptr;
+  }
+  if (require_navigation) {
+    const auto* expected_navigation = command.FindString("navigationId");
+    if (!expected_navigation ||
+        *expected_navigation != base::NumberToString(entry->GetUniqueID())) {
+      return nullptr;
+    }
+  }
+  return contents;
+}
+
+base::DictValue PageInfoReply(const base::DictValue& command,
+                             std::string_view event_name) {
+  base::DictValue event;
+  event.Set("event", event_name);
+  event.Set("requestId", ReadRequestId(command));
+  event.Set("protocolVersion", 1);
+  event.Set("ok", false);
+  event.Set("reason", "stalePage");
+  return event;
+}
+
+base::ListValue PagePermissions(Profile* profile, const GURL& origin) {
+  auto* map = HostContentSettingsMapFactory::GetForProfile(profile);
+  base::ListValue items;
+  if (!map) {
+    return items;
+  }
+  for (const SiteSettingType& type : kSiteSettingTypes) {
+    if (!type.per_origin) {
+      continue;
+    }
+    const auto setting =
+        SettingToShell(map->GetContentSetting(origin, origin, type.type));
+    if (!setting) {
+      continue;
+    }
+    base::DictValue item;
+    item.Set("type", type.name);
+    item.Set("setting", *setting);
+    items.Append(std::move(item));
+  }
+  return items;
+}
+
+std::string_view PageConnection(const GURL& address,
+                                const content::SSLStatus& ssl) {
+  if (!address.SchemeIs("https")) {
+    return "insecure";
+  }
+  if (!ssl.initialized || !ssl.certificate) {
+    return "unknown";
+  }
+  if (net::IsCertStatusError(ssl.cert_status)) {
+    return "invalid";
+  }
+  if (ssl.content_status != content::SSLStatus::NORMAL_CONTENT) {
+    return "mixed";
+  }
+  return "secure";
+}
+
+base::DictValue PageCertificate(const content::SSLStatus& ssl) {
+  base::DictValue result;
+  if (!ssl.certificate) {
+    return result;
+  }
+  const auto& cert = *ssl.certificate;
+  result.Set("subject", cert.subject().GetDisplayName());
+  result.Set("issuer", cert.issuer().GetDisplayName());
+  result.Set("organization",
+             base::JoinString(cert.subject().organization_names, ", "));
+  result.Set("validFrom", ToShellTime(cert.valid_start()));
+  result.Set("validTo", ToShellTime(cert.valid_expiry()));
+  result.Set("serialNumber", base::HexEncode(cert.serial_number()));
+  result.Set("fingerprint",
+             base::HexEncode(net::X509Certificate::CalculateFingerprint256(
+                 cert.cert_buffer())));
+  std::vector<std::string> dns, ips;
+  cert.GetSubjectAltName(&dns, &ips);
+  base::ListValue names;
+  for (const auto& name : dns) {
+    names.Append(name);
+  }
+  for (const auto& name : ips) {
+    names.Append(net::IPAddress(base::as_byte_span(name)).ToString());
+  }
+  result.Set("names", std::move(names));
+  return result;
+}
+
+}  // namespace
+
+void GetPageInfo(const ShellCommandContext& context,
+                 const base::DictValue& command) {
+  auto reply = PageInfoReply(command, "pageInfo");
+  auto* contents = PageForInfo(context, command, false);
+  if (!contents) {
+    ReplyToShell(context, std::move(reply));
+    return;
+  }
+  auto* entry = contents->GetController().GetLastCommittedEntry();
+  const auto origin = url::Origin::Create(entry->GetURL());
+  const auto& ssl = entry->GetSSL();
+  // This is the committed connection state, never an inference from the URL.
+  reply.Set("connection", PageConnection(entry->GetURL(), ssl));
+  reply.Set("certificate", PageCertificate(ssl));
+  reply.Set("origin", origin.Serialize());
+  reply.Set("tabId", *command.FindString("tabId"));
+  const int navigation = entry->GetUniqueID();
+  reply.Set("navigationId", base::NumberToString(navigation));
+  reply.Set("permissions", PagePermissions(context.profile, origin.GetURL()));
+  reply.Set("cookieCount", -1);
+  reply.Set("storageBytes", -1.0);
+  reply.Set("ok", true);
+  reply.Remove("reason");
+  // Resolve against the same window/document after asynchronous storage reads.
+  // Weak WebContents also keeps us from dereferencing a destroyed Profile.
+  auto completed = base::BindOnce(
+      [](base::WeakPtr<content::WebContents> contents,
+         ShellCommandContext context, int navigation, url::Origin origin,
+         base::DictValue reply, std::unique_ptr<BrowsingDataModel> model) {
+        if (!contents) {
+          return;
+        }
+        const auto* entry = contents->GetController().GetLastCommittedEntry();
+        if (!entry || entry->GetUniqueID() != navigation) {
+          reply.Set("ok", false);
+          reply.Set("reason", "stalePage");
+        } else if (model) {
+          uint64_t cookies = 0, bytes = 0;
+          const net::SchemefulSite top_site(origin);
+          for (const auto& item : *model) {
+            if (const auto* cookie =
+                    std::get_if<net::CanonicalCookie>(&item.data_key.get())) {
+              if (cookie->IsDomainMatch(origin.host()) &&
+                  (!cookie->IsPartitioned() ||
+                   cookie->PartitionKey()->site() == top_site)) {
+                cookies += item.data_details->cookie_count;
+              }
+            } else if (item.Matches(origin) &&
+                       !item.GetThirdPartyPartitioningSite()) {
+              bytes += item.data_details->storage_size;
+            }
+          }
+          reply.Set("cookieCount", static_cast<double>(cookies));
+          reply.Set("storageBytes", static_cast<double>(bytes));
+        }
+        ReplyToShell(context, std::move(reply));
+      },
+      contents->GetWeakPtr(), context, navigation, origin, std::move(reply));
+  auto* partition = contents->GetPrimaryMainFrame()->GetStoragePartition();
+  if (partition == context.profile->GetDefaultStoragePartition()) {
+    BrowsingDataModel::BuildFromDisk(context.profile, nullptr,
+                                     std::move(completed));
+  } else {
+    BrowsingDataModel::BuildFromNonDefaultStoragePartition(
+        partition, nullptr, std::move(completed));
+  }
+}
+
+void SetPagePermission(const ShellCommandContext& context,
+                       const base::DictValue& command) {
+  auto reply = PageInfoReply(command, "pageInfoActionResult");
+  auto* contents = PageForInfo(context, command, true);
+  const auto* type = FindType(command.FindString("type"));
+  const auto* name = command.FindString("setting");
+  auto setting = SettingFromShell(name);
+  if (name && *name == kDefaultSettingName) {
+    setting = CONTENT_SETTING_DEFAULT;
+  }
+  if (contents && type && type->per_origin && setting) {
+    const GURL origin =
+        url::Origin::Create(contents->GetLastCommittedURL()).GetURL();
+    const auto* info =
+        content_settings::ContentSettingsRegistry::GetInstance()->Get(
+            type->type);
+    if ((!type->secure_origins_only ||
+         net::IsUrlPotentiallyTrustworthy(origin)) &&
+        (*setting == CONTENT_SETTING_DEFAULT ||
+         (info && info->IsSettingValid(*setting)))) {
+      HostContentSettingsMapFactory::GetForProfile(context.profile)
+          ->SetContentSettingDefaultScope(origin, origin, type->type, *setting);
+      reply.Set("ok", true);
+      reply.Remove("reason");
+    }
+  }
+  ReplyToShell(context, std::move(reply));
+}
+
+void ClearPageSiteData(const ShellCommandContext& context,
+                       const base::DictValue& command) {
+  auto reply = PageInfoReply(command, "pageInfoActionResult");
+  auto* contents = PageForInfo(context, command, true);
+  if (!contents) {
+    ReplyToShell(context, std::move(reply));
+    return;
+  }
+  const GURL origin =
+      url::Origin::Create(contents->GetLastCommittedURL()).GetURL();
+  contents->GetPrimaryMainFrame()->GetStoragePartition()->ClearDataForOrigin(
+      content::StoragePartition::REMOVE_DATA_MASK_ALL, origin,
+      base::BindOnce(
+          [](base::WeakPtr<content::WebContents> contents,
+             ShellCommandContext context, base::DictValue reply) {
+            if (!contents) {
+              return;
+            }
+            reply.Set("ok", true);
+            reply.Remove("reason");
+            ReplyToShell(context, std::move(reply));
+          },
+          contents->GetWeakPtr(), context, std::move(reply)));
 }
 
 // Opens what the popup blocker held back on the window's current tab -- the

@@ -92,6 +92,7 @@ void GetAboutInfo(const ShellCommandContext& context,
   event.Set("browsingApiVersion", 3);
   event.Set("urlProtectionApiVersion", 2);
   event.Set("siteProtectionApiVersion", 1);
+  event.Set("pageInfoApiVersion", 1);
   event.Set("ruleSourcesApiVersion", 1);
   // What the password sync commands understand. 1 is passwordSyncAuthorize,
   // getPasswordsForSync, applyPasswords and the passwordsChanged event. The
@@ -128,6 +129,9 @@ constexpr SettingsCommand kSettingsCommands[] = {
     {"getPrefs", &settings_internal::GetPrefs},
     {"setPref", &settings_internal::SetPref},
     // Site settings (shell_site_settings_ohos.cc).
+    {"getPageInfo", &settings_internal::GetPageInfo},
+    {"setPagePermission", &settings_internal::SetPagePermission},
+    {"clearPageSiteData", &settings_internal::ClearPageSiteData},
     {"getSiteSettings", &settings_internal::GetSiteSettings},
     {"getSiteSettingsForOrigin", &settings_internal::GetSiteSettingsForOrigin},
     {"setSiteSetting", &settings_internal::SetSiteSetting},

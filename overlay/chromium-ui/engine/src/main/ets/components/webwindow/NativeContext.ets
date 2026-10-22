@@ -241,6 +241,7 @@ export interface BrowserRuntimeEvent {
     'downloadUpdated' | 'downloadList' |
     'clearBrowsingDataDone' | 'browsingDataCounts' | 'searchEngines' |
     'prefs' | 'prefsChanged' | 'siteSettings' | 'aboutInfo' | 'favicons' |
+    'pageInfo' | 'pageInfoActionResult' |
     'urlProtectionState' | 'urlProtectionConfigResult' | 'urlProtectionStateChanged' |
     'urlProtectionRulesUpdateResult' |
     'protectionRuleSources' | 'protectionRuleSourceResult' | 'protectionRuleSourcesChanged' |

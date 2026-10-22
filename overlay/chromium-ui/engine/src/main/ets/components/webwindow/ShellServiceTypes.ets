@@ -616,6 +616,7 @@ export interface SiteSettingsEvent extends ShellServiceEvent {
 
 export interface AboutInfoEvent extends ShellServiceEvent {
   requestId: number;
+  pageInfoApiVersion?: number;
   chromiumVersion: string;
   engineCommit: string;
   urlProtectionApiVersion?: number;
@@ -981,4 +982,38 @@ export interface PullToRefreshEvent {
 export interface PageFullscreenChangedEvent {
   event: 'pageFullscreenChanged';
   fullscreen: boolean;
+}
+
+// Current committed document, scoped to the sender's Profile (including incognito).
+export interface PageCertificate {
+  subject: string;
+  issuer: string;
+  organization: string;
+  validFrom: number;
+  validTo: number;
+  serialNumber: string;
+  fingerprint: string;
+  names: string[];
+}
+export interface PageInfoEvent extends ShellServiceEvent {
+  protocolVersion: number;
+  ok: boolean;
+  reason?: string;
+  tabId?: string;
+  navigationId?: string;
+  origin?: string;
+  connection?: 'secure' | 'insecure' | 'invalid' | 'mixed' | 'unknown';
+  certificate?: PageCertificate;
+  cookieCount?: number;
+  storageBytes?: number;
+  permissions?: PagePermissionSetting[];
+}
+export interface PageInfoActionResultEvent extends ShellServiceEvent {
+  protocolVersion: number;
+  ok: boolean;
+  reason?: string;
+}
+export interface PagePermissionSetting {
+  type: SiteSettingType;
+  setting: SiteSettingValue;
 }
