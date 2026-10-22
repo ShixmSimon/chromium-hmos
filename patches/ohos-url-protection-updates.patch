@@ -36,3 +36,221 @@ index e5cd1cbd..393d621e 100644
 +    deps = [ "//chrome/browser/ohos/url_protection:format_tests($host_toolchain)" ]
 +  }
 +}
+diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
+--- a/chrome/app/chrome_main_delegate.cc
++++ b/chrome/app/chrome_main_delegate.cc
+@@ -1132,7 +1132,11 @@
+   // navigation online while preventing browser-initiated background traffic,
+   // Chromium component updates, and Google account sync in every process.
+   mutable_command_line->AppendSwitch(switches::kDisableBackgroundNetworking);
+-  mutable_command_line->AppendSwitch(switches::kDisableComponentUpdate);
++  // The OHOS browser opts into signed security-data components only.
++  // Preserve explicit --disable-component-update supplied by a caller.
++  if (!mutable_command_line->HasSwitch("ohos-security-component-updates")) {
++    mutable_command_line->AppendSwitch(switches::kDisableComponentUpdate);
++  }
+   // An embedder that ships its own sync backend asks for it explicitly,
+   // so only Google sync is off by default.
+   if (!mutable_command_line->HasSwitch("ohos-enable-sync")) {
+diff --git a/chrome/browser/chrome_browser_main.cc b/chrome/browser/chrome_browser_main.cc
+--- a/chrome/browser/chrome_browser_main.cc
++++ b/chrome/browser/chrome_browser_main.cc
+@@ -640,6 +640,9 @@
+   return base::FeatureList::IsEnabled(
+              ash::features::kOnDeviceSpeechRecognition) &&
+          ash::IsUserBrowserContext(const_cast<Profile*>(profile));
++#elif BUILDFLAG(IS_OHOS)
++  // Enabling certificate security data must not trigger speech-model installs.
++  return false;
+ #else
+   return !command_line.HasSwitch(switches::kDisableComponentUpdate);
+ #endif
+diff --git a/chrome/browser/component_updater/chrome_component_updater_configurator.cc b/chrome/browser/component_updater/chrome_component_updater_configurator.cc
+--- a/chrome/browser/component_updater/chrome_component_updater_configurator.cc
++++ b/chrome/browser/component_updater/chrome_component_updater_configurator.cc
+@@ -161,12 +161,25 @@
+ 
+ std::vector<GURL> ChromeConfigurator::UpdateUrl() const {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
++#if BUILDFLAG(IS_OHOS)
++  std::vector<GURL> urls;
++  for (const GURL& url : configurator_impl_.UpdateUrl()) {
++    if (url.SchemeIs("https")) urls.push_back(url);
++  }
++  return urls;
++#else
+   return configurator_impl_.UpdateUrl();
++#endif
+ }
+ 
+ std::vector<GURL> ChromeConfigurator::PingUrl() const {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
++#if BUILDFLAG(IS_OHOS)
++  // Update checks remain enabled; omit separate component telemetry pings.
++  return {};
++#else
+   return configurator_impl_.PingUrl();
++#endif
+ }
+ 
+ std::string ChromeConfigurator::GetProdId() const {
+diff --git a/chrome/browser/component_updater/crl_set_component_installer.cc b/chrome/browser/component_updater/crl_set_component_installer.cc
+--- a/chrome/browser/component_updater/crl_set_component_installer.cc
++++ b/chrome/browser/component_updater/crl_set_component_installer.cc
+@@ -8,6 +8,8 @@
+ #include <memory>
+ #include <string>
+ #include <vector>
++
++#include "build/build_config.h"
+ 
+ #include "base/containers/span.h"
+ #include "base/files/file_util.h"
+@@ -116,7 +118,11 @@
+ }
+ 
+ bool CRLSetPolicy::RequiresNetworkEncryption() const {
++#if BUILDFLAG(IS_OHOS)
++  return true;
++#else
+   return false;
++#endif
+ }
+ 
+ update_client::CrxInstaller::Result CRLSetPolicy::OnCustomInstall(
+diff --git a/chrome/browser/component_updater/pki_metadata_component_installer_policy.cc b/chrome/browser/component_updater/pki_metadata_component_installer_policy.cc
+--- a/chrome/browser/component_updater/pki_metadata_component_installer_policy.cc
++++ b/chrome/browser/component_updater/pki_metadata_component_installer_policy.cc
+@@ -7,6 +7,8 @@
+ #include <cstdint>
+ #include <string>
+ #include <vector>
++
++#include "build/build_config.h"
+ 
+ #include "base/files/file_path.h"
+ #include "base/files/file_util.h"
+@@ -37,7 +39,11 @@
+ }
+ 
+ bool PKIMetadataComponentInstallerPolicy::RequiresNetworkEncryption() const {
++#if BUILDFLAG(IS_OHOS)
++  return true;
++#else
+   return false;
++#endif
+ }
+ 
+ update_client::CrxInstaller::Result
+diff --git a/chrome/browser/component_updater/registration.cc b/chrome/browser/component_updater/registration.cc
+--- a/chrome/browser/component_updater/registration.cc
++++ b/chrome/browser/component_updater/registration.cc
+@@ -140,6 +140,14 @@
+ void RegisterComponentsForUpdate() {
+   auto* const cus = g_browser_process->component_updater();
+ 
++#if BUILDFLAG(IS_OHOS)
++  // These signed data components are platform independent. Keep model and
++  // product-specific downloads out of the OHOS security update service.
++  RegisterCRLSetComponent(cus);
++  MaybeRegisterPKIMetadataComponent(cus);
++  return;
++#endif
++
+ #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+   RegisterRecoveryImprovedComponent(cus, g_browser_process->local_state());
+ #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+diff --git a/components/component_updater/BUILD.gn b/components/component_updater/BUILD.gn
+--- a/components/component_updater/BUILD.gn
++++ b/components/component_updater/BUILD.gn
+@@ -22,6 +22,7 @@
+     "component_updater_command_line_config_policy.cc",
+     "component_updater_command_line_config_policy.h",
+     "component_updater_service.cc",
++    "ohos_security_component_policy.h",
+     "component_updater_service.h",
+     "component_updater_service_internal.h",
+     "component_updater_switches.cc",
+diff --git a/components/component_updater/component_updater_service.cc b/components/component_updater/component_updater_service.cc
+--- a/components/component_updater/component_updater_service.cc
++++ b/components/component_updater/component_updater_service.cc
+@@ -3,6 +3,11 @@
+ // found in the LICENSE file.
+ 
+ #include "components/component_updater/component_updater_service.h"
++
++#include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "components/component_updater/ohos_security_component_policy.h"
++#endif
+ 
+ #include <algorithm>
+ #include <map>
+@@ -206,6 +211,12 @@
+     return false;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (!IsOhosSecurityComponent(component.app_id)) {
++    return false;
++  }
++#endif
++
+   // Cancel any pending unregistration for this component.
+   std::erase(components_pending_unregistration_, component.app_id);
+ 
+diff --git a/net/cert/crl_set.cc b/net/cert/crl_set.cc
+--- a/net/cert/crl_set.cc
++++ b/net/cert/crl_set.cc
+@@ -3,6 +3,8 @@
+ // found in the LICENSE file.
+ 
+ #include "net/cert/crl_set.h"
++
++#include "build/build_config.h"
+ 
+ #include <algorithm>
+ #include <string_view>
+@@ -380,8 +382,18 @@
+ 
+ // static
+ scoped_refptr<CRLSet> CRLSet::BuiltinCRLSet() {
++#if BUILDFLAG(IS_OHOS)
++  // Emergency offline floor for the eight compromised eMudhra CA keys.
++  // Sequence zero allows every newer signed upstream CRLSet to replace it.
++  // Public certificate provenance and reproducible SPKI checks are documented
++  // in docs/OHOS_SECURITY_COMPONENT_UPDATES.md.
++  constexpr char kCRLSet[] =
++      "\xba\x01"
++      R"crl({"ContentType":"CRLSet","Sequence":0,"Version":0,"BlockedSPKIs":["4CVMf83CZeLw+KQo2rt1q0rgObSHLWL17lfwh31aikE=","6+1kdcLC2A/LGZ8/6N1uazzmC3frFdTkLD3sDG9bUQU=","7E/6GtCsiAgTFLeq/+9qkfl81XKRu1umhsVBX1609rY=","Q7/6GdbvZRRR9oQeAZkx6W9vLq7/KKtLbxzkV23icXs=","Sd01PcK5GaN3BkURfQ5gwWEV59G8JZ7v5zSwDqQ0/l8=","XAZgorFkkQ2P9YnBjhRVLp4Owjfc7+LLc21BpIEfgaA=","Y+zv7kMdSVI7wRNsTnLQIGpHcIbK9gbNXPAlaGwQnPg=","ksBj1n6PFNtx0ojhEmb/2vacvxFfe6sU87wvaNJeDjA="]})crl";
++#else
+   constexpr char kCRLSet[] =
+       "\x31\x00{\"ContentType\":\"CRLSet\",\"Sequence\":0,\"Version\":0}";
++#endif
+   scoped_refptr<CRLSet> ret;
+   bool parsed = CRLSet::Parse(base::MakeStringViewWithNulChars(kCRLSet), &ret);
+   DCHECK(parsed);
+diff --git a/services/cert_verifier/cert_verifier_service_factory.cc b/services/cert_verifier/cert_verifier_service_factory.cc
+--- a/services/cert_verifier/cert_verifier_service_factory.cc
++++ b/services/cert_verifier/cert_verifier_service_factory.cc
+@@ -368,6 +368,10 @@
+   }
+ 
+   proc_params_.crl_set = std::move(parsed_crl_set);
++#if BUILDFLAG(IS_OHOS)
++  LOG(INFO) << "OHOS security data: active CRLSet sequence="
++            << proc_params_.crl_set->sequence();
++#endif
+ 
+   UpdateVerifierServices();
+ }
+@@ -421,6 +425,9 @@
+   root_store_data.SetDisableMtcMirroringRequirements(disable_mtc);
+ 
+   proc_params_.root_store_data = std::move(root_store_data);
++#if BUILDFLAG(IS_OHOS)
++  LOG(INFO) << "OHOS security data: Chrome Root Store update applied";
++#endif
+   UpdateVerifierServices();
+ }
+ 

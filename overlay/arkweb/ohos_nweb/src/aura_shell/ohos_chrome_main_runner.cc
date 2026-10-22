@@ -431,7 +431,7 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
       "--ozone-platform=ohos",
       "--no-zygote",
       "--no-sandbox",
-      "--disable-component-update",
+      "--ohos-security-component-updates",
       "--disable-domain-reliability",
   };
 
