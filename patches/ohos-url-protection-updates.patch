@@ -143,9 +143,10 @@ diff --git a/chrome/browser/component_updater/pki_metadata_component_installer_p
  
  update_client::CrxInstaller::Result
 diff --git a/chrome/browser/component_updater/registration.cc b/chrome/browser/component_updater/registration.cc
+index 9fd11c9..26e1b6c 100644
 --- a/chrome/browser/component_updater/registration.cc
 +++ b/chrome/browser/component_updater/registration.cc
-@@ -140,6 +140,14 @@
+@@ -139,6 +139,12 @@ void DeleteOldComponents(const base::FilePath& user_data_dir) {
  void RegisterComponentsForUpdate() {
    auto* const cus = g_browser_process->component_updater();
  
@@ -154,12 +155,18 @@ diff --git a/chrome/browser/component_updater/registration.cc b/chrome/browser/c
 +  // product-specific downloads out of the OHOS security update service.
 +  RegisterCRLSetComponent(cus);
 +  MaybeRegisterPKIMetadataComponent(cus);
-+  return;
-+#endif
-+
++#else
  #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
    RegisterRecoveryImprovedComponent(cus, g_browser_process->local_state());
  #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+@@ -246,6 +252,7 @@ void RegisterComponentsForUpdate() {
+         FROM_HERE, {base::TaskPriority::BEST_EFFORT, base::MayBlock()},
+         base::BindOnce(&DeleteOldComponents, path));
+   }
++#endif  // BUILDFLAG(IS_OHOS)
+ }
+ 
+ }  // namespace component_updater
 diff --git a/components/component_updater/BUILD.gn b/components/component_updater/BUILD.gn
 --- a/components/component_updater/BUILD.gn
 +++ b/components/component_updater/BUILD.gn

@@ -118,7 +118,38 @@ with tempfile.TemporaryDirectory(prefix='ohos-crl-floor-') as directory:
 # Integration contracts are checked here because this host test cannot create
 # Chromium services. CRX signatures, persistence and live TLS need CI/devices.
 assert 'if (!IsOhosSecurityComponent(component.app_id))' in ADDED
-assert re.search(r'RegisterCRLSetComponent\(cus\);\s*MaybeRegisterPKIMetadataComponent\(cus\);\s*return;', ADDED)
+# Compile the actual added registration branch for both platform choices.
+# The desktop sentinel must be excluded on OHOS, rather than left unreachable
+# after an unconditional return (Chromium treats that warning as an error).
+registration_patch = PATCH.split('diff --git a/chrome/browser/component_updater/registration.cc ', 1)[1].split('\ndiff --git ', 1)[0]
+registration = '\n'.join(line[1:] for line in registration_patch.splitlines()
+                         if line.startswith('+') and not line.startswith('+++'))
+assert re.search(r'RegisterCRLSetComponent\(cus\);\s*MaybeRegisterPKIMetadataComponent\(cus\);\s*#else', registration)
+registration = registration.replace('#else', '#else\n  RegisterDesktopComponent(cus);', 1)
+with tempfile.TemporaryDirectory(prefix='ohos-registration-') as directory:
+    source = Path(directory) / 'registration.cc'
+    binary = Path(directory) / 'registration'
+    for ohos in (0, 1):
+        source.write_text('''
+#include <cassert>
+#define BUILDFLAG(flag) OHOS
+int registered = 0;
+void RegisterCRLSetComponent(int*) { registered |= 1; }
+void MaybeRegisterPKIMetadataComponent(int*) { registered |= 2; }
+void RegisterDesktopComponent(int*) { registered |= 4; }
+void RegisterComponentsForUpdate() {
+  int* cus = nullptr;
+''' + registration + '''
+}
+int main() {
+  RegisterComponentsForUpdate();
+  assert(registered == (OHOS ? 3 : 4));
+}
+''')
+        subprocess.run([os.environ.get('CXX', 'clang++'), '-std=c++20', '-Wall',
+                        '-Wextra', '-Wunreachable-code-aggressive', '-Werror',
+                        f'-DOHOS={ohos}', str(source), '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
 assert 'if (!mutable_command_line->HasSwitch("ohos-security-component-updates"))' in ADDED
 assert 'if (url.SchemeIs("https"))' in ADDED
 assert 'omit separate component telemetry pings' in ADDED
