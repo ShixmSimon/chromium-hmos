@@ -24,6 +24,11 @@ def main():
         raise ValueError(f'155 pin mismatch: {actual}')
     for entry in manifest['repositories']:
         target = src / entry['path']
+        actual = subprocess.check_output(
+            ['git', '-C', str(target), 'rev-parse', 'HEAD'], text=True).strip()
+        if actual != entry['base']:
+            raise ValueError(f'Dependency pin mismatch for {entry["path"]}: '
+                             f'expected {entry["base"]}, got {actual}')
         patch = PATCHES / entry['patch']
         data = patch.read_bytes()
         digest = hashlib.sha256(data).hexdigest()
