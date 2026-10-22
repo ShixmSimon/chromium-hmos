@@ -123,6 +123,30 @@
     {
       "path": "ui/ozone/platform/ohos/ohos_native_buffer_probe.h",
       "sha256": "f4b77a77b032440296d270eff551293c93faad8edb1d4e160ef87ce663fada27"
+    },
+    {
+      "path": "third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.cpp",
+      "sha256": "d3343695746666b0dbb2834183e53112a1dc7c2251cb1adc5ea43bad3a58c612"
+    },
+    {
+      "path": "third_party/angle/src/libANGLE/renderer/vulkan/ohos/DisplayVkOhos.h",
+      "sha256": "6142dc4ad96c32107c45119fbce577e9f0e001acb35a0bfe08bf0b5d66db2d92"
+    },
+    {
+      "path": "third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.cpp",
+      "sha256": "9420a3c1b625728562a654b56b23321a0fdadf802c601ad62b0789383fcac504"
+    },
+    {
+      "path": "third_party/angle/src/libANGLE/renderer/vulkan/ohos/NativeBufferImageSiblingVkOhos.h",
+      "sha256": "1eb8d87c33ed2c16c5f27bf8dfea1c99474a0857324caf2de97296ba5cee4819"
+    },
+    {
+      "path": "third_party/angle/src/libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.cpp",
+      "sha256": "891166e9d0a008d694f3b13fd21b20bd185fd016bcb75e484a0bd17a5d05110f"
+    },
+    {
+      "path": "third_party/angle/src/libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.h",
+      "sha256": "397f209d720444a2a52864e5421e610d166a18d125ab62a103248a6a6ff39b99"
     }
   ]
 }
