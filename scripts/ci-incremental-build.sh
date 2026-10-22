@@ -425,6 +425,7 @@ else
       obj/net/net/cert_verify_proc.o
       obj/net/net/system_trust_store.o
       obj/components/signin/internal/identity_manager/identity_manager/profile_oauth2_token_service_builder.o
+      obj/third_party/blink/renderer/modules/webgpu/webgpu/gpu_canvas_context.o
       obj/third_party/dawn/src/dawn/native/sources/WaitAnySystemEvent.o
       obj/third_party/dawn/src/dawn/native/sources/SamplerVk.o
       obj/third_party/angle/src/libANGLE/renderer/vulkan/angle_vulkan_backend/DisplayVkOhos.o

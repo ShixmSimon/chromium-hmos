@@ -36670,7 +36670,7 @@ index 7fe68c83075f22815fa9db0d925558a617ef3580..cae323be4a02eb0dd50e45f5ca93d980
    auto* callback = MakeWGPUOnceCallback(resolver->WrapCallbackInScriptScope(
        BindOnce(&GPUBuffer::OnMapAsyncCallback, WrapPersistent(this))));
 diff --git a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc b/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
-index d4f4aaa0fd649644d9d8e96cc89f347ec073165b..8400d4657aa77f3234c3b4a8ff7ee333f5a95c2f 100644
+index d4f4aaa0fd649644d9d8e96cc89f347ec073165b..b853e88b2d91bc540b683e86d5d8276861a2e8f7 100644
 --- a/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
 +++ b/third_party/blink/renderer/modules/webgpu/gpu_canvas_context.cc
 @@ -7,6 +7,9 @@
@@ -36820,16 +36820,20 @@ index d4f4aaa0fd649644d9d8e96cc89f347ec073165b..8400d4657aa77f3234c3b4a8ff7ee333
  
      // The swap buffer texture doesn't need any view formats.
      swap_texture_descriptor_.viewFormats = nullptr;
-@@ -588,6 +665,50 @@ void GPUCanvasContext::configure(const GPUCanvasConfiguration* descriptor,
+@@ -587,6 +664,53 @@ void GPUCanvasContext::configure(const GPUCanvasConfiguration* descriptor,
+   }
  
    ParseCanvasToneMapping(descriptor->toneMapping(), hdr_metadata_);
- 
++  // Keep the requested tone mapping for getConfiguration(), and adapt only
++  // the metadata describing the presentation image below.
++  gfx::HDRMetadata presentation_hdr_metadata = hdr_metadata_;
++
 +#if BUILDFLAG(IS_OHOS)
 +  if (texture_descriptor_.format == wgpu::TextureFormat::RGBA16Float &&
 +      swap_texture_descriptor_.format != wgpu::TextureFormat::RGBA16Float) {
 +    // The GL presentation blit is clamped SDR, even when the application's
 +    // float texture has extended range. Do not label that 8-bit image as HDR.
-+    hdr_metadata.extended_range.reset();
++    presentation_hdr_metadata.extended_range.reset();
 +  }
 +#endif
 +
@@ -36867,11 +36871,19 @@ index d4f4aaa0fd649644d9d8e96cc89f347ec073165b..8400d4657aa77f3234c3b4a8ff7ee333
 +    return;
 +  }
 +#endif
-+
+ 
    const wgpu::DawnTextureInternalUsageDescriptor* internal_usage_desc = nullptr;
    if (const wgpu::ChainedStruct* next_in_chain =
-           swap_texture_descriptor_.nextInChain) {
-@@ -784,6 +905,12 @@ GPUCanvasContext::GetFrontBufferMailboxTexture() {
+@@ -603,7 +727,7 @@ void GPUCanvasContext::configure(const GPUCanvasConfiguration* descriptor,
+   swap_buffers_ = base::AdoptRef(new WebGPUSwapBufferProvider(
+       this, device_->GetDawnControlClient(), device_->GetHandle(),
+       swap_texture_descriptor_.usage, internal_usage,
+-      swap_texture_descriptor_.format, color_space_, hdr_metadata_,
++      swap_texture_descriptor_.format, color_space_, presentation_hdr_metadata,
+       kTopLeft_GrSurfaceOrigin));
+ 
+   // Note: SetContentsOpaque is only an optimization hint. It doesn't
+@@ -784,6 +908,12 @@ GPUCanvasContext::GetFrontBufferMailboxTexture() {
  }
  
  void GPUCanvasContext::ReplaceDrawingBuffer(bool destroy_swap_buffers) {
