@@ -202,16 +202,36 @@ diff --git a/components/component_updater/component_updater_service.cc b/compone
 diff --git a/net/cert/crl_set.cc b/net/cert/crl_set.cc
 --- a/net/cert/crl_set.cc
 +++ b/net/cert/crl_set.cc
-@@ -3,6 +3,8 @@
- // found in the LICENSE file.
+@@ -4,10 +4,13 @@
  
  #include "net/cert/crl_set.h"
-+
-+#include "build/build_config.h"
  
++#include "build/build_config.h"
++
  #include <algorithm>
  #include <string_view>
-@@ -380,8 +382,18 @@
+ 
+ #include "base/base64.h"
++#include "base/no_destructor.h"
+ #include "base/containers/span.h"
+ #include "base/containers/to_vector.h"
+ #include "base/json/json_reader.h"
+@@ -305,6 +308,14 @@
+ }
+ 
+ CRLSet::Result CRLSet::CheckSPKI(std::string_view spki_hash) const {
++#if BUILDFLAG(IS_OHOS)
++  // Keep the emergency floor even if a previously installed signed component
++  // predates this incident. A component update cannot un-revoke these keys.
++  static const base::NoDestructor<scoped_refptr<CRLSet>> emergency(BuiltinCRLSet());
++  const auto& blocked = (*emergency)->blocked_spkis_;
++  if (std::binary_search(blocked.begin(), blocked.end(), spki_hash))
++    return REVOKED;
++#endif
+   if (std::binary_search(blocked_spkis_.begin(), blocked_spkis_.end(),
+                          spki_hash))
+     return REVOKED;
+@@ -380,8 +391,18 @@
  
  // static
  scoped_refptr<CRLSet> CRLSet::BuiltinCRLSet() {

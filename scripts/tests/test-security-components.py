@@ -56,6 +56,65 @@ assert len(FIXTURE['certificates']) == 16
 assert blocked == {cert['spki_sha256'] for cert in FIXTURE['certificates']}
 assert '00' * 32 not in blocked
 
+# Compile the production emergency check with a minimal CRLSet holder. The
+# downloaded/previously-installed set may omit the incident; that must never
+# remove the local floor. No network or Chromium build is involved.
+floor = re.search(r'#if BUILDFLAG\(IS_OHOS\)\n  // Keep the emergency floor.*?#endif', ADDED, re.S)
+assert floor
+hash_literals = ','.join('std::string("' + ''.join('\\x' + value[i:i+2] for i in range(0, 64, 2))
+                        + '",32)' for value in sorted(blocked))
+unit = r'''
+#include <algorithm>
+#include <cassert>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+#define BUILDFLAG(flag) 1
+template<class T> using scoped_refptr = std::shared_ptr<T>;
+namespace base {
+template<class T> struct NoDestructor {
+  explicit NoDestructor(T input) : value(std::move(input)) {}
+  const T& operator*() const { return value; }
+  T value;
+};
+}
+struct CRLSet {
+  enum Result { GOOD, REVOKED };
+  std::vector<std::string> blocked_spkis_;
+  static scoped_refptr<CRLSet> BuiltinCRLSet() {
+    auto value=std::make_shared<CRLSet>();
+    value->blocked_spkis_={HASH_LITERALS};
+    std::sort(value->blocked_spkis_.begin(),value->blocked_spkis_.end());
+    return value;
+  }
+  Result CheckSPKI(std::string_view spki_hash) const {
+PRODUCTION_FLOOR
+    if(std::binary_search(blocked_spkis_.begin(),blocked_spkis_.end(),spki_hash))return REVOKED;
+    return GOOD;
+  }
+};
+int main() {
+  CRLSet old_download;
+  const auto builtin=CRLSet::BuiltinCRLSet();
+  for(const auto& hash:builtin->blocked_spkis_)
+    assert(old_download.CheckSPKI(hash)==CRLSet::REVOKED);
+  const std::string unrelated(32,'x');
+  assert(old_download.CheckSPKI(unrelated)==CRLSet::GOOD);
+  old_download.blocked_spkis_={unrelated};
+  assert(old_download.CheckSPKI(unrelated)==CRLSet::REVOKED);
+  for(const auto& hash:builtin->blocked_spkis_)
+    assert(old_download.CheckSPKI(hash)==CRLSet::REVOKED);
+}
+'''.replace('HASH_LITERALS', hash_literals).replace('PRODUCTION_FLOOR', floor[0])
+with tempfile.TemporaryDirectory(prefix='ohos-crl-floor-') as directory:
+    source = Path(directory) / 'floor.cc'
+    binary = Path(directory) / 'floor'
+    source.write_text(unit)
+    subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', '-Wall', '-Wextra',
+                    '-Werror', str(source), '-o', str(binary)], check=True)
+    subprocess.run([str(binary)], check=True)
+
 # Integration contracts are checked here because this host test cannot create
 # Chromium services. CRX signatures, persistence and live TLS need CI/devices.
 assert 'if (!IsOhosSecurityComponent(component.app_id))' in ADDED

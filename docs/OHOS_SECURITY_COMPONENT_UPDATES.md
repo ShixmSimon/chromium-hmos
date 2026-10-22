@@ -44,7 +44,10 @@ An ordinary Chromium 154 builtin CRLSet is empty, sequence zero. The OHOS
 builtin now blocks the eight compromised eMudhra intermediate **SPKI SHA-256**
 hashes, covering the sixteen original/cross-signed certificate identities.
 This is an emergency denylist, not a complete downloaded CRLSet. It deliberately
-retains sequence zero so any newer verified official CRLSet can replace it.
+retains sequence zero so any newer verified official CRLSet can replace its
+ordinary revocation data. `CheckSPKI()` always also checks this emergency floor,
+so an already-installed signed component from before the incident cannot remove
+these blocks. Removing a compromised-key block requires an explicit code change.
 It is immediately available before component downloads and on an offline first
 launch. It does not distrust unrelated certificates by CA name, parent root,
 or website domain.
@@ -72,6 +75,9 @@ not a Chromium build or a live TLS verification test.
 On 2026-10-22, an HTTPS update protocol request using `OHOS`/`ohos` and `arm64`
 received CRLSet **10852** and PKI Metadata **1810** from the official server;
 both advertised HTTPS package mirrors. No OS identity substitution was needed.
+Both downloaded CRX3 packages passed independent SHA-256 and pinned publisher
+signature verification. The actual CRLSet 10852 contains all six affected TLS
+SPKIs (the remaining two compromised keys are code-signing CAs).
 The modified platform files also passed forward and reverse patch application
 against the pinned 154.0.8037.97 upstream files plus the platform prerequisites.
 
