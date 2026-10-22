@@ -1,0 +1,13 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 5a73707d4683f6fadea3d6e84b86d05c49dad0ae..65215663009d369929994f3ce17a77151bf658bb 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -53,7 +53,7 @@ config("vulkan_internal_config") {
+       "EXTRASYSCONFDIR=\"/pkg/data\"",
+     ]
+   }
+-  if (is_linux || is_chromeos || is_mac) {
++  if (is_linux || is_chromeos || is_mac || is_ohos) {
+     defines += [
+       "SYSCONFDIR=\"/etc\"",
+       "FALLBACK_CONFIG_DIRS=\"/etc/xdg\"",

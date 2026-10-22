@@ -1,0 +1,304 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 76391be1666b0b2e57c91bdac59070224e57ce24..3f2739377a75bc0bb8504e4a714ff8229f970be4 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -1179,6 +1179,11 @@ if (target_os == "android") {
+ } else if (target_os == "chromeos") {
+   enabled_external_v8_defines += [ "V8_HAVE_TARGET_OS" ]
+   enabled_external_v8_defines += [ "V8_TARGET_OS_CHROMEOS" ]
++} else if (target_os == "ohos") {
++  # HarmonyOS is a musl-based Linux target. Without an explicit target OS,
++  # v8config.h defines an empty V8_TARGET_OS_LINUX that breaks #if checks.
++  enabled_external_v8_defines += [ "V8_HAVE_TARGET_OS" ]
++  enabled_external_v8_defines += [ "V8_TARGET_OS_LINUX" ]
+ }
+ 
+ # Some V8_TARGET_ARCH_ defines that affect Api constants (see usages of
+@@ -5165,7 +5170,7 @@ v8_header_set("v8_internal_headers") {
+     if (v8_enable_webassembly) {
+       # iOS Xcode simulator builds run on an x64 target. iOS and macOS are both
+       # based on Darwin and thus POSIX-compliant to a similar degree.
+-      if (is_linux || is_chromeos || is_mac || is_ios ||
++      if (is_linux || is_chromeos || is_mac || is_ios || is_ohos ||
+           target_os == "freebsd") {
+         sources += [ "src/trap-handler/handler-inside-posix.h" ]
+       } else if (is_win) {
+@@ -5233,7 +5238,7 @@ v8_header_set("v8_internal_headers") {
+       # Trap handling is enabled on arm64 Mac and Linux and in simulators on
+       # x64 on Linux and Mac.
+       if ((current_cpu == "arm64" &&
+-           (is_linux || is_chromeos || is_mac || is_ios)) ||
++           (is_linux || is_chromeos || is_mac || is_ios || is_ohos)) ||
+           (current_cpu == "x64" && (is_linux || is_chromeos || is_mac))) {
+         sources += [ "src/trap-handler/handler-inside-posix.h" ]
+       }
+@@ -6671,7 +6676,7 @@ v8_cluster_source_set("v8_base_without_compiler") {
+     if (v8_enable_webassembly) {
+       # iOS Xcode simulator builds run on an x64 target. iOS and macOS are both
+       # based on Darwin and thus POSIX-compliant to a similar degree.
+-      if (is_linux || is_chromeos || is_mac || is_ios ||
++      if (is_linux || is_chromeos || is_mac || is_ios || is_ohos ||
+           target_os == "freebsd") {
+         sources += [
+           "src/trap-handler/handler-inside-posix.cc",
+@@ -6723,7 +6728,8 @@ v8_cluster_source_set("v8_base_without_compiler") {
+     ]
+     if (v8_enable_webassembly) {
+       # Trap handling is enabled on arm64 and x64, on Linux, Mac and Windows.
+-      if ((current_cpu == "arm64" && (is_linux || is_chromeos || is_apple)) ||
++      if ((current_cpu == "arm64" &&
++           (is_linux || is_chromeos || is_apple || is_ohos)) ||
+           (current_cpu == "x64" && (is_linux || is_chromeos || is_mac))) {
+         sources += [
+           "src/trap-handler/handler-inside-posix.cc",
+@@ -7398,7 +7404,7 @@ v8_component("v8_libbase") {
+     }
+   }
+ 
+-  if (is_linux || is_chromeos) {
++  if (is_linux || is_chromeos || is_ohos) {
+     sources += [
+       "src/base/debug/stack_trace_posix.cc",
+       "src/base/platform/platform-linux.cc",
+diff --git a/gni/v8.gni b/gni/v8.gni
+index 7ae927dc44f3f6181b606c47a8e3c8c1f1e25b52..3503e037ebf968ff8ff355ebc4036d804e30f43b 100644
+--- a/gni/v8.gni
++++ b/gni/v8.gni
+@@ -354,6 +354,7 @@ is_drumbrake_supported =
+     (v8_current_cpu == "x64" || v8_current_cpu == "arm64" ||
+      v8_current_cpu == "riscv64") &&
+     (target_os == "win" || target_os == "linux" || target_os == "mac" ||
++     target_os == "ohos" ||
+      target_os == "ios")
+ 
+ # Turbofan is enabled by default, except in lite mode.
+diff --git a/src/base/debug/stack_trace_posix.cc b/src/base/debug/stack_trace_posix.cc
+index 39fa8be276edd0514b9864fe0be22c050ea9e693..ca2eb32c0ce0958d3244c90d74ae97b3f3c871a0 100644
+--- a/src/base/debug/stack_trace_posix.cc
++++ b/src/base/debug/stack_trace_posix.cc
+@@ -64,6 +64,7 @@ namespace {
+ volatile sig_atomic_t in_signal_handler = 0;
+ bool dump_stack_in_signal_handler = true;
+ 
++#if HAVE_EXECINFO_H
+ // The prefix used for mangled symbols, per the Itanium C++ ABI:
+ // http://www.codesourcery.com/cxx-abi/abi.html#mangling
+ const char kMangledSymbolPrefix[] = "_Z";
+@@ -73,7 +74,6 @@ const char kMangledSymbolPrefix[] = "_Z";
+ const char kSymbolCharacters[] =
+     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
+ 
+-#if HAVE_EXECINFO_H
+ // Demangles C++ symbols in the given text. Example:
+ //
+ // "out/Debug/base_unittests(_ZN10StackTraceC1Ev+0x20) [0x817778c]"
+diff --git a/src/base/emulated-virtual-address-subspace.cc b/src/base/emulated-virtual-address-subspace.cc
+index bcaa3aeabba57d1dcb19b45a7b969dd4c9f20e0c..5b27eac1f70d13661024f06572b49caebaa4d7cc 100644
+--- a/src/base/emulated-virtual-address-subspace.cc
++++ b/src/base/emulated-virtual-address-subspace.cc
+@@ -107,7 +107,48 @@ void EmulatedVirtualAddressSubspace::FreePages(Address address, size_t size) {
+ Address EmulatedVirtualAddressSubspace::AllocateSharedPages(
+     Address hint, size_t size, PagePermissions permissions,
+     SharedMemoryHandle handle, uint64_t offset) {
+-  // Can only allocate shared pages in the unmapped region.
++#if defined(__OHOS__)
++  // A partial sandbox may extend past the kernel's mappable address range.
++  // Random mmap hints in its unreserved portion can therefore all be rejected
++  // even when a small shared buffer would fit in the existing reservation.
++  // Use the same region allocator as private pages so mappings cannot overlap.
++  if (hint == kNoHint || MappedRegionContains(hint, size)) {
++    MutexGuard guard(&mutex_);
++    Address address = region_allocator_.AllocateRegion(
++        hint, size, allocation_granularity());
++    if (address != RegionAllocator::kAllocationFailure) {
++      DCHECK(MappedRegionContains(address, size));
++      OS::MemoryPermission access;
++      switch (permissions) {
++        case PagePermissions::kNoAccess:
++          access = OS::MemoryPermission::kNoAccess;
++          break;
++        case PagePermissions::kRead:
++          access = OS::MemoryPermission::kRead;
++          break;
++        case PagePermissions::kReadWrite:
++          access = OS::MemoryPermission::kReadWrite;
++          break;
++        case PagePermissions::kReadWriteExecute:
++          access = OS::MemoryPermission::kReadWriteExecute;
++          break;
++        case PagePermissions::kReadExecute:
++          access = OS::MemoryPermission::kReadExecute;
++          break;
++        default:
++          UNREACHABLE();
++      }
++      AddressSpaceReservation reservation(reinterpret_cast<void*>(base()),
++                                          mapped_size());
++      if (reservation.AllocateShared(reinterpret_cast<void*>(address), size,
++                                     access, handle, offset)) {
++        return address;
++      }
++      CHECK_EQ(size, region_allocator_.FreeRegion(address));
++    }
++  }
++#endif
++  // Fall back to the unreserved region when the mapped region is full.
+   if (!IsUsableSizeForUnmappedRegion(size)) return kNullAddress;
+ 
+   static constexpr int kMaxAttempts = 10;
+@@ -134,6 +175,18 @@ Address EmulatedVirtualAddressSubspace::AllocateSharedPages(
+ 
+ void EmulatedVirtualAddressSubspace::FreeSharedPages(Address address,
+                                                      size_t size) {
++#if defined(__OHOS__)
++  if (MappedRegionContains(address, size)) {
++    MutexGuard guard(&mutex_);
++    AddressSpaceReservation reservation(reinterpret_cast<void*>(base()),
++                                        mapped_size());
++    // Restore a PROT_NONE placeholder before making this region available to
++    // the allocator. munmap alone would leave a hole in the owned reservation.
++    CHECK(reservation.FreeShared(reinterpret_cast<void*>(address), size));
++    CHECK_EQ(size, region_allocator_.FreeRegion(address));
++    return;
++  }
++#endif
+   DCHECK(UnmappedRegionContains(address, size));
+   parent_space_->FreeSharedPages(address, size);
+ }
+diff --git a/src/base/platform/platform-linux.cc b/src/base/platform/platform-linux.cc
+index 51d24a55044f67bc0446d870ea63efe5d49064b2..ee3823f73e94bdda044d3216167f49d3c27776cc 100644
+--- a/src/base/platform/platform-linux.cc
++++ b/src/base/platform/platform-linux.cc
+@@ -175,10 +175,15 @@ MemoryRegion FindEnclosingMapping(uintptr_t target_start, size_t size) {
+ bool KernelSupportsRemapDontUnmap() {
+   static bool supported = [] {
+     struct utsname buffer;
+-    CHECK_EQ(uname(&buffer), 0);
++    // Not every kernel this runs on reports a Linux-style release string.
++    // HarmonyOS returns "HongMeng Kernel 1.13.0", which %d.%d cannot parse, and
++    // the CHECK below then aborts the renderer at startup. Treat anything
++    // unparseable as unsupported: RemapPages() already falls back to reading
++    // /proc/self/maps, so the conservative answer is the safe one.
++    if (uname(&buffer) != 0) return false;
+ 
+     int major, minor;
+-    CHECK_EQ(sscanf(buffer.release, "%d.%d", &major, &minor), 2);
++    if (sscanf(buffer.release, "%d.%d", &major, &minor) != 2) return false;
+ 
+     // MREMAP_DONTUNMAP was added in Linux 5.7, but before Linux 5.13 it only
+     // worked on private anonymous mappings, whereas RemapPages() needs it on
+diff --git a/src/base/platform/platform.h b/src/base/platform/platform.h
+index 7692528c10b13187c89243e45ce6760866082d86..7dc30b12c7766c393cd0f9a55666b761e76bd9b1 100644
+--- a/src/base/platform/platform.h
++++ b/src/base/platform/platform.h
+@@ -526,6 +526,12 @@ class V8_BASE_EXPORT AddressSpaceReservation {
+ 
+  private:
+   friend class OS;
++#if defined(__OHOS__)
++  // The mapped portion of an emulated subspace is already reserved by its
++  // parent; shared pages may replace only suballocations it owns.
++  friend class EmulatedVirtualAddressSubspace;
++#endif
++
+ 
+ #if V8_OS_FUCHSIA
+   AddressSpaceReservation(void* base, size_t size, zx_handle_t vmar)
+diff --git a/src/builtins/arm64/builtins-arm64.cc b/src/builtins/arm64/builtins-arm64.cc
+index 083e3f09db8bd3368db52a591c6c4dd714cb0513..295a45760fdc7f6d77f6b1c1695e67299705dccd 100644
+--- a/src/builtins/arm64/builtins-arm64.cc
++++ b/src/builtins/arm64/builtins-arm64.cc
+@@ -402,7 +402,10 @@ static void GetSharedFunctionInfoBytecodeOrBaseline(
+     Label* is_baseline, Label* is_unavailable) {
+   ASM_CODE_COMMENT(masm);
+   DCHECK(!AreAliased(bytecode, scratch1));
+-  Label is_interpreter_data, is_bytecode_array, is_code;
++  Label is_interpreter_data, is_bytecode_array;
++#if !V8_JITLESS_BOOL
++  Label is_code;
++#endif
+ 
+   Register data = bytecode;
+   __ LoadTrustedUnknownPointerField(
+diff --git a/src/sandbox/hardware-support.cc b/src/sandbox/hardware-support.cc
+index 9eda40c51efc3fd1856dabdce0ece9217f203df5..e07db90b96e129574c72e3d2db54d08142177625 100644
+--- a/src/sandbox/hardware-support.cc
++++ b/src/sandbox/hardware-support.cc
+@@ -155,10 +155,15 @@ bool SandboxHardwareSupport::CurrentSandboxingModeIs(
+ bool SandboxHardwareSupport::KernelSupportsSignalDeliveryInSandbox() {
+ #ifdef V8_OS_LINUX
+   struct utsname buffer;
+-  CHECK_EQ(uname(&buffer), 0);
++  // Same caveat as KernelSupportsRemapDontUnmap in platform-linux.cc: the
++  // release string is not Linux-shaped everywhere this runs (HarmonyOS reports
++  // "HongMeng Kernel 1.13.0"), and a CHECK here aborts the process at startup.
++  // An unknown kernel is treated as lacking the fix, which only disables an
++  // optimisation.
++  if (uname(&buffer) != 0) return false;
+ 
+   int major, minor;
+-  CHECK_EQ(sscanf(buffer.release, "%d.%d", &major, &minor), 2);
++  if (sscanf(buffer.release, "%d.%d", &major, &minor) != 2) return false;
+ 
+   // Kernel 6.12 seems to be the first release to have the necessary fixes
+   // that support signal delivery when the stack uses a non-default pkey:
+diff --git a/test/unittests/base/virtual-address-space-unittest.cc b/test/unittests/base/virtual-address-space-unittest.cc
+index 3ac6b7c421d39ca4901a5c83eb2fe68b89d7a285..3b63d6166363a1be4f4cf8843b8ab03f2184734b 100644
+--- a/test/unittests/base/virtual-address-space-unittest.cc
++++ b/test/unittests/base/virtual-address-space-unittest.cc
+@@ -218,6 +218,55 @@ TEST(VirtualAddressSpaceTest, TestSubspace) {
+   TestSharedPageAllocation(subsubspace.get());
+ }
+ 
++#if defined(__OHOS__)
++TEST(VirtualAddressSpaceTest, EmulatedSharedPagesWithUnavailableUnmappedRegion) {
++  VirtualAddressSpace rootspace;
++  constexpr size_t kMappedSize = 4 * MB;
++  constexpr size_t kLogicalSize = 2 * kMappedSize;
++  const size_t page_size = rootspace.allocation_granularity();
++  // Keep the logical-but-unreserved half occupied too: the old random-hint
++  // implementation cannot place a shared mapping there. No enormous actual
++  // address-space reservation is needed to reproduce the phone's failure.
++  Address reservation = rootspace.AllocatePages(
++      VirtualAddressSpace::kNoHint, kLogicalSize, page_size,
++      PagePermissions::kNoAccess);
++  ASSERT_NE(kNullAddress, reservation);
++  {
++    EmulatedVirtualAddressSubspace subspace(&rootspace, reservation, kMappedSize,
++                                           kLogicalSize);
++    TestSharedPageAllocation(&subspace);
++    auto handle = OS::CreateSharedMemoryHandleForTesting(2 * page_size);
++    ASSERT_TRUE(handle.has_value());
++    for (int i = 0; i < 32; ++i) {
++      Address shared = subspace.AllocateSharedPages(
++          VirtualAddressSpace::kNoHint, page_size, PagePermissions::kReadWrite,
++          *handle, page_size);
++      ASSERT_GE(shared, reservation);
++      ASSERT_LE(shared + page_size, reservation + kMappedSize);
++      *reinterpret_cast<int*>(shared) = 42;
++      Address alias = subspace.AllocateSharedPages(
++          VirtualAddressSpace::kNoHint, page_size, PagePermissions::kRead,
++          *handle, page_size);
++      ASSERT_NE(kNullAddress, alias);
++      ASSERT_NE(alias, shared);
++      EXPECT_EQ(42, *reinterpret_cast<int*>(alias));
++      subspace.FreeSharedPages(alias, page_size);
++      subspace.FreeSharedPages(shared, page_size);
++      // Freeing a shared mapping must preserve its reservation and allow the
++      // same address to be reused as zero-initialized private memory.
++      Address private_page = subspace.AllocatePages(
++          shared, page_size, page_size, PagePermissions::kReadWrite);
++      ASSERT_EQ(shared, private_page);
++      EXPECT_EQ(0, *reinterpret_cast<int*>(private_page));
++      subspace.FreePages(private_page, page_size);
++    }
++    OS::DestroySharedMemoryHandle(*handle);
++    TestParentSpaceCannotAllocateInChildSpace(&rootspace, &subspace);
++  }
++  rootspace.FreePages(reservation + kMappedSize, kMappedSize);
++}
++#endif
++
+ TEST(VirtualAddressSpaceTest, TestEmulatedSubspace) {
+   constexpr size_t kSubspaceSize = 32 * MB;
+   // Size chosen so page allocation tests will obtain pages in both the mapped

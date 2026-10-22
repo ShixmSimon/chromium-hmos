@@ -1,0 +1,279 @@
+diff --git a/include/ports/SkFontMgr_directory.h b/include/ports/SkFontMgr_directory.h
+index b1a60fb4dac1517c61e81804f302ba102b70d0b9..24e915717b9775cbc1370c3ae371fe45483645c6 100644
+--- a/include/ports/SkFontMgr_directory.h
++++ b/include/ports/SkFontMgr_directory.h
+@@ -18,4 +18,13 @@ class SkFontMgr;
+  */
+ SK_API sk_sp<SkFontMgr> SkFontMgr_New_Custom_Directory(const char* dir);
+ 
++/** Create a custom font manager which scans each of the given directories for
++ *  font files. If none of the built-in default family names exist,
++ *  `defaultFamily` (when present) becomes the default family.
++ *  This font manager uses FreeType for rendering.
++ */
++SK_API sk_sp<SkFontMgr> SkFontMgr_New_Custom_Directories(const char* const dirs[],
++                                                         int count,
++                                                         const char* defaultFamily);
++
+ #endif // SkFontMgr_directory_DEFINED
+diff --git a/src/gpu/ganesh/vk/GrVkSamplerYcbcrConversion.cpp b/src/gpu/ganesh/vk/GrVkSamplerYcbcrConversion.cpp
+index a3840916289ec8816e72d9ebd41d4952106a3fa3..74e1d315109d77e3f21226e7d3b040de31cd4e19 100644
+--- a/src/gpu/ganesh/vk/GrVkSamplerYcbcrConversion.cpp
++++ b/src/gpu/ganesh/vk/GrVkSamplerYcbcrConversion.cpp
+@@ -35,6 +35,15 @@ GrVkSamplerYcbcrConversion* GrVkSamplerYcbcrConversion::Create(
+         SkASSERT(ycbcrCreateInfo.pNext == nullptr);
+         ycbcrCreateInfo.pNext = &externalFormat;
+     }
++#elif defined(__OHOS__)
++    struct ExternalFormatOHOS {
++        VkStructureType sType;
++        const void* pNext;
++        uint64_t externalFormat;
++    } externalFormat{static_cast<VkStructureType>(1000452005), nullptr, info.externalFormat()};
++    if (info.hasExternalFormat()) {
++        ycbcrCreateInfo.pNext = &externalFormat;
++    }
+ #else
+     // External images are supported only on Android.
+     SkASSERT(!info.hasExternalFormat());
+diff --git a/src/gpu/graphite/TextureFormat.cpp b/src/gpu/graphite/TextureFormat.cpp
+index d8b540e35f46ee1b2e5826a99f3f72b31461bc8a..7d8a996e7e75e56e6097e405c0cc2dceb5c6cda5 100644
+--- a/src/gpu/graphite/TextureFormat.cpp
++++ b/src/gpu/graphite/TextureFormat.cpp
+@@ -570,6 +570,17 @@ TextureFormatColorTypeInfo(TextureFormat format) {
+ }
+ 
+ bool AreColorTypeAndFormatCompatible(SkColorType targetColorType, TextureFormat format) {
++#if defined(__OHOS__)
++    // External YCbCr images have no RGBA storage encoding. The native buffer's
++    // import validates P010 precision and the hardware sampler returns float
++    // RGBA values; a 10-bit SkImage label must not be rejected just because
++    // kExternal's generic fallback color type is RGBA8. This grants sampling
++    // compatibility only: external images remain non-renderable/non-writable.
++    if (format == TextureFormat::kExternal && targetColorType == kRGBA_1010102_SkColorType) {
++        return true;
++    }
++#endif
++
+     // If the format maps to the color type, they are compatible
+     auto [baseColorType, _] = TextureFormatColorTypeInfo(format);
+     if (baseColorType != kUnknown_SkColorType && baseColorType == targetColorType) {
+diff --git a/src/ports/SkFontMgr_custom.cpp b/src/ports/SkFontMgr_custom.cpp
+index bd813535489a789a034c789d45be0f5cae7ef7c1..0e059f2dc35841c6fced5abb8ca9cb1bfbf6e757 100644
+--- a/src/ports/SkFontMgr_custom.cpp
++++ b/src/ports/SkFontMgr_custom.cpp
+@@ -19,6 +19,8 @@
+ #include "src/core/SkFontDescriptor.h"
+ #include "src/ports/SkFontMgr_custom.h"
+ 
++#include <cstring>
++
+ #include <limits>
+ #include <memory>
+ 
+@@ -187,11 +189,90 @@ sk_sp<SkTypeface> SkFontMgr_Custom::onMatchFamilyStyle(const char familyName[],
+     return sset->matchStyle(fontStyle);
+ }
+ 
++namespace {
++
++// Family-name suffix of the CJK variant preferred for a BCP 47 language tag.
++const char* cjk_family_suffix(const char* tag) {
++    if (!tag) {
++        return nullptr;
++    }
++    if (strncmp(tag, "zh", 2) == 0) {
++        const bool traditional = strstr(tag, "Hant") || strstr(tag, "-TW") ||
++                                 strstr(tag, "-HK") || strstr(tag, "-MO");
++        return traditional ? " TC" : " SC";
++    }
++    if (strncmp(tag, "ja", 2) == 0) {
++        return " JP";
++    }
++    if (strncmp(tag, "ko", 2) == 0) {
++        return " KR";
++    }
++    return nullptr;
++}
++
++}  // namespace
++
++sk_sp<SkTypeface> SkFontMgr_Custom::matchCharacterInFamily(SkFontStyleSet_Custom* family,
++                                                           const SkFontStyle& style,
++                                                           SkUnichar character) const {
++    sk_sp<SkTypeface> typeface = family->matchStyle(style);
++    if (typeface && typeface->unicharToGlyph(character) != 0) {
++        return typeface;
++    }
++    return nullptr;
++}
++
+ sk_sp<SkTypeface> SkFontMgr_Custom::onMatchFamilyStyleCharacter(
+-    const char familyName[], const SkFontStyle&,
++    const char familyName[], const SkFontStyle& style,
+     const char* bcp47[], int bcp47Count,
+-    SkUnichar) const
++    SkUnichar character) const
+ {
++    SkAutoMutexExclusive lock(fFallbackMutex);
++
++    if (familyName) {
++        for (const sk_sp<SkFontStyleSet_Custom>& family : fFamilies) {
++            if (family->getFamilyName().equals(familyName)) {
++                if (sk_sp<SkTypeface> typeface =
++                            this->matchCharacterInFamily(family.get(), style, character)) {
++                    return typeface;
++                }
++            }
++        }
++    }
++
++    // The last language tag is the most preferred one.
++    for (int tagIndex = bcp47Count; tagIndex-- > 0;) {
++        const char* suffix = cjk_family_suffix(bcp47[tagIndex]);
++        if (!suffix) {
++            continue;
++        }
++        for (const sk_sp<SkFontStyleSet_Custom>& family : fFamilies) {
++            if (!family->getFamilyName().endsWith(suffix)) {
++                continue;
++            }
++            if (sk_sp<SkTypeface> typeface =
++                        this->matchCharacterInFamily(family.get(), style, character)) {
++                fLastFallbackFamily = family.get();
++                return typeface;
++            }
++        }
++    }
++
++    // Consecutive characters usually come from the same script.
++    if (fLastFallbackFamily) {
++        if (sk_sp<SkTypeface> typeface =
++                    this->matchCharacterInFamily(fLastFallbackFamily, style, character)) {
++            return typeface;
++        }
++    }
++
++    for (const sk_sp<SkFontStyleSet_Custom>& family : fFamilies) {
++        if (sk_sp<SkTypeface> typeface =
++                    this->matchCharacterInFamily(family.get(), style, character)) {
++            fLastFallbackFamily = family.get();
++            return typeface;
++        }
++    }
+     return nullptr;
+ }
+ 
+diff --git a/src/ports/SkFontMgr_custom.h b/src/ports/SkFontMgr_custom.h
+index 0d565b0fdc7d88ff2a291d83b8088c871c0095a3..431336bfd0e0ae86a2c851db03b34910f571678d 100644
+--- a/src/ports/SkFontMgr_custom.h
++++ b/src/ports/SkFontMgr_custom.h
+@@ -13,6 +13,7 @@
+ #include "include/core/SkRefCnt.h"
+ #include "include/core/SkString.h"
+ #include "include/core/SkTypes.h"
++#include "include/private/SkMutex.h"
+ #include "include/private/SkTArray.h"
+ #include "src/ports/SkTypeface_FreeType.h"
+ 
+@@ -134,8 +135,14 @@ protected:
+     sk_sp<SkTypeface> onLegacyMakeTypeface(const char familyName[], SkFontStyle style) const override;
+ 
+ private:
++    sk_sp<SkTypeface> matchCharacterInFamily(SkFontStyleSet_Custom* family,
++                                             const SkFontStyle& style,
++                                             SkUnichar character) const;
++
+     Families fFamilies;
+     sk_sp<SkFontStyleSet> fDefaultFamily;
++    mutable SkMutex fFallbackMutex;
++    mutable SkFontStyleSet_Custom* fLastFallbackFamily = nullptr;
+     std::unique_ptr<SkFontScanner> fScanner;
+ };
+ 
+diff --git a/src/ports/SkFontMgr_custom_directory.cpp b/src/ports/SkFontMgr_custom_directory.cpp
+index 458c0b9dd65bef43be61afb1e298635e4a80704f..27eaa743df1bd9a8bb9bcf9ffe4c6b159565b5b6 100644
+--- a/src/ports/SkFontMgr_custom_directory.cpp
++++ b/src/ports/SkFontMgr_custom_directory.cpp
+@@ -14,17 +14,38 @@
+ #include "src/ports/SkTypeface_FreeType.h"
+ #include "src/utils/SkOSPath.h"
+ 
++#include <utility>
++
+ class DirectorySystemFontLoader : public SkFontMgr_Custom::SystemFontLoader {
+ public:
+-    DirectorySystemFontLoader(const char* dir) : fBaseDirectory(dir) { }
++    DirectorySystemFontLoader(const char* dir) {
++        fBaseDirectories.push_back(SkString(dir));
++    }
++
++    DirectorySystemFontLoader(const char* const dirs[], int count,
++                              const char* defaultFamily)
++            : fDefaultFamily(defaultFamily ? defaultFamily : "") {
++        for (int i = 0; i < count; ++i) {
++            if (dirs && dirs[i]) {
++                fBaseDirectories.push_back(SkString(dirs[i]));
++            }
++        }
++    }
+ 
+     void loadSystemFonts(const SkFontScanner* scanner,
+                          SkFontMgr_Custom::Families* families) const override
+     {
+-        load_directory_fonts(scanner, fBaseDirectory, ".ttf", families);
+-        load_directory_fonts(scanner, fBaseDirectory, ".ttc", families);
+-        load_directory_fonts(scanner, fBaseDirectory, ".otf", families);
+-        load_directory_fonts(scanner, fBaseDirectory, ".pfb", families);
++        for (const SkString& directory : fBaseDirectories) {
++            load_directory_fonts(scanner, directory, ".ttf", families);
++            load_directory_fonts(scanner, directory, ".ttc", families);
++            load_directory_fonts(scanner, directory, ".otf", families);
++            load_directory_fonts(scanner, directory, ".pfb", families);
++        }
++        // SkFontMgr_Custom falls back to the first family when none of its
++        // built-in default names exist.
++        if (!fDefaultFamily.isEmpty()) {
++            move_family_to_front(families, fDefaultFamily.c_str());
++        }
+ 
+         if (families->empty()) {
+             SkFontStyleSet_Custom* family = new SkFontStyleSet_Custom(SkString());
+@@ -34,6 +55,18 @@ public:
+     }
+ 
+ private:
++    static void move_family_to_front(SkFontMgr_Custom::Families* families,
++                                     const char familyName[])
++    {
++        for (int i = 1; i < families->size(); ++i) {
++            if ((*families)[i]->getFamilyName().equals(familyName)) {
++                using std::swap;
++                swap((*families)[0], (*families)[i]);
++                return;
++            }
++        }
++    }
++
+     static SkFontStyleSet_Custom* find_family(SkFontMgr_Custom::Families& families,
+                                               const char familyName[])
+     {
+@@ -110,9 +143,17 @@ private:
+         }
+     }
+ 
+-    SkString fBaseDirectory;
++    skia_private::TArray<SkString> fBaseDirectories;
++    SkString fDefaultFamily;
+ };
+ 
+ sk_sp<SkFontMgr> SkFontMgr_New_Custom_Directory(const char* dir) {
+     return sk_make_sp<SkFontMgr_Custom>(DirectorySystemFontLoader(dir));
+ }
++
++sk_sp<SkFontMgr> SkFontMgr_New_Custom_Directories(const char* const dirs[],
++                                                  int count,
++                                                  const char* defaultFamily) {
++    return sk_make_sp<SkFontMgr_Custom>(
++            DirectorySystemFontLoader(dirs, count, defaultFamily));
++}

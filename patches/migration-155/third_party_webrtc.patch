@@ -1,0 +1,95 @@
+diff --git a/modules/desktop_capture/BUILD.gn b/modules/desktop_capture/BUILD.gn
+index a74f545b4f755ab71bfd56e2708014b98a2846a6..8da994f4e1485105e54ef568db39a444c27eb1d7 100644
+--- a/modules/desktop_capture/BUILD.gn
++++ b/modules/desktop_capture/BUILD.gn
+@@ -735,8 +735,21 @@ rtc_library("desktop_capture") {
+     ]
+   }
+ 
+-  if (!is_win && !is_mac && !rtc_use_x11_extensions && !rtc_use_pipewire &&
+-      !is_fuchsia) {
++  if (is_ohos) {
++    sources += [
++      "//third_party/webrtc/modules/desktop_capture/screen_capturer_ohos.cc",
++      "mouse_cursor_monitor_null.cc",
++    ]
++    libs = [
++      "native_avscreen_capture",
++      "native_buffer",
++      "native_display_manager",
++      "native_media_core",
++    ]
++  }
++
++  if (!is_ohos && !is_win && !is_mac && !rtc_use_x11_extensions &&
++      !rtc_use_pipewire && !is_fuchsia) {
+     sources += [
+       "mouse_cursor_monitor_null.cc",
+       "screen_capturer_null.cc",
+diff --git a/rtc_base/physical_socket_server.cc b/rtc_base/physical_socket_server.cc
+index 9d9927e85bd2c7aab8baba1ca23b54c4c718ab5d..4e3d8f21c5efb87eb1a8165c328b56f32091342b 100644
+--- a/rtc_base/physical_socket_server.cc
++++ b/rtc_base/physical_socket_server.cc
+@@ -597,7 +597,14 @@ int PhysicalSocket::DoReadFromSocket(void* buffer,
+   }
+   if (timestamp || ecn) {
+     struct cmsghdr* cmsg;
++#if defined(OS_OHOS)
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wsign-compare"
++#endif
+     for (cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
++#if defined(OS_OHOS)
++#pragma clang diagnostic pop
++#endif
+       if (ecn) {
+         if ((cmsg->cmsg_type == IPV6_TCLASS &&
+              cmsg->cmsg_level == IPPROTO_IPV6) ||
+diff --git a/rtc_base/platform_thread_types.cc b/rtc_base/platform_thread_types.cc
+index 20bf4afc44c82cfa659ee14666984f92f9c713ed..1ef3b9565fb38972d1eb62d46e664c66b6eb4a00 100644
+--- a/rtc_base/platform_thread_types.cc
++++ b/rtc_base/platform_thread_types.cc
+@@ -11,8 +11,10 @@
+ #include "rtc_base/platform_thread_types.h"
+ 
+ // IWYU pragma: begin_keep
+-#if defined(WEBRTC_LINUX)
++#if defined(WEBRTC_LINUX) || defined(OS_OHOS)
++#if !defined(OS_OHOS)
+ #include <linux/prctl.h>
++#endif
+ #include <sys/prctl.h>
+ #include <sys/syscall.h>
+ 
+@@ -50,7 +52,7 @@ PlatformThreadId CurrentThreadId() {
+   return gettid();
+ #elif defined(WEBRTC_FUCHSIA)
+   return zx_thread_self();
+-#elif defined(WEBRTC_LINUX)
++#elif defined(WEBRTC_LINUX) || defined(OS_OHOS)
+   return syscall(__NR_gettid);
+ #elif defined(__EMSCRIPTEN__)
+   return static_cast<PlatformThreadId>(pthread_self());
+@@ -118,7 +120,7 @@ void SetCurrentThreadName(const char* name) {
+   } __except (EXCEPTION_EXECUTE_HANDLER) {  // NOLINT
+   }
+ #pragma warning(pop)
+-#elif defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID)
++#elif defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID) || defined(OS_OHOS)
+   prctl(PR_SET_NAME, reinterpret_cast<unsigned long>(name));  // NOLINT
+ #elif defined(WEBRTC_MAC) || defined(WEBRTC_IOS)
+   pthread_setname_np(name);
+diff --git a/webrtc.gni b/webrtc.gni
+index 044438dadae1056fbc837d8cbb0402b715558848..d5a4d825f14d10af135ef3e5102a5331d3b00394 100644
+--- a/webrtc.gni
++++ b/webrtc.gni
+@@ -338,7 +338,8 @@ rtc_opus_dir = "//third_party/opus"
+ # Desktop capturer is supported only on Windows, OSX and Linux.
+ rtc_desktop_capture_supported =
+     (is_win && current_os != "winuwp") || is_mac ||
+-    ((is_linux || is_chromeos) && (rtc_use_x11_extensions || rtc_use_pipewire))
++    ((is_linux || is_chromeos) && (rtc_use_x11_extensions || rtc_use_pipewire)) ||
++    is_ohos
+ 
+ ###############################################################################
+ # Templates

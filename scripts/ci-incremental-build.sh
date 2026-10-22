@@ -168,6 +168,9 @@ if [[ -n "${PACKAGE_ONLY:-}" ]]; then
 else
   compiled_here=true
 
+  if [[ "${CHROMIUM_MAJOR:-154}" == 155 ]]; then
+    say "155 uses the complete migrated native snapshot"
+  else
   # ---- incremental patches ---------------------------------------------------
   # Every incremental patch up to hmos-154-adapter 398a5ed (and those applied
   # by hand on this runner) was folded into chromium-154-harmonyos.patch and
@@ -315,6 +318,8 @@ else
   bash "${repo_root}/scripts/setup-adblock-rust.sh" || die "Rust toolchain setup failed"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-msrt.patch" \
     "${src}/third_party/angle"
+
+  fi
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

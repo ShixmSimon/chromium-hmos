@@ -1,0 +1,900 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 0b6b06dcbb00694726a03816207bc2b26dd3dd15..29d64a74714e29dc1af174b3d587e7878fcc6c1a 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -736,7 +736,7 @@ angle_static_library("angle_gpu_info_util") {
+     libs += [ "dxgi.lib" ]
+   }
+ 
+-  if (is_linux || is_chromeos) {
++  if (is_linux || is_chromeos || is_ohos) {
+     sources += libangle_gpu_info_util_linux_sources
+ 
+     if (angle_use_x11 && angle_has_build) {
+diff --git a/gni/angle.gni b/gni/angle.gni
+index bde26da1d5ad1d6660f6f93d01d53c7611cb4a66..c1a195e4675a4cc81735a4066c9ac1f66fd0921f 100644
+--- a/gni/angle.gni
++++ b/gni/angle.gni
+@@ -97,7 +97,7 @@ if (angle_has_build) {
+     angle_use_gbm = ozone_platform_drm
+     angle_use_x11 = ozone_platform_x11 && (is_linux || is_chromeos)
+     angle_use_wayland = ozone_platform_wayland && is_linux && !is_castos
+-    angle_use_vulkan_display = is_linux || is_chromeos
++    angle_use_vulkan_display = is_linux || is_chromeos || is_ohos
+   }
+ } else {
+   declare_args() {
+@@ -120,7 +120,7 @@ if (angle_has_build) {
+   }
+ 
+   declare_args() {
+-    angle_use_vulkan_display = is_linux || is_chromeos
++    angle_use_vulkan_display = is_linux || is_chromeos || is_ohos
+   }
+ }
+ 
+diff --git a/include/EGL/eglext_angle.h b/include/EGL/eglext_angle.h
+index da3e47b6eefa5895151e765115a4edb454133fcf..e05354a84336bfa8e0baa402c1883528cd406266 100644
+--- a/include/EGL/eglext_angle.h
++++ b/include/EGL/eglext_angle.h
+@@ -477,6 +477,13 @@ EGLAPI void EGLAPIENTRY eglSetValidationEnabledANGLE(EGLBoolean validationState)
+ #define EGL_CONTEXT_PASSTHROUGH_SHADERS_ANGLE 0x3463
+ #endif /* EGL_ANGLE_create_context_passthrough_shaders */
+ 
++#ifndef EGL_OHOS_image_native_buffer
++#define EGL_OHOS_image_native_buffer 1
++// An OHNativeWindowBuffer (or an OH_NativeBuffer turned into one) as an
++// EGLImage source, the way HarmonyOS's EGL takes it.
++#define EGL_NATIVE_BUFFER_OHOS 0x34E1
++#endif /* EGL_OHOS_image_native_buffer */
++
+ // clang-format on
+ 
+ #endif  // INCLUDE_EGL_EGLEXT_ANGLE_
+diff --git a/src/common/platform.h b/src/common/platform.h
+index 140101d98fb406132b5dff92d605a75f3781b1a4..8269aee3833d39f1be66d32c444046a563b0911f 100644
+--- a/src/common/platform.h
++++ b/src/common/platform.h
+@@ -20,6 +20,12 @@
+ #elif defined(ANDROID) && !defined(ANGLE_ANDROID_DMA_BUF)
+ #    define ANGLE_PLATFORM_ANDROID 1
+ #    define ANGLE_PLATFORM_POSIX 1
++#elif defined(__OHOS__)
++// Ahead of the linux arm on purpose: OHOS defines __linux__ as well, and
++// being taken for desktop Linux is what sent the Vulkan backend looking for
++// a windowing system it does not have.
++#    define ANGLE_PLATFORM_OHOS 1
++#    define ANGLE_PLATFORM_POSIX 1
+ #elif defined(__linux__) || defined(EMSCRIPTEN)
+ #    define ANGLE_PLATFORM_LINUX 1
+ #    define ANGLE_PLATFORM_POSIX 1
+diff --git a/src/common/utilities.cpp b/src/common/utilities.cpp
+index 465928cda81790f38f81b8b7a854e2d99f0a1f55..3e5b26200757262fc65009867f327cfdadec36d2 100644
+--- a/src/common/utilities.cpp
++++ b/src/common/utilities.cpp
+@@ -1300,6 +1300,7 @@ bool IsExternalImageTarget(EGLenum target)
+         case EGL_LINUX_DMA_BUF_EXT:
+         case EGL_METAL_TEXTURE_ANGLE:
+         case EGL_VULKAN_IMAGE_ANGLE:
++        case EGL_NATIVE_BUFFER_OHOS:
+             return true;
+ 
+         default:
+diff --git a/src/libANGLE/Caps.cpp b/src/libANGLE/Caps.cpp
+index 072d13dd741be2bf68ae4467587ee93fe81eec9c..174226066b1551ec2b4e21ed3701b6d16628be58 100644
+--- a/src/libANGLE/Caps.cpp
++++ b/src/libANGLE/Caps.cpp
+@@ -1235,6 +1235,7 @@ std::vector<std::string> DisplayExtensions::getStrings() const
+     InsertExtensionString("EGL_IMG_context_priority",                            contextPriority,                    &extensionStrings);
+     InsertExtensionString("EGL_KHR_create_context_no_error",                     createContextNoError,               &extensionStrings);
+     InsertExtensionString("EGL_EXT_image_dma_buf_import",                        imageDmaBufImportEXT,               &extensionStrings);
++    InsertExtensionString("EGL_OHOS_image_native_buffer",                        imageNativeBufferOHOS,              &extensionStrings);
+     InsertExtensionString("EGL_EXT_image_dma_buf_import_modifiers",              imageDmaBufImportModifiersEXT,      &extensionStrings);
+     InsertExtensionString("EGL_NOK_texture_from_pixmap",                         textureFromPixmapNOK,               &extensionStrings);
+     InsertExtensionString("EGL_NV_robustness_video_memory_purge",                robustnessVideoMemoryPurgeNV,       &extensionStrings);
+diff --git a/src/libANGLE/Caps.h b/src/libANGLE/Caps.h
+index 5e6c8f4704999b4037ad0103d899d09d5aa5b105..8a9a4c93265c0d513551842a256efaaa9e3cd211 100644
+--- a/src/libANGLE/Caps.h
++++ b/src/libANGLE/Caps.h
+@@ -663,6 +663,9 @@ struct DisplayExtensions
+     // EGL_EXT_image_dma_buf_import
+     bool imageDmaBufImportEXT = false;
+ 
++    // EGL_OHOS_image_native_buffer
++    bool imageNativeBufferOHOS = false;
++
+     // EGL_EXT_image_dma_buf_import_modifiers
+     bool imageDmaBufImportModifiersEXT = false;
+ 
+diff --git a/src/libANGLE/Display.cpp b/src/libANGLE/Display.cpp
+index f4b27dbe1dae851107f2ed5947d42795bfd826c4..ef48ff323fbb3d2305cdd01c6744cb0d71e6af75 100644
+--- a/src/libANGLE/Display.cpp
++++ b/src/libANGLE/Display.cpp
+@@ -76,6 +76,8 @@
+ #        endif
+ #    elif defined(ANGLE_PLATFORM_ANDROID)
+ #        include "libANGLE/renderer/gl/egl/android/DisplayAndroid.h"
++#    elif defined(ANGLE_PLATFORM_OHOS)
++#        include "libANGLE/renderer/gl/egl/DisplayEGL.h"
+ #    else
+ #        error Unsupported OpenGL platform.
+ #    endif
+@@ -599,6 +601,9 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
+             impl = nullptr;
+             break;
+ 
++#    elif defined(ANGLE_PLATFORM_OHOS)
++            // Desktop GL does not exist on this platform; GLES below does.
++            break;
+ #    else
+ #        error Unsupported OpenGL platform.
+ #    endif
+@@ -655,6 +660,11 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
+             }
+ #    elif defined(ANGLE_PLATFORM_ANDROID)
+             impl = new rx::DisplayAndroid(state);
++#    elif defined(ANGLE_PLATFORM_OHOS)
++            // What the Linux arm above hands EGL_PLATFORM_ANGLE_DEVICE_TYPE_EGL_ANGLE,
++            // which is the only device type here: the platform's own EGL, reached
++            // through ANGLE.
++            impl = new rx::DisplayEGL(state);
+ #    else
+             // No GLES support on this platform, fail display creation.
+             impl = nullptr;
+@@ -732,6 +742,12 @@ rx::DisplayImpl *CreateDisplayFromAttribs(EGLAttrib displayType,
+                 impl = rx::CreateVulkanAndroidDisplay(state);
+             }
+             break;
++#    elif defined(ANGLE_PLATFORM_OHOS)
++            if (rx::IsVulkanOhosDisplayAvailable())
++            {
++                impl = rx::CreateVulkanOhosDisplay(state);
++            }
++            break;
+ #    elif defined(ANGLE_PLATFORM_FUCHSIA)
+             if (rx::IsVulkanFuchsiaDisplayAvailable())
+             {
+@@ -2279,7 +2295,10 @@ static ClientExtensions GenerateClientExtensions()
+     extensions.platformWaylandEXT = true;
+ #endif
+ 
+-#if defined(ANGLE_PLATFORM_LINUX) && (defined(ANGLE_ENABLE_OPENGL) || defined(ANGLE_ENABLE_VULKAN))
++// OHOS had these while it was taken for Linux, and the build that last
++// rendered had them; it is still the same EGL underneath.
++#if (defined(ANGLE_PLATFORM_LINUX) || defined(ANGLE_PLATFORM_OHOS)) && \
++    (defined(ANGLE_ENABLE_OPENGL) || defined(ANGLE_ENABLE_VULKAN))
+     extensions.platformSurfacelessMESA = true;
+ #endif
+ 
+@@ -2326,7 +2345,10 @@ static ClientExtensions GenerateClientExtensions()
+     extensions.x11Visual = true;
+ #endif
+ 
+-#if defined(ANGLE_PLATFORM_LINUX)
++// Chromium's --use-angle=gles-egl asks for exactly this device type, and
++// eglGetPlatformDisplay rejects it at validation unless it is advertised --
++// before CreateDisplayFromAttribs, and so before any backend is chosen.
++#if defined(ANGLE_PLATFORM_LINUX) || defined(ANGLE_PLATFORM_OHOS)
+     extensions.platformANGLEDeviceTypeEGLANGLE = true;
+ #endif
+ 
+diff --git a/src/libANGLE/renderer/driver_utils.cpp b/src/libANGLE/renderer/driver_utils.cpp
+index e676a4145b7e13e798faad476249ad77d52f202b..3ae9d3ebe1d8aacb869d34d9e41bbb1a7bb81625 100644
+--- a/src/libANGLE/renderer/driver_utils.cpp
++++ b/src/libANGLE/renderer/driver_utils.cpp
+@@ -395,7 +395,11 @@ OSVersion GetLinuxOSVersion()
+ 
+ bool IsXWayland()
+ {
+-#if defined(ANGLE_PLATFORM_LINUX)
++// HarmonyOS (OHOS) compiles as ANGLE_PLATFORM_LINUX (it's a Linux-kernel,
++// __linux__-defining target) but has no Wayland session and does not build
++// angle::IsWaylandSession() (see is_linux || is_chromeos gating in
++// libGLESv2.gni), so it must be excluded here to avoid an undefined symbol.
++#if defined(ANGLE_PLATFORM_LINUX) && !defined(OS_OHOS) && !defined(__OHOS__)
+     // Detects the Wayland session rather than the connection, so callers must be
+     // on an X11 code path for this to mean XWayland. Cached: the session type is
+     // fixed for the life of the process.
+diff --git a/src/libANGLE/renderer/gl/BUILD.gn b/src/libANGLE/renderer/gl/BUILD.gn
+index 6be94901ed9bbc7a6b594198e5c3ec9e0352c8f1..b2869f81386023de725fc31570e6d1095f415043 100644
+--- a/src/libANGLE/renderer/gl/BUILD.gn
++++ b/src/libANGLE/renderer/gl/BUILD.gn
+@@ -61,7 +61,7 @@ angle_source_set("angle_gl_backend") {
+       "Xext",
+     ]
+   }
+-  if (is_android || is_linux || is_chromeos) {
++  if (is_android || is_linux || is_chromeos || is_ohos) {
+     deps += [ "$angle_root/src/common/linux:angle_dma_buf" ]
+   }
+   if (is_apple) {
+diff --git a/src/libANGLE/renderer/gl/FunctionsGL.cpp b/src/libANGLE/renderer/gl/FunctionsGL.cpp
+index c85ef6270cb1f10b6e17c179b0e5195042b4a039..4c8fa6830f35af45345da47fe85e641198491fe0 100644
+--- a/src/libANGLE/renderer/gl/FunctionsGL.cpp
++++ b/src/libANGLE/renderer/gl/FunctionsGL.cpp
+@@ -21,7 +21,21 @@ static void GetGLVersion(PFNGLGETSTRINGPROC getStringFunction,
+                          gl::Version *outVersion,
+                          StandardGL *outStandard)
+ {
+-    const std::string version = reinterpret_cast<const char *>(getStringFunction(GL_VERSION));
++    const char *rawVersion = reinterpret_cast<const char *>(getStringFunction(GL_VERSION));
++#if defined(ANGLE_PLATFORM_OHOS)
++    // No current context, or a driver that will not answer: glGetString
++    // returns null -- or, from the GLES wrapper's no-context stub, its own
++    // argument back (0x1F02) -- and constructing a string from it was a
++    // segfault in strlen. Version 0.0 makes the caller refuse the context
++    // instead. Nothing real lives in the first 64KiB.
++    if (reinterpret_cast<uintptr_t>(rawVersion) < 0x10000)
++    {
++        *outStandard = STANDARD_GL_ES;
++        *outVersion  = gl::Version(0, 0);
++        return;
++    }
++#endif
++    const std::string version = rawVersion;
+     if (version.find("OpenGL ES") == std::string::npos)
+     {
+         // OpenGL spec states the GL_VERSION string will be in the following format:
+@@ -83,6 +97,9 @@ void FunctionsGL::initialize(const egl::AttributeMap &displayAttributes)
+     else
+     {
+         const char *exts = reinterpret_cast<const char *>(getString(GL_EXTENSIONS));
++#if defined(ANGLE_PLATFORM_OHOS)
++        if (reinterpret_cast<uintptr_t>(exts) >= 0x10000)
++#endif
+         angle::SplitStringAlongWhitespace(std::string(exts), &extensions);
+     }
+ 
+diff --git a/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp b/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp
+index 63fc4659c60a9e13787b1a75ffb39f02eb976ade..c43225588ce39429da35c7422487395381c1aba5 100644
+--- a/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp
++++ b/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp
+@@ -28,6 +28,10 @@
+ #include "libANGLE/renderer/gl/egl/WindowSurfaceEGL.h"
+ #include "libANGLE/renderer/gl/renderergl_utils.h"
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++#    include <native_window/external_window.h>
++#endif
++
+ namespace
+ {
+ 
+@@ -86,6 +90,84 @@ egl::AttributeMap MergeAttributeMaps(const egl::AttributeMap &a, Rest... rest)
+ namespace rx
+ {
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++namespace
++{
++
++// HarmonyOS's own buffer type, as the system EGL imports it with
++// EGL_NATIVE_BUFFER_OHOS. The image is created by ImageEGL with the target
++// and this buffer passed straight through; this only tells the frontend
++// what it is. YUV buffers (NV12, P010) are sampled through
++// GL_TEXTURE_EXTERNAL_OES with the driver converting them.
++class NativeBufferImageSiblingOHOS : public ExternalImageSiblingEGL
++{
++  public:
++    explicit NativeBufferImageSiblingOHOS(EGLClientBuffer buffer)
++        : mBuffer(static_cast<OHNativeWindowBuffer *>(buffer)), mFormat(GL_NONE)
++    {
++        OH_NativeWindow_NativeObjectReference(mBuffer);
++    }
++    ~NativeBufferImageSiblingOHOS() override
++    {
++        OH_NativeWindow_NativeObjectUnreference(mBuffer);
++    }
++
++    egl::Error initialize(const egl::Display *display) override
++    {
++        BufferHandle *handle = OH_NativeWindow_GetBufferHandleFromNative(mBuffer);
++        if (handle == nullptr)
++        {
++            return egl::Error(EGL_BAD_PARAMETER, "No BufferHandle for the OHNativeWindowBuffer.");
++        }
++        mSize = gl::Extents(handle->width, handle->height, 1);
++        // OH_NativeBuffer_Format values.
++        switch (handle->format)
++        {
++            case 11:  // NATIVEBUFFER_PIXEL_FMT_RGBX_8888
++                mFormat = gl::Format(GL_RGB8);
++                break;
++            case 12:  // NATIVEBUFFER_PIXEL_FMT_RGBA_8888
++                mFormat = gl::Format(GL_RGBA8);
++                break;
++            case 34:  // NATIVEBUFFER_PIXEL_FMT_RGBA_1010102
++                mFormat = gl::Format(GL_RGB10_A2);
++                break;
++            case 20:  // NATIVEBUFFER_PIXEL_FMT_BGRA_8888
++                mFormat = gl::Format(GL_BGRA8_EXT);
++                break;
++            case 24:  // NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP
++            case 25:  // NATIVEBUFFER_PIXEL_FMT_YCRCB_420_SP
++            case 35:  // NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
++            case 36:  // NATIVEBUFFER_PIXEL_FMT_YCRCB_P010
++                mFormat = gl::Format(GL_RGB8);
++                mYUV    = true;
++                break;
++            default:
++                return egl::Error(EGL_BAD_PARAMETER, "Unsupported OH_NativeBuffer format.");
++        }
++        return egl::NoError();
++    }
++
++    gl::Format getFormat() const override { return mFormat; }
++    bool isRenderable(const gl::Context *context) const override { return !mYUV; }
++    bool isTexturable(const gl::Context *context) const override { return true; }
++    bool isYUV() const override { return mYUV; }
++    bool hasProtectedContent() const override { return false; }
++    gl::Extents getSize() const override { return mSize; }
++    size_t getSamples() const override { return 0; }
++
++    EGLClientBuffer getBuffer() const override { return static_cast<EGLClientBuffer>(mBuffer); }
++
++  private:
++    OHNativeWindowBuffer *mBuffer;
++    gl::Extents mSize;
++    gl::Format mFormat;
++    bool mYUV = false;
++};
++
++}  // namespace
++#endif  // defined(ANGLE_PLATFORM_OHOS)
++
+ DisplayEGL::DisplayEGL(const egl::DisplayState &state) : DisplayGL(state) {}
+ 
+ DisplayEGL::~DisplayEGL()
+@@ -116,6 +198,9 @@ const char *DisplayEGL::getEGLPath() const
+ #    else
+     return "/system/lib/libEGL.so";
+ #    endif
++#elif defined(OS_OHOS) || defined(__OHOS__)
++    // HarmonyOS exposes the system EGL to apps as an NDK library.
++    return "libEGL.so";
+ #else
+     return "libEGL.so.1";
+ #endif
+@@ -920,6 +1005,12 @@ void DisplayEGL::generateExtensions(egl::DisplayExtensions *outExtensions) const
+ 
+     outExtensions->imageDmaBufImportEXT = mEGL->hasExtension("EGL_EXT_image_dma_buf_import");
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++    // HarmonyOS's EGL imports an OHNativeWindowBuffer with this target without
++    // listing an extension for it.
++    outExtensions->imageNativeBufferOHOS = true;
++#endif
++
+     outExtensions->imageDmaBufImportModifiersEXT = mSupportsDmaBufImportModifiers;
+ 
+     outExtensions->robustnessVideoMemoryPurgeNV = mHasNVRobustnessVideoMemoryPurge;
+@@ -1038,6 +1129,15 @@ egl::Error DisplayEGL::validateImageClientBuffer(const gl::Context *context,
+         case EGL_LINUX_DMA_BUF_EXT:
+             return egl::NoError();
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++        case EGL_NATIVE_BUFFER_OHOS:
++            if (clientBuffer == nullptr)
++            {
++                return egl::Error(EGL_BAD_PARAMETER, "No OHNativeWindowBuffer given.");
++            }
++            return egl::NoError();
++#endif
++
+         default:
+             return DisplayGL::validateImageClientBuffer(context, target, clientBuffer, attribs);
+     }
+@@ -1055,6 +1155,12 @@ ExternalImageSiblingImpl *DisplayEGL::createExternalImageSibling(const gl::Conte
+             ASSERT(buffer == nullptr);
+             return new DmaBufImageSiblingEGL(attribs);
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++        case EGL_NATIVE_BUFFER_OHOS:
++            ASSERT(context == nullptr);
++            return new NativeBufferImageSiblingOHOS(buffer);
++#endif
++
+         default:
+             return DisplayGL::createExternalImageSibling(context, target, buffer, attribs);
+     }
+diff --git a/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp b/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp
+index ddf845523a280daaaf029fe4838c703c398894b3..2f03098bce20ef18da151bf280e6c1ce121b476d 100644
+--- a/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp
++++ b/src/libANGLE/renderer/gl/egl/FunctionsEGLDL.cpp
+@@ -9,6 +9,8 @@
+ #include "libANGLE/renderer/gl/egl/FunctionsEGLDL.h"
+ 
+ #include <dlfcn.h>
++#include <stdlib.h>
++#include <string.h>
+ 
+ namespace rx
+ {
+@@ -64,6 +66,78 @@ egl::Error FunctionsEGLDL::initialize(EGLAttrib platformType,
+ 
+ void *FunctionsEGLDL::getProcAddress(const char *name) const
+ {
++#if defined(ANGLE_PLATFORM_OHOS)
++    // EGLImages of HarmonyOS native buffers (EGL_NATIVE_BUFFER_OHOS) have to
++    // be made by the wrapper's own eglCreateImageKHR. The entry point
++    // eglGetProcAddress hands back goes past the wrapper, does not know the
++    // display the wrapper gave out, and fails with EGL_BAD_DISPLAY -- in
++    // every process, not only where OHOS_ANGLE_WRAPPER_EXPORTS is set. So the
++    // image functions, and binding an image to a texture, always come from
++    // the wrapper's exports, the way an NDK app reaches them.
++    static const char *const kImageEntryPoints[] = {
++        "eglCreateImage", "eglCreateImageKHR", "eglDestroyImage", "eglDestroyImageKHR"};
++    for (const char *imageEntryPoint : kImageEntryPoints)
++    {
++        if (strcmp(name, imageEntryPoint) == 0)
++        {
++            if (void *exported = dlsym(nativeEGLHandle, name))
++            {
++                return exported;
++            }
++        }
++    }
++    if (strcmp(name, "glEGLImageTargetTexture2DOES") == 0 ||
++        strcmp(name, "glEGLImageTargetRenderbufferStorageOES") == 0)
++    {
++        static void *glesForImages = dlopen("libGLESv3.so", RTLD_NOW | RTLD_LOCAL);
++        if (glesForImages != nullptr)
++        {
++            if (void *exported = dlsym(glesForImages, name))
++            {
++                return exported;
++            }
++        }
++    }
++#endif
++#if defined(ANGLE_PLATFORM_OHOS)
++    // HarmonyOS's libEGL.so and libGLESv3.so are a wrapper over the vendor
++    // driver. A GLES call is dispatched through the table the wrapper's own
++    // eglMakeCurrent installs for the calling thread, and eglGetProcAddress
++    // can hand back an entry point that does not go through the wrapper. In
++    // the browser process something else had already made a context current
++    // through the wrapper, so it worked; in a GPU process of its own nothing
++    // had, and glGetString answered from the no-context stub with its own
++    // argument. The wrapper's exports first, then, the way an app linking
++    // against the NDK would reach them.
++    //
++    // Only where the process asks for it: the GPU process started as a
++    // native child of its own sets OHOS_ANGLE_WRAPPER_EXPORTS. The browser
++    // process, where the other order works, is left exactly as it was.
++    static const bool wrapperExportsFirst =
++        getenv("OHOS_ANGLE_WRAPPER_EXPORTS") != nullptr;
++    if (!wrapperExportsFirst)
++    {
++        // Falls through to the upstream lookup below.
++    }
++    else if (strncmp(name, "egl", 3) == 0)
++    {
++        if (void *exported = dlsym(nativeEGLHandle, name))
++        {
++            return exported;
++        }
++    }
++    else if (strncmp(name, "gl", 2) == 0)
++    {
++        static void *gles = dlopen("libGLESv3.so", RTLD_NOW | RTLD_LOCAL);
++        if (gles != nullptr)
++        {
++            if (void *exported = dlsym(gles, name))
++            {
++                return exported;
++            }
++        }
++    }
++#endif
+     void *f = reinterpret_cast<void *>(mGetProcAddressPtr(name));
+     if (f)
+     {
+diff --git a/src/libANGLE/renderer/gl/gl_backend.gni b/src/libANGLE/renderer/gl/gl_backend.gni
+index 1d89bf7b0b31a8de81e2b7446ccd03d419788b89..09a4644942e582a82bbaada992b5d0ed66239425 100644
+--- a/src/libANGLE/renderer/gl/gl_backend.gni
++++ b/src/libANGLE/renderer/gl/gl_backend.gni
+@@ -118,7 +118,7 @@ if (angle_use_x11) {
+   ]
+ }
+ 
+-if (is_android || is_linux || is_chromeos) {
++if (is_android || is_linux || is_chromeos || is_ohos) {
+   gl_backend_sources += [
+     "egl/ContextEGL.cpp",
+     "egl/ContextEGL.h",
+diff --git a/src/libANGLE/renderer/vulkan/BUILD.gn b/src/libANGLE/renderer/vulkan/BUILD.gn
+index 4eef7114f6a1031089359ce93443e8a61ffd85b0..6725deb9de017fa449ab9347b7f50d667292e5e3 100644
+--- a/src/libANGLE/renderer/vulkan/BUILD.gn
++++ b/src/libANGLE/renderer/vulkan/BUILD.gn
+@@ -147,6 +147,14 @@ template("angle_vulkan_backend_template") {
+       deps += [ "$angle_root:angle_version_info" ]
+     }
+ 
++    if (is_ohos) {
++      # OH_NativeBuffer and OHNativeWindowBuffer, for EGL_NATIVE_BUFFER_OHOS.
++      libs += [
++        "native_buffer",
++        "native_window",
++      ]
++    }
++
+     # OpenCL on ANGLE needs both spirv-tools and clspv for compiler
+     if (angle_enable_cl) {
+       deps += [
+diff --git a/src/libANGLE/renderer/vulkan/CommandQueue.cpp b/src/libANGLE/renderer/vulkan/CommandQueue.cpp
+index 6175f004629c27ae430774a731fdca66ae58c1f9..94027171e57ec9a3f765ae4dee6d56bb2c7a398c 100644
+--- a/src/libANGLE/renderer/vulkan/CommandQueue.cpp
++++ b/src/libANGLE/renderer/vulkan/CommandQueue.cpp
+@@ -770,6 +770,22 @@ angle::Result CommandQueue::waitIdle(ErrorContext *context, uint64_t timeout)
+     return finishResourceUse(context, use, timeout);
+ }
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++angle::Result CommandQueue::waitForPresentIdle(ErrorContext *context)
++{
++    ANGLE_TRACE_EVENT0("gpu.angle", "CommandQueue::waitForPresentIdle");
++    VkResult result;
++    {
++        std::lock_guard<angle::SimpleMutex> lock(mQueueSubmitMutex);
++        result = VK_CALL(vkDeviceWaitIdle, context->getDevice());
++    }
++    // Report errors after releasing the submission lock: device-loss cleanup
++    // takes that same lock while draining the queue.
++    ANGLE_VK_TRY(context, result);
++    return angle::Result::Continue;
++}
++#endif
++
+ angle::Result CommandQueue::waitForResourceUseToFinishWithUserTimeout(ErrorContext *context,
+                                                                       const ResourceUse &use,
+                                                                       uint64_t timeout,
+diff --git a/src/libANGLE/renderer/vulkan/CommandQueue.h b/src/libANGLE/renderer/vulkan/CommandQueue.h
+index 0bec8214a462c4afb3e9e4f5e8b42369628f53c8..9183b362403fa4c82d0953d73c81591a93e8686e 100644
+--- a/src/libANGLE/renderer/vulkan/CommandQueue.h
++++ b/src/libANGLE/renderer/vulkan/CommandQueue.h
+@@ -432,6 +432,10 @@ class CommandQueue : angle::NonCopyable
+                                     const QueueSerial &queueSerial,
+                                     uint64_t timeout);
+     angle::Result waitIdle(ErrorContext *context, uint64_t timeout);
++#if defined(ANGLE_PLATFORM_OHOS)
++    // Teardown only. Serialize with both queue submission and presentation.
++    angle::Result waitForPresentIdle(ErrorContext *context);
++#endif
+     angle::Result waitForResourceUseToFinishWithUserTimeout(ErrorContext *context,
+                                                             const ResourceUse &use,
+                                                             uint64_t timeout,
+diff --git a/src/libANGLE/renderer/vulkan/DisplayVk.cpp b/src/libANGLE/renderer/vulkan/DisplayVk.cpp
+index e9d44433955afee8c6fc2ba19fece8840c759569..0731c19371b42a0d1296db4bfb5bfcb44c21889e 100644
+--- a/src/libANGLE/renderer/vulkan/DisplayVk.cpp
++++ b/src/libANGLE/renderer/vulkan/DisplayVk.cpp
+@@ -566,9 +566,10 @@ void DisplayVk::generateExtensions(egl::DisplayExtensions *outExtensions) const
+     outExtensions->contextPriority = !getFeatures().allocateNonZeroMemory.enabled;
+     outExtensions->noConfigContext = true;
+ 
+-#if defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX)
++#if defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX) || \
++    defined(ANGLE_PLATFORM_OHOS)
+     outExtensions->nativeFenceSyncANDROID = getFeatures().supportsAndroidNativeFenceSync.enabled;
+-#endif  // defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX)
++#endif  // ANDROID || LINUX || OHOS
+ 
+     outExtensions->bufferAgeEXT = true;
+ 
+diff --git a/src/libANGLE/renderer/vulkan/DisplayVk_api.h b/src/libANGLE/renderer/vulkan/DisplayVk_api.h
+index 56a818c8ee624b6ca35902c8e26927d1e091b1e2..d13c464de04d45800c369c09214caf3b44ae3c8f 100644
+--- a/src/libANGLE/renderer/vulkan/DisplayVk_api.h
++++ b/src/libANGLE/renderer/vulkan/DisplayVk_api.h
+@@ -48,6 +48,11 @@ bool IsVulkanAndroidDisplayAvailable();
+ DisplayImpl *CreateVulkanAndroidDisplay(const egl::DisplayState &state);
+ #endif  // defined(ANGLE_PLATFORM_ANDROID)
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++bool IsVulkanOhosDisplayAvailable();
++DisplayImpl *CreateVulkanOhosDisplay(const egl::DisplayState &state);
++#endif  // defined(ANGLE_PLATFORM_OHOS)
++
+ #if defined(ANGLE_PLATFORM_FUCHSIA)
+ bool IsVulkanFuchsiaDisplayAvailable();
+ DisplayImpl *CreateVulkanFuchsiaDisplay(const egl::DisplayState &state);
+diff --git a/src/libANGLE/renderer/vulkan/SurfaceVk.cpp b/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
+index 7be448969fdb4584fb95053294223a6e77f6a83f..64a5ce2b13f91fdbc3e0511f3f189dfbab48df34 100644
+--- a/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
++++ b/src/libANGLE/renderer/vulkan/SurfaceVk.cpp
+@@ -1100,6 +1100,19 @@ void WindowSurfaceVk::destroy(const egl::Display *display)
+     // flush the pipe.
+     (void)finish(displayVk);
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++    // Resource fences retire rendering, not the presentation engine's wait on
++    // the swap semaphore. OHOS recreates this surface for P3/PQ transitions.
++    // Without maintenance1 present fences, use the legacy device-idle teardown
++    // fallback before destroying the old swapchain and its semaphores. This is
++    // not the precise present-completion guarantee maintenance1 would provide.
++    if (!renderer->getFeatures().supportsSwapchainMaintenance1.enabled &&
++        !mPresentHistory.empty())
++    {
++        (void)renderer->waitForPresentIdle(displayVk);
++    }
++#endif
++
+     if (mAcquireOperation.state == ImageAcquireState::Ready)
+     {
+         // swapchain image doesn't own ANI semaphore. Release ANI semaphore from image so that it
+@@ -1477,6 +1490,12 @@ angle::Result WindowSurfaceVk::initializeImpl(DisplayVk *displayVk, bool *anyMat
+ 
+     ANGLE_TRY(prepareSwapchainForAcquireNextImage(displayVk));
+     ASSERT(mSwapchain != VK_NULL_HANDLE);
++#if defined(ANGLE_PLATFORM_OHOS)
++    WARN() << "OHOS ANGLE WSI allocated: vk_format=" << imageFormat
++           << " vk_colorspace=" << mSurfaceColorSpace
++           << " rgba_bits=" << mState.config->redSize << "/" << mState.config->greenSize
++           << "/" << mState.config->blueSize << "/" << mState.config->alphaSize;
++#endif
+ 
+     // Create the semaphores that will be used for vkAcquireNextImageKHR.
+     for (vk::Semaphore &semaphore : mAcquireOperation.unlockedAcquireData.acquireImageSemaphores)
+diff --git a/src/libANGLE/renderer/vulkan/vk_cache_utils.cpp b/src/libANGLE/renderer/vulkan/vk_cache_utils.cpp
+index 0b21490619571a8d8168c1e2b94971c4df4f6741..ab9ff5738da8be5b5f9d50411c2d55de059c3182 100644
+--- a/src/libANGLE/renderer/vulkan/vk_cache_utils.cpp
++++ b/src/libANGLE/renderer/vulkan/vk_cache_utils.cpp
+@@ -5601,6 +5601,21 @@ angle::Result YcbcrConversionDesc::init(ErrorContext *context,
+         externalFormat.externalFormat    = mExternalOrVkFormat;
+         samplerYcbcrConversionInfo.pNext = &externalFormat;
+     }
++#elif defined(ANGLE_PLATFORM_OHOS)
++    // VkExternalFormatOHOS, which the Khronos headers ANGLE builds against
++    // do not have: an OH_NativeBuffer's opaque YUV format (P010 on Maleoon).
++    struct
++    {
++        VkStructureType sType;
++        void *pNext;
++        uint64_t externalFormat;
++    } externalFormat = {};
++    if (getExternalFormat() != 0)
++    {
++        externalFormat.sType             = static_cast<VkStructureType>(1000452005);
++        externalFormat.externalFormat    = mExternalOrVkFormat;
++        samplerYcbcrConversionInfo.pNext = &externalFormat;
++    }
+ #else
+     // We do not support external format for any platform other than Android.
+     ASSERT(mIsExternalFormat == 0);
+diff --git a/src/libANGLE/renderer/vulkan/vk_helpers.cpp b/src/libANGLE/renderer/vulkan/vk_helpers.cpp
+index b5142fa15237b5543f3a03681049321ecc9b9498..4d7267819587c1fc009c7bbef4da6727c021ad3b 100644
+--- a/src/libANGLE/renderer/vulkan/vk_helpers.cpp
++++ b/src/libANGLE/renderer/vulkan/vk_helpers.cpp
+@@ -9,6 +9,7 @@
+ #include "libANGLE/renderer/vulkan/vk_helpers.h"
+ 
+ #include <array>
++#include <atomic>
+ 
+ #include "common/unsafe_buffers.h"
+ 
+@@ -6191,8 +6192,31 @@ bool ImageHelper::FormatSupportsUsage(const Renderer *renderer,
+     if (formatSupportCheck == FormatSupportCheck::RequireMultisampling)
+     {
+         // Some drivers return success but sampleCounts == 1 which means no MSRTT
+-        return result == VK_SUCCESS &&
+-               imageFormatProperties2.imageFormatProperties.sampleCounts > 1;
++        const bool supported = result == VK_SUCCESS &&
++                               imageFormatProperties2.imageFormatProperties.sampleCounts > 1;
++#if defined(ANGLE_PLATFORM_OHOS)
++        if (!supported &&
++            (createFlags & VK_IMAGE_CREATE_MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_BIT_EXT) != 0)
++        {
++            // Startup probes and texture recreation share this query. Bound diagnostics
++            // across threads; a failed frame must not flood hilog with format details.
++            static std::atomic<unsigned int> remainingLogs{8};
++            unsigned int remaining = remainingLogs.load(std::memory_order_relaxed);
++            while (remaining != 0 &&
++                   !remainingLogs.compare_exchange_weak(remaining, remaining - 1,
++                                                        std::memory_order_relaxed))
++            {}
++            if (remaining != 0)
++            {
++                WARN() << "OHOS ANGLE Vulkan MSRT query rejected: format=" << format
++                       << " type=" << imageType << " tiling=" << tilingMode
++                       << " usage=" << usageFlags << " flags=" << createFlags
++                       << " result=" << result << " sampleCounts="
++                       << imageFormatProperties2.imageFormatProperties.sampleCounts;
++            }
++        }
++#endif
++        return supported;
+     }
+     return result == VK_SUCCESS;
+ }
+diff --git a/src/libANGLE/renderer/vulkan/vk_renderer.cpp b/src/libANGLE/renderer/vulkan/vk_renderer.cpp
+index 0dd3692db47168515d4bd7bdf4a07d65607e4c17..11869faa32959b4de6eacd74ddb37ac6cf04d3b6 100644
+--- a/src/libANGLE/renderer/vulkan/vk_renderer.cpp
++++ b/src/libANGLE/renderer/vulkan/vk_renderer.cpp
+@@ -3939,6 +3939,20 @@ void Renderer::enableDeviceExtensionsNotPromoted(const vk::ExtensionNameList &de
+     ASSERT(!mFeatures.supportsAndroidHardwareBuffer.enabled);
+ #endif
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++    // OH_NativeBuffer import (EGL_NATIVE_BUFFER_OHOS): Android's
++    // AHardwareBuffer import with the names changed, and like it owned by a
++    // foreign queue family.
++    mSupportsOhosNativeBuffer =
++        ExtensionFound("VK_OHOS_external_memory", deviceExtensionNames) &&
++        ExtensionFound(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME, deviceExtensionNames);
++    if (mSupportsOhosNativeBuffer)
++    {
++        mEnabledDeviceExtensions.push_back(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME);
++        mEnabledDeviceExtensions.push_back("VK_OHOS_external_memory");
++    }
++#endif
++
+     if (mFeatures.supportsExternalMemoryFd.enabled)
+     {
+         mEnabledDeviceExtensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+@@ -5756,7 +5770,10 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+         &mFeatures, supportsExternalFenceFd,
+         ExtensionFound(VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME, deviceExtensionNames));
+ 
+-#if defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX)
++// OHOS also exchanges Linux sync_file FDs between ANGLE and Dawn. Keep
++    // the same import/export property checks; absence must still disable it.
++#if defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX) || \
++    defined(ANGLE_PLATFORM_OHOS)
+     if (mFeatures.supportsExternalFenceCapabilities.enabled &&
+         mFeatures.supportsExternalSemaphoreCapabilities.enabled)
+     {
+@@ -5801,7 +5818,13 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+                                 (mFeatures.supportsExternalFenceFd.enabled &&
+                                  mFeatures.supportsExternalSemaphoreFd.enabled));
+     }
+-#endif  // defined(ANGLE_PLATFORM_ANDROID) || defined(ANGLE_PLATFORM_LINUX)
++#endif  // ANDROID || LINUX || OHOS
++#if defined(ANGLE_PLATFORM_OHOS)
++    WARN() << "OHOS ANGLE native fence: external_fence_fd="
++           << mFeatures.supportsExternalFenceFd.enabled
++           << " external_semaphore_fd=" << mFeatures.supportsExternalSemaphoreFd.enabled
++           << " sync_fd_verified=" << mFeatures.supportsAndroidNativeFenceSync.enabled;
++#endif
+ 
+     // Disabled on SwiftShader due to http://crbug.com/40942995
+     ANGLE_FEATURE_CONDITION(
+@@ -5885,6 +5908,17 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+             !(isQualcommProprietary && driverVersion < angle::VersionTriple(512, 822, 0)) &&
+             !isLavapipe);
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++    // The RGBA8 startup probe does not cover all format/usage/view combinations.
++    // On OHOS a later TextureVk::initImage query can reject an MSRTT attachment,
++    // failing page rasterization repeatedly (GEM-W00, 2026-10-13). Until those
++    // combinations are validated on device, use the existing MSRTT emulation
++    // eligibility checks below, or let clients use ordinary multisample FBOs.
++    // Set this before all dependent features and device extension enablement.
++    // Explicit ANGLE feature overrides remain available for diagnosis.
++    ANGLE_FEATURE_CONDITION(&mFeatures, supportsMultisampledRenderToSingleSampled, false);
++#endif
++
+     // Preferring the MSRTSS flag is for texture initialization. If the MSRTSS is not used at first,
+     // it will be used (if available) when recreating the image if it is bound to an MSRTT
+     // framebuffer.
+@@ -6094,6 +6128,20 @@ void Renderer::initFeatures(const vk::ExtensionNameList &deviceExtensionNames,
+                                 (mFeatures.supportsDepthStencilResolve.enabled &&
+                                  mFeatures.allowMultisampledRenderToTextureEmulation.enabled));
+ 
++#if defined(ANGLE_PLATFORM_OHOS)
++    // Once per renderer initialization, including the effective override state.
++    WARN() << "OHOS ANGLE Vulkan MSRT: device=" << mPhysicalDeviceProperties.deviceName
++           << " vendor=" << mPhysicalDeviceProperties.vendorID
++           << " deviceId=" << mPhysicalDeviceProperties.deviceID
++           << " driverVersion=" << mPhysicalDeviceProperties.driverVersion
++           << " apiVersion=" << mPhysicalDeviceProperties.apiVersion
++           << " nativeMSRTSS=" << mFeatures.supportsMultisampledRenderToSingleSampled.enabled
++           << " emulateMSRTT="
++           << (mFeatures.enableMultisampledRenderToTexture.enabled &&
++               !mFeatures.supportsMultisampledRenderToSingleSampled.enabled)
++           << " exposeMSRTT=" << mFeatures.enableMultisampledRenderToTexture.enabled;
++#endif
++
+     // Currently we enable cube map arrays based on the imageCubeArray Vk feature.
+     // TODO: Check device caps for full cube map array support. http://anglebug.com/42263705
+     ANGLE_FEATURE_CONDITION(&mFeatures, supportsImageCubeArray,
+diff --git a/src/libANGLE/renderer/vulkan/vk_renderer.h b/src/libANGLE/renderer/vulkan/vk_renderer.h
+index 0430571c36dd77e33c2d81c2d3b3ae06fad2edb1..9c853f94957ad3ee006a8a4cbc918da6f17ba9d2 100644
+--- a/src/libANGLE/renderer/vulkan/vk_renderer.h
++++ b/src/libANGLE/renderer/vulkan/vk_renderer.h
+@@ -302,6 +302,12 @@ class Renderer : angle::NonCopyable
+     }
+ 
+     VkQueue getQueue(egl::ContextPriority priority) { return mCommandQueue.getQueue(priority); }
++#if defined(ANGLE_PLATFORM_OHOS)
++    angle::Result waitForPresentIdle(vk::ErrorContext *context)
++    {
++        return mCommandQueue.waitForPresentIdle(context);
++    }
++#endif
+     // Helpers to implement the functionality of EGL_ANGLE_device_vulkan
+     void lockVulkanQueueForExternalAccess() { mCommandQueue.lockVulkanQueueForExternalAccess(); }
+     void unlockVulkanQueueForExternalAccess()
+@@ -708,6 +714,9 @@ class Renderer : angle::NonCopyable
+ 
+     bool supportsAstcHdr() const;
+ 
++    // VK_OHOS_external_memory and VK_EXT_queue_family_foreign are enabled.
++    bool supportsOhosNativeBuffer() const { return mSupportsOhosNativeBuffer; }
++
+     uint32_t getNativeVectorWidthDouble() const { return mNativeVectorWidthDouble; }
+     uint32_t getNativeVectorWidthHalf() const { return mNativeVectorWidthHalf; }
+     uint32_t getPreferredVectorWidthDouble() const { return mPreferredVectorWidthDouble; }
+@@ -959,6 +968,7 @@ class Renderer : angle::NonCopyable
+     VkDeviceSize mMaxCopyBytesUsingCPUWhenPreservingBufferData;
+ 
+     bool mDeviceLost;
++    bool mSupportsOhosNativeBuffer = false;
+ 
+     vk::SharedGarbageList<vk::SharedGarbage> mSharedGarbageList;
+     // Suballocations have its own dedicated garbage list for performance optimization since they
+diff --git a/src/libANGLE/renderer/vulkan/vulkan_backend.gni b/src/libANGLE/renderer/vulkan/vulkan_backend.gni
+index f29c8084862f9ed73c9c4d87397d0f8c83590e31..1a5899868cf2a7f3419e5d37c557c1a3a0f6cd7c 100644
+--- a/src/libANGLE/renderer/vulkan/vulkan_backend.gni
++++ b/src/libANGLE/renderer/vulkan/vulkan_backend.gni
+@@ -181,6 +181,17 @@ if (is_android) {
+   ]
+ }
+ 
++if (is_ohos) {
++  vulkan_backend_sources += [
++    "ohos/DisplayVkOhos.cpp",
++    "ohos/DisplayVkOhos.h",
++    "ohos/NativeBufferImageSiblingVkOhos.cpp",
++    "ohos/NativeBufferImageSiblingVkOhos.h",
++    "ohos/WindowSurfaceVkOhos.cpp",
++    "ohos/WindowSurfaceVkOhos.h",
++  ]
++}
++
+ if (is_win) {
+   vulkan_backend_sources += [
+     "win32/DisplayVkWin32.cpp",
+diff --git a/src/libANGLE/validationEGL.cpp b/src/libANGLE/validationEGL.cpp
+index dd0a706c7d814d4de0d8e1647db107ca71702910..20203003c57fab0a4e7e25463653abb5b43715a2 100644
+--- a/src/libANGLE/validationEGL.cpp
++++ b/src/libANGLE/validationEGL.cpp
+@@ -4335,6 +4335,27 @@ bool ValidateCreateImage(const ValidationContext *val,
+         }
+         break;
+ 
++        case EGL_NATIVE_BUFFER_OHOS:
++        {
++            if (!displayExtensions.imageNativeBufferOHOS)
++            {
++                val->setError(EGL_BAD_PARAMETER, "EGL_OHOS_image_native_buffer not supported.");
++                return false;
++            }
++
++            if (context != nullptr)
++            {
++                val->setError(EGL_BAD_CONTEXT, "ctx must be EGL_NO_CONTEXT.");
++                return false;
++            }
++
++            ANGLE_EGL_TRY_RETURN(
++                val->eglThread,
++                display->validateImageClientBuffer(context, target, buffer, attributes),
++                val->entryPoint, val->labeledObject, false);
++        }
++        break;
++
+         case EGL_D3D11_TEXTURE_ANGLE:
+             if (!displayExtensions.imageD3D11Texture)
+             {
+diff --git a/src/libGLESv2.gni b/src/libGLESv2.gni
+index edd1e0b4f57340c10b999742b4b61027d42d80ae..4bd0ddc2ec51a6b9380f328aa2e9822df4a6d37c 100644
+--- a/src/libGLESv2.gni
++++ b/src/libGLESv2.gni
+@@ -119,7 +119,7 @@ if (is_android && angle_enable_unwind_backtrace_support) {
+   libangle_common_sources += [ "src/common/backtrace_utils_noop.cpp" ]
+ }
+ 
+-if (is_linux || is_chromeos || is_android || is_fuchsia) {
++if (is_linux || is_chromeos || is_android || is_fuchsia || is_ohos) {
+   libangle_common_sources += [
+     "src/common/system_utils_linux.cpp",
+     "src/common/system_utils_posix.cpp",

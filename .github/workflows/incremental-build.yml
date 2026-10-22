@@ -95,6 +95,14 @@ jobs:
       - name: Check native phishing rule validation
         run: bash scripts/test-url-protection-native.sh
 
+      - name: Upload migration diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-diagnostics-${{ github.sha }}
+          path: build-status/
+          retention-days: 7
+
       - name: Report
         if: always()
         run: |

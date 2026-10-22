@@ -1,0 +1,78 @@
+{
+  "source_adapter": "5834ccdf",
+  "source_chromium": "154.0.8037.97",
+  "target_chromium": "155.0.8059.91",
+  "target_revision": "f043649a0ef1fd96e48d56ddbfc8a4a99aa2ca37",
+  "repositories": [
+    {
+      "path": ".",
+      "patch": "chromium.patch",
+      "base": "b510e9d7cd3a2fbd78d0ddc42234103206c5f78d",
+      "sha256": "a78577fe4eb0c28b2849ba84a49e55e1aad9707d511713356a6a79e4edf54109",
+      "bytes": 1683050
+    },
+    {
+      "path": "v8",
+      "patch": "v8.patch",
+      "base": "b3d6849efaf11696198e15b32290e6d6b0d540c1",
+      "sha256": "2d620b160a4165196c098a76411bdee5b3dafa83ea99228b11e7c013a6875a9d",
+      "bytes": 14676
+    },
+    {
+      "path": "third_party/angle",
+      "patch": "third_party_angle.patch",
+      "base": "e12217f3e133cb1029b050d893b1806d141483be",
+      "sha256": "157c6c41b38af395c4052eff76c1facc8acf0bc897a7c87848da42da8adafb00",
+      "bytes": 41176
+    },
+    {
+      "path": "third_party/dawn",
+      "patch": "third_party_dawn.patch",
+      "base": "38bc7fb0b3a024d05212958ae843e4ddf8c44ff1",
+      "sha256": "975b43ffd6145faebe48ddd80a449c601d2dfc762be99e73e6447c9ecead7cea",
+      "bytes": 124849
+    },
+    {
+      "path": "third_party/ffmpeg",
+      "patch": "third_party_ffmpeg.patch",
+      "base": "a06d51a20a28f980b2ddc6b7d73d69b2d29bf323",
+      "sha256": "de682aaedd69b26cc1e7ca9034d315d576d4f114bb03821c92d95b99a5440c96",
+      "bytes": 1002
+    },
+    {
+      "path": "third_party/pdfium",
+      "patch": "third_party_pdfium.patch",
+      "base": "2358b16c1947eff67f0732754af6b3c4e1715ff9",
+      "sha256": "b026de4e2dab514d1ae365b516f022474f6df551480f1bc1f5a271fe58d3aa54",
+      "bytes": 2617
+    },
+    {
+      "path": "third_party/perfetto",
+      "patch": "third_party_perfetto.patch",
+      "base": "5dbeaad4ceb91470a835426b52e0cb43a3e5ef10",
+      "sha256": "052f25473ee1498092003166f1df51306af43f3bcbdf36dbe25e78d7a9e317fb",
+      "bytes": 811
+    },
+    {
+      "path": "third_party/skia",
+      "patch": "third_party_skia.patch",
+      "base": "2466dcf3937437e217e7f284afe0e1aae15891ce",
+      "sha256": "8e106a3c028198ad7ac4d8e71b77dc4e914212ad29b58ca73e4fc61acca857d2",
+      "bytes": 11293
+    },
+    {
+      "path": "third_party/vulkan-loader/src",
+      "patch": "third_party_vulkan-loader_src.patch",
+      "base": "07e50bb6cc89025c37586efd215e2b8280670978",
+      "sha256": "0d1f9ffa819d9c09809cbe0e75721b16d164dbc03151ea14e81a100e52ca10c7",
+      "bytes": 455
+    },
+    {
+      "path": "third_party/webrtc",
+      "patch": "third_party_webrtc.patch",
+      "base": "dbaaaf413fe8c1d01c340af1a461c069960f43fc",
+      "sha256": "d9cef50cf66f17de19d9ec561246eb82c6075394e9cfb0ce5326e9ffcc161d53",
+      "bytes": 3641
+    }
+  ]
+}
