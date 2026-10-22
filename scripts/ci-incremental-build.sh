@@ -419,6 +419,8 @@ else
       obj/media/gpu/gpu/ohos_video_frame_converter.o
       obj/ui/ozone/platform/ohos/ohos/ohos_native_pixmap.o
       obj/ohos_nweb/src/aura_shell/aura_shell_core/ohos_chrome_main_runner.o
+      obj/chrome/browser/core/aura_shell_runtime_bridge.o
+      obj/chrome/browser/core/shell_site_settings_ohos.o
       obj/third_party/angle/src/libANGLE/renderer/vulkan/angle_vulkan_backend/DisplayVkOhos.o
       obj/third_party/angle/src/libANGLE/renderer/vulkan/angle_vulkan_backend/NativeBufferImageSiblingVkOhos.o
     )
