@@ -18358,7 +18358,7 @@ index cbd5ae2384760d3e5213f66dc6f80ee1ca97b144..313b4da470a1425e82a2b8128036488b
  # Mirror is enabled and other account consistency mechanisms are not available.
  enable_mirror = is_android || is_chromeos || is_ios
 diff --git a/components/signin/internal/identity_manager/profile_oauth2_token_service_builder.cc b/components/signin/internal/identity_manager/profile_oauth2_token_service_builder.cc
-index 0c26172d8a43472387c40719a72f9b53bc48dda6..3074dbaf79a95d7a8fecd37ff75cca69852ccc73 100644
+index 0c26172d8a43472387c40719a72f9b53bc48dda6..bd0d8501540d299a17fd8c1f80ad953fdca020dd 100644
 --- a/components/signin/internal/identity_manager/profile_oauth2_token_service_builder.cc
 +++ b/components/signin/internal/identity_manager/profile_oauth2_token_service_builder.cc
 @@ -10,9 +10,11 @@
@@ -18373,7 +18373,7 @@ index 0c26172d8a43472387c40719a72f9b53bc48dda6..3074dbaf79a95d7a8fecd37ff75cca69
  
  #if BUILDFLAG(IS_ANDROID)
  #include "components/signin/internal/identity_manager/profile_oauth2_token_service_delegate_android.h"
-@@ -36,6 +38,77 @@
+@@ -36,6 +38,76 @@
  
  namespace {
  
@@ -18400,8 +18400,7 @@ index 0c26172d8a43472387c40719a72f9b53bc48dda6..3074dbaf79a95d7a8fecd37ff75cca69
 +#if BUILDFLAG(ENABLE_DICE_SUPPORT)
 +  // OHOS does not support hardware-bound refresh tokens.
 +  bool GenerateBindingKeyRegistrationToken(
-+      base::span<const crypto::SignatureVerifier::SignatureAlgorithm>
-+          supported_algorithms,
++      base::span<const crypto::sign::SignatureKind> supported_algorithms,
 +      std::string_view auth_code,
 +      base::OnceCallback<
 +          void(std::optional<signin::BindingKeyRegistrationTokenResult>)>
@@ -18451,7 +18450,7 @@ index 0c26172d8a43472387c40719a72f9b53bc48dda6..3074dbaf79a95d7a8fecd37ff75cca69
  #if BUILDFLAG(IS_ANDROID)
  // TODO(crbug.com/40637107) Provide AccountManagerFacade as a parameter once
  // IdentityServicesProvider owns its instance management.
-@@ -137,6 +210,8 @@ CreateOAuth2TokenServiceDelegate(
+@@ -137,6 +209,8 @@ CreateOAuth2TokenServiceDelegate(
    return CreateCrOsOAuthDelegate(signin_client, account_tracker_service,
                                   network_connection_tracker,
                                   account_manager_facade, is_regular_profile);
