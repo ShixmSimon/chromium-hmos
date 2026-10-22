@@ -6,11 +6,12 @@ name: Incremental build
 
 on:
   push:
-    branches: [hmos-154-adapter, hmos-154-dev, codex/phone-fork-renderers]
+    branches: [hmos-154-adapter, hmos-155-adapter]
     paths:
       - 'overlay/**'
       - 'patches/**'
       - 'scripts/**'
+      - 'config/**'
       - '.github/workflows/incremental-build.yml'
   workflow_dispatch:
     inputs:
@@ -44,6 +45,7 @@ permissions:
 
 jobs:
   build:
+    if: github.ref == 'refs/heads/hmos-154-adapter' || github.ref == 'refs/heads/hmos-155-adapter'
     runs-on: [self-hosted, harmonyos-chromium]
     timeout-minutes: 1440
     strategy:
@@ -58,6 +60,13 @@ jobs:
           # revision of an edited patch, which it finds in this
           # repository's history. The default shallow clone has none.
           fetch-depth: 0
+
+      - name: Select isolated engine checkout
+        run: python3 scripts/select-ci-engine.py
+
+      - name: Prepare Chromium 155 checkout
+        if: github.ref_name == 'hmos-155-adapter'
+        run: bash scripts/prepare-chromium-155.sh
 
       - name: Symbolize previous native build
         if: github.event_name == 'workflow_dispatch' && inputs.crash_build_id != ''

@@ -2,7 +2,9 @@ name: Adapter CI
 
 on:
   push:
+    branches: [hmos-154-adapter, hmos-155-adapter]
   pull_request:
+    branches: [hmos-154-adapter, hmos-155-adapter]
   workflow_dispatch:
 
 permissions:
@@ -10,11 +12,16 @@ permissions:
 
 jobs:
   verify-publication:
+    if: github.ref == 'refs/heads/hmos-154-adapter' || github.ref == 'refs/heads/hmos-155-adapter' || github.base_ref == 'hmos-154-adapter' || github.base_ref == 'hmos-155-adapter'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Select engine revision
+        run: python3 scripts/select-ci-engine.py
+      - name: Verify branch isolation
+        run: python3 scripts/tests/test-ci-engine-selection.py
       - name: Verify public tree
         run: scripts/verify-public-tree.sh
       - name: Check scripts
@@ -55,8 +62,8 @@ jobs:
           REQUIRE_COMPATIBLE: '1'
         run: >-
           scripts/check-upstream-adapter.sh
-          154.0.8037.97
-          b510e9d7cd3a2fbd78d0ddc42234103206c5f78d
+          "${{ env.CHROMIUM_VERSION }}"
+          "${{ env.CHROMIUM_REVISION }}"
       - name: Upload compatibility report
         if: always()
         uses: actions/upload-artifact@v4

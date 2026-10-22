@@ -2,7 +2,7 @@ name: Inspect runtime sources
 
 on:
   push:
-    branches: [hmos-154-adapter, hmos-154-dev]
+    branches: [hmos-154-adapter, hmos-155-adapter]
     paths: ['.github/workflows/inspect-runtime.yml']
   workflow_dispatch:
 
@@ -16,10 +16,13 @@ concurrency:
 
 jobs:
   snapshot:
+    if: github.ref == 'refs/heads/hmos-154-adapter' || github.ref == 'refs/heads/hmos-155-adapter'
     runs-on: [self-hosted, harmonyos-chromium]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Select isolated engine checkout
+        run: python3 scripts/select-ci-engine.py
       - name: Read startup and utility sources
         shell: bash
         run: |
