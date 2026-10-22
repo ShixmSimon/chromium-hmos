@@ -2,6 +2,7 @@
 """Compile the production AppGallery UA policy and exercise its lifecycle."""
 from pathlib import Path
 import os
+import re
 import subprocess
 import tempfile
 
@@ -21,6 +22,16 @@ policy = function(source, 'bool IsHuaweiAppGallery(') + '\n' + function(source, 
 method = function(source, 'bool ApplyAppGalleryUserAgent(')
 classifier = function((ROOT / 'overlay/chrome/browser/ui/ohos/aura_shell_runtime_bridge.cc').read_text(),
                       'bool IsAuraShellRequestingDesktopSite(')
+viewport_patch = (ROOT / 'patches/ohos-phone-viewport.patch').read_text()
+viewport_added = '\n'.join(line[1:] for line in viewport_patch.splitlines()
+                           if line.startswith('+') and not line.startswith('+++'))
+viewport_desktop = re.search(r'  const bool desktop_site =[^;]+;', viewport_added)[0]
+viewport_meta = re.search(r'  const bool viewport_meta_enabled =[^;]+;', viewport_added)[0]
+viewport = ('bool MobileViewportEnabled(content::WebContents* web_contents) {\n' +
+            viewport_desktop + '\n' + viewport_meta + '\n  return viewport_meta_enabled;\n}')
+# The browser-client hook must use the same classifier as the shell UI.
+viewport = viewport.replace('chrome::ohos::IsAuraShellRequestingDesktopSite',
+                            'IsAuraShellRequestingDesktopSite')
 unit = r'''
 #include <cassert>
 #include <optional>
@@ -85,6 +96,7 @@ blink::UserAgentOverride AuraShellDesktopSiteUserAgent() {
   return {"desktop", blink::UserAgentMetadata{false}};
 }
 CLASSIFIER
+VIEWPORT
 POLICY
 struct Watcher {
   content::WebContents* contents;
@@ -114,6 +126,7 @@ int main() {
       assert(tab.pinned && h.overriding && !tab.inherits);
       assert(tab.ua.ua_string_override.ends_with(token));
       assert(IsAuraShellRequestingDesktopSite(&tab) == (!empty && desktop));
+      assert(MobileViewportEnabled(&tab) == (empty || !desktop));
       if (!empty) assert(tab.ua.ua_metadata_override == baseline.ua_metadata_override);
       auto compatible = tab.ua;
       assert(watcher.ApplyAppGalleryUserAgent(&h)); // refresh must not save the temporary UA
@@ -137,7 +150,7 @@ int main() {
   watcher.ApplyAppGalleryUserAgent(&h);
   assert(tab.ua.ua_string_override == "new desktop");
 }
-'''.replace('POLICY', policy).replace('METHOD', method).replace('CLASSIFIER', classifier)
+'''.replace('POLICY', policy).replace('METHOD', method).replace('CLASSIFIER', classifier).replace('VIEWPORT', viewport)
 with tempfile.TemporaryDirectory(prefix='appgallery-ua-') as directory:
     cc = Path(directory) / 'policy.cc'
     exe = Path(directory) / 'policy'

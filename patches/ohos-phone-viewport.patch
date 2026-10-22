@@ -40,7 +40,7 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
  #include "content/public/browser/navigation_handle.h"
  #include "content/public/browser/network_service_instance.h"
  #include "content/public/browser/permission_controller.h"
-@@ -4524,6 +4525,140 @@ content::TtsPlatform* ChromeContentBrowserClient::GetTtsPlatform() {
+@@ -4524,6 +4525,141 @@ content::TtsPlatform* ChromeContentBrowserClient::GetTtsPlatform() {
  #endif
  }
  
@@ -116,9 +116,10 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
 +  // width and lays out for a phone anyway -- the site was never the problem.
 +  // content does this for us a few lines before it calls this, and then this
 +  // runs and would put it back, so decide it here instead.
-+  content::NavigationEntry* entry =
-+      web_contents ? web_contents->GetController().GetVisibleEntry() : nullptr;
-+  const bool desktop_site = entry && entry->GetIsOverridingUserAgent();
++  // AppGallery compatibility and inherited phone UAs also use overrides.
++  // Only a desktop UA should disable the page's mobile viewport.
++  const bool desktop_site =
++      chrome::ohos::IsAuraShellRequestingDesktopSite(web_contents);
 +
 +  // The viewport machinery stays on in every case. Turning it off for WebUI
 +  // was wrong twice over: the same machinery computes the right width for an
