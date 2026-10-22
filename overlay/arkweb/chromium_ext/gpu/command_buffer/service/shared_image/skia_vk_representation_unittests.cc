@@ -29,7 +29,7 @@
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_mock_time_task_runner.h"
 #include "base/test/task_environment.h"
-#include "components/viz/common/gpu/vulkan_context_provider.h"
+#include "gpu/command_buffer/service/vulkan_context_provider.h"
 #include "gpu/command_buffer/service/ohos/ohos_image_backing.h"
 #include "gpu/command_buffer/common/mailbox.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
@@ -144,7 +144,7 @@ public:
     MOCK_METHOD(bool, abandoned, (), ());
 };
 
-class MockVulkanContextProvider : public viz::VulkanContextProvider {
+class MockVulkanContextProvider : public gpu::VulkanContextProvider {
 public:
     MockVulkanContextProvider() : gr_context_(new MockGrContext()) {}
     ~MockVulkanContextProvider() = default;
@@ -186,7 +186,7 @@ public:
         SharedContextState::ContextLostCallback context_lost_callback =
             base::BindOnce([](bool lost, error::ContextLostReason reason) {});
         GrContextType gr_context_type = GrContextType::kVulkan;
-        viz::VulkanContextProvider* vulkan_context_provider = new MockVulkanContextProvider();
+        gpu::VulkanContextProvider* vulkan_context_provider = new MockVulkanContextProvider();
         viz::MetalContextProvider* metal_context_provider = nullptr;
         gpu::DawnContextProvider* dawn_context_provider = nullptr;
         base::WeakPtr<gpu::MemoryTracker::Observer> peak_memory_monitor = nullptr;
@@ -272,7 +272,7 @@ public:
         SharedContextState::ContextLostCallback context_lost_callback =
             base::BindOnce([](bool lost, error::ContextLostReason reason) {});
         GrContextType gr_context_type = GrContextType::kVulkan;
-        viz::VulkanContextProvider* vulkan_context_provider = new MockVulkanContextProvider();
+        gpu::VulkanContextProvider* vulkan_context_provider = new MockVulkanContextProvider();
         viz::MetalContextProvider* metal_context_provider = nullptr;
         gpu::DawnContextProvider* dawn_context_provider = nullptr;
         base::WeakPtr<gpu::MemoryTracker::Observer> peak_memory_monitor = nullptr;

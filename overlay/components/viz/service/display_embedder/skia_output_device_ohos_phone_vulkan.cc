@@ -13,7 +13,7 @@
 #include "base/logging.h"
 #include "base/threading/watchdog.h"
 #include "base/trace_event/trace_event.h"
-#include "components/viz/common/gpu/vulkan_context_provider.h"
+#include "gpu/command_buffer/service/vulkan_context_provider.h"
 #include "gpu/command_buffer/service/memory_tracking.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
 #include "gpu/vulkan/vulkan_device_queue.h"

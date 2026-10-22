@@ -122,7 +122,7 @@ class SharedImageVideoOhosNativeImageTest : public testing::Test {
   scoped_refptr<MockGLContext> context;
   bool use_virtualized_gl_contexts = false;
   GrContextType gr_context_type = GrContextType::kGL;
-  viz::VulkanContextProvider* vulkan_context_provider = nullptr;
+  gpu::VulkanContextProvider* vulkan_context_provider = nullptr;
   viz::MetalContextProvider* metal_context_provider = nullptr;
   viz::DawnContextProvider* dawn_context_provider = nullptr;
   base::WeakPtr<gpu::MemoryTracker::Observer> peak_memory_monitor = nullptr;

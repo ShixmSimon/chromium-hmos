@@ -85,7 +85,7 @@ class MockSharedContextState : public SharedContextState {
       bool use_virtualized_gl_contexts,
       ContextLostCallback context_lost_callback,
       GrContextType gr_context_type = GrContextType::kGL,
-      viz::VulkanContextProvider* vulkan_context_provider = nullptr,
+      gpu::VulkanContextProvider* vulkan_context_provider = nullptr,
       viz::MetalContextProvider* metal_context_provider = nullptr,
       gpu::DawnContextProvider* dawn_context_provider = nullptr,
       base::WeakPtr<gpu::MemoryTracker::Observer> peak_memory_monitor = nullptr,
@@ -156,7 +156,7 @@ class CodecBufferWaitCoordinatorTest : public testing::Test {
     scoped_refptr<gl::GLSurface> surface;
     bool use_virtualized_gl_contexts = false;
     gpu::GrContextType gr_context_type = gpu::GrContextType::kGL;
-    viz::VulkanContextProvider* vulkan_context_provider = nullptr;
+    gpu::VulkanContextProvider* vulkan_context_provider = nullptr;
     viz::MetalContextProvider* metal_context_provider = nullptr;
     gpu::DawnContextProvider* dawn_context_provider = nullptr;
     base::WeakPtr<gpu::MemoryTracker::Observer> peak_memory_monitor = nullptr;

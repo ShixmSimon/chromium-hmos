@@ -45,7 +45,7 @@ class GPU_GLES2_EXPORT OhosVideoImageBacking : public OhosImageBacking {
   // nullopt for other context.
   static absl::optional<VulkanYCbCrInfo> GetYcbcrInfo(
       NativeImageTextureOwner* texture_owner,
-      viz::VulkanContextProvider* vulkan_context_provider);
+      gpu::VulkanContextProvider* vulkan_context_provider);
 
   ~OhosVideoImageBacking() override;
 

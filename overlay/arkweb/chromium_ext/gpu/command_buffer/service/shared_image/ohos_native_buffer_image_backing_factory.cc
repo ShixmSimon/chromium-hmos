@@ -26,7 +26,7 @@
 #include "base/ohos/scoped_native_buffer_handle.h"
 #include "base/posix/eintr_wrapper.h"
 #include "build/build_config.h"
-#include "components/viz/common/gpu/vulkan_context_provider.h"
+#include "gpu/command_buffer/service/vulkan_context_provider.h"
 #include "gpu/command_buffer/common/gles2_cmd_utils.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/command_buffer/service/gles2_cmd_decoder.h"

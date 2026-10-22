@@ -5,7 +5,7 @@
 #include "gpu/command_buffer/service/ohos/ohos_video_image_backing.h"
 
 #include "base/ohos/scoped_native_buffer_handle.h"
-#include "components/viz/common/gpu/vulkan_context_provider.h"
+#include "gpu/command_buffer/service/vulkan_context_provider.h"
 #include "components/viz/common/resources/resource_sizes.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/command_buffer/service/abstract_texture_ohos.h"
@@ -82,7 +82,7 @@ std::unique_ptr<OhosVideoImageBacking> OhosVideoImageBacking::Create(
 // Static.
 absl::optional<VulkanYCbCrInfo> OhosVideoImageBacking::GetYcbcrInfo(
     NativeImageTextureOwner* texture_owner,
-    viz::VulkanContextProvider* vulkan_context_provider)
+    gpu::VulkanContextProvider* vulkan_context_provider)
 {
   if (!vulkan_context_provider) {
     return absl::nullopt;

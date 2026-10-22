@@ -167,7 +167,7 @@ class FrameInfoHelperImpl : public FrameInfoHelper,
       raw_ptr<OnGpu> frame_info_helper_on_gpu_ GUARDED_BY(lock_) = nullptr;
     };
     scoped_refptr<gpu::SharedContextState> shared_context_;
-    raw_ptr<viz::VulkanContextProvider> vulkan_context_provider_ = nullptr;
+    raw_ptr<gpu::VulkanContextProvider> vulkan_context_provider_ = nullptr;
     scoped_refptr<FrameInfoHelperHolder> frame_info_helper_holder_;
   };
 

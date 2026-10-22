@@ -7,9 +7,10 @@
     {
       "path": ".",
       "patch": "chromium.patch",
-      "base": "b510e9d7cd3a2fbd78d0ddc42234103206c5f78d",
-      "sha256": "a78577fe4eb0c28b2849ba84a49e55e1aad9707d511713356a6a79e4edf54109",
-      "bytes": 1683050
+      "base": "f043649a0ef1fd96e48d56ddbfc8a4a99aa2ca37",
+      "sha256": "f4847de6aab66979cb72d651bbbe691339a5e6410230f3d1b0cc9445bee69e5c",
+      "bytes": 1680865,
+      "source_base": "b510e9d7cd3a2fbd78d0ddc42234103206c5f78d"
     },
     {
       "path": "v8",
@@ -148,5 +149,9 @@
       "path": "third_party/angle/src/libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.h",
       "sha256": "397f209d720444a2a52864e5421e610d166a18d125ab62a103248a6a6ff39b99"
     }
-  ]
+  ],
+  "resolved_root_conflicts": 29,
+  "moved_native_files": {
+    "components/viz/common/gpu/vulkan_in_process_context_provider.cc": "gpu/command_buffer/service/vulkan_in_process_context_provider.cc"
+  }
 }

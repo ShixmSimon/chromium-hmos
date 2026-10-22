@@ -5,7 +5,7 @@
 #include "gpu/command_buffer/service/shared_image/skia_vk_hw_video_native_buffer_image_representation.h"
 #include <utility>
 
-#include "components/viz/common/gpu/vulkan_context_provider.h"
+#include "gpu/command_buffer/service/vulkan_context_provider.h"
 #include "components/viz/common/resources/shared_image_format_utils.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/command_buffer/service/memory_tracking.h"

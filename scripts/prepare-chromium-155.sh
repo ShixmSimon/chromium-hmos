@@ -11,6 +11,7 @@ readonly src="${root}/src"
 readonly seed=/root/chromium-154/src
 readonly revision="${CHROMIUM_REVISION:?Pinned revision is required}"
 mkdir -p "$root" "$repo_root/build-status"
+exec > >(tee -a "$repo_root/build-status/preparation-155.log") 2>&1
 export PATH="$src/third_party/depot_tools:$PATH"
 export DEPOT_TOOLS_UPDATE=0
 export DEPOT_TOOLS_METRICS=0

@@ -13,7 +13,7 @@
 
 #include "base/logging.h"
 #include "base/task/bind_post_task.h"
-#include "components/viz/common/gpu/vulkan_context_provider.h"
+#include "gpu/command_buffer/service/vulkan_context_provider.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/command_buffer/service/abstract_texture_ohos.h"
 #include "gpu/command_buffer/service/gles2_cmd_decoder.h"

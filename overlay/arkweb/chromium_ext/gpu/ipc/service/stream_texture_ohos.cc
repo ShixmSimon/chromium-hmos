@@ -209,7 +209,7 @@ void StreamTexture::OnFrameAvailable() {
     visible_rect_ = visible_rect;
 
     auto mailbox = CreateSharedImage(coded_size);
-    viz::VulkanContextProvider* vulkan_context_provider = nullptr;
+    gpu::VulkanContextProvider* vulkan_context_provider = nullptr;
     if (context_state_->GrContextIsVulkan()) {
       vulkan_context_provider = context_state_->vk_context_provider();
     }

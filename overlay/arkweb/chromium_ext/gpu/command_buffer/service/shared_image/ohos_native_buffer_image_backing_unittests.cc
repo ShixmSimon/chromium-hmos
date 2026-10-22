@@ -30,7 +30,7 @@
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_mock_time_task_runner.h"
 #include "base/test/task_environment.h"
-#include "components/viz/common/gpu/vulkan_context_provider.h"
+#include "gpu/command_buffer/service/vulkan_context_provider.h"
 #include "gpu/command_buffer/common/mailbox.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/command_buffer/service/ohos/native_image_texture_owner.h"
@@ -91,7 +91,7 @@ public:
         bool use_virtualized_gl_contexts,
         ContextLostCallback context_lost_callback,
         GrContextType gr_context_type = GrContextType::kGL,
-        viz::VulkanContextProvider* vulkan_context_provider = nullptr,
+        gpu::VulkanContextProvider* vulkan_context_provider = nullptr,
         viz::MetalContextProvider* metal_context_provider = nullptr,
         gpu::DawnContextProvider* dawn_context_provider = nullptr,
         base::WeakPtr<gpu::MemoryTracker::Observer> peak_memory_monitor = nullptr,
@@ -110,7 +110,7 @@ public:
     ~MockSharedContextState();
     MOCK_METHOD(bool, GrContextIsVulkan, (), (const));
     MOCK_METHOD(bool, GrContextIsGL, (), (const));
-    MOCK_METHOD(viz::VulkanContextProvider*, vulkan_context_provider, (), (const));
+    MOCK_METHOD(gpu::VulkanContextProvider*, vulkan_context_provider, (), (const));
 };
 
 class MockGLContext : public gl::GLContext {

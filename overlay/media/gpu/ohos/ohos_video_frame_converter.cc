@@ -36,7 +36,7 @@
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
 
 #if BUILDFLAG(ENABLE_VULKAN)
-#include "components/viz/common/gpu/vulkan_context_provider.h"
+#include "gpu/command_buffer/service/vulkan_context_provider.h"
 #include "ui/ozone/platform/ohos/ohos_video_vulkan.h"
 #endif
 
