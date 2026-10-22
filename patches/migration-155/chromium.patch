@@ -15984,7 +15984,7 @@ index 481b34cd5bd47791da2ec924defb8bfcae45bbcb..0bea843f3c09df04b18a58352272e08b
  };
  
 diff --git a/chrome/test/BUILD.gn b/chrome/test/BUILD.gn
-index 167b043f9a1f7ec59d8e10705b4956b5647f6886..2ce51e7de1800c63642afc2496a62edacf000287 100644
+index 167b043f9a1f7ec59d8e10705b4956b5647f6886..5e2bf6c62038208b3c91cfbbc53d7f852e999dc0 100644
 --- a/chrome/test/BUILD.gn
 +++ b/chrome/test/BUILD.gn
 @@ -1049,7 +1049,6 @@ source_set("platform_browser_tests") {
@@ -16017,7 +16017,20 @@ index 167b043f9a1f7ec59d8e10705b4956b5647f6886..2ce51e7de1800c63642afc2496a62eda
        "//services/service_manager/public/cpp",
        "//services/strings",
        "//services/test/echo/public/mojom",
-@@ -6275,7 +6268,6 @@ test("unit_tests") {
+@@ -3568,9 +3561,11 @@ if (!is_android) {
+           "//chrome/browser/ui/views/extensions:extension_post_install_dialog_view_utils",
+           "//chrome/browser/ui/views/policy:enterprise_startup_dialog",
+           "//chrome/browser/ui/views/relaunch_notification:browser_tests",
+-          "//chrome/browser/ui/views/scheduled_restart:browser_tests",
+           "//chrome/browser/ui/views/shortcuts:browser_tests",
+         ]
++        if (is_win || is_mac || is_linux) {
++          deps += [ "//chrome/browser/ui/views/scheduled_restart:browser_tests" ]
++        }
+       }
+       if (enable_dice_support || is_chromeos) {
+         sources += [
+@@ -6275,7 +6270,6 @@ test("unit_tests") {
      # TODO(crbug.com/417513088): Maybe merge with the non-android `deps`
      # declaration above?
      deps += [
@@ -16025,7 +16038,7 @@ index 167b043f9a1f7ec59d8e10705b4956b5647f6886..2ce51e7de1800c63642afc2496a62eda
        "//chrome:packed_resources",
        "//chrome/browser/apps/app_service",
        "//chrome/browser/apps/app_service:app_registry_cache_waiter",
-@@ -6315,7 +6307,6 @@ test("unit_tests") {
+@@ -6315,7 +6309,6 @@ test("unit_tests") {
        "//chrome/browser/profile_resetter:fake_profile_resetter",
        "//chrome/browser/profile_resetter:unit_tests",
        "//chrome/browser/resources/new_tab_page_instant:resources_grit",
@@ -16033,7 +16046,7 @@ index 167b043f9a1f7ec59d8e10705b4956b5647f6886..2ce51e7de1800c63642afc2496a62eda
        "//chrome/browser/search/background",
        "//chrome/browser/search_engine_choice:unit_tests",
        "//chrome/browser/sensor:unit_tests",
-@@ -6475,6 +6466,17 @@ test("unit_tests") {
+@@ -6475,6 +6468,17 @@ test("unit_tests") {
        "//ui/webui/tracked_element:unit_tests",
      ]
  
@@ -16051,7 +16064,7 @@ index 167b043f9a1f7ec59d8e10705b4956b5647f6886..2ce51e7de1800c63642afc2496a62eda
      data += [ "//chromeos/ash/experiences/arc/test/data/icons/" ]
  
      if (include_js2gtest_tests && is_chromeos) {
-@@ -8369,7 +8371,6 @@ if (!is_android && !is_chromeos_device) {
+@@ -8369,7 +8373,6 @@ if (!is_android && !is_chromeos_device) {
        "//components/privacy_sandbox:privacy_sandbox_prefs",
        "//components/reading_list/core",
        "//components/resources",
@@ -16059,7 +16072,7 @@ index 167b043f9a1f7ec59d8e10705b4956b5647f6886..2ce51e7de1800c63642afc2496a62eda
        "//components/safe_browsing/core/common",
        "//components/safe_browsing/core/common:safe_browsing_policy_handler",
        "//components/search",
-@@ -9064,9 +9065,11 @@ if (!is_android && !is_chromeos_device) {
+@@ -9064,9 +9067,11 @@ if (!is_android && !is_chromeos_device) {
  
      deps += [
        "//chrome/browser/media/router/discovery/access_code:interactive_ui_tests",
