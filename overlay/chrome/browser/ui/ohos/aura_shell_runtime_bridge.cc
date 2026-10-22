@@ -1349,17 +1349,6 @@ std::optional<int> ReadTabIndex(TabStripModel* tabs,
   return index && tabs->ContainsIndex(*index) ? index : std::nullopt;
 }
 
-// Whether this tab is asking sites for their desktop pages. Phones send a
-// mobile user agent by default, so an override means desktop.
-bool IsRequestingDesktopSite(content::WebContents* contents) {
-  if (!contents) {
-    return false;
-  }
-  content::NavigationEntry* entry =
-      contents->GetController().GetLastCommittedEntry();
-  return entry && entry->GetIsOverridingUserAgent();
-}
-
 // Ask this tab's site for its desktop pages, or stop. Chrome for Android
 // does the same three things: swap the user agent, mark the entry so a
 // back-forward step keeps the choice, and reload from the original URL so a
@@ -2977,7 +2966,7 @@ std::string BuildBrowserStateJson(std::string_view ui_family,
     state.Set("loading", active->IsLoading());
     state.Set("loadProgress",
               active->IsLoading() ? active->GetLoadProgress() : 1.0);
-    state.Set("requestDesktopSite", IsRequestingDesktopSite(active));
+    state.Set("requestDesktopSite", IsAuraShellRequestingDesktopSite(active));
     state.Set("zoomPercent", ShellZoomPercent(active));
     state.Set("inReaderMode", IsInReaderMode(active));
     state.Set("readerModeAvailable", IsReaderModeAvailable(active));
@@ -5211,6 +5200,27 @@ void SetAuraShellUserAgentPinned(content::WebContents* contents,
 
 bool IsAuraShellUserAgentPinned(content::WebContents* contents) {
   return contents && PinnedUserAgent::FromWebContents(contents);
+}
+
+bool IsAuraShellRequestingDesktopSite(content::WebContents* contents) {
+  if (!contents) {
+    return false;
+  }
+  const content::NavigationEntry* entry =
+      contents->GetController().GetVisibleEntry();
+  if (!entry || !entry->GetIsOverridingUserAgent()) {
+    return false;
+  }
+  // The device's mobile UA is also a WebContents override. window.open and
+  // target=_blank inherit it and mark their navigation as overriding the UA;
+  // that flag alone must not select desktop layout or check the shell menu.
+  const blink::UserAgentOverride& ua = contents->GetUserAgentOverride();
+  if (ua.ua_metadata_override) {
+    return !ua.ua_metadata_override->mobile;
+  }
+  return !ua.ua_string_override.empty() &&
+         ua.ua_string_override ==
+             AuraShellDesktopSiteUserAgent().ua_string_override;
 }
 
 // The CPU this build runs on, as a Linux User-Agent and UA-CH name it.

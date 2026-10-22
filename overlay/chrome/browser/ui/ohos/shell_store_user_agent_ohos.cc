@@ -42,6 +42,22 @@ bool IsChromeWebStore(const GURL& url) {
          url.path().starts_with("/webstore");
 }
 
+// AppGallery's AppTest service rejects Chromium's normal OHOS UA as
+// "device not support". Adding this token alone makes the same invitation
+// succeed. Confine it to AppGallery documents; their cross-origin invitation
+// requests use the document's UA too. Never advertise HuaweiBrowser or change
+// Chromium's version, platform section, or client hints.
+bool IsHuaweiAppGallery(const GURL& url) {
+  return url.SchemeIs("https") && url.host() == "appgallery.huawei.com";
+}
+
+std::string AppGalleryUserAgent(std::string user_agent) {
+  if (user_agent.find("ArkWeb/") == std::string::npos) {
+    user_agent += " ArkWeb/7.0.0.107";
+  }
+  return user_agent;
+}
+
 // The client hints that go with the store's user agent.
 //
 // The store reads the platform from Sec-CH-UA-Platform and
@@ -75,6 +91,13 @@ class StoreUserAgentWatcher
     // Only the tab's own page. A same-document navigation keeps the UA it
     // committed with, and setting the flag on one does nothing.
     if (!handle->IsInPrimaryMainFrame() || handle->IsSameDocument()) {
+      return;
+    }
+    if (IsHuaweiAppGallery(handle->GetURL()) && !store_ua_.empty() &&
+        web_contents()->GetUserAgentOverride().ua_string_override == store_ua_) {
+      RestoreUserAgent(handle);
+    }
+    if (ApplyAppGalleryUserAgent(handle)) {
       return;
     }
     // "Desktop site" uses this same mechanism, and when the reader has asked
@@ -140,8 +163,56 @@ class StoreUserAgentWatcher
     applied = true;
   }
 
+  void DidRedirectNavigation(content::NavigationHandle* handle) override {
+    DidStartNavigation(handle);
+  }
+
  private:
   friend class content::WebContentsUserData<StoreUserAgentWatcher>;
+
+  // Restore the previous mode before the Chrome Web Store policy runs, so
+  // navigating directly between the two stores keeps desktop mode intact.
+  bool ApplyAppGalleryUserAgent(content::NavigationHandle* handle) {
+    const blink::UserAgentOverride current =
+        web_contents()->GetUserAgentOverride();
+    const bool ours = !appgallery_ua_.empty() &&
+                      current.ua_string_override == appgallery_ua_;
+    if (!IsHuaweiAppGallery(handle->GetURL())) {
+      if (ours) {
+        web_contents()->SetUserAgentOverride(
+            before_appgallery_, /*override_in_new_tabs=*/before_appgallery_pinned_);
+        SetAuraShellUserAgentPinned(web_contents(), before_appgallery_pinned_);
+        handle->SetIsOverridingUserAgent(
+            !before_appgallery_.ua_string_override.empty());
+      }
+      appgallery_ua_.clear();
+      return false;
+    }
+    // A manual mobile/desktop change while on this site becomes the new
+    // baseline. Leaving must not undo the reader's latest choice.
+    if (!ours) {
+      before_appgallery_ = current;
+      before_appgallery_pinned_ = IsAuraShellUserAgentPinned(web_contents());
+    }
+    blink::UserAgentOverride compatible = before_appgallery_;
+    if (compatible.ua_string_override.empty()) {
+      const bool mobile = IsAuraShellMobilePhoneUi();
+      compatible.ua_string_override = embedder_support::GetUserAgentForOhos(mobile);
+      compatible.ua_metadata_override =
+          embedder_support::GetUserAgentMetadataForOhos(mobile);
+    }
+    compatible.ua_string_override =
+        AppGalleryUserAgent(compatible.ua_string_override);
+    appgallery_ua_ = compatible.ua_string_override;
+    web_contents()->SetUserAgentOverride(compatible, /*override_in_new_tabs=*/false);
+    SetAuraShellUserAgentPinned(web_contents(), true);
+    handle->SetIsOverridingUserAgent(true);
+    return true;
+  }
+
+  blink::UserAgentOverride before_appgallery_;
+  bool before_appgallery_pinned_ = false;
+  std::string appgallery_ua_;
 
   // What the store was actually sent, once the navigation is over. The
   // line at the start says what this watcher decided; this one says whether

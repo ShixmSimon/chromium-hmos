@@ -254,6 +254,10 @@ void OnAuraShellWebContentsBlocked(content::WebContents* contents,
 void SetAuraShellUserAgentPinned(content::WebContents* contents, bool pinned);
 bool IsAuraShellUserAgentPinned(content::WebContents* contents);
 
+// Whether the active override requests desktop layout; a mobile compatibility
+// override is still a mobile page.
+bool IsAuraShellRequestingDesktopSite(content::WebContents* contents);
+
 // The user agent "desktop site" sends. On a phone, the OpenHarmony string
 // without its Mobile token, which Chinese sites take for a desktop. A tablet
 // or a 2in1 already sends that string by default, so there "desktop site"
