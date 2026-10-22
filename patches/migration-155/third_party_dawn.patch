@@ -350,6 +350,19 @@ index 3f3ea8b363f5212018525d4a6c39bba949627e7e..005ca0638e6e74b0312470f57aacf7b0
      EnumCount,
      InvalidEnum = EnumCount,
  };
+diff --git a/src/dawn/native/WaitAnySystemEvent.cpp b/src/dawn/native/WaitAnySystemEvent.cpp
+index ece869bc98db7e2faad92bf759fe43f5a94648bf..737d93e672a619e6dc49049a33beccc0996ab58b 100644
+--- a/src/dawn/native/WaitAnySystemEvent.cpp
++++ b/src/dawn/native/WaitAnySystemEvent.cpp
+@@ -33,7 +33,7 @@
+ #include <poll.h>
+ #include <unistd.h>
+ #elif DAWN_PLATFORM_IS(POSIX)
+-#include <sys/poll.h>
++#include <poll.h>
+ #include <unistd.h>
+ #endif
+ 
 diff --git a/src/dawn/native/vulkan/BackendVk.cpp b/src/dawn/native/vulkan/BackendVk.cpp
 index a93ea4f996be0520f7ee1b8ff216eb4c8c11fb3d..202a1e3bdcba626126fb29a65c7ce28e3886a496 100644
 --- a/src/dawn/native/vulkan/BackendVk.cpp
@@ -1061,7 +1074,7 @@ index 4163ec62beaca7d0da0eb1512d99d739c40a5803..a4295f7c0203c8804b3a30998126af42
      VkPipeline GetHandle() const;
      VkPipelineLayout GetVkLayout() const;
 diff --git a/src/dawn/native/vulkan/SamplerVk.cpp b/src/dawn/native/vulkan/SamplerVk.cpp
-index 1614051d2da01f721a180dad637d0f186bad7318..6940803d548971b8cdbd894c1b42403eee6553bd 100644
+index 1614051d2da01f721a180dad637d0f186bad7318..8069a05ab256208867492e0d511b5478d67c9353 100644
 --- a/src/dawn/native/vulkan/SamplerVk.cpp
 +++ b/src/dawn/native/vulkan/SamplerVk.cpp
 @@ -28,6 +28,7 @@
@@ -1101,7 +1114,17 @@ index 1614051d2da01f721a180dad637d0f186bad7318..6940803d548971b8cdbd894c1b42403e
          samplerDesc.nextInChain = &yCbCrDesc;
      }
  
-@@ -243,6 +263,7 @@ StaticSamplerSpecialization StaticSamplerSpecialization::From(const TextureView*
+@@ -232,7 +252,8 @@ StaticSamplerSpecialization StaticSamplerSpecialization::From(const TextureView*
+         // the future.
+         if (spec.androidExternalFormat != 0 || spec.vkFormat == VK_FORMAT_UNDEFINED) {
+             YCbCrVkDescriptor yCbCrDesc =
+-                GetYCbCrForTextureView(spec.vkFormat, spec.androidExternalFormat);
++                GetYCbCrForTextureView(ToBackend(view->GetDevice()), spec.vkFormat,
++                                      spec.androidExternalFormat);
+             spec.minFilter = yCbCrDesc.vkChromaFilter;
+             spec.magFilter = yCbCrDesc.vkChromaFilter;
+         }
+@@ -243,6 +264,7 @@ StaticSamplerSpecialization StaticSamplerSpecialization::From(const TextureView*
  
  // static
  YCbCrVkDescriptor StaticSamplerSpecialization::GetYCbCrForTextureView(
@@ -1109,7 +1132,7 @@ index 1614051d2da01f721a180dad637d0f186bad7318..6940803d548971b8cdbd894c1b42403e
      VkFormat vkFormat,
      uint64_t androidExternalFormat) {
      YCbCrVkDescriptor yCbCrDesc;
-@@ -258,6 +279,20 @@ YCbCrVkDescriptor StaticSamplerSpecialization::GetYCbCrForTextureView(
+@@ -258,6 +280,20 @@ YCbCrVkDescriptor StaticSamplerSpecialization::GetYCbCrForTextureView(
      yCbCrDesc.vkYChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
      yCbCrDesc.vkChromaFilter = wgpu::FilterMode::Nearest;
      yCbCrDesc.forceExplicitReconstruction = false;

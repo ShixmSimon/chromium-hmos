@@ -423,6 +423,8 @@ else
       obj/chrome/browser/core/shell_site_settings_ohos.o
       obj/net/net/cert_verify_proc.o
       obj/net/net/system_trust_store.o
+      obj/third_party/dawn/src/dawn/native/sources/WaitAnySystemEvent.o
+      obj/third_party/dawn/src/dawn/native/sources/SamplerVk.o
       obj/third_party/angle/src/libANGLE/renderer/vulkan/angle_vulkan_backend/DisplayVkOhos.o
       obj/third_party/angle/src/libANGLE/renderer/vulkan/angle_vulkan_backend/NativeBufferImageSiblingVkOhos.o
     )

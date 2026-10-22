@@ -32,8 +32,8 @@
       "path": "third_party/dawn",
       "patch": "third_party_dawn.patch",
       "base": "42d0e90fe3552a2a8e95ca8e506bc19bbda12729",
-      "sha256": "f2ad4bf56d74841f90305a96bc8631fb9159c063307d72d8be1720da387e742e",
-      "bytes": 124844,
+      "sha256": "2c8b1cc673ba9dd0a9d63a2bf9fd392fac1bd1d265b16b0b917043517f548db4",
+      "bytes": 125901,
       "source_base": "38bc7fb0b3a024d05212958ae843e4ddf8c44ff1"
     },
     {
