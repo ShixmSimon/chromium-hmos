@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify the full native snapshot against its pinned 155 upstream files."""
 import json
+from contextlib import nullcontext
 import os
 from pathlib import Path
 import re
@@ -13,11 +14,12 @@ manifest = json.loads((ROOT / 'patches/migration-155/manifest.json').read_text()
 version, revision = sys.argv[1:3]
 patch = ROOT / 'patches/migration-155/chromium.patch'
 report = ROOT / 'upstream-compatibility.md'
-with tempfile.TemporaryDirectory(prefix='adapter-155-') as folder:
+with (nullcontext(os.environ['ADAPTER_CHECK_WORKDIR']) if os.environ.get('ADAPTER_CHECK_WORKDIR') else tempfile.TemporaryDirectory(prefix='adapter-155-')) as folder:
     target = Path(folder)
     def git(*args, check=True):
         return subprocess.run(['git', '-C', str(target), *args], check=check,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    target.mkdir(parents=True, exist_ok=True)
     git('init', '-q')
     git('remote', 'add', 'origin', 'https://github.com/chromium/chromium.git')
     git('sparse-checkout', 'init', '--no-cone')

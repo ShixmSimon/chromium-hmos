@@ -33,9 +33,11 @@ def main():
         if receipt.exists() and receipt.read_text().strip() == digest:
             print(f'Already migrated: {entry["path"]}', flush=True)
             continue
-        unresolved = subprocess.check_output(['git', '-C', str(target), 'diff', '--name-only', '--diff-filter=U'], text=True)
-        if unresolved:
-            raise ValueError(f'Unresolved 155 migration conflicts in {target}:\n{unresolved}')
+        # A failed three-way application leaves staged/conflicted files. A
+        # subsequent pushed fix must retry from this repository's pinned
+        # upstream revision, rather than stack over that half-applied patch.
+        # This path is confined to 155 and never deletes untracked build data.
+        run('git', '-C', str(target), 'reset', '--hard', 'HEAD')
         print(f'Migrating {entry["path"]} ({len(data)} bytes)', flush=True)
         if data:
             # The old base blobs are present in the copied Git objects; retain
