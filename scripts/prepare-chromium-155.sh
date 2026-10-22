@@ -34,8 +34,38 @@ if [[ ! -f "$root/.seed-complete" ]]; then
 fi
 
 if [[ ! -f "$root/.deps-$revision" ]]; then
-  git -C "$src" fetch --depth=1 origin "$revision"
-  git -C "$src" reset --hard "$revision"
+  # Cancellation may interrupt Git before it renames index.lock. The shared
+  # CI concurrency group excludes other source mutations; still reject a lock
+  # held by a live process rather than removing it underneath that process.
+  python3 - "$src" <<'PY'
+from pathlib import Path
+import sys
+src = Path(sys.argv[1]).resolve()
+assert src == Path('/root/chromium-155/src')
+lock = src / '.git/index.lock'
+if lock.exists():
+    owners = []
+    for proc in Path('/proc').iterdir():
+        if not proc.name.isdigit():
+            continue
+        try:
+            for fd in (proc / 'fd').iterdir():
+                try:
+                    if fd.resolve() == lock:
+                        owners.append(proc.name)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+    if owners:
+        raise RuntimeError(f'155 Git index lock is held by live processes: {owners}')
+    lock.unlink()
+    print('Removed abandoned 155 Git index lock after a cancelled preparation')
+PY
+  if [[ "$(git -C "$src" rev-parse HEAD)" != "$revision" ]]; then
+    git -C "$src" -c gc.auto=0 fetch --depth=1 origin "$revision"
+    git -C "$src" reset --hard "$revision"
+  fi
   # gclient verifies the checkout URL against its solution configuration.
   sed -i 's#https://chromium.googlesource.com/chromium/src.git#https://github.com/chromium/chromium.git#' "$root/.gclient"
   (cd "$root" && gclient sync --nohooks --noprehooks --reset --force -D --revision "src@$revision")
