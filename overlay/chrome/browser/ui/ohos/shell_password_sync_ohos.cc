@@ -32,7 +32,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "base/functional/bind.h"
@@ -48,6 +47,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
+#include "base/types/expected.h"
 #include "base/values.h"
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -155,7 +155,9 @@ class LoginsRequest : public PasswordStoreConsumer {
   // PasswordStoreConsumer:
   void OnGetPasswordStoreResultsOrErrorFrom(
       PasswordStoreInterface* store,
-      password_manager::LoginsResultOrError results_or_error) override;
+      base::expected<std::vector<StoredCredential>,
+                     password_manager::PasswordStoreBackendError>
+          results_or_error) override;
 
  private:
   const base::WeakPtr<PasswordSync> owner_;
@@ -463,11 +465,12 @@ PasswordSync::~PasswordSync() = default;
 
 void LoginsRequest::OnGetPasswordStoreResultsOrErrorFrom(
     PasswordStoreInterface* store,
-    password_manager::LoginsResultOrError results_or_error) {
+    base::expected<std::vector<StoredCredential>,
+                   password_manager::PasswordStoreBackendError>
+        results_or_error) {
   std::optional<std::vector<StoredCredential>> logins;
-  if (auto* result =
-          std::get_if<password_manager::LoginsResult>(&results_or_error)) {
-    logins = std::move(*result);
+  if (results_or_error.has_value()) {
+    logins = std::move(results_or_error).value();
   }
   Callback callback = std::move(callback_);
   // Not from inside the store's own callback.

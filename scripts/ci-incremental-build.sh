@@ -410,6 +410,7 @@ else
     # Exercise the moved GPU interfaces and OHOS integration before the full
     # browser link graph can spend hours reaching an incompatible declaration.
     migration_checks=(
+      obj/chrome/browser/core/shell_password_sync_ohos.o
       obj/media/mojo/services/services/gpu_mojo_media_client_ohos.o
       obj/content/browser/browser/media_interface_proxy.o
       obj/content/browser/browser/url_provision_fetcher.o
