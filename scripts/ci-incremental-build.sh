@@ -410,6 +410,10 @@ else
     # Exercise the moved GPU interfaces and OHOS integration before the full
     # browser link graph can spend hours reaching an incompatible declaration.
     migration_checks=(
+      obj/media/mojo/services/services/gpu_mojo_media_client_ohos.o
+      obj/content/browser/browser/media_interface_proxy.o
+      obj/content/browser/browser/url_provision_fetcher.o
+      obj/content/public/browser/browser_sources/provision_fetcher_impl.o
       obj/gpu/command_buffer/service/gles2_sources/external_vk_image_backing.o
       obj/gpu/command_buffer/service/gles2_sources/webgpu_decoder_impl.o
       obj/gpu/command_buffer/service/gles2_sources/vulkan_in_process_context_provider.o

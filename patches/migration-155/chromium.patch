@@ -32746,7 +32746,7 @@ index f66ccc9020c2a932e76f80d4cfd97c6f5f6b3e55..092f1b86b310acf05b9e3af953e6b2f2
    return funcs;
  }
 diff --git a/media/media_options.gni b/media/media_options.gni
-index 3ed58bcb5907e147b59729742ddc64fcee3d59be..c834d35b954db57a4ff79566b59775572c998f59 100644
+index 3ed58bcb5907e147b59729742ddc64fcee3d59be..0489b8a738080cb164586b38772744d800370c23 100644
 --- a/media/media_options.gni
 +++ b/media/media_options.gni
 @@ -70,9 +70,13 @@ declare_args() {
@@ -32774,7 +32774,17 @@ index 3ed58bcb5907e147b59729742ddc64fcee3d59be..c834d35b954db57a4ff79566b5977557
  
    # Enables IAMF audio handling in chromium. This includes demuxing and
    # on-device decoding.
-@@ -126,12 +131,14 @@ declare_args() {
+@@ -116,7 +121,8 @@ declare_args() {
+   enable_media_drm_storage = is_android || is_castos
+ 
+   # Enable the URL-based CDM provisioning fetcher.
+-  enable_cdm_provision_fetcher = is_android || is_castos || is_fuchsia
++  enable_cdm_provision_fetcher =
++      is_android || is_castos || is_fuchsia || is_ohos
+ 
+   # Enable HLS manifest parser and demuxer.
+   enable_hls_demuxer = proprietary_codecs
+@@ -126,12 +132,14 @@ declare_args() {
    # Windows, Mac, and Android.
    enable_hevc_parser_and_hw_decoder =
        proprietary_codecs &&
@@ -32791,7 +32801,7 @@ index 3ed58bcb5907e147b59729742ddc64fcee3d59be..c834d35b954db57a4ff79566b5977557
  }
  
  # Use another declare_args() to allow dependence on args defined above.
-@@ -169,7 +176,7 @@ declare_args() {
+@@ -169,7 +177,7 @@ declare_args() {
  declare_args() {
    platform_has_optional_hevc_decode_support =
        enable_platform_hevc &&
@@ -32800,7 +32810,7 @@ index 3ed58bcb5907e147b59729742ddc64fcee3d59be..c834d35b954db57a4ff79566b5977557
    platform_has_optional_hevc_encode_support =
        enable_platform_hevc && (is_win || is_apple || is_android)
  }
-@@ -326,6 +333,19 @@ if (is_cast_media_device) {
+@@ -326,6 +334,19 @@ if (is_cast_media_device) {
  } else if (use_linux_video_acceleration) {
    _default_mojo_media_services = [ "video_decoder" ]
    _default_mojo_media_host = "gpu"
