@@ -36,6 +36,8 @@ jobs:
         run: python3 scripts/tests/test-incremental-patches.py
       - name: Check AppGallery UA compatibility and mobile viewport wiring
         run: python3 scripts/tests/test-appgallery-user-agent.py
+      - name: Check browser and web-app viewport isolation
+        run: python3 scripts/tests/test-web-app-viewport.py
       - name: Check experimental OHOS fork server transport
         run: scripts/test-ohos-fork-server.sh
       - name: Check inherited trace descriptors and GPU state recovery

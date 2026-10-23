@@ -8357,21 +8357,21 @@ index 039a885a6ef00dacccfce6034b500fcf42bf9df7..41dfad030b3eb144fd29f9a62b895f36
  }
  
 diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
-index d3fa7eea6db807d9a9b3467da4f468c555468b26..6ac2793c979a1253449346d1808bbe234a1b345c 100644
+index d3fa7eea6db807d9a9b3467da4f468c555468b26..d8f2e52bd84404db020d4a6c04c3c74c5b5b8e3f 100644
 --- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 +++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
-@@ -4,6 +4,11 @@
+@@ -3,6 +3,11 @@
+ // found in the LICENSE file.
  
  #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
- 
++
 +#include "build/build_config.h"
 +#if BUILDFLAG(IS_OHOS)
 +#include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
 +#endif
-+
+ 
  #include "base/check_deref.h"
  #include "base/metrics/histogram_macros.h"
- #include "base/notimplemented.h"
 @@ -35,6 +40,9 @@
  #include "chrome/browser/ui/browser_window.h"
  #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
@@ -8395,7 +8395,7 @@ index d3fa7eea6db807d9a9b3467da4f468c555468b26..6ac2793c979a1253449346d1808bbe23
  // Kill switch for merge safety for a fix for https://crbug.com/489205993
  // TODO(crbug.com/489205993): Remove in M150 or later.
  BASE_FEATURE(kBackgroundActorTaskPopupsOpenInBackground,
-@@ -373,15 +387,42 @@ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
+@@ -373,15 +387,51 @@
  void BrowserWebContentsDelegate::SetTopControlsShownRatio(
      content::WebContents* web_contents,
      float ratio) {
@@ -8409,25 +8409,34 @@ index d3fa7eea6db807d9a9b3467da4f468c555468b26..6ac2793c979a1253449346d1808bbe23
  
  int BrowserWebContentsDelegate::GetTopControlsHeight() {
 +#if BUILDFLAG(IS_OHOS)
++  if (app_browser_controller_) {
++    return 0;
++  }
 +  if (const int height = chrome::ohos::GetAuraShellTopControlsHeight();
 +      height > 0) {
 +    return height;
 +  }
 +#endif
    return window_->GetTopControlsHeight();
- }
- 
++}
++
 +int BrowserWebContentsDelegate::GetTopControlsMinHeight() {
 +#if BUILDFLAG(IS_OHOS)
++  if (app_browser_controller_) {
++    return 0;
++  }
 +  return chrome::ohos::GetAuraShellTopControlsMinHeight();
 +#else
 +  return content::WebContentsDelegate::GetTopControlsMinHeight();
 +#endif
-+}
-+
+ }
+ 
  bool BrowserWebContentsDelegate::DoBrowserControlsShrinkRendererSize(
      content::WebContents* contents) {
 +#if BUILDFLAG(IS_OHOS)
++  if (app_browser_controller_) {
++    return false;
++  }
 +  // Room is made for the shell's bar rather than the page drawing under it
 +  // at the top: shrink the viewport while the controls show at all, and
 +  // give the page their room once they have slid away, as Android does.
@@ -8438,7 +8447,7 @@ index d3fa7eea6db807d9a9b3467da4f468c555468b26..6ac2793c979a1253449346d1808bbe23
    return window_->DoBrowserControlsShrinkRendererSize(contents);
  }
  
-@@ -594,9 +635,37 @@ content::WebContents* BrowserWebContentsDelegate::OpenURLFromTab(
+@@ -594,8 +644,36 @@
  
    chrome::ConfigureTabGroupForNavigation(popup_delegate->nav_params());
  
@@ -8461,7 +8470,7 @@ index d3fa7eea6db807d9a9b3467da4f468c555468b26..6ac2793c979a1253449346d1808bbe23
 +
    base::WeakPtr<content::NavigationHandle> navigation_handle =
        Navigate(popup_delegate->nav_params());
- 
++
 +#if BUILDFLAG(IS_OHOS)
 +  if (opened_from_context_menu) {
 +    content::WebContents* opened =
@@ -8472,11 +8481,10 @@ index d3fa7eea6db807d9a9b3467da4f468c555468b26..6ac2793c979a1253449346d1808bbe23
 +    chrome::ohos::AnnouncePageOpenedInGroup(opened);
 +  }
 +#endif
-+
+ 
    if (navigation_handle_callback && navigation_handle) {
      std::move(navigation_handle_callback).Run(*navigation_handle);
-   }
-@@ -798,6 +867,14 @@ void BrowserWebContentsDelegate::SetContentsBounds(content::WebContents* source,
+@@ -798,6 +876,14 @@
  
  void BrowserWebContentsDelegate::UpdateTargetURL(content::WebContents* source,
                                                   const GURL& url) {
