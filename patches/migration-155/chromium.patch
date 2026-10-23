@@ -24967,7 +24967,7 @@ index 88ea0deac6864ad33ffff02f7091d68b83c4921f..a37ed190d9d563663e69b3723b6bc527
    std::move(uma_decorated_callback).Run(false);
  #endif
 diff --git a/content/browser/websockets/websocket_connector_impl.cc b/content/browser/websockets/websocket_connector_impl.cc
-index 0a896672bd7b08bc5a0025881d9c7c3b4af7da43..67b9d094313cefab1cf5593955a42d0e4945f367 100644
+index 0a896672bd7b08bc5a0025881d9c7c3b4af7da43..e45791cffa0cf70393ed1c5cd6b002b5de43472b 100644
 --- a/content/browser/websockets/websocket_connector_impl.cc
 +++ b/content/browser/websockets/websocket_connector_impl.cc
 @@ -7,6 +7,8 @@
@@ -24979,7 +24979,7 @@ index 0a896672bd7b08bc5a0025881d9c7c3b4af7da43..67b9d094313cefab1cf5593955a42d0e
  #include "base/not_fatal_until.h"
  #include "content/browser/devtools/devtools_instrumentation.h"
  #include "content/browser/renderer_host/render_frame_host_impl.h"
-@@ -98,6 +100,28 @@ void WebSocketConnectorImpl::Connect(
+@@ -98,6 +100,27 @@ void WebSocketConnectorImpl::Connect(
      network::mojom::IPAddressSpace target_address_space) {
    CHECK(BrowserThread::CurrentlyOn(BrowserThread::UI),
          base::NotFatalUntil::M159);
@@ -24987,13 +24987,12 @@ index 0a896672bd7b08bc5a0025881d9c7c3b4af7da43..67b9d094313cefab1cf5593955a42d0e
 +  GetContentClient()->browser()->CheckOhosWebSocket(frame_id_, origin_, url,
 +      base::BindOnce(&WebSocketConnectorImpl::ConnectFiltered,
 +          weak_factory_.GetWeakPtr(), url, requested_protocols, user_agent,
-+          storage_access_api_status, std::move(handshake_client),
++          std::move(handshake_client),
 +          throttling_profile_id, target_address_space));
 +}
 +void WebSocketConnectorImpl::ConnectFiltered(const GURL& url,
 +    const std::vector<std::string>& requested_protocols,
 +    const std::optional<std::string>& user_agent,
-+    net::StorageAccessApiStatus storage_access_api_status,
 +    mojo::PendingRemote<network::mojom::WebSocketHandshakeClient> handshake_client,
 +    const std::optional<base::UnguessableToken>& throttling_profile_id,
 +    network::mojom::IPAddressSpace target_address_space, bool allowed) {
@@ -25009,7 +25008,7 @@ index 0a896672bd7b08bc5a0025881d9c7c3b4af7da43..67b9d094313cefab1cf5593955a42d0e
    // If the connector was created for a RenderFrame or a DedicatedWorker
    // (where `frame_routing_id` is not kRoutingIdNone), it is scoped to a
 diff --git a/content/browser/websockets/websocket_connector_impl.h b/content/browser/websockets/websocket_connector_impl.h
-index 1c4adf2365f4ebfaf28bcd63a7d1a3f4b0e4bfd6..c8f497d6370215614766960f92a8c1ba9c070dd5 100644
+index 1c4adf2365f4ebfaf28bcd63a7d1a3f4b0e4bfd6..0798a925424ab94505d8f94df4ec792529b1e580 100644
 --- a/content/browser/websockets/websocket_connector_impl.h
 +++ b/content/browser/websockets/websocket_connector_impl.h
 @@ -10,6 +10,7 @@
@@ -25020,7 +25019,7 @@ index 1c4adf2365f4ebfaf28bcd63a7d1a3f4b0e4bfd6..c8f497d6370215614766960f92a8c1ba
  #include "content/public/browser/content_browser_client.h"
  #include "content/public/browser/global_routing_id.h"
  #include "content/public/browser/weak_document_ptr.h"
-@@ -58,6 +59,15 @@ class WebSocketConnectorImpl final : public blink::mojom::WebSocketConnector {
+@@ -58,6 +59,14 @@ class WebSocketConnectorImpl final : public blink::mojom::WebSocketConnector {
        network::mojom::IPAddressSpace target_address_space) override;
  
   private:
@@ -25028,7 +25027,6 @@ index 1c4adf2365f4ebfaf28bcd63a7d1a3f4b0e4bfd6..c8f497d6370215614766960f92a8c1ba
 +  void ConnectFiltered(const GURL& url,
 +      const std::vector<std::string>& requested_protocols,
 +      const std::optional<std::string>& user_agent,
-+      net::StorageAccessApiStatus storage_access_api_status,
 +      mojo::PendingRemote<network::mojom::WebSocketHandshakeClient> handshake_client,
 +      const std::optional<base::UnguessableToken>& throttling_profile_id,
 +      network::mojom::IPAddressSpace target_address_space, bool allowed);
@@ -25036,7 +25034,7 @@ index 1c4adf2365f4ebfaf28bcd63a7d1a3f4b0e4bfd6..c8f497d6370215614766960f92a8c1ba
    static void ConnectCalledByContentBrowserClient(
        const std::vector<std::string>& requested_protocols,
        net::StorageAccessApiStatus storage_access_api_status,
-@@ -87,6 +97,9 @@ class WebSocketConnectorImpl final : public blink::mojom::WebSocketConnector {
+@@ -87,6 +96,9 @@ class WebSocketConnectorImpl final : public blink::mojom::WebSocketConnector {
    const net::StorageAccessApiStatus storage_access_api_status_;
    const base::UnguessableToken network_restrictions_id_;
    const std::optional<base::UnguessableToken> devtools_worker_token_;
