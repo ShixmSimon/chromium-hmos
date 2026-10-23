@@ -65,7 +65,7 @@ if [[ "${compatible}" == true ]]; then
       "${project_root}/patches/ohos-gpu-shared-state-validation.patch" 2>"${failure_log}"; then
     compatible=false
   fi
-  if ! git -C "${checkout}" apply \
+  if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
       "${project_root}/patches/ohos-url-protection.patch" 2>"${failure_log}"; then
     compatible=false
   fi

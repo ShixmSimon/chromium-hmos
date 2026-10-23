@@ -2814,7 +2814,7 @@ index 033f22b414..fb82665610 100644
  #if !BUILDFLAG(IS_ANDROID)
    pid_t pid;
    if (crash_reporter::GetHandlerSocket(nullptr, &pid)) {
-@@ -4522,6 +4525,141 @@ content::TtsPlatform* ChromeContentBrowserClient::GetTtsPlatform() {
+@@ -4522,6 +4525,140 @@ content::TtsPlatform* ChromeContentBrowserClient::GetTtsPlatform() {
  #endif
  }
  
@@ -2890,10 +2890,9 @@ index 033f22b414..fb82665610 100644
 +  // width and lays out for a phone anyway -- the site was never the problem.
 +  // content does this for us a few lines before it calls this, and then this
 +  // runs and would put it back, so decide it here instead.
-+  // A popup can inherit the phone UA override; an override flag alone does
-+  // not mean the user requested desktop pages.
-+  const bool desktop_site =
-+      chrome::ohos::IsAuraShellRequestingDesktopSite(web_contents);
++  content::NavigationEntry* entry =
++      web_contents ? web_contents->GetController().GetVisibleEntry() : nullptr;
++  const bool desktop_site = entry && entry->GetIsOverridingUserAgent();
 +
 +  // The viewport machinery stays on in every case. Turning it off for WebUI
 +  // was wrong twice over: the same machinery computes the right width for an

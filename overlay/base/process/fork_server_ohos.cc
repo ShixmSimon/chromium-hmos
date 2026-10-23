@@ -163,7 +163,7 @@ bool IsSystemTraceMarkerFd(int directory_fd, const char* name, int fd) {
   };
   for (const char* path : paths) {
     if (static_cast<size_t>(size) == strlen(path) &&
-        memcmp(target, path, size) == 0)
+        memcmp(target, path, static_cast<size_t>(size)) == 0)
       return fcntl(fd, F_GETFD) >= 0;
   }
   return false;
