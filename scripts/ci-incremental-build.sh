@@ -415,6 +415,10 @@ else
       obj/content/browser/browser/url_provision_fetcher.o
       obj/content/public/browser/browser_sources/provision_fetcher_impl.o
       obj/content/browser/browser/websocket_connector_impl.o
+      obj/chrome/browser/supervised_user/impl/supervised_user_browser_utils.o
+      obj/chrome/browser/supervised_user/impl/supervised_user_google_auth_navigation_throttle.o
+      obj/chrome/browser/supervised_user/impl/supervised_user_verification_page_youtube.o
+      obj/chrome/browser/supervised_user/impl/supervised_user_verification_page_blocked_sites.o
       obj/gpu/command_buffer/service/gles2_sources/external_vk_image_backing.o
       obj/gpu/command_buffer/service/gles2_sources/webgpu_decoder_impl.o
       obj/gpu/command_buffer/service/gles2_sources/vulkan_in_process_context_provider.o
