@@ -425,8 +425,9 @@ class NativeWindowRegistry {
       base::AutoLock lock(lock_);
       auto it = logical_windows_.find(widget);
       if (it != logical_windows_.end()) {
+        const bool changed = it->second.bounds != bounds;
         it->second.bounds = bounds;
-        if (it->second.auxiliary && it->second.visible) {
+        if (changed && it->second.announced && it->second.visible) {
           state = MakeLogicalWindowState(widget, it->second);
           callback = logical_window_state_callback_;
         }
@@ -697,6 +698,13 @@ class NativeWindowRegistry {
     }
     callback.Run(action);
     return true;
+  }
+
+  bool HasWindowActionCallback(gfx::AcceleratedWidget widget) {
+    base::AutoLock lock(lock_);
+    auto binding = widget_bindings_.find(widget);
+    return binding != widget_bindings_.end() &&
+           window_action_callbacks_.contains(binding->second);
   }
 
   void SetLogicalWindowStateCallback(OhosLogicalWindowStateCallback callback) {
@@ -1068,6 +1076,10 @@ int32_t GetOhosApplicationWindowIdForWidget(gfx::AcceleratedWidget widget) {
 void SetOhosWindowActionCallback(const std::string& component_id,
                                  OhosWindowActionCallback callback) {
   GetRegistry().SetWindowActionCallback(component_id, std::move(callback));
+}
+
+bool HasOhosWindowActionCallback(gfx::AcceleratedWidget widget) {
+  return GetRegistry().HasWindowActionCallback(widget);
 }
 
 bool RequestOhosWindowAction(gfx::AcceleratedWidget widget,

@@ -66,6 +66,12 @@ export function layoutAuxiliaryWindow(
   if (state.anchored === true) {
     return layoutAnchoredWindow(state, screen, pxToVp, previous);
   }
+  if (state.windowRole === 'browser') {
+    // A shell without a separate-system-window launcher still hosts desktop
+    // window.open() popups here. Preserve their requested geometry and native
+    // title-bar movement rather than treating them as 30%-height status bars.
+    return layoutAnchoredWindow(state, screen, pxToVp, previous);
+  }
   const maxWidth = Math.max(screen.width - 2 * AUXILIARY_WINDOW_MARGIN_VP, 1);
   const maxHeight = Math.max(
     screen.height * (modal ? MODAL_MAX_HEIGHT_FRACTION : NON_MODAL_MAX_HEIGHT_FRACTION), 1);

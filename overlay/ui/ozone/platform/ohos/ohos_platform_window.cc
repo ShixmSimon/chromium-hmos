@@ -1,9 +1,13 @@
 #include "ui/ozone/platform/ohos/ohos_platform_window.h"
 
+#include <algorithm>
+
 #include "base/logging.h"
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
 #include "ui/base/cursor/cursor.h"
+#include "ui/base/hit_test.h"
+#include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/base/dragdrop/drag_drop_types.h"
 #include "ui/base/dragdrop/os_exchange_data.h"
 #include "ui/platform_window/wm/wm_drop_handler.h"
@@ -28,6 +32,7 @@ OhosPlatformWindow::OhosPlatformWindow(PlatformWindowDelegate* delegate,
       adapter_(bounds, expects_native_surface, anchored),
       anchored_(anchored) {
   SetWmMoveLoopHandler(this, this);
+  SetWmMoveResizeHandler(this, this);
   delegate->OnAcceleratedWidgetAvailable(adapter_.GetAcceleratedWidget());
   SetOhosNativeSurfaceBoundsCallback(
       adapter_.GetAcceleratedWidget(),
@@ -76,6 +81,8 @@ OhosPlatformWindow::OhosPlatformWindow(PlatformWindowDelegate* delegate,
 }
 
 OhosPlatformWindow::~OhosPlatformWindow() {
+  EndMoveLoop();
+  SetWmMoveResizeHandler(this, nullptr);
   SetWmMoveLoopHandler(this, nullptr);
   SetWmDragHandler(this, nullptr);
   SetOhosDragCallback(adapter_.GetAcceleratedWidget(), {});
@@ -97,6 +104,7 @@ void OhosPlatformWindow::Show(bool inactive) {
 }
 
 void OhosPlatformWindow::Hide() {
+  EndMoveLoop();
   if (!adapter_.IsVisible()) {
     return;
   }
@@ -105,6 +113,7 @@ void OhosPlatformWindow::Hide() {
 }
 
 void OhosPlatformWindow::Close() {
+  EndMoveLoop();
   RequestOhosWindowAction(adapter_.GetAcceleratedWidget(),
                           OhosWindowAction::kClose);
   delegate()->OnClosed();
@@ -182,7 +191,8 @@ void OhosPlatformWindow::SetBoundsInPixels(const gfx::Rect& requested) {
   // taller than the XComponent below the status bar: drawn from the bottom
   // up, its top -- tab strip, toolbar, half the bookmark bar -- fell off the
   // surface. Follow the surface instead, as OnNativeSurfaceBoundsChanged does.
-  if (!anchored_) {
+  if (!anchored_ &&
+      HasOhosWindowActionCallback(adapter_.GetAcceleratedWidget())) {
     std::optional<OhosNativeSurface> surface =
         GetOhosNativeSurface(adapter_.GetAcceleratedWidget());
     if (surface && surface->window && !surface->bounds.IsEmpty() &&
@@ -201,7 +211,8 @@ void OhosPlatformWindow::SetBoundsInPixels(const gfx::Rect& requested) {
 
 gfx::Rect OhosPlatformWindow::GetBoundsInPixels() const {
   gfx::Rect bounds = adapter_.GetBounds();
-  if (anchored_) {
+  if (anchored_ ||
+      !HasOhosWindowActionCallback(adapter_.GetAcceleratedWidget())) {
     // Keep requested anchor bounds in the logical-window registry so the shell
     // can place and resize this popup. Rendering must use its actual surface:
     // fractional display scales and shell vp rounding can differ by one pixel.
@@ -308,6 +319,27 @@ bool OhosPlatformWindow::CanDispatchEvent(const PlatformEvent& event) {
 }
 
 uint32_t OhosPlatformWindow::DispatchEvent(const PlatformEvent& event) {
+  if (end_move_loop_) {
+    if (event->type() == EventType::kMouseDragged ||
+        event->type() == EventType::kMouseMoved ||
+        event->type() == EventType::kTouchMoved) {
+      UpdateEmbeddedMoveBounds(GetOhosCursorScreenPoint());
+      return POST_DISPATCH_STOP_PROPAGATION;
+    }
+    if (event->type() == EventType::kMouseReleased ||
+        event->type() == EventType::kTouchReleased) {
+      UpdateEmbeddedMoveBounds(GetOhosCursorScreenPoint());
+      std::move(end_move_loop_).Run();
+      return POST_DISPATCH_STOP_PROPAGATION;
+    }
+    if (event->type() == EventType::kTouchCancelled ||
+        (event->type() == EventType::kKeyPressed &&
+         event->AsKeyEvent()->key_code() == VKEY_ESCAPE)) {
+      SetBoundsInPixels(move_initial_bounds_);
+      EndMoveLoop();
+      return POST_DISPATCH_STOP_PROPAGATION;
+    }
+  }
   if (event->type() == EventType::kMousePressed ||
       event->type() == EventType::kTouchPressed) {
     Activate();
@@ -404,11 +436,104 @@ void OhosPlatformWindow::UpdateDragImage(const gfx::ImageSkia& image,
 
 bool OhosPlatformWindow::RunMoveLoop(const gfx::Vector2d& drag_offset) {
   (void)drag_offset;
-  return RequestOhosWindowAction(adapter_.GetAcceleratedWidget(),
-                                 OhosWindowAction::kStartMoving);
+  if (RequestOhosWindowAction(adapter_.GetAcceleratedWidget(),
+                              OhosWindowAction::kStartMoving)) {
+    return true;
+  }
+  return RunEmbeddedMoveLoop(HTCAPTION, GetOhosCursorScreenPoint());
 }
 
-void OhosPlatformWindow::EndMoveLoop() {}
+void OhosPlatformWindow::EndMoveLoop() {
+  if (end_move_loop_) {
+    move_cancelled_ = true;
+    std::move(end_move_loop_).Run();
+  }
+}
+
+void OhosPlatformWindow::DispatchHostWindowDragMovement(
+    int hittest, const gfx::Point& pointer_location_in_px) {
+  if (!CanPerformDragOrResize(hittest)) {
+    return;
+  }
+  if (HasOhosWindowActionCallback(adapter_.GetAcceleratedWidget())) {
+    if (hittest == HTCAPTION) {
+      RequestOhosWindowAction(adapter_.GetAcceleratedWidget(),
+                              OhosWindowAction::kStartMoving);
+    }
+    return;
+  }
+  RunEmbeddedMoveLoop(hittest, pointer_location_in_px);
+}
+
+bool OhosPlatformWindow::RunEmbeddedMoveLoop(int hittest,
+                                            const gfx::Point& pointer) {
+  const auto component = GetOhosNativeSurfaceComponentIdForWidget(
+      adapter_.GetAcceleratedWidget());
+  // Only embedded secondary surfaces move within their host. The main
+  // surface and page-anchored menus must never move independently.
+  if (anchored_ || !component ||
+      (!component->starts_with("aura_aux_") &&
+       !component->starts_with("aura_win_")) || end_move_loop_) {
+    return false;
+  }
+  move_initial_bounds_ = adapter_.GetBounds();
+  move_initial_pointer_ = pointer;
+  move_hittest_ = hittest;
+  move_cancelled_ = false;
+  base::RunLoop loop(base::RunLoop::Type::kNestableTasksAllowed);
+  end_move_loop_ = loop.QuitClosure();
+  const auto alive = weak_factory_.GetWeakPtr();
+  loop.Run();
+  if (!alive) {
+    return false;
+  }
+  end_move_loop_.Reset();
+  return !move_cancelled_;
+}
+
+void OhosPlatformWindow::UpdateEmbeddedMoveBounds(const gfx::Point& pointer) {
+  const gfx::Vector2d delta = pointer - move_initial_pointer_;
+  gfx::Rect bounds = move_initial_bounds_;
+  if (move_hittest_ == HTCAPTION) {
+    bounds.Offset(delta);
+  } else {
+    const bool left = move_hittest_ == HTLEFT || move_hittest_ == HTTOPLEFT ||
+                      move_hittest_ == HTBOTTOMLEFT;
+    const bool right = move_hittest_ == HTRIGHT || move_hittest_ == HTTOPRIGHT ||
+                       move_hittest_ == HTBOTTOMRIGHT;
+    const bool top = move_hittest_ == HTTOP || move_hittest_ == HTTOPLEFT ||
+                     move_hittest_ == HTTOPRIGHT;
+    const bool bottom = move_hittest_ == HTBOTTOM ||
+                        move_hittest_ == HTBOTTOMLEFT ||
+                        move_hittest_ == HTBOTTOMRIGHT;
+    const gfx::Size minimum = delegate()->ConvertRectToPixels(gfx::Rect(
+        delegate()->GetMinimumSizeForWindow().value_or(gfx::Size(1, 1)))).size();
+    const auto maximum_dip = delegate()->GetMaximumSizeForWindow();
+    const gfx::Size maximum = maximum_dip
+        ? delegate()->ConvertRectToPixels(gfx::Rect(*maximum_dip)).size()
+        : gfx::Size();
+    int width = bounds.width() + (right ? delta.x() : left ? -delta.x() : 0);
+    int height = bounds.height() + (bottom ? delta.y() : top ? -delta.y() : 0);
+    if (left || right) {
+      width = std::max(width, std::max(minimum.width(), 1));
+      if (maximum.width() > 0) {
+        width = std::max(std::max(minimum.width(), 1),
+                         std::min(width, maximum.width()));
+      }
+    }
+    if (top || bottom) {
+      height = std::max(height, std::max(minimum.height(), 1));
+      if (maximum.height() > 0) {
+        height = std::max(std::max(minimum.height(), 1),
+                          std::min(height, maximum.height()));
+      }
+    }
+    bounds = gfx::Rect(left ? bounds.right() - width : bounds.x(),
+                       top ? bounds.bottom() - height : bounds.y(),
+                       width, height);
+  }
+  SetBoundsInPixels(bounds);
+}
 
 void OhosPlatformWindow::OnNativeSurfaceBoundsChanged(gfx::Rect bounds,
                                                       float density) {

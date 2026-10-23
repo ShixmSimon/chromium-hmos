@@ -130,3 +130,4 @@ with tempfile.TemporaryDirectory() as directory:
                     str(path / 'test.cc'), '-o', str(path / 'test')], check=True)
     subprocess.run([str(path / 'test')], check=True)
 print('PASS: browser/PWA controls, window isolation, dialog and keyboard insets')
+subprocess.run(['python3', str(ROOT / 'scripts/tests/test-ohos-floating-window.py')], check=True)

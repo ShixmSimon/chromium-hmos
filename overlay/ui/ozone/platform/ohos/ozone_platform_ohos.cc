@@ -64,9 +64,11 @@ class OzonePlatformOhos : public OzonePlatform {
     const bool anchored = properties.type == PlatformWindowType::kPopup ||
                           properties.type == PlatformWindowType::kMenu ||
                           properties.type == PlatformWindowType::kTooltip;
+    // Owned browser/dialog windows still need their own surface. Their parent
+    // identifies transient ownership, not permission to render into the
+    // opener's native buffer while the child XComponent is being created.
     const bool expects_native_surface =
-        anchored || (properties.type == PlatformWindowType::kWindow &&
-                     properties.parent_widget == gfx::kNullAcceleratedWidget);
+        anchored || properties.type == PlatformWindowType::kWindow;
     return std::make_unique<OhosPlatformWindow>(
         delegate, properties.bounds, expects_native_surface, anchored);
   }

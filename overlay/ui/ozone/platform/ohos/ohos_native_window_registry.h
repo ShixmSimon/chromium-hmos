@@ -210,6 +210,7 @@ void SetOhosWindowActionCallback(const std::string& component_id,
                                  OhosWindowActionCallback callback);
 bool RequestOhosWindowAction(gfx::AcceleratedWidget widget,
                              OhosWindowAction action);
+bool HasOhosWindowActionCallback(gfx::AcceleratedWidget widget);
 void SetOhosLogicalWindowStateCallback(OhosLogicalWindowStateCallback callback);
 void SetOhosLogicalWindowCloseCallback(gfx::AcceleratedWidget widget,
                                        OhosLogicalWindowCloseCallback callback);

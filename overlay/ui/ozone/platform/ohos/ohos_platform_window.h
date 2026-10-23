@@ -8,13 +8,15 @@
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 #include "ui/platform_window/wm/wm_drag_handler.h"
 #include "ui/platform_window/wm/wm_move_loop_handler.h"
+#include "ui/platform_window/wm/wm_move_resize_handler.h"
 
 namespace ui {
 
 class OhosPlatformWindow : public StubWindow,
                            public PlatformEventDispatcher,
                            public WmDragHandler,
-                           public WmMoveLoopHandler {
+                           public WmMoveLoopHandler,
+                           public WmMoveResizeHandler {
  public:
   OhosPlatformWindow(PlatformWindowDelegate* delegate,
                      const gfx::Rect& bounds,
@@ -57,12 +59,16 @@ class OhosPlatformWindow : public StubWindow,
 
   bool RunMoveLoop(const gfx::Vector2d& drag_offset) override;
   void EndMoveLoop() override;
+  void DispatchHostWindowDragMovement(
+      int hittest, const gfx::Point& pointer_location_in_px) override;
 
  private:
   void OnLogicalWindowCloseRequest();
   int OnDragEvent(OhosDragEvent event);
   void OnNativeSurfaceBoundsChanged(gfx::Rect bounds, float density);
   void SetWindowState(PlatformWindowState state);
+  bool RunEmbeddedMoveLoop(int hittest, const gfx::Point& pointer);
+  void UpdateEmbeddedMoveBounds(const gfx::Point& pointer);
 
   OhosNativeWindowAdapter adapter_;
   // A popup, menu or tooltip: Chromium anchors it to page content, and the
@@ -73,6 +79,11 @@ class OhosPlatformWindow : public StubWindow,
   // sitting in its nested loop.
   base::OnceClosure end_source_drag_;
   int source_drag_operation_ = 0;
+  base::OnceClosure end_move_loop_;
+  gfx::Rect move_initial_bounds_;
+  gfx::Point move_initial_pointer_;
+  int move_hittest_ = 0;
+  bool move_cancelled_ = false;
   base::WeakPtrFactory<OhosPlatformWindow> weak_factory_{this};
 };
 
