@@ -1,0 +1,82 @@
+diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+@@ -370,69 +370,78 @@
+     content::WebContents* web_contents,
+     bool esc_key_locked) {
+   exclusive_access_manager_->keyboard_lock_controller()->RequestKeyboardLock(
+       web_contents, esc_key_locked);
+ }
+ 
+ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
+     content::WebContents* web_contents) {
+   exclusive_access_manager_->keyboard_lock_controller()
+       ->CancelKeyboardLockRequest(web_contents);
+ }
+ 
+ void BrowserWebContentsDelegate::SetTopControlsShownRatio(
+     content::WebContents* web_contents,
+     float ratio) {
+ #if BUILDFLAG(IS_OHOS)
+   // The top bar is the shell's, drawn in ArkTS: pass the ratio on so it can
+   // follow the page as the renderer slides the controls away.
+   chrome::ohos::OnAuraShellTopControlsShownRatio(web_contents, ratio);
+ #endif
+   window_->SetTopControlsShownRatio(web_contents, ratio);
+ }
+ 
+ int BrowserWebContentsDelegate::GetTopControlsHeight() {
+ #if BUILDFLAG(IS_OHOS)
++  if (app_browser_controller_) {
++    return 0;
++  }
+   if (const int height = chrome::ohos::GetAuraShellTopControlsHeight();
+       height > 0) {
+     return height;
+   }
+ #endif
+   return window_->GetTopControlsHeight();
+ }
+ 
+ int BrowserWebContentsDelegate::GetTopControlsMinHeight() {
+ #if BUILDFLAG(IS_OHOS)
++  if (app_browser_controller_) {
++    return 0;
++  }
+   return chrome::ohos::GetAuraShellTopControlsMinHeight();
+ #else
+   return content::WebContentsDelegate::GetTopControlsMinHeight();
+ #endif
+ }
+ 
+ bool BrowserWebContentsDelegate::DoBrowserControlsShrinkRendererSize(
+     content::WebContents* contents) {
+ #if BUILDFLAG(IS_OHOS)
++  if (app_browser_controller_) {
++    return false;
++  }
+   // Room is made for the shell's bar rather than the page drawing under it
+   // at the top: shrink the viewport while the controls show at all, and
+   // give the page their room once they have slid away, as Android does.
+   if (chrome::ohos::GetAuraShellTopControlsHeight() > 0) {
+     return !chrome::ohos::AreAuraShellBrowserControlsHidden(contents);
+   }
+ #endif
+   return window_->DoBrowserControlsShrinkRendererSize(contents);
+ }
+ 
+ int BrowserWebContentsDelegate::GetVirtualKeyboardHeight(
+     content::WebContents* contents) {
+   // This API is currently only used by View Transitions when the virtual
+   // keyboard resizes content.  On desktop platforms, the virtual keyboard can
+   // only inset the visual viewport so it shouldn't ever be called.
+   NOTIMPLEMENTED();
+   return 0;
+ }
+ 
+ void BrowserWebContentsDelegate::SetTopControlsGestureScrollInProgress(
+     bool in_progress) {
+   window_->SetTopControlsGestureScrollInProgress(in_progress);
+ }
+ 
+ bool BrowserWebContentsDelegate::CanOverscrollContent() {

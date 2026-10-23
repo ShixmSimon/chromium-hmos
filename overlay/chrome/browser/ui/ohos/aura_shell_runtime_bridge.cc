@@ -413,6 +413,13 @@ gfx::AcceleratedWidget GetBrowserWidget(BrowserWindowInterface* browser) {
              : gfx::kNullAcceleratedWidget;
 }
 
+// Installed web apps have their own surface and no Lumie toolbar or dock.
+bool IsWebAppBrowser(BrowserWindowInterface* browser) {
+  return browser &&
+         (browser->GetType() == BrowserWindowInterface::Type::TYPE_APP ||
+          browser->GetType() == BrowserWindowInterface::Type::TYPE_APP_POPUP);
+}
+
 BrowserWindowInterface* FindBrowserForWidget(gfx::AcceleratedWidget widget) {
   if (widget == gfx::kNullAcceleratedWidget) {
     return GetActiveBrowser();
@@ -1732,7 +1739,9 @@ ExtensionPopupAnchor ExtensionPopupAnchorFor(BrowserWindowInterface* browser,
     }
     // A dock that hides with the page is not in the inset; it is showing
     // when an extension button on it is tapped, so open above it.
-    bottom_inset += state.bottom_controls_height;
+    if (!IsWebAppBrowser(browser)) {
+      bottom_inset += state.bottom_controls_height;
+    }
   }
   return {gfx::Rect(window.CenterPoint().x(), window.bottom() - bottom_inset,
                     0, 0),
@@ -3719,7 +3728,11 @@ void UpdateBrowserStateOnUiThread(uint64_t generation,
             if (inset != bottom_insets.end() && tabs) {
               ApplyViewportInsets(tabs->GetActiveWebContents(), inset->second);
             }
-            if (top_controls_height > 0 && tabs) {
+            if (tabs && IsWebAppBrowser(browser)) {
+              // A tab moved into an app can retain its old page transform.
+              ApplyTopControlsOffset(tabs->GetActiveWebContents(), 0.0f);
+            }
+            if (top_controls_height > 0 && tabs && !IsWebAppBrowser(browser)) {
               content::WebContents* active = tabs->GetActiveWebContents();
               content::RenderWidgetHostView* view =
                   active ? active->GetRenderWidgetHostView() : nullptr;
@@ -5172,6 +5185,9 @@ void ApplyTopControlsOffset(content::WebContents* contents, float ratio) {
     base::AutoLock lock(state.lock);
     top_dip = state.top_controls_height;
   }
+  if (IsWebAppBrowser(FindBrowserForWebContents(contents))) {
+    top_dip = 0;
+  }
   const int height = DipToPixels(top_dip);
   const float scale = window->layer()->device_scale_factor();
   const float offset = height > 0 && scale > 0.0f
@@ -5368,6 +5384,7 @@ bool AreAuraShellBrowserControlsHidden(content::WebContents* contents) {
 namespace {
 
 gfx::Insets ModalDialogInsetsForWidget(gfx::AcceleratedWidget widget) {
+  const bool web_app = IsWebAppBrowser(FindBrowserForWidget(widget));
   RuntimeBridgeState& state = GetState();
   base::AutoLock lock(state.lock);
   int bottom = 0;
@@ -5377,9 +5394,11 @@ gfx::Insets ModalDialogInsetsForWidget(gfx::AcceleratedWidget widget) {
   }
   // The dock is not in the inset: it hides with the page, and is held
   // showing while a dialog is up (OnAuraShellWebContentsBlocked).
-  bottom += state.bottom_controls_height;
-  return gfx::Insets::TLBR(std::max(0, state.top_controls_height), 0,
-                           std::max(0, bottom), 0);
+  if (!web_app) {
+    bottom += state.bottom_controls_height;
+  }
+  return gfx::Insets::TLBR(web_app ? 0 : std::max(0, state.top_controls_height),
+                           0, std::max(0, bottom), 0);
 }
 
 }  // namespace
@@ -5396,7 +5415,7 @@ gfx::Insets GetAuraShellModalDialogInsetsForWindow(gfx::NativeWindow window) {
 
 void OnAuraShellWebContentsBlocked(content::WebContents* contents,
                                    bool blocked) {
-  if (!contents) {
+  if (!contents || IsWebAppBrowser(FindBrowserForWebContents(contents))) {
     return;
   }
   {
@@ -5416,6 +5435,10 @@ void OnAuraShellWebContentsBlocked(content::WebContents* contents,
 
 void OnAuraShellTopControlsShownRatio(content::WebContents* contents,
                                       float renderer_ratio) {
+  if (IsWebAppBrowser(FindBrowserForWebContents(contents))) {
+    ApplyTopControlsOffset(contents, 0.0f);
+    return;
+  }
   // The renderer's ratio is of the top bar and the dock together (see
   // GetAuraShellTopControlsHeight()), from minTop over their sum up to 1.
   // The shell's is of its top bar alone, from minTop over the top bar up to

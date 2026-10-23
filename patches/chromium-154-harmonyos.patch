@@ -6532,6 +6532,7 @@ index bccf4c6a0c..dfd71b4387 100644
  }
  
 diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+index 9e27bdcb53a5030b4226560272138debce274d56..809180e1b91ad7036c4a5d8a044e15b16a45e072 100644
 --- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 +++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 @@ -3,6 +3,11 @@
@@ -6569,7 +6570,7 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
  // Kill switch for merge safety for a fix for https://crbug.com/489205993
  // TODO(crbug.com/489205993): Remove in M150 or later.
  BASE_FEATURE(kBackgroundActorTaskPopupsOpenInBackground,
-@@ -368,15 +382,42 @@
+@@ -368,15 +382,51 @@
  void BrowserWebContentsDelegate::SetTopControlsShownRatio(
      content::WebContents* web_contents,
      float ratio) {
@@ -6583,6 +6584,9 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
  
  int BrowserWebContentsDelegate::GetTopControlsHeight() {
 +#if BUILDFLAG(IS_OHOS)
++  if (app_browser_controller_) {
++    return 0;
++  }
 +  if (const int height = chrome::ohos::GetAuraShellTopControlsHeight();
 +      height > 0) {
 +    return height;
@@ -6593,6 +6597,9 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
 +
 +int BrowserWebContentsDelegate::GetTopControlsMinHeight() {
 +#if BUILDFLAG(IS_OHOS)
++  if (app_browser_controller_) {
++    return 0;
++  }
 +  return chrome::ohos::GetAuraShellTopControlsMinHeight();
 +#else
 +  return content::WebContentsDelegate::GetTopControlsMinHeight();
@@ -6602,6 +6609,9 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
  bool BrowserWebContentsDelegate::DoBrowserControlsShrinkRendererSize(
      content::WebContents* contents) {
 +#if BUILDFLAG(IS_OHOS)
++  if (app_browser_controller_) {
++    return false;
++  }
 +  // Room is made for the shell's bar rather than the page drawing under it
 +  // at the top: shrink the viewport while the controls show at all, and
 +  // give the page their room once they have slid away, as Android does.
@@ -6612,7 +6622,7 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
    return window_->DoBrowserControlsShrinkRendererSize(contents);
  }
  
-@@ -589,8 +630,36 @@
+@@ -589,8 +639,36 @@
  
    chrome::ConfigureTabGroupForNavigation(popup_delegate->nav_params());
  
@@ -6649,7 +6659,7 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
  
    if (navigation_handle_callback && navigation_handle) {
      std::move(navigation_handle_callback).Run(*navigation_handle);
-@@ -793,6 +862,14 @@
+@@ -793,6 +871,14 @@
  
  void BrowserWebContentsDelegate::UpdateTargetURL(content::WebContents* source,
                                                   const GURL& url) {
@@ -6664,7 +6674,7 @@ diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_content
    std::vector<StatusBubble*> status_bubbles =
        browser_ui_controller_->GetStatusBubbles();
    for (StatusBubble* status_bubble : status_bubbles) {
-@@ -1082,6 +1159,10 @@
+@@ -1082,6 +1168,10 @@
    // to track `new_contents` after it is added to its TabModel this override can
    // be removed.
    CreateSessionServiceTabHelper(new_contents);
