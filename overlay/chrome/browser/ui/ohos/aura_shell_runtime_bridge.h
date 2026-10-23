@@ -87,6 +87,10 @@ std::optional<bool> IsAuraShellPictureInPictureWindow(
 std::optional<bool> IsAuraShellWindowModal(gfx::AcceleratedWidget widget);
 std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(
     gfx::AcceleratedWidget widget);
+// Called once when the shell attaches a system window to a desktop web popup.
+// The window action is posted to Chromium's UI thread and leaves normal
+// browser windows and phone popups unchanged.
+void RestoreAuraShellPopupWindow(gfx::AcceleratedWidget widget);
 void UpdateAuraShellUiFamily(const std::string& ui_family);
 void UpdateAuraShellColorScheme(const std::string& color_scheme);
 void UpdateAuraShellPrintOutputDirectory(const std::string& output_directory);

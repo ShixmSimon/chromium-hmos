@@ -5913,6 +5913,41 @@ std::optional<bool> IsAuraShellPictureInPictureWindow(
   return std::nullopt;
 }
 
+void RestoreAuraShellPopupWindow(gfx::AcceleratedWidget widget) {
+  scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner;
+  {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    if (IsMobileUiFamily(state.ui_family)) {
+      return;
+    }
+    ui_task_runner = state.ui_task_runner;
+  }
+  if (!ui_task_runner) {
+    return;
+  }
+  ui_task_runner->PostTask(
+      FROM_HERE, base::BindOnce(
+                     [](gfx::AcceleratedWidget widget) {
+                       BrowserWindowInterface* browser =
+                           FindBrowserForWidget(widget);
+                       if (!browser ||
+                           browser->GetType() !=
+                               BrowserWindowInterface::Type::TYPE_POPUP) {
+                         return;
+                       }
+                       // Window.recover() requests floating mode through the
+                       // popup's own shell, after its system window is ready.
+                       const bool requested = ui::RequestOhosWindowAction(
+                           widget, ui::OhosWindowAction::kRestore);
+                       LOG(WARNING)
+                           << "OHOS web popup " << widget
+                           << ": floating-window restore requested="
+                           << requested;
+                     },
+                     widget));
+}
+
 std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(
     gfx::AcceleratedWidget widget) {
   BrowserWindowInterface* browser = FindBrowserForWidget(widget);

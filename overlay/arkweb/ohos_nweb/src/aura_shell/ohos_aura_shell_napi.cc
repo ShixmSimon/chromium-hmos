@@ -1406,8 +1406,19 @@ napi_value OnWindowIdChanged(napi_env env, napi_callback_info info) {
   const double value = ReadNumber(env, args[1]);
   if (value > 0.0 &&
       value <= static_cast<double>(std::numeric_limits<int32_t>::max())) {
+    const gfx::AcceleratedWidget widget =
+        ui::GetOhosAcceleratedWidgetForNativeSurface(component_id);
+    const int32_t previous_window_id =
+        ui::GetOhosApplicationWindowIdForWidget(widget);
     ui::SetOhosApplicationWindowIdForNativeSurface(component_id,
                                                    static_cast<int32_t>(value));
+    // OnWindowIdChanged follows the shell's getLastWindow() completion, so
+    // restore cannot race an unset activeWindow. Do not force floating again
+    // when size/focus notifications repeat for the same system window.
+    if (widget != gfx::kNullAcceleratedWidget &&
+        previous_window_id != static_cast<int32_t>(value)) {
+      chrome::ohos::RestoreAuraShellPopupWindow(widget);
+    }
   }
   return MakeUndefined(env);
 }
