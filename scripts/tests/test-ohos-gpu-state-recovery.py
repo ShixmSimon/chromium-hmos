@@ -56,7 +56,10 @@ class RecoveryTest(unittest.TestCase):
 #include <unistd.h>
 #include <vector>
 std::string fd_directory;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Wsign-conversion"
 FUNCTIONS
+#pragma GCC diagnostic pop
 int memory_file() {
   char path[] = "/tmp/lumie-fd-test.XXXXXX";
   int fd = mkstemp(path);
