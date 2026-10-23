@@ -31365,11 +31365,35 @@ index a7c3a650d5469d03301abad28fe8245ee1d20207..ec75cc8a9fe1d0d3eb114b2a91b4022c
      }
    ]
  }
+diff --git a/gpu/ipc/client/BUILD.gn b/gpu/ipc/client/BUILD.gn
+index 0e1f21d207fd33c013f6d6c4019662e429aa68c5..01dd903e5338eac60c3a3f5d96a6f7ef20c8bb24 100644
+--- a/gpu/ipc/client/BUILD.gn
++++ b/gpu/ipc/client/BUILD.gn
+@@ -24,6 +24,9 @@
+     "shared_image_interface_proxy.cc",
+     "shared_image_interface_proxy.h",
+   ]
++  if (is_ohos) {
++    sources += [ "ohos_command_buffer_state.h" ]
++  }
+   deps = [
+     "//base",
+     "//cc/paint",
 diff --git a/gpu/ipc/client/command_buffer_proxy_impl.cc b/gpu/ipc/client/command_buffer_proxy_impl.cc
-index e1ec5be3cf7352196a49c868c1cf840bbdc6c506..7d7e71a0db861db42556ebd643f058e800a23989 100644
+index e1ec5be3cf7352196a49c868c1cf840bbdc6c506..59992647f39e57df9349ac02b0a9d939f52cfd96 100644
 --- a/gpu/ipc/client/command_buffer_proxy_impl.cc
 +++ b/gpu/ipc/client/command_buffer_proxy_impl.cc
-@@ -506,6 +506,11 @@ scoped_refptr<gpu::Buffer> CommandBufferProxyImpl::CreateTransferBuffer(
+@@ -25,6 +25,9 @@
+ #include "gpu/command_buffer/common/cmd_buffer_common.h"
+ #include "gpu/command_buffer/common/command_buffer_id.h"
+ #include "gpu/command_buffer/common/command_buffer_shared.h"
++#if BUILDFLAG(IS_OHOS)
++#include "gpu/ipc/client/ohos_command_buffer_state.h"
++#endif
+ #include "gpu/command_buffer/common/gpu_memory_allocation.h"
+ #include "gpu/command_buffer/common/sync_token.h"
+ #include "gpu/ipc/client/gpu_channel_host.h"
+@@ -506,6 +509,11 @@
    std::tie(shared_memory_region, shared_memory_mapping) =
        AllocateAndMapSharedMemory(size, transfer_buffer_mapper_);
    if (!shared_memory_mapping.IsValid()) {
@@ -31381,7 +31405,7 @@ index e1ec5be3cf7352196a49c868c1cf840bbdc6c506..7d7e71a0db861db42556ebd643f058e8
      if (last_state_.error == gpu::error::kNoError &&
          option != TransferBufferAllocationOption::kReturnNullOnOOM)
        OnClientError(gpu::error::kOutOfBounds);
-@@ -516,6 +521,9 @@ scoped_refptr<gpu::Buffer> CommandBufferProxyImpl::CreateTransferBuffer(
+@@ -516,6 +524,9 @@
    if (last_state_.error == gpu::error::kNoError) {
      base::UnsafeSharedMemoryRegion region = shared_memory_region.Duplicate();
      if (!region.IsValid()) {
@@ -31391,6 +31415,42 @@ index e1ec5be3cf7352196a49c868c1cf840bbdc6c506..7d7e71a0db861db42556ebd643f058e8
        if (last_state_.error == gpu::error::kNoError)
          OnClientError(gpu::error::kLostContext);
        return nullptr;
+@@ -772,7 +783,11 @@
+ void CommandBufferProxyImpl::TryUpdateState() {
+   CheckLock();
+   if (last_state_.error == gpu::error::kNoError) {
++#if BUILDFLAG(IS_OHOS)
++    ReadOhosCommandBufferSharedState(shared_state(), &last_state_);
++#else
+     shared_state()->Read(&last_state_);
++#endif
+     if (last_state_.error != gpu::error::kNoError)
+       OnGpuStateError();
+   }
+@@ -780,7 +795,11 @@
+ 
+ void CommandBufferProxyImpl::TryUpdateStateThreadSafe() {
+   if (last_state_.error == gpu::error::kNoError) {
++#if BUILDFLAG(IS_OHOS)
++    ReadOhosCommandBufferSharedState(shared_state(), &last_state_);
++#else
+     shared_state()->Read(&last_state_);
++#endif
+     if (last_state_.error != gpu::error::kNoError) {
+       default_task_runner_->PostTask(
+           FROM_HERE,
+@@ -792,7 +811,11 @@
+ 
+ void CommandBufferProxyImpl::TryUpdateStateDontReportError() {
+   if (last_state_.error == gpu::error::kNoError)
++#if BUILDFLAG(IS_OHOS)
++    ReadOhosCommandBufferSharedState(shared_state(), &last_state_);
++#else
+     shared_state()->Read(&last_state_);
++#endif
+ }
+ 
+ const gpu::CommandBufferSharedState* CommandBufferProxyImpl::shared_state()
 diff --git a/gpu/ipc/common/exported_shared_image_mojom_traits.h b/gpu/ipc/common/exported_shared_image_mojom_traits.h
 index be443f0944b65260c619330aaa755bbd9e3f75e7..2e8af56eba24bcf5317a87c25c8834fdba3f2566 100644
 --- a/gpu/ipc/common/exported_shared_image_mojom_traits.h

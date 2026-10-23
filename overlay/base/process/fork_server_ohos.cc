@@ -148,8 +148,29 @@ bool IsLoaderRelroFd(int directory_fd, const char* name, int fd) {
   return fcntl(fd, F_GETFD) >= 0;
 }
 
+bool IsSystemTraceMarkerFd(int directory_fd, const char* name, int fd) {
+  // HiTrace caches its trace_marker FD in process-global state. fork inherits
+  // that cache without exec: closing the FD lets later shared-memory allocation
+  // reuse its number, so trace writes can corrupt Chromium's command buffers.
+  // Match the exact kernel nodes, never arbitrary files or application channels.
+  char target[PATH_MAX];
+  const ssize_t size = readlinkat(directory_fd, name, target, sizeof(target));
+  if (size <= 0 || size >= static_cast<ssize_t>(sizeof(target)))
+    return false;
+  constexpr const char* paths[] = {
+      "/sys/kernel/debug/tracing/trace_marker",
+      "/sys/kernel/tracing/trace_marker",
+  };
+  for (const char* path : paths) {
+    if (static_cast<size_t>(size) == strlen(path) &&
+        memcmp(target, path, size) == 0)
+      return fcntl(fd, F_GETFD) >= 0;
+  }
+  return false;
+}
+
 // Close inherited application channels before the server can fork children.
-// Loader-owned RELRO cache FDs must survive at their original numbers.
+// Loader and HiTrace caches must retain their original descriptor numbers.
 // No broad munmap of Ark/anonymous memory: mapped libraries may still use it.
 bool CloseInheritedFds(int keep, int& minimum_received_fd) {
   DIR* directory = opendir("/proc/self/fd");
@@ -165,7 +186,9 @@ bool CloseInheritedFds(int keep, int& minimum_received_fd) {
       if (fd >= minimum_received_fd)
         minimum_received_fd = static_cast<int>(fd) + 1;
       if (fd > 2 && fd != keep && fd != directory_fd &&
-          !IsLoaderRelroFd(directory_fd, entry->d_name, static_cast<int>(fd)))
+          !IsLoaderRelroFd(directory_fd, entry->d_name, static_cast<int>(fd)) &&
+          !IsSystemTraceMarkerFd(directory_fd, entry->d_name,
+                                static_cast<int>(fd)))
         close(static_cast<int>(fd));
     }
   }
