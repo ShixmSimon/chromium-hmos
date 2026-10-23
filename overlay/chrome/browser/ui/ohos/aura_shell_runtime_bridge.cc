@@ -5918,7 +5918,7 @@ void RestoreAuraShellPopupWindow(gfx::AcceleratedWidget widget) {
   {
     RuntimeBridgeState& state = GetState();
     base::AutoLock lock(state.lock);
-    if (IsMobileUiFamily(state.ui_family)) {
+    if (state.ui_family != "aura_pc") {
       return;
     }
     ui_task_runner = state.ui_task_runner;
@@ -5959,17 +5959,22 @@ std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(
   metadata.is_pwa =
       browser->GetType() == BrowserWindowInterface::Type::TYPE_APP ||
       browser->GetType() == BrowserWindowInterface::Type::TYPE_APP_POPUP;
+  metadata.is_web_popup =
+      browser->GetType() == BrowserWindowInterface::Type::TYPE_POPUP;
   bool desktop_popup = false;
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_POPUP) {
     RuntimeBridgeState& state = GetState();
     base::AutoLock lock(state.lock);
-    desktop_popup = !IsMobileUiFamily(state.ui_family);
+    // Tablet Window.recover() may reject floating windows even when it can
+    // create another fullscreen ability. Keep tablets on the embedded native
+    // popup path, which also works in the sample shell without Lumie.
+    desktop_popup = state.ui_family == "aura_pc";
   }
   // A desktop window.open() popup owns a browser and its WebContents, just
   // like a normal browser window. Give it a system-window surface and input
   // target; auxiliary surfaces are height-clamped notification bars and
   // anchored menus, and cannot provide this window's move/resize actions.
-  // Phones retain their existing in-app popup presentation.
+  // Tablets and phones retain in-app popup presentation.
   metadata.is_browser =
       browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL ||
       desktop_popup;

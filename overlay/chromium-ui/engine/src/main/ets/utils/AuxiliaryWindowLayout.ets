@@ -66,7 +66,7 @@ export function layoutAuxiliaryWindow(
   if (state.anchored === true) {
     return layoutAnchoredWindow(state, screen, pxToVp, previous);
   }
-  if (state.windowRole === 'browser') {
+  if (state.windowRole === 'browser' || state.browserPopup === true) {
     // A shell without a separate-system-window launcher still hosts desktop
     // window.open() popups here. Preserve their requested geometry and native
     // title-bar movement rather than treating them as 30%-height status bars.

@@ -525,6 +525,7 @@ void DispatchAuxiliaryWindowEvent(const ui::OhosLogicalWindowState& state) {
       chrome::ohos::GetAuraShellWindowMetadata(state.widget);
   if (metadata) {
     event.Set("incognito", metadata->is_incognito);
+    event.Set("browserPopup", metadata->is_web_popup);
   }
   if (metadata && metadata->is_pwa) {
     event.Set("windowRole", "pwa");

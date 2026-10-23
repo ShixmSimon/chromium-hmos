@@ -91,6 +91,9 @@ const state={widget:2,windowRole:'browser',anchored:false,x:150,y:120,width:900,
 const a=layoutAuxiliaryWindow(state,false,screen,p=>p/1.5);
 assert.equal(a.widthVp,600); assert.equal(a.heightVp,650);
 assert.equal(a.leftVp,100); assert.equal(a.topVp,80);
+const embedded=layoutAuxiliaryWindow({...state,windowRole:'auxiliary',browserPopup:true},false,screen,p=>p/1.5);
+assert.equal(embedded.widthVp,600); assert.equal(embedded.heightVp,650);
+assert.equal(embedded.leftVp,100); assert.equal(embedded.topVp,80);
 const moved=layoutAuxiliaryWindow({...state,x:300,y:225},false,screen,p=>p/1.5,a);
 assert.equal(moved.leftVp,200); assert.equal(moved.topVp,150);
 const clamped=layoutAuxiliaryWindow({...state,x:9999,y:9999},false,screen,p=>p/1.5);

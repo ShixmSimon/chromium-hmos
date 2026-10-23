@@ -720,6 +720,9 @@ export interface AuxiliaryWindowState {
   // A popup, menu or tooltip Chromium placed next to page content: draw it
   // at x/y, not where the shell would put a window of its own.
   anchored?: boolean;
+  // A web window.open() popup: a full native browser view hosted within this
+  // window, with its own geometry, focus and title-bar move/resize controls.
+  browserPopup?: boolean;
   // Chromium's picture-in-picture window. It floats over the page with no
   // close button of its own, which is also what a page's window.open() popup
   // looks like -- but back should close the popup and leave the video alone,
