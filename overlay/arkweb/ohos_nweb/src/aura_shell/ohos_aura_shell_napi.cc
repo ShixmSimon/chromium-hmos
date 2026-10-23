@@ -533,9 +533,9 @@ void DispatchAuxiliaryWindowEvent(const ui::OhosLogicalWindowState& state) {
     event.Set("url", metadata->url);
     event.Set("pwaStartUrl", metadata->start_url);
   } else if (metadata && metadata->is_browser) {
-    // Not a popup: a browser window of its own. Saying so keeps the shell from
-    // drawing it as an auxiliary window -- clamped to a fraction of the screen
-    // and hung in the middle.
+    // A browser window of its own, including desktop window.open() popups.
+    // Keep its system-window surface and input routing out of the auxiliary
+    // layout, which clamps notification bars to a fraction of the screen.
     event.Set("windowRole", "browser");
     event.Set("componentId", std::string(kBrowserSurfacePrefix) +
                                  base::NumberToString(state.widget));

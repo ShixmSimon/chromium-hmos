@@ -5924,8 +5924,20 @@ std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(
   metadata.is_pwa =
       browser->GetType() == BrowserWindowInterface::Type::TYPE_APP ||
       browser->GetType() == BrowserWindowInterface::Type::TYPE_APP_POPUP;
+  bool desktop_popup = false;
+  if (browser->GetType() == BrowserWindowInterface::Type::TYPE_POPUP) {
+    RuntimeBridgeState& state = GetState();
+    base::AutoLock lock(state.lock);
+    desktop_popup = !IsMobileUiFamily(state.ui_family);
+  }
+  // A desktop window.open() popup owns a browser and its WebContents, just
+  // like a normal browser window. Give it a system-window surface and input
+  // target; auxiliary surfaces are height-clamped notification bars and
+  // anchored menus, and cannot provide this window's move/resize actions.
+  // Phones retain their existing in-app popup presentation.
   metadata.is_browser =
-      browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL;
+      browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL ||
+      desktop_popup;
   metadata.is_incognito =
       browser->GetProfile() && browser->GetProfile()->IsOffTheRecord();
   TabStripModel* tabs = browser->GetTabStripModel();
