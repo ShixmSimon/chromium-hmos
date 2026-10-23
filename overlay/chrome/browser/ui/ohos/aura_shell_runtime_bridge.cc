@@ -1357,15 +1357,16 @@ void SetRequestDesktopSite(content::WebContents* contents, bool enabled) {
   if (!contents) {
     return;
   }
-  blink::UserAgentOverride override;
+  blink::UserAgentOverride override =
+      BuildOhosUserAgentOverride(IsAuraShellMobilePhoneUi());
   if (enabled) {
     override = AuraShellDesktopSiteUserAgent();
   }
-  contents->SetUserAgentOverride(override, /*override_in_new_tabs=*/false);
+  contents->SetUserAgentOverride(override, /*override_in_new_tabs=*/true);
   SetAuraShellUserAgentPinned(contents, enabled);
   content::NavigationController& controller = contents->GetController();
   if (content::NavigationEntry* entry = controller.GetLastCommittedEntry()) {
-    entry->SetIsOverridingUserAgent(enabled);
+    entry->SetIsOverridingUserAgent(true);
   }
   // Not a plain reload: a site that redirected us to its mobile host would
   // just redirect again. Chromium own ToggleRequestTabletSite does the same
@@ -5221,6 +5222,24 @@ bool IsAuraShellRequestingDesktopSite(content::WebContents* contents) {
   return !ua.ua_string_override.empty() &&
          ua.ua_string_override ==
              AuraShellDesktopSiteUserAgent().ua_string_override;
+}
+
+void InheritAuraShellUserAgent(content::WebContents* source,
+                              content::WebContents* target) {
+  if (!source || !target || source == target) {
+    return;
+  }
+  const bool desktop = IsAuraShellRequestingDesktopSite(source);
+  // Copy the page's mode before its child's first navigation. Normalize the
+  // store's temporary compatibility UA to ordinary desktop mode, so its
+  // site-specific platform spoof does not escape to unrelated sites.
+  target->SetUserAgentOverride(
+      desktop ? AuraShellDesktopSiteUserAgent()
+              : BuildOhosUserAgentOverride(IsAuraShellMobilePhoneUi()),
+      /*override_in_new_tabs=*/true);
+  // State polling applies the device default to unpinned tabs. The inherited
+  // desktop choice belongs to the child even if the parent changes or closes.
+  SetAuraShellUserAgentPinned(target, desktop);
 }
 
 // The CPU this build runs on, as a Linux User-Agent and UA-CH name it.

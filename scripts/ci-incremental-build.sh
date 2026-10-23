@@ -191,6 +191,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-external-protocol-to-shell.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-phone-android-web-prefs.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-mobile-ua-viewport.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-gpu-shared-state-validation.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-web-share.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-file-chooser-accept-capture.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-popup-blocked-notice.patch"

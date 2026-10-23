@@ -36,6 +36,8 @@ jobs:
         run: python3 scripts/tests/test-appgallery-user-agent.py
       - name: Check experimental OHOS fork server transport
         run: scripts/test-ohos-fork-server.sh
+      - name: Check inherited trace descriptors and GPU state recovery
+        run: python3 scripts/tests/test-ohos-gpu-state-recovery.py
       - name: Check experimental phone GPU frame transport
         run: scripts/test-ohos-phone-gpu.sh
       - name: Check startup handoff retry scheduling and cancellation

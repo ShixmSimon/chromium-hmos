@@ -38,6 +38,8 @@ git -C "${chromium_src}" apply --binary \
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-mobile-ua-viewport.patch"
 git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-gpu-shared-state-validation.patch"
+git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-url-protection.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-url-protection-updates.patch"

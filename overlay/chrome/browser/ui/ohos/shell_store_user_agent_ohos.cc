@@ -252,7 +252,7 @@ class StoreUserAgentWatcher
       restored = AuraShellDesktopSiteUserAgent();
     }
     web_contents()->SetUserAgentOverride(restored,
-                                         /*override_in_new_tabs=*/false);
+                                         /*override_in_new_tabs=*/desktop_site_);
     // Still deliberate if desktop sites are what the reader asked for; back
     // to following the device if they are not.
     SetAuraShellUserAgentPinned(web_contents(), desktop_site_);

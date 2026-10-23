@@ -2814,7 +2814,7 @@ index 033f22b414..fb82665610 100644
  #if !BUILDFLAG(IS_ANDROID)
    pid_t pid;
    if (crash_reporter::GetHandlerSocket(nullptr, &pid)) {
-@@ -4522,6 +4525,140 @@ content::TtsPlatform* ChromeContentBrowserClient::GetTtsPlatform() {
+@@ -4522,6 +4525,141 @@ content::TtsPlatform* ChromeContentBrowserClient::GetTtsPlatform() {
  #endif
  }
  
@@ -2890,9 +2890,10 @@ index 033f22b414..fb82665610 100644
 +  // width and lays out for a phone anyway -- the site was never the problem.
 +  // content does this for us a few lines before it calls this, and then this
 +  // runs and would put it back, so decide it here instead.
-+  content::NavigationEntry* entry =
-+      web_contents ? web_contents->GetController().GetVisibleEntry() : nullptr;
-+  const bool desktop_site = entry && entry->GetIsOverridingUserAgent();
++  // A popup can inherit the phone UA override; an override flag alone does
++  // not mean the user requested desktop pages.
++  const bool desktop_site =
++      chrome::ohos::IsAuraShellRequestingDesktopSite(web_contents);
 +
 +  // The viewport machinery stays on in every case. Turning it off for WebUI
 +  // was wrong twice over: the same machinery computes the right width for an
@@ -6532,21 +6533,20 @@ index bccf4c6a0c..dfd71b4387 100644
  }
  
 diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
-index 9e27bdcb53..7a81eb753a 100644
 --- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
 +++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
-@@ -4,6 +4,11 @@
+@@ -3,6 +3,11 @@
+ // found in the LICENSE file.
  
  #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
- 
++
 +#include "build/build_config.h"
 +#if BUILDFLAG(IS_OHOS)
 +#include "chrome/browser/ui/ohos/shell_tab_groups_ohos.h"
 +#endif
-+
+ 
  #include "base/check_deref.h"
  #include "base/metrics/histogram_macros.h"
- #include "base/notimplemented.h"
 @@ -35,6 +40,9 @@
  #include "chrome/browser/ui/browser_window.h"
  #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
@@ -6570,7 +6570,7 @@ index 9e27bdcb53..7a81eb753a 100644
  // Kill switch for merge safety for a fix for https://crbug.com/489205993
  // TODO(crbug.com/489205993): Remove in M150 or later.
  BASE_FEATURE(kBackgroundActorTaskPopupsOpenInBackground,
-@@ -368,15 +382,42 @@ void BrowserWebContentsDelegate::CancelKeyboardLockRequest(
+@@ -368,15 +382,42 @@
  void BrowserWebContentsDelegate::SetTopControlsShownRatio(
      content::WebContents* web_contents,
      float ratio) {
@@ -6590,16 +6590,16 @@ index 9e27bdcb53..7a81eb753a 100644
 +  }
 +#endif
    return window_->GetTopControlsHeight();
- }
- 
++}
++
 +int BrowserWebContentsDelegate::GetTopControlsMinHeight() {
 +#if BUILDFLAG(IS_OHOS)
 +  return chrome::ohos::GetAuraShellTopControlsMinHeight();
 +#else
 +  return content::WebContentsDelegate::GetTopControlsMinHeight();
 +#endif
-+}
-+
+ }
+ 
  bool BrowserWebContentsDelegate::DoBrowserControlsShrinkRendererSize(
      content::WebContents* contents) {
 +#if BUILDFLAG(IS_OHOS)
@@ -6613,7 +6613,7 @@ index 9e27bdcb53..7a81eb753a 100644
    return window_->DoBrowserControlsShrinkRendererSize(contents);
  }
  
-@@ -589,9 +630,37 @@ content::WebContents* BrowserWebContentsDelegate::OpenURLFromTab(
+@@ -589,8 +630,36 @@
  
    chrome::ConfigureTabGroupForNavigation(popup_delegate->nav_params());
  
@@ -6636,7 +6636,7 @@ index 9e27bdcb53..7a81eb753a 100644
 +
    base::WeakPtr<content::NavigationHandle> navigation_handle =
        Navigate(popup_delegate->nav_params());
- 
++
 +#if BUILDFLAG(IS_OHOS)
 +  if (opened_from_context_menu) {
 +    content::WebContents* opened =
@@ -6647,11 +6647,10 @@ index 9e27bdcb53..7a81eb753a 100644
 +    chrome::ohos::AnnouncePageOpenedInGroup(opened);
 +  }
 +#endif
-+
+ 
    if (navigation_handle_callback && navigation_handle) {
      std::move(navigation_handle_callback).Run(*navigation_handle);
-   }
-@@ -793,6 +862,14 @@ void BrowserWebContentsDelegate::SetContentsBounds(content::WebContents* source,
+@@ -793,6 +862,14 @@
  
  void BrowserWebContentsDelegate::UpdateTargetURL(content::WebContents* source,
                                                   const GURL& url) {
@@ -6666,6 +6665,17 @@ index 9e27bdcb53..7a81eb753a 100644
    std::vector<StatusBubble*> status_bubbles =
        browser_ui_controller_->GetStatusBubbles();
    for (StatusBubble* status_bubble : status_bubbles) {
+@@ -1082,6 +1159,10 @@
+   // to track `new_contents` after it is added to its TabModel this override can
+   // be removed.
+   CreateSessionServiceTabHelper(new_contents);
++#if BUILDFLAG(IS_OHOS)
++  // Before popup/noopener navigation and before insertion/state polling.
++  chrome::ohos::InheritAuraShellUserAgent(source_contents, new_contents);
++#endif
+ }
+ 
+ void BrowserWebContentsDelegate::RendererUnresponsive(
 diff --git a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h
 index 05a9d7f7f2..8b2b212e69 100644
 --- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h
@@ -8113,6 +8123,54 @@ index 7f2c5c2262..bc5b5d8d31 100644
      sources += [
        "chrome_web_contents_menu_helper.cc",
        "chrome_web_contents_view_handle_drop.cc",
+diff --git a/chrome/browser/ui/navigator/browser_navigator.cc b/chrome/browser/ui/navigator/browser_navigator.cc
+--- a/chrome/browser/ui/navigator/browser_navigator.cc
++++ b/chrome/browser/ui/navigator/browser_navigator.cc
+@@ -19,6 +19,9 @@
+ #include "base/task/single_thread_task_runner.h"
+ #include "base/trace_event/trace_event.h"
+ #include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
+ #include "chrome/browser/apps/app_service/web_contents_app_id_utils.h"
+ #include "chrome/browser/apps/link_capturing/link_capturing_tab_data.h"
+ #include "chrome/browser/browser_about_handler.h"
+@@ -685,6 +688,16 @@
+     }
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Capture an explicit source before the active-tab fallback below. Toolbar
++  // new tabs must not inherit the currently selected page's desktop mode.
++  const bool inherit_source_user_agent =
++      params->source_contents &&
++      (params->opener || params->is_renderer_initiated ||
++       params->started_from_context_menu ||
++       ui::PageTransitionCoreTypeIs(params->transition,
++                                    ui::PAGE_TRANSITION_LINK));
++#endif
+   // If no source WebContents was specified, we use the selected one from the
+   // target browser. This must happen before GetBrowserAndTabForDisposition()
+   // has a chance to replace |params->browser| with another one, but after the
+@@ -912,6 +925,17 @@
+       NavigationController::LoadURLParams load_url_params =
+           LoadURLParamsFromNavigateParams(contents_to_navigate_or_insert,
+                                           params);
++#if BUILDFLAG(IS_OHOS)
++      // Navigate() fills source_contents from the active tab even for toolbar
++      // actions. Inherit only when a page/link actually opens a new tab.
++      if (tab_to_insert && inherit_source_user_agent &&
++          params->source_contents) {
++        chrome::ohos::InheritAuraShellUserAgent(
++            params->source_contents, contents_to_navigate_or_insert);
++        load_url_params.override_user_agent =
++            NavigationController::UA_OVERRIDE_TRUE;
++      }
++#endif
+       navigation_handle =
+           contents_to_navigate_or_insert->GetController().LoadURLWithParams(
+               load_url_params);
 diff --git a/chrome/browser/ui/tab_helpers.cc b/chrome/browser/ui/tab_helpers.cc
 index 4de5112246..19ae84eefd 100644
 --- a/chrome/browser/ui/tab_helpers.cc

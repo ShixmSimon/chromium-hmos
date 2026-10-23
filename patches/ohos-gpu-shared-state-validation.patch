@@ -1,0 +1,62 @@
+diff --git a/gpu/ipc/client/command_buffer_proxy_impl.cc b/gpu/ipc/client/command_buffer_proxy_impl.cc
+--- a/gpu/ipc/client/command_buffer_proxy_impl.cc
++++ b/gpu/ipc/client/command_buffer_proxy_impl.cc
+@@ -25,6 +25,9 @@
+ #include "gpu/command_buffer/common/cmd_buffer_common.h"
+ #include "gpu/command_buffer/common/command_buffer_id.h"
+ #include "gpu/command_buffer/common/command_buffer_shared.h"
++#if BUILDFLAG(IS_OHOS)
++#include "gpu/ipc/client/ohos_command_buffer_state.h"
++#endif
+ #include "gpu/command_buffer/common/gpu_memory_allocation.h"
+ #include "gpu/command_buffer/common/sync_token.h"
+ #include "gpu/ipc/client/gpu_channel_host.h"
+@@ -786,7 +789,11 @@
+ void CommandBufferProxyImpl::TryUpdateState() {
+   CheckLock();
+   if (last_state_.error == gpu::error::kNoError) {
++#if BUILDFLAG(IS_OHOS)
++    ReadOhosCommandBufferSharedState(shared_state(), &last_state_);
++#else
+     shared_state()->Read(&last_state_);
++#endif
+     if (last_state_.error != gpu::error::kNoError)
+       OnGpuStateError();
+   }
+@@ -794,7 +801,11 @@
+ 
+ void CommandBufferProxyImpl::TryUpdateStateThreadSafe() {
+   if (last_state_.error == gpu::error::kNoError) {
++#if BUILDFLAG(IS_OHOS)
++    ReadOhosCommandBufferSharedState(shared_state(), &last_state_);
++#else
+     shared_state()->Read(&last_state_);
++#endif
+     if (last_state_.error != gpu::error::kNoError) {
+       default_task_runner_->PostTask(
+           FROM_HERE,
+@@ -806,7 +817,11 @@
+ 
+ void CommandBufferProxyImpl::TryUpdateStateDontReportError() {
+   if (last_state_.error == gpu::error::kNoError)
++#if BUILDFLAG(IS_OHOS)
++    ReadOhosCommandBufferSharedState(shared_state(), &last_state_);
++#else
+     shared_state()->Read(&last_state_);
++#endif
+ }
+ 
+ const gpu::CommandBufferSharedState* CommandBufferProxyImpl::shared_state()
+diff --git a/gpu/ipc/client/BUILD.gn b/gpu/ipc/client/BUILD.gn
+--- a/gpu/ipc/client/BUILD.gn
++++ b/gpu/ipc/client/BUILD.gn
+@@ -24,6 +24,9 @@
+     "shared_image_interface_proxy.cc",
+     "shared_image_interface_proxy.h",
+   ]
++  if (is_ohos) {
++    sources += [ "ohos_command_buffer_state.h" ]
++  }
+   deps = [
+     "//base",
+     "//cc/paint",

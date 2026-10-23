@@ -254,9 +254,14 @@ void OnAuraShellWebContentsBlocked(content::WebContents* contents,
 void SetAuraShellUserAgentPinned(content::WebContents* contents, bool pinned);
 bool IsAuraShellUserAgentPinned(content::WebContents* contents);
 
-// Whether the active override requests desktop layout; a mobile compatibility
-// override is still a mobile page.
+// A navigation override can carry the inherited mobile UA too. Use the
+// effective UA to distinguish desktop-site mode for both viewport and menu.
 bool IsAuraShellRequestingDesktopSite(content::WebContents* contents);
+
+// For page-created tabs only, before their first navigation; toolbar-created
+// tabs keep the device default. Includes the pin needed to survive state polls.
+void InheritAuraShellUserAgent(content::WebContents* source,
+                              content::WebContents* target);
 
 // The user agent "desktop site" sends. On a phone, the OpenHarmony string
 // without its Mobile token, which Chinese sites take for a desktop. A tablet
