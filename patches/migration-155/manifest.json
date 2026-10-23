@@ -157,6 +157,10 @@
     {
       "path": "third_party/angle/src/libANGLE/renderer/vulkan/ohos/WindowSurfaceVkOhos.h",
       "sha256": "397f209d720444a2a52864e5421e610d166a18d125ab62a103248a6a6ff39b99"
+    },
+    {
+      "path": "arkweb/ohos_nweb/src/aura_shell/ohos_startup_bundle_probe.h",
+      "sha256": "c505d208838c24bab4870a52bc175fdaee3460f3c21aea88d8ff67ab9b788720"
     }
   ],
   "resolved_root_conflicts": 29,
