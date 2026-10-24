@@ -550,7 +550,8 @@ void OhosPlatformWindow::OnNativeSurfaceBoundsChanged(gfx::Rect bounds,
   // why a second tap on the same field put the popup in the right place.
   //
   // The size is real and has to be taken; the origin is a placeholder.
-  if (anchored_) {
+  if (anchored_ ||
+      !HasOhosWindowActionCallback(adapter_.GetAcceleratedWidget())) {
     bounds.set_origin(adapter_.GetBounds().origin());
   }
   const bool origin_changed = adapter_.GetBounds().origin() != bounds.origin();

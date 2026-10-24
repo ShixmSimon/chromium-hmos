@@ -450,6 +450,7 @@ void OhosAuraInputRouter::DispatchNativeTouchEvent(
 
   const gfx::PointF location(event.x, event.y);
   const gfx::PointF root_location(event.root_x, event.root_y);
+  ui::UpdateOhosCursorScreenPoint(gfx::ToRoundedPoint(root_location));
   last_pointer_root_x_ = root_location.x();
   last_pointer_root_y_ = root_location.y();
   last_touch_timestamp_ = ToTouchTimestamp(event.timestamp_ns);
@@ -531,6 +532,7 @@ void OhosAuraInputRouter::DispatchPointerEvent(const std::string& event_json) {
     if (!event_type) {
       return;
     }
+    ui::UpdateOhosCursorScreenPoint(gfx::ToRoundedPoint(root_location));
     auto touch_event = std::make_unique<ui::TouchEvent>(
         *event_type, location, root_location, base::TimeTicks::Now(),
         ui::PointerDetails(ui::EventPointerType::kTouch, pointer_id));

@@ -20,6 +20,74 @@ while depth:
     depth += (platform[end] == '{') - (platform[end] == '}')
     end += 1
 method = platform[start:end]
+
+def extract_function(source, signature):
+    start = source.index(signature)
+    opening = source.index('{', start)
+    depth, end = 1, opening + 1
+    while depth:
+        depth += (source[end] == '{') - (source[end] == '}')
+        end += 1
+    return source[start:end]
+
+origin_method = extract_function(platform, 'void OhosPlatformWindow::OnNativeSurfaceBoundsChanged(')
+origin_stubs = r'''
+#include <cassert>
+namespace gfx {
+struct Point {int x=0,y=0; bool operator!=(Point p)const{return x!=p.x||y!=p.y;}};
+struct Size {int width,height;};
+struct Rect {Point p; Size s; Rect(int x,int y,int w,int h):p{x,y},s{w,h}{}
+ explicit Rect(Size v):p{},s(v){} bool IsEmpty()const{return s.width<=0||s.height<=0;}
+ Point origin()const{return p;} Size size()const{return s;} void set_origin(Point v){p=v;}
+};
+}
+bool system_callback=false;
+bool HasOhosWindowActionCallback(int){return system_callback;}
+struct Adapter {gfx::Rect bounds{100,200,600,500};
+ int GetAcceleratedWidget(){return 2;} gfx::Rect GetBounds(){return bounds;}
+ void SetBounds(gfx::Rect r){bounds=r;}};
+struct Delegate {struct Change {bool changed;};void OnBoundsChanged(Change){}
+ void OnDamageRect(gfx::Rect){} };
+struct OhosPlatformWindow {Adapter adapter_;Delegate d;bool anchored_=false;
+ Delegate* delegate(){return &d;}
+ void OnNativeSurfaceBoundsChanged(gfx::Rect,float);
+};
+int main(){
+ OhosPlatformWindow w;
+ w.OnNativeSurfaceBoundsChanged(gfx::Rect(0,0,500,450),1.5f);
+ assert(w.adapter_.bounds.p.x==100 && w.adapter_.bounds.p.y==200);
+ assert(w.adapter_.bounds.s.width==500 && w.adapter_.bounds.s.height==450);
+ system_callback=true;
+ w.OnNativeSurfaceBoundsChanged(gfx::Rect(30,293,700,800),1.5f);
+ assert(w.adapter_.bounds.p.x==30 && w.adapter_.bounds.p.y==293);
+ w.anchored_=true;
+ w.OnNativeSurfaceBoundsChanged(gfx::Rect(0,0,300,400),1.5f);
+ assert(w.adapter_.bounds.p.x==30 && w.adapter_.bounds.p.y==293);
+}
+'''
+patch = (ROOT / 'patches/migration-155/chromium.patch').read_text()
+name = 'chrome/browser/ui/views/frame/opaque_browser_frame_view.cc'
+section = re.search(r'^diff --git a/' + re.escape(name) + r' .*?(?=^diff --git |\Z)',
+                    patch, re.M | re.S).group()
+caption_source = '\n'.join(line[1:] for line in section.splitlines()
+                           if line[:1] in (' ', '+') and not line.startswith('+++'))
+caption_method = extract_function(caption_source, 'bool OpaqueBrowserFrameView::ShouldShowCaptionButtons() const')
+caption_stubs = r'''
+#include <cassert>
+#define IS_OHOS 1
+#define BUILDFLAG(x) x
+struct BrowserWindowInterface {enum class Type {TYPE_NORMAL,TYPE_POPUP,TYPE_APP_POPUP};
+ Type type;Type GetType(){return type;}};
+struct View {BrowserWindowInterface b;auto* browser(){return &b;}};
+struct OpaqueBrowserFrameView {mutable View v;auto* GetBrowserView()const{return &v;}
+ bool ShouldShowCaptionButtons()const;};
+int main(){
+ OpaqueBrowserFrameView v;
+ v.v.b.type=BrowserWindowInterface::Type::TYPE_POPUP;assert(v.ShouldShowCaptionButtons());
+ v.v.b.type=BrowserWindowInterface::Type::TYPE_NORMAL;assert(!v.ShouldShowCaptionButtons());
+ v.v.b.type=BrowserWindowInterface::Type::TYPE_APP_POPUP;assert(!v.ShouldShowCaptionButtons());
+}
+'''
 stubs = r'''
 #include <algorithm>
 #include <cassert>
@@ -112,6 +180,13 @@ with tempfile.TemporaryDirectory() as directory:
     subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', '-Wall', '-Wextra', '-Werror',
                     str(path / 'test.cc'), '-o', str(path / 'test')], check=True)
     subprocess.run([str(path / 'test')], check=True)
+    for name, body, cases in [('origin', origin_method, origin_stubs),
+                              ('caption', caption_method, caption_stubs)]:
+        code = cases.replace('int main(){', body + '\nint main(){')
+        (path / (name + '.cc')).write_text(code)
+        subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', '-Wall', '-Wextra', '-Werror',
+                        str(path / (name + '.cc')), '-o', str(path / name)], check=True)
+        subprocess.run([str(path / name)], check=True)
     (path / 'layout.cjs').write_text(layout + '\n' + js_cases)
     subprocess.run(['node', str(path / 'layout.cjs')], check=True)
 print('PASS: embedded popup drag/resize, density constraints, browser geometry and dialog/bar isolation')
