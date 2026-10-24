@@ -31601,7 +31601,7 @@ index 410fa477919ec6ed3b7519a6f8bacf8af3874aff..04001c2d8ec5c60629a9b1c3177e5ee8
    }
    return gpu_channel;
 diff --git a/gpu/ipc/service/gpu_channel_manager.cc b/gpu/ipc/service/gpu_channel_manager.cc
-index 661ec6c7216e9f34649b211854d0f8eecfdb631d..916584fdeadd7976919c362919de35ec6f7a6bb1 100644
+index 661ec6c7216e9f34649b211854d0f8eecfdb631d..fa26403ae193433a34338dc2c7726f1a25086f63 100644
 --- a/gpu/ipc/service/gpu_channel_manager.cc
 +++ b/gpu/ipc/service/gpu_channel_manager.cc
 @@ -47,15 +47,21 @@
@@ -31626,18 +31626,21 @@ index 661ec6c7216e9f34649b211854d0f8eecfdb631d..916584fdeadd7976919c362919de35ec
  #include "ui/gl/gl_surface_egl.h"
  #include "ui/gl/gl_version_info.h"
  #include "ui/gl/init/gl_factory.h"
-@@ -900,6 +906,18 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+@@ -900,6 +906,21 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
      ContextResult* result) {
    DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
  
 +  // A failed context cannot be reused after an OHOS device reset. Exit the
 +  // isolated GPU service on fatal creation failure so Chromium starts a fresh
 +  // process, EGL display and device instead of spinning on the lost one.
-+  const auto fail_shared_context = [this, result](ContextResult failure) {
++  const auto fail_shared_context =
++      [result, delegate = delegate_.get()](ContextResult failure) {
 +    *result = failure;
 +#if BUILDFLAG(IS_OHOS)
 +    RestartOhosGpuAfterSharedContextFailure(ui::IsOhosGpuChildProcess(),
-+                                          failure, delegate_);
++                                          failure, delegate);
++#else
++    static_cast<void>(delegate);
 +#endif
 +    return scoped_refptr<SharedContextState>();
 +  };
@@ -31645,7 +31648,7 @@ index 661ec6c7216e9f34649b211854d0f8eecfdb631d..916584fdeadd7976919c362919de35ec
    if (shared_context_state_ && !shared_context_state_->context_lost()) {
      *result = ContextResult::kSuccess;
      return shared_context_state_;
-@@ -955,10 +973,16 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+@@ -955,10 +976,16 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
        // TODO(piman): This might not be fatal, we could recurse into
        // CreateGLContext to get more info, tho it should be exceedingly
        // rare and may not be recoverable anyway.
@@ -31666,7 +31669,7 @@ index 661ec6c7216e9f34649b211854d0f8eecfdb631d..916584fdeadd7976919c362919de35ec
      }
      // Ensure that context creation did not lose track of the intended share
      // group.
-@@ -979,8 +1003,7 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+@@ -979,8 +1006,7 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
    if (!context->MakeCurrent(surface.get())) {
      LOG(ERROR)
          << "ContextResult::kTransientFailure, failed to make context current";
@@ -31676,7 +31679,7 @@ index 661ec6c7216e9f34649b211854d0f8eecfdb631d..916584fdeadd7976919c362919de35ec
    }
  
    // TODO(penghuang): https://crbug.com/899735 Handle device lost for Vulkan.
-@@ -999,8 +1022,7 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+@@ -999,8 +1025,7 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
            gpu_preferences_, gpu_driver_bug_workarounds(), gpu_feature_info())) {
      LOG(ERROR) << "ContextResult::kFatalFailure: Failed to Initialize GL for "
                    " SharedContextState";
@@ -31686,7 +31689,7 @@ index 661ec6c7216e9f34649b211854d0f8eecfdb631d..916584fdeadd7976919c362919de35ec
    }
  
    // Log crash reports when GL errors are generated.
-@@ -1019,8 +1041,7 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+@@ -1019,8 +1044,7 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
            persistent_cache(), use_shader_cache_shm_count_, watchdog_)) {
      LOG(ERROR) << "ContextResult::kFatalFailure: Failed to initialize Skia for "
                    "SharedContextState";
@@ -31696,7 +31699,7 @@ index 661ec6c7216e9f34649b211854d0f8eecfdb631d..916584fdeadd7976919c362919de35ec
    }
  
    shared_context_state_ = std::move(shared_context_state);
-@@ -1095,6 +1116,38 @@ void GpuChannelManager::OnContextLost(
+@@ -1095,6 +1119,38 @@ void GpuChannelManager::OnContextLost(
    if (force_restart || gpu_driver_bug_workarounds_.exit_on_context_lost ||
        (shared_context_state_ && !shared_context_state_->GrContextIsGL())) {
      delegate_->MaybeExitOnContextLost(context_lost_reason);
