@@ -70,7 +70,9 @@ export function layoutAuxiliaryWindow(
     // A shell without a separate-system-window launcher still hosts desktop
     // window.open() popups here. Preserve their requested geometry and native
     // title-bar movement rather than treating them as 30%-height status bars.
-    return layoutAnchoredWindow(state, screen, pxToVp, previous);
+    // Leave room for the host's toolbar/navigation area; a full-screen-height
+    // popup shifted below that toolbar otherwise extends beyond the bottom.
+    return layoutAnchoredWindow(state, screen, pxToVp, previous, MODAL_MAX_HEIGHT_FRACTION);
   }
   const maxWidth = Math.max(screen.width - 2 * AUXILIARY_WINDOW_MARGIN_VP, 1);
   const maxHeight = Math.max(
@@ -115,10 +117,11 @@ function layoutAnchoredWindow(
   state: AuxiliaryWindowState,
   screen: ScreenSizeVp,
   pxToVp: PxToVp,
-  previous?: AuxiliaryWindowView
+  previous?: AuxiliaryWindowView,
+  maxHeightFraction: number = 1
 ): AuxiliaryWindowView {
   const maxWidth = Math.max(screen.width, 1);
-  const maxHeight = Math.max(screen.height, 1);
+  const maxHeight = Math.max(screen.height * maxHeightFraction, 1);
   let width = Math.floor(Math.min(state.width > 0 ? pxToVp(state.width) : 1, maxWidth));
   let height = Math.floor(Math.min(state.height > 0 ? pxToVp(state.height) : 1, maxHeight));
   if (previous !== undefined &&
