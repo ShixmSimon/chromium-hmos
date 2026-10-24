@@ -85,18 +85,21 @@ popup_fallback_stubs = r'''
 #define WARNING 0
 #define LOG(x) std::ostringstream()
 namespace content {struct WebContents {WebContents* opener=nullptr; std::string state="state-ok";};}
-namespace AddTabTypes {constexpr int ADD_ACTIVE=1;}
+namespace AddTabTypes {constexpr int ADD_ACTIVE=1,ADD_INHERIT_OPENER=2;}
 struct TabStripModel {
  static constexpr int kNoTab=-1;
  std::vector<std::unique_ptr<content::WebContents>> pages;
+ content::WebContents* model_opener=nullptr; int added_flags=0;
  int count(){return pages.size();} int active_index(){return count()-1;}
  content::WebContents* GetWebContentsAt(int i){return pages.at(i).get();}
  int GetIndexOfWebContents(content::WebContents* p){
   for(int i=0;i<count();++i){if(pages[i].get()==p)return i;}
   return kNoTab;}
  auto DetachWebContentsAtForInsertion(int i){auto p=std::move(pages.at(i));pages.erase(pages.begin()+i);return p;}
- void InsertWebContentsAt(int i,std::unique_ptr<content::WebContents> p,int,std::optional<int>){
-  pages.insert(pages.begin()+i,std::move(p));}
+ int InsertWebContentsAt(int i,std::unique_ptr<content::WebContents> p,int flags,std::optional<int>){
+  added_flags=flags;pages.insert(pages.begin()+i,std::move(p));return i;}
+ auto* GetTabAtIndex(int i){return GetWebContentsAt(i);}
+ void SetOpenerOfTabAt(int,content::WebContents* p){model_opener=p;}
 };
 struct Window {bool shown=false,activated=false;void Show(){shown=true;}void Activate(){activated=true;}};
 struct BrowserWindowInterface {
@@ -138,6 +141,8 @@ int main(){
  assert(MoveWebPopupToTab(&popup));assert(popup.tabs.count()==0);
  assert(destination.tabs.GetWebContentsAt(1)==identity);
  assert(identity->state=="state-ok" && identity->opener==opener_ptr);
+ assert(destination.tabs.model_opener==opener_ptr);
+ assert(destination.tabs.added_flags & AddTabTypes::ADD_INHERIT_OPENER);
  assert(destination.window.shown && destination.window.activated);
  assert(!MoveWebPopupToTab(&popup));assert(destination.tabs.count()==3);
 }

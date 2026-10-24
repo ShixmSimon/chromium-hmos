@@ -501,8 +501,12 @@ bool MoveWebPopupToTab(BrowserWindowInterface* popup) {
   // Transfer the existing page, including its JS state and renderer opener.
   // Detaching the last tab closes the empty popup; never reload its URL.
   auto detached = source->DetachWebContentsAtForInsertion(0);
-  target->InsertWebContentsAt(index, std::move(detached),
-                              AddTabTypes::ADD_ACTIVE, group);
+  const int inserted_index = target->InsertWebContentsAt(
+      index, std::move(detached),
+      AddTabTypes::ADD_ACTIVE | AddTabTypes::ADD_INHERIT_OPENER, group);
+  if (opener_index != TabStripModel::kNoTab) {
+    target->SetOpenerOfTabAt(inserted_index, target->GetTabAtIndex(opener_index));
+  }
   chrome::ohos::RecordPageOpener(contents, opener);
   destination->GetWindow()->Show();
   destination->GetWindow()->Activate();
