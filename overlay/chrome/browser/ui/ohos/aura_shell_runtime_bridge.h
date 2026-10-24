@@ -133,6 +133,10 @@ gfx::Rect GetAuraShellAnchorRect(gfx::AcceleratedWidget widget,
                                  std::string_view anchor_id);
 void UpdateAuraShellBrowserChrome(const std::string& browser_chrome);
 bool IsAuraShellDesktopUi();
+// Tablets support independent popup windows while system free-window mode is
+// enabled. Phones keep the foreground-tab path even in floating app windows.
+bool SupportsAuraShellFloatingWebPopups();
+void UpdateAuraShellFreeWindowMode(bool enabled);
 
 // Whether Chromium's own UI is on screen because someone asked for it.
 //

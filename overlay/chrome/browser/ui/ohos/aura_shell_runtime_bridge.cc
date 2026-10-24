@@ -314,6 +314,7 @@ struct RuntimeBridgeState {
   std::optional<std::string> pending_theme_font_id GUARDED_BY(lock);
   std::optional<std::string> requested_theme_font_id GUARDED_BY(lock);
   std::string ui_family GUARDED_BY(lock) = "mobile_phone";
+  bool free_window_mode GUARDED_BY(lock) = false;
   std::string color_scheme GUARDED_BY(lock) = "light";
   std::string print_output_directory GUARDED_BY(lock);
   AuraShellBrowserStateCallback browser_state_callback GUARDED_BY(lock);
@@ -5914,13 +5915,13 @@ std::optional<bool> IsAuraShellPictureInPictureWindow(
 }
 
 void RestoreAuraShellPopupWindow(gfx::AcceleratedWidget widget) {
+  if (!SupportsAuraShellFloatingWebPopups()) {
+    return;
+  }
   scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner;
   {
     RuntimeBridgeState& state = GetState();
     base::AutoLock lock(state.lock);
-    if (state.ui_family != "aura_pc") {
-      return;
-    }
     ui_task_runner = state.ui_task_runner;
   }
   if (!ui_task_runner) {
@@ -5963,18 +5964,16 @@ std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(
       browser->GetType() == BrowserWindowInterface::Type::TYPE_POPUP;
   bool desktop_popup = false;
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_POPUP) {
-    RuntimeBridgeState& state = GetState();
-    base::AutoLock lock(state.lock);
-    // Tablet Window.recover() may reject floating windows even when it can
-    // create another fullscreen ability. Keep tablets on the embedded native
-    // popup path, which also works in the sample shell without Lumie.
-    desktop_popup = state.ui_family == "aura_pc";
+    // A mode change affects the next popup. Do not reparent one whose shell
+    // has already attached its own system window and action callback.
+    desktop_popup = SupportsAuraShellFloatingWebPopups() ||
+                    ui::HasOhosWindowActionCallback(widget);
   }
   // A desktop window.open() popup owns a browser and its WebContents, just
   // like a normal browser window. Give it a system-window surface and input
   // target; auxiliary surfaces are height-clamped notification bars and
   // anchored menus, and cannot provide this window's move/resize actions.
-  // Tablets and phones retain in-app popup presentation.
+  // Devices without floating support open ordinary web popups as tabs.
   metadata.is_browser =
       browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL ||
       desktop_popup;
@@ -6467,6 +6466,22 @@ bool IsAuraShellDesktopUi() {
   RuntimeBridgeState& state = GetState();
   base::AutoLock lock(state.lock);
   return state.ui_family == "aura_pc";
+}
+
+bool SupportsAuraShellFloatingWebPopups() {
+  RuntimeBridgeState& state = GetState();
+  base::AutoLock lock(state.lock);
+  return state.ui_family == "aura_pc" ||
+         (state.ui_family == "aura_tablet" && state.free_window_mode);
+}
+
+void UpdateAuraShellFreeWindowMode(bool enabled) {
+  RuntimeBridgeState& state = GetState();
+  base::AutoLock lock(state.lock);
+  if (state.free_window_mode != enabled) {
+    LOG(WARNING) << "OHOS system free-window mode=" << enabled;
+    state.free_window_mode = enabled;
+  }
 }
 
 // File-local: the header exposes the two accessors, not the storage.

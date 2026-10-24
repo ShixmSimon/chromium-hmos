@@ -1396,8 +1396,8 @@ napi_value OnThemeFontChanged(napi_env env, napi_callback_info info) {
 }
 
 napi_value OnWindowIdChanged(napi_env env, napi_callback_info info) {
-  size_t argc = 2;
-  napi_value args[2] = {nullptr};
+  size_t argc = 3;
+  napi_value args[3] = {nullptr};
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
   if (argc < 2) {
     return MakeUndefined(env);
@@ -1407,6 +1407,11 @@ napi_value OnWindowIdChanged(napi_env env, napi_callback_info info) {
   const double value = ReadNumber(env, args[1]);
   if (value > 0.0 &&
       value <= static_cast<double>(std::numeric_limits<int32_t>::max())) {
+    // Only the primary window reports device-wide mode. A newly-created
+    // child must not overwrite it while that child's window is initializing.
+    if (component_id == "aura_shell" && argc >= 3) {
+      chrome::ohos::UpdateAuraShellFreeWindowMode(ReadBool(env, args[2]));
+    }
     const gfx::AcceleratedWidget widget =
         ui::GetOhosAcceleratedWidgetForNativeSurface(component_id);
     const int32_t previous_window_id =

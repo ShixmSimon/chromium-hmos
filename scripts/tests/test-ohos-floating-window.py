@@ -72,6 +72,29 @@ section = re.search(r'^diff --git a/' + re.escape(name) + r' .*?(?=^diff --git |
 caption_source = '\n'.join(line[1:] for line in section.splitlines()
                            if line[:1] in (' ', '+') and not line.startswith('+++'))
 caption_method = extract_function(caption_source, 'bool OpaqueBrowserFrameView::ShouldShowCaptionButtons() const')
+runtime = (ROOT / 'overlay/chrome/browser/ui/ohos/aura_shell_runtime_bridge.cc').read_text()
+popup_policy = extract_function(runtime, 'bool SupportsAuraShellFloatingWebPopups()')
+popup_policy_stubs = r'''
+#include <cassert>
+#include <string>
+namespace base {struct AutoLock {explicit AutoLock(int){}};}
+struct RuntimeBridgeState {int lock=0; std::string ui_family; bool free_window_mode=false;};
+RuntimeBridgeState state;
+RuntimeBridgeState& GetState(){return state;}
+int main(){
+ for(bool mode:{false,true}){
+  state.free_window_mode=mode;
+  state.ui_family="mobile_phone"; assert(!SupportsAuraShellFloatingWebPopups());
+  state.ui_family="aura_tablet"; assert(SupportsAuraShellFloatingWebPopups()==mode);
+  state.ui_family="aura_pc"; assert(SupportsAuraShellFloatingWebPopups());
+  state.ui_family="unknown"; assert(!SupportsAuraShellFloatingWebPopups());
+ }
+ // Changing the system setting affects the next window.open without restart.
+ state.ui_family="aura_tablet";
+ state.free_window_mode=true; assert(SupportsAuraShellFloatingWebPopups());
+ state.free_window_mode=false; assert(!SupportsAuraShellFloatingWebPopups());
+}
+'''
 caption_stubs = r'''
 #include <cassert>
 #define IS_OHOS 1
@@ -181,7 +204,8 @@ with tempfile.TemporaryDirectory() as directory:
                     str(path / 'test.cc'), '-o', str(path / 'test')], check=True)
     subprocess.run([str(path / 'test')], check=True)
     for name, body, cases in [('origin', origin_method, origin_stubs),
-                              ('caption', caption_method, caption_stubs)]:
+                              ('caption', caption_method, caption_stubs),
+                              ('popup_policy', popup_policy, popup_policy_stubs)]:
         code = cases.replace('int main(){', body + '\nint main(){')
         (path / (name + '.cc')).write_text(code)
         subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', '-Wall', '-Wextra', '-Werror',

@@ -752,7 +752,7 @@ export interface INativeContext extends BluetoothNativePort, UsbNativePort, Syst
   OnSurfaceDestroyed(xComponentId: string): void;
   OnVisibilityChanged(xComponentId: string, visible: boolean): void;
   OnFocusChanged(xComponentId: string, focused: boolean): void;
-  OnWindowIdChanged(xComponentId: string, windowId: number): void;
+  OnWindowIdChanged(xComponentId: string, windowId: number, freeWindowMode?: boolean): void;
   OnThemeFontChanged(xComponentId: string, fontId: string): void;
   DispatchPointerEvent(xComponentId: string, eventJson: string): void;
   DispatchKeyEvent(xComponentId: string, eventJson: string): boolean;
@@ -867,9 +867,9 @@ export class NativeContext {
     });
   }
 
-  OnWindowIdChanged(windowId: number): void {
+  OnWindowIdChanged(windowId: number, freeWindowMode: boolean = false): void {
     this.callVoid('OnWindowIdChanged', () => {
-      this.nativeContext!.OnWindowIdChanged(this.xComponentId, windowId);
+      this.nativeContext!.OnWindowIdChanged(this.xComponentId, windowId, freeWindowMode);
     });
   }
 
