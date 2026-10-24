@@ -31601,10 +31601,20 @@ index 410fa477919ec6ed3b7519a6f8bacf8af3874aff..04001c2d8ec5c60629a9b1c3177e5ee8
    }
    return gpu_channel;
 diff --git a/gpu/ipc/service/gpu_channel_manager.cc b/gpu/ipc/service/gpu_channel_manager.cc
-index 661ec6c7216e9f34649b211854d0f8eecfdb631d..77761d0b153cba9ef16443afea40b3a19a4858dc 100644
+index 661ec6c7216e9f34649b211854d0f8eecfdb631d..916584fdeadd7976919c362919de35ec6f7a6bb1 100644
 --- a/gpu/ipc/service/gpu_channel_manager.cc
 +++ b/gpu/ipc/service/gpu_channel_manager.cc
-@@ -53,9 +53,11 @@
+@@ -47,15 +47,21 @@
+ #include "gpu/ipc/common/memory_stats.h"
+ #include "gpu/ipc/service/gpu_channel.h"
+ #include "gpu/ipc/service/gpu_channel_manager_delegate.h"
++#if BUILDFLAG(IS_OHOS)
++#include "gpu/ipc/service/ohos_gpu_context_recovery.h"
++#include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
++#endif
+ #include "gpu/ipc/service/gpu_watchdog_thread.h"
+ #include "third_party/perfetto/include/perfetto/tracing/track.h"
+ #include "third_party/skia/include/core/SkGraphics.h"
  #include "third_party/skia/include/gpu/ganesh/GrDirectContext.h"
  #include "third_party/skia/include/gpu/ganesh/GrTypes.h"
  #include "ui/gl/gl_bindings.h"
@@ -31616,12 +31626,33 @@ index 661ec6c7216e9f34649b211854d0f8eecfdb631d..77761d0b153cba9ef16443afea40b3a1
  #include "ui/gl/gl_surface_egl.h"
  #include "ui/gl/gl_version_info.h"
  #include "ui/gl/init/gl_factory.h"
-@@ -955,8 +957,15 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+@@ -900,6 +906,18 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+     ContextResult* result) {
+   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+ 
++  // A failed context cannot be reused after an OHOS device reset. Exit the
++  // isolated GPU service on fatal creation failure so Chromium starts a fresh
++  // process, EGL display and device instead of spinning on the lost one.
++  const auto fail_shared_context = [this, result](ContextResult failure) {
++    *result = failure;
++#if BUILDFLAG(IS_OHOS)
++    RestartOhosGpuAfterSharedContextFailure(ui::IsOhosGpuChildProcess(),
++                                          failure, delegate_);
++#endif
++    return scoped_refptr<SharedContextState>();
++  };
++
+   if (shared_context_state_ && !shared_context_state_->context_lost()) {
+     *result = ContextResult::kSuccess;
+     return shared_context_state_;
+@@ -955,10 +973,16 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
        // TODO(piman): This might not be fatal, we could recurse into
        // CreateGLContext to get more info, tho it should be exceedingly
        // rare and may not be recoverable anyway.
 -      LOG(ERROR) << "ContextResult::kFatalFailure: "
 -                    "Failed to create shared context for virtualization.";
+-      *result = ContextResult::kFatalFailure;
+-      return nullptr;
 +      // Exceedingly rare it is not, when GL never came up at all: every
 +      // channel that is established tries again. Say the first few and
 +      // then thin it out, so what ANGLE said stays readable.
@@ -31631,10 +31662,41 @@ index 661ec6c7216e9f34649b211854d0f8eecfdb631d..77761d0b153cba9ef16443afea40b3a1
 +                      "Failed to create shared context for virtualization. ("
 +                   << failures << ")";
 +      }
-       *result = ContextResult::kFatalFailure;
-       return nullptr;
++      return fail_shared_context(ContextResult::kFatalFailure);
      }
-@@ -1095,6 +1104,38 @@ void GpuChannelManager::OnContextLost(
+     // Ensure that context creation did not lose track of the intended share
+     // group.
+@@ -979,8 +1003,7 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+   if (!context->MakeCurrent(surface.get())) {
+     LOG(ERROR)
+         << "ContextResult::kTransientFailure, failed to make context current";
+-    *result = ContextResult::kTransientFailure;
+-    return nullptr;
++    return fail_shared_context(ContextResult::kTransientFailure);
+   }
+ 
+   // TODO(penghuang): https://crbug.com/899735 Handle device lost for Vulkan.
+@@ -999,8 +1022,7 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+           gpu_preferences_, gpu_driver_bug_workarounds(), gpu_feature_info())) {
+     LOG(ERROR) << "ContextResult::kFatalFailure: Failed to Initialize GL for "
+                   " SharedContextState";
+-    *result = ContextResult::kFatalFailure;
+-    return nullptr;
++    return fail_shared_context(ContextResult::kFatalFailure);
+   }
+ 
+   // Log crash reports when GL errors are generated.
+@@ -1019,8 +1041,7 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
+           persistent_cache(), use_shader_cache_shm_count_, watchdog_)) {
+     LOG(ERROR) << "ContextResult::kFatalFailure: Failed to initialize Skia for "
+                   "SharedContextState";
+-    *result = ContextResult::kFatalFailure;
+-    return nullptr;
++    return fail_shared_context(ContextResult::kFatalFailure);
+   }
+ 
+   shared_context_state_ = std::move(shared_context_state);
+@@ -1095,6 +1116,38 @@ void GpuChannelManager::OnContextLost(
    if (force_restart || gpu_driver_bug_workarounds_.exit_on_context_lost ||
        (shared_context_state_ && !shared_context_state_->GrContextIsGL())) {
      delegate_->MaybeExitOnContextLost(context_lost_reason);

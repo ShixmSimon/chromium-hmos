@@ -34,6 +34,44 @@ def compile_run(source, files=None):
 
 
 class RecoveryTest(unittest.TestCase):
+    def test_fatal_shared_context_restarts_only_the_isolated_gpu(self):
+        # Execute the production recovery helper; only process transport is stubbed.
+        compile_run(r'''
+#include <cassert>
+#include "gpu/ipc/service/ohos_gpu_context_recovery.h"
+int main() {
+  using namespace gpu;
+  for (bool child : {false, true}) {
+    for (ContextResult result : {ContextResult::kSuccess,
+                                ContextResult::kTransientFailure,
+                                ContextResult::kFatalFailure}) {
+      GpuChannelManagerDelegate delegate;
+      for (int client = 0; client < 1000; ++client)
+        RestartOhosGpuAfterSharedContextFailure(child, result, &delegate);
+      assert(delegate.exits == (child && result == ContextResult::kFatalFailure ? 1 : 0));
+    }
+  }
+}
+''', {
+            'gpu/command_buffer/common/context_result.h':
+                '#pragma once\nnamespace gpu { enum class ContextResult { kSuccess, kTransientFailure, kFatalFailure }; }',
+            'gpu/ipc/service/gpu_channel_manager_delegate.h': r'''
+#pragma once
+#include <initializer_list>
+namespace gpu {
+namespace error { enum ContextLostReason { kMakeCurrentFailed }; }
+struct GpuChannelManagerDelegate {
+  int exits = 0;
+  bool IsExiting() const { return exits != 0; }
+  void MaybeExitOnContextLost(error::ContextLostReason reason) {
+    assert(reason == error::kMakeCurrentFailed);
+    ++exits;
+  }
+};
+}
+''',
+        })
+
     def test_fork_cleanup_keeps_trace_numbers_without_leaking_app_channels(self):
         source = (ROOT / 'overlay/base/process/fork_server_ohos.cc').read_text()
         functions = '\n'.join(function(source, name) for name in (
