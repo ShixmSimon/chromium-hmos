@@ -789,6 +789,12 @@ export struct WebWindow {
           operation = this.activeWindow.minimize();
           break;
         case 'restore':
+          // Free-window mode may already have opened this ability floating.
+          // recover() then rejects with a repeated-operation error, which is
+          // not a popup creation failure.
+          if (this.activeWindow.getWindowStatus() === window.WindowStatusType.FLOATING) {
+            return;
+          }
           operation = this.activeWindow.recover();
           break;
         case 'startMoving':
