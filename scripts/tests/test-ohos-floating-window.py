@@ -87,12 +87,13 @@ popup_fallback_stubs = r'''
 namespace content {struct WebContents {WebContents* opener=nullptr; std::string state="state-ok";};}
 namespace AddTabTypes {constexpr int ADD_ACTIVE=1;}
 struct TabStripModel {
+ static constexpr int kNoTab=-1;
  std::vector<std::unique_ptr<content::WebContents>> pages;
  int count(){return pages.size();} int active_index(){return count()-1;}
  content::WebContents* GetWebContentsAt(int i){return pages.at(i).get();}
- std::optional<int> GetIndexOfWebContents(content::WebContents* p){
+ int GetIndexOfWebContents(content::WebContents* p){
   for(int i=0;i<count();++i){if(pages[i].get()==p)return i;}
-  return {};}
+  return kNoTab;}
  auto DetachWebContentsAtForInsertion(int i){auto p=std::move(pages.at(i));pages.erase(pages.begin()+i);return p;}
  void InsertWebContentsAt(int i,std::unique_ptr<content::WebContents> p,int,std::optional<int>){
   pages.insert(pages.begin()+i,std::move(p));}
@@ -111,7 +112,7 @@ struct GlobalBrowserCollection {
 };
 BrowserWindowInterface* FindBrowserForWebContents(content::WebContents* p){
  for(auto* b:GlobalBrowserCollection::GetInstance()->browsers)
-  if(b->tabs.GetIndexOfWebContents(p))return b;
+  if(b->tabs.GetIndexOfWebContents(p)!=TabStripModel::kNoTab)return b;
  return nullptr;
 }
 namespace chrome::ohos {

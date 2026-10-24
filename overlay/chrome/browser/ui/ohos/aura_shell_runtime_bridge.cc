@@ -493,8 +493,10 @@ bool MoveWebPopupToTab(BrowserWindowInterface* popup) {
     return false;
   }
   TabStripModel* target = destination->GetTabStripModel();
-  const int index = target->GetIndexOfWebContents(opener)
-                        .value_or(target->active_index()) + 1;
+  const int opener_index = target->GetIndexOfWebContents(opener);
+  const int index = (opener_index == TabStripModel::kNoTab
+                         ? target->active_index()
+                         : opener_index) + 1;
   const auto group = chrome::ohos::GroupForPageOpenedFrom(target, opener);
   // Transfer the existing page, including its JS state and renderer opener.
   // Detaching the last tab closes the empty popup; never reload its URL.
