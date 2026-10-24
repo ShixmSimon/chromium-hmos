@@ -8277,7 +8277,7 @@ index 19b58e11263f194a50736c6b6fe8a681eab93f5b..98c7bb524ff3cb6a3c32d29e1087ba97
        media_router::MediaRouterDialogController::GetOrCreateForWebContents(
            browser->GetTabStripModel()->GetActiveWebContents());
 diff --git a/chrome/browser/ui/browser_tabstrip.cc b/chrome/browser/ui/browser_tabstrip.cc
-index 039a885a6ef00dacccfce6034b500fcf42bf9df7..41dfad030b3eb144fd29f9a62b895f368ae1a5da 100644
+index 039a885a6ef00dacccfce6034b500fcf42bf9df7..1ba2d544e562a021ff68757d9435fd7e43c3d74e 100644
 --- a/chrome/browser/ui/browser_tabstrip.cc
 +++ b/chrome/browser/ui/browser_tabstrip.cc
 @@ -4,6 +4,12 @@
@@ -8293,19 +8293,17 @@ index 039a885a6ef00dacccfce6034b500fcf42bf9df7..41dfad030b3eb144fd29f9a62b895f36
  #include <optional>
  
  #include "base/command_line.h"
-@@ -109,6 +115,22 @@ content::WebContents* AddWebContents(
+@@ -109,6 +115,20 @@ content::WebContents* AddWebContents(
    // Can't create a new contents for the current tab - invalid case.
    DCHECK(disposition != WindowOpenDisposition::CURRENT_TAB);
  
 +#if BUILDFLAG(IS_OHOS)
-+  // A phone shows one browser window, full screen. A popup -- window.open()
-+  // with window features, which is how sites open "Sign in with Google" or a
-+  // payment -- became a Browser window of its own, which the shell could only
-+  // draw as a small floating box clamped to a third of the screen, its page
-+  // cut off. Open it as a tab, as Chrome on Android does: the opener link
-+  // survives, so the page can still talk to it and window.close() it, and the
-+  // tab joins the opener's group below.
-+  if (chrome::ohos::IsAuraShellMobilePhoneUi() &&
++  // Only the desktop shell can host independent floating browser windows.
++  // Tablets also reject the system recover() request with "device is not
++  // supported". Use the phone's foreground-tab path on those devices rather
++  // than opening a fullscreen window or an embedded login drawer. Reusing
++  // new_contents preserves window.opener, postMessage and window.close().
++  if (!chrome::ohos::IsAuraShellDesktopUi() &&
 +      browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL &&
 +      (disposition == WindowOpenDisposition::NEW_POPUP ||
 +       disposition == WindowOpenDisposition::NEW_WINDOW)) {
@@ -8316,7 +8314,7 @@ index 039a885a6ef00dacccfce6034b500fcf42bf9df7..41dfad030b3eb144fd29f9a62b895f36
    NavigateParams params(browser, std::move(new_contents));
    params.source_contents = source_contents;
    params.url = target_url;
-@@ -123,7 +145,39 @@ content::WebContents* AddWebContents(
+@@ -123,7 +143,39 @@ content::WebContents* AddWebContents(
  
    ConfigureTabGroupForNavigation(&params);
  
