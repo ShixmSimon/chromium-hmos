@@ -485,6 +485,7 @@ export interface DroppedFileRef {
 }
 
 export interface BrowserCommandPayload {
+  popupWidget?: number;
   startupToken?: string;
   startupPhase?: 'ready' | 'frame' | 'cancel';
   command: string;

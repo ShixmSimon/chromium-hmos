@@ -799,12 +799,24 @@ export struct WebWindow {
       }
     } catch (error) {
       this.reportError(this.normalizeError(error));
+      if (action === 'restore') {
+        this.fallbackPopupToTab();
+      }
       return;
     }
 
     operation.catch((error: Error) => {
       this.reportError(error);
+      if (action === 'restore') {
+        this.fallbackPopupToTab();
+      }
     });
+  }
+
+  private fallbackPopupToTab(): void {
+    if (this.xComponentId.startsWith('aura_win_')) {
+      this.nativeContext?.ExecuteBrowserCommand(JSON.stringify({ command: 'fallbackWebPopupToTab' }));
+    }
   }
 
   private handleWindowSizeChange(size: window.Size): void {

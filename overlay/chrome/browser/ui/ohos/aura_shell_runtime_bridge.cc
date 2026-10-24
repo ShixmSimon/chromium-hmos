@@ -460,6 +460,54 @@ BrowserWindowInterface* FindBrowserForWebContents(
   return match;
 }
 
+bool MoveWebPopupToTab(BrowserWindowInterface* popup) {
+  if (!popup ||
+      popup->GetType() != BrowserWindowInterface::Type::TYPE_POPUP) {
+    return false;
+  }
+  TabStripModel* source = popup->GetTabStripModel();
+  if (!source || source->count() != 1) {
+    return false;
+  }
+  content::WebContents* contents = source->GetWebContentsAt(0);
+  content::WebContents* opener = chrome::ohos::PageOpenerOf(contents);
+  BrowserWindowInterface* destination = FindBrowserForWebContents(opener);
+  auto usable = [popup](BrowserWindowInterface* candidate) {
+    return candidate && candidate != popup &&
+           candidate->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL &&
+           candidate->GetProfile() == popup->GetProfile();
+  };
+  if (!usable(destination)) {
+    destination = nullptr;
+    if (auto* browsers = GlobalBrowserCollection::GetInstance()) {
+      browsers->ForEach([&](BrowserWindowInterface* candidate) {
+        if (usable(candidate)) {
+          destination = candidate;
+          return false;
+        }
+        return true;
+      });
+    }
+  }
+  if (!destination || !destination->GetTabStripModel()) {
+    return false;
+  }
+  TabStripModel* target = destination->GetTabStripModel();
+  const int index = target->GetIndexOfWebContents(opener)
+                        .value_or(target->active_index()) + 1;
+  const auto group = chrome::ohos::GroupForPageOpenedFrom(target, opener);
+  // Transfer the existing page, including its JS state and renderer opener.
+  // Detaching the last tab closes the empty popup; never reload its URL.
+  auto detached = source->DetachWebContentsAtForInsertion(0);
+  target->InsertWebContentsAt(index, std::move(detached),
+                              AddTabTypes::ADD_ACTIVE, group);
+  chrome::ohos::RecordPageOpener(contents, opener);
+  destination->GetWindow()->Show();
+  destination->GetWindow()->Activate();
+  LOG(WARNING) << "OHOS web popup moved to opener window as a tab";
+  return true;
+}
+
 void DispatchRuntimeEvent(gfx::AcceleratedWidget widget,
                           base::DictValue event) {
   event.Set("version", 1);
@@ -4496,6 +4544,18 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
 
   BrowserWindowInterface* browser = FindBrowserForWidget(widget);
   TabStripModel* tabs = browser ? browser->GetTabStripModel() : nullptr;
+  if (*name == "fallbackWebPopupToTab") {
+    const double popup_widget = command.FindDouble("popupWidget").value_or(0);
+    if (popup_widget > 0 && std::isfinite(popup_widget) &&
+        std::floor(popup_widget) == popup_widget &&
+        popup_widget < static_cast<double>(
+                           std::numeric_limits<gfx::AcceleratedWidget>::max())) {
+      browser = FindBrowserForWidget(
+          static_cast<gfx::AcceleratedWidget>(popup_widget));
+    }
+    MoveWebPopupToTab(browser);
+    return;
+  }
   if (*name == "startupProbe") {
     if (tabs && widget != gfx::kNullAcceleratedWidget) {
       WatchBrowserState(tabs);
@@ -5691,6 +5751,7 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "closeTabById",
       "moveTab",
       "moveTabToNewWindow",
+      "fallbackWebPopupToTab",
       "setRequestDesktopSite",
       "setTabMuted",
       "setZoom",

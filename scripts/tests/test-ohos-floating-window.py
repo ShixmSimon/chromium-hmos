@@ -74,6 +74,73 @@ caption_source = '\n'.join(line[1:] for line in section.splitlines()
 caption_method = extract_function(caption_source, 'bool OpaqueBrowserFrameView::ShouldShowCaptionButtons() const')
 runtime = (ROOT / 'overlay/chrome/browser/ui/ohos/aura_shell_runtime_bridge.cc').read_text()
 popup_policy = extract_function(runtime, 'bool SupportsAuraShellFloatingWebPopups()')
+popup_fallback = extract_function(runtime, 'bool MoveWebPopupToTab(')
+popup_fallback_stubs = r'''
+#include <cassert>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+#include <sstream>
+#define WARNING 0
+#define LOG(x) std::ostringstream()
+namespace content {struct WebContents {WebContents* opener=nullptr; std::string state="state-ok";};}
+namespace AddTabTypes {constexpr int ADD_ACTIVE=1;}
+struct TabStripModel {
+ std::vector<std::unique_ptr<content::WebContents>> pages;
+ int count(){return pages.size();} int active_index(){return count()-1;}
+ content::WebContents* GetWebContentsAt(int i){return pages.at(i).get();}
+ std::optional<int> GetIndexOfWebContents(content::WebContents* p){
+  for(int i=0;i<count();++i){if(pages[i].get()==p)return i;}
+  return {};}
+ auto DetachWebContentsAtForInsertion(int i){auto p=std::move(pages.at(i));pages.erase(pages.begin()+i);return p;}
+ void InsertWebContentsAt(int i,std::unique_ptr<content::WebContents> p,int,std::optional<int>){
+  pages.insert(pages.begin()+i,std::move(p));}
+};
+struct Window {bool shown=false,activated=false;void Show(){shown=true;}void Activate(){activated=true;}};
+struct BrowserWindowInterface {
+ enum class Type {TYPE_NORMAL,TYPE_POPUP};Type type=Type::TYPE_POPUP;
+ int* profile=nullptr;TabStripModel tabs;Window window;
+ Type GetType(){return type;}int* GetProfile(){return profile;}
+ TabStripModel* GetTabStripModel(){return &tabs;}Window* GetWindow(){return &window;}
+};
+struct GlobalBrowserCollection {
+ std::vector<BrowserWindowInterface*> browsers;
+ static GlobalBrowserCollection* GetInstance(){static GlobalBrowserCollection c;return &c;}
+ template<class F>void ForEach(F fn){for(auto* b:browsers)if(!fn(b))break;}
+};
+BrowserWindowInterface* FindBrowserForWebContents(content::WebContents* p){
+ for(auto* b:GlobalBrowserCollection::GetInstance()->browsers)
+  if(b->tabs.GetIndexOfWebContents(p))return b;
+ return nullptr;
+}
+namespace chrome::ohos {
+auto* PageOpenerOf(content::WebContents* p){return p->opener;}
+std::optional<int> GroupForPageOpenedFrom(TabStripModel*,content::WebContents*){return {};}
+void RecordPageOpener(content::WebContents* p,content::WebContents* opener){p->opener=opener;}
+}
+int main(){
+ int profile=1,other_profile=2;
+ BrowserWindowInterface popup,destination;popup.profile=&profile;
+ destination.type=BrowserWindowInterface::Type::TYPE_NORMAL;destination.profile=&other_profile;
+ auto opener=std::make_unique<content::WebContents>();auto* opener_ptr=opener.get();
+ destination.tabs.pages.push_back(std::move(opener));
+ destination.tabs.pages.push_back(std::make_unique<content::WebContents>());
+ auto child=std::make_unique<content::WebContents>();auto* identity=child.get();child->opener=opener_ptr;
+ popup.tabs.pages.push_back(std::move(child));
+ auto& browsers=GlobalBrowserCollection::GetInstance()->browsers;browsers={&popup,&destination};
+ assert(!MoveWebPopupToTab(nullptr));
+ assert(!MoveWebPopupToTab(&destination));
+ // Never move a page to a different profile or lose it when no host exists.
+ assert(!MoveWebPopupToTab(&popup));assert(popup.tabs.count()==1);
+ destination.profile=&profile;
+ assert(MoveWebPopupToTab(&popup));assert(popup.tabs.count()==0);
+ assert(destination.tabs.GetWebContentsAt(1)==identity);
+ assert(identity->state=="state-ok" && identity->opener==opener_ptr);
+ assert(destination.window.shown && destination.window.activated);
+ assert(!MoveWebPopupToTab(&popup));assert(destination.tabs.count()==3);
+}
+'''
 popup_policy_stubs = r'''
 #include <cassert>
 #include <string>
@@ -99,6 +166,8 @@ caption_stubs = r'''
 #include <cassert>
 #define IS_OHOS 1
 #define BUILDFLAG(x) x
+bool floating=false;
+namespace chrome::ohos {bool SupportsAuraShellFloatingWebPopups(){return floating;}}
 struct BrowserWindowInterface {enum class Type {TYPE_NORMAL,TYPE_POPUP,TYPE_APP_POPUP};
  Type type;Type GetType(){return type;}};
 struct View {BrowserWindowInterface b;auto* browser(){return &b;}};
@@ -109,6 +178,8 @@ int main(){
  v.v.b.type=BrowserWindowInterface::Type::TYPE_POPUP;assert(v.ShouldShowCaptionButtons());
  v.v.b.type=BrowserWindowInterface::Type::TYPE_NORMAL;assert(!v.ShouldShowCaptionButtons());
  v.v.b.type=BrowserWindowInterface::Type::TYPE_APP_POPUP;assert(!v.ShouldShowCaptionButtons());
+ floating=true;
+ v.v.b.type=BrowserWindowInterface::Type::TYPE_POPUP;assert(!v.ShouldShowCaptionButtons());
 }
 '''
 stubs = r'''
@@ -205,7 +276,8 @@ with tempfile.TemporaryDirectory() as directory:
     subprocess.run([str(path / 'test')], check=True)
     for name, body, cases in [('origin', origin_method, origin_stubs),
                               ('caption', caption_method, caption_stubs),
-                              ('popup_policy', popup_policy, popup_policy_stubs)]:
+                              ('popup_policy', popup_policy, popup_policy_stubs),
+                              ('popup_fallback', popup_fallback, popup_fallback_stubs)]:
         code = cases.replace('int main(){', body + '\nint main(){')
         (path / (name + '.cc')).write_text(code)
         subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', '-Wall', '-Wextra', '-Werror',
