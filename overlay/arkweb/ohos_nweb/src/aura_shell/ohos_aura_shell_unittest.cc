@@ -407,6 +407,20 @@ TEST(NWebAuraShellTest, ChromiumArgumentsPlaceTheGpuProcess) {
   EXPECT_FALSE(ContainsArgument(arguments, "--use-vulkan=native"));
 }
 
+TEST(NWebAuraShellTest, IsolatedTabletGlDoesNotImplicitlyEnableGraphite) {
+  AuraStartupConfig config;
+  config.device_class = "tablet";
+  config.ui_family = "aura_tablet";
+  config.gpu_process = "separate";
+  config.skia_backend = "gl";
+  OhosChromeMainRunner runner;
+  const auto arguments = runner.BuildArgumentsForTesting(config);
+  EXPECT_FALSE(ContainsArgument(arguments, "--in-process-gpu"));
+  EXPECT_TRUE(ContainsArgument(arguments, "--disable-skia-graphite"));
+  EXPECT_TRUE(ContainsArgument(arguments, "--disable-features=Vulkan"));
+  EXPECT_FALSE(ContainsArgument(arguments, "--use-vulkan=native"));
+}
+
 TEST(NWebAuraShellTest, GraphiteRequiresSeparateGpuAndKeepsGaneshAvailable) {
   OhosChromeMainRunner runner;
   AuraStartupConfig config;

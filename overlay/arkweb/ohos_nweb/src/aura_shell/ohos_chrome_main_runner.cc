@@ -633,6 +633,11 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
           "AuraShell ignored skiaBackend vulkan: the GPU is not in a "
           "separate GPU process");
     }
+  } else if (gpu_in_own_process && !config.experimental_phone_fork) {
+    // M155's late Graphite check otherwise selects Graphite merely because a
+    // GPU child is available. An explicit GL selection must stay Ganesh GL.
+    arguments.push_back("--disable-skia-graphite");
+    AppendToListSwitch(&arguments, "disable-features", "Vulkan");
   }
 
   // Native EGL WSI needs the same user output mode and trusted luminance
