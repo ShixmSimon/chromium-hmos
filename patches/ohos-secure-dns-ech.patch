@@ -1,0 +1,78 @@
+diff --git a/net/base/features.cc b/net/base/features.cc
+--- a/net/base/features.cc
++++ b/net/base/features.cc
+@@ -41,7 +41,7 @@
+ 
+ BASE_FEATURE(kAsyncDns,
+ #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID) || \
+-    BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
++    BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_OHOS)
+              base::FEATURE_ENABLED_BY_DEFAULT
+ #else
+              base::FEATURE_DISABLED_BY_DEFAULT
+diff --git a/net/dns/dns_config_service_posix.cc b/net/dns/dns_config_service_posix.cc
+--- a/net/dns/dns_config_service_posix.cc
++++ b/net/dns/dns_config_service_posix.cc
+@@ -23,6 +23,8 @@
+ #include "base/task/single_thread_task_runner.h"
+ #include "base/threading/scoped_blocking_call.h"
+ #include "base/time/time.h"
++#include "base/timer/timer.h"
++#include "net/base/network_change_notifier.h"
+ #include "build/build_config.h"
+ #include "net/base/ip_endpoint.h"
+ #include "net/dns/dns_config.h"
+@@ -55,6 +57,44 @@
+   }
+ };
+ 
++#elif BUILDFLAG(IS_OHOS)
++
++// HarmonyOS exposes DNS via NetConn, not /etc/resolv.conf. ScopedResState
++// already reads NetConn properties. Watch network changes and poll as a
++// fallback for DNS-only/VPN changes that do not change the interface address.
++class DnsConfigWatcher : public NetworkChangeNotifier::IPAddressObserver {
++ public:
++  using CallbackType = base::RepeatingCallback<void(bool succeeded)>;
++
++  ~DnsConfigWatcher() override {
++    if (watching_) {
++      NetworkChangeNotifier::RemoveIPAddressObserver(this);
++    }
++  }
++
++  bool Watch(const CallbackType& callback) {
++    callback_ = callback;
++    NetworkChangeNotifier::AddIPAddressObserver(this);
++    watching_ = true;
++    timer_.Start(FROM_HERE, base::Seconds(30),
++                 base::BindRepeating(&DnsConfigWatcher::Poll,
++                                     base::Unretained(this)));
++    return true;
++  }
++
++  void OnIPAddressChanged(
++      NetworkChangeNotifier::IPAddressChangeType) override {
++    Poll();
++  }
++
++ private:
++  void Poll() { callback_.Run(true); }
++
++  bool watching_ = false;
++  CallbackType callback_;
++  base::RepeatingTimer timer_;
++};
++
+ #elif BUILDFLAG(IS_MAC)
+ 
+ // DnsConfigWatcher for OS_MAC is in dns_config_watcher_mac.{hh,cc}.
+@@ -139,7 +179,7 @@
+       success = false;
+     }
+ // Hosts file should never change on iOS, so don't watch it there.
+-#if !BUILDFLAG(IS_IOS)
++#if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_OHOS)
+     if (!hosts_watcher_.Watch(
+             base::FilePath(kFilePathHosts),
+             base::FilePathWatcher::Type::kNonRecursive,

@@ -168,6 +168,11 @@ if [[ -n "${PACKAGE_ONLY:-}" ]]; then
 else
   compiled_here=true
 
+  # Shared by 154 and the prepared 155 snapshot.
+  apply_incremental_patch "${repo_root}/patches/ohos-secure-dns-ech.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-https-first-warning.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-shell-preloading.patch"
+
   if [[ "${CHROMIUM_MAJOR:-154}" == 155 ]]; then
     say "155 uses the complete migrated native snapshot"
     bash "${repo_root}/scripts/setup-adblock-rust.sh" || die "Rust toolchain setup failed"

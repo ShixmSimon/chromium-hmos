@@ -40,6 +40,8 @@
 
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/json/json_reader.h"
+#include "base/json/json_writer.h"
 #include "base/logging.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
@@ -47,6 +49,7 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/ohos/shell_default_site_settings_ohos.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "chrome/browser/ui/ohos/shell_settings_ohos_internal.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -212,6 +215,40 @@ bool RuleCoversOrigin(const ContentSettingPatternSource& rule,
 
 }  // namespace
 
+std::optional<base::Value> ReadDefaultSiteSettings(Profile* profile) {
+  auto* map = profile
+      ? HostContentSettingsMapFactory::GetForProfile(profile) : nullptr;
+  if (!map) {
+    return std::nullopt;
+  }
+  base::ListValue items;
+  for (const auto& type : kSiteSettingTypes) {
+    auto item = ReadDefaultSiteSetting(map, type.name, type.type);
+    if (item) {
+      items.Append(std::move(*item));
+    }
+  }
+  base::DictValue config;
+  config.Set("items", std::move(items));
+  auto json = base::WriteJson(config);
+  return json ? std::make_optional(base::Value(std::move(*json)))
+              : std::nullopt;
+}
+
+bool WriteDefaultSiteSettings(Profile* profile, const base::Value& value) {
+  if (!profile || !value.is_string() || value.GetString().size() > 1024) {
+    return false;
+  }
+  auto config = base::JSONReader::ReadDict(value.GetString(),
+                                          base::JSON_PARSE_RFC);
+  const auto* type = config ? FindType(config->FindString("type")) : nullptr;
+  const auto setting = config
+      ? SettingFromShell(config->FindString("setting")) : std::nullopt;
+  return type && setting && WriteDefaultSiteSetting(
+      HostContentSettingsMapFactory::GetForProfile(profile), type->type,
+      *setting);
+}
+
 void GetSiteSettings(const ShellCommandContext& context,
                      const base::DictValue& command) {
   HostContentSettingsMap* map = SettingsMap(context);
@@ -297,15 +334,10 @@ void SetDefaultSiteSetting(const ShellCommandContext& context,
   const SiteSettingType* type = FindType(command.FindString("type"));
   const std::optional<ContentSetting> setting =
       SettingFromShell(command.FindString("setting"));
-  const content_settings::ContentSettingsInfo* info =
-      type ? content_settings::ContentSettingsRegistry::GetInstance()->Get(
-                 type->type)
-           : nullptr;
-  if (!map || !info || !setting || !info->IsDefaultSettingValid(*setting)) {
-    LOG(WARNING) << "OHOS shell setDefaultSiteSetting: bad type or setting";
-    return;
+  if (!type || !setting ||
+      !WriteDefaultSiteSetting(map, type->type, *setting)) {
+    LOG(WARNING) << "OHOS shell setDefaultSiteSetting: invalid or controlled";
   }
-  map->SetDefaultContentSetting(type->type, *setting);
 }
 
 void ResetSiteSettings(const ShellCommandContext& context,

@@ -62,6 +62,8 @@ void SetPref(const ShellCommandContext& context,
              const base::DictValue& command);
 
 // shell_site_settings_ohos.cc
+std::optional<base::Value> ReadDefaultSiteSettings(Profile* profile);
+bool WriteDefaultSiteSettings(Profile* profile, const base::Value& value);
 void GetPageInfo(const ShellCommandContext& context,
                  const base::DictValue& command);
 void SetPagePermission(const ShellCommandContext& context,

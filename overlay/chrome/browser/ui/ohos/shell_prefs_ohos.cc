@@ -40,8 +40,14 @@
 #include "chrome/browser/preloading/preloading_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ohos/url_protection/url_protection.h"
+#include "chrome/browser/ui/ohos/shell_cookie_storage_ohos.h"
+#include "chrome/browser/ui/ohos/shell_image_loading_ohos.h"
+#include "chrome/browser/ui/ohos/shell_default_site_settings_ohos.h"
+#include "chrome/browser/ui/ohos/shell_privacy_prefs_ohos.h"
+#include "chrome/browser/ui/ohos/shell_secure_dns_ohos.h"
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "chrome/browser/ui/ohos/shell_settings_ohos_internal.h"
+#include "chrome/browser/ui/ohos/shell_webrtc_prefs_ohos.h"
 #include "chrome/browser/ui/zoom/chrome_zoom_level_prefs.h"
 #include "chrome/common/pref_names.h"
 #include "components/autofill/core/common/autofill_prefs.h"
@@ -99,6 +105,9 @@ constexpr double kMaxTextScalePercent = 200;
 constexpr double kPercent = 100;
 
 std::optional<base::Value> ReadBlockThirdPartyCookies(Profile* profile) {
+  if (!profile->GetPrefs()->FindPreference(prefs::kCookieControlsMode)) {
+    return std::nullopt;
+  }
   const int mode = profile->GetPrefs()->GetInteger(prefs::kCookieControlsMode);
   return base::Value(
       mode ==
@@ -108,7 +117,7 @@ std::optional<base::Value> ReadBlockThirdPartyCookies(Profile* profile) {
 bool WriteBlockThirdPartyCookies(Profile* profile, const base::Value& value) {
   const std::optional<bool> block = value.GetIfBool();
   PrefService* pref_service = profile->GetPrefs();
-  if (!block ||
+  if (!block || !pref_service->FindPreference(prefs::kCookieControlsMode) ||
       !pref_service->IsUserModifiablePreference(prefs::kCookieControlsMode)) {
     return false;
   }
@@ -157,36 +166,16 @@ bool WriteSafeBrowsing(Profile* profile, const base::Value& value) {
   return false;
 }
 
-std::optional<base::Value> ReadPreloadPages(Profile* profile) {
-  return base::Value(prefetch::GetPreloadPagesState(*profile->GetPrefs()) !=
-                     prefetch::PreloadPagesState::kNoPreloading);
-}
-
-bool WritePreloadPages(Profile* profile, const base::Value& value) {
-  const std::optional<bool> enabled = value.GetIfBool();
-  if (!enabled) {
-    return false;
-  }
-  PrefService* pref_service = profile->GetPrefs();
-  const prefetch::PreloadPagesState current =
-      prefetch::GetPreloadPagesState(*pref_service);
-  // The shell has one switch; turning it on keeps extended preloading if the
-  // user chose that elsewhere.
-  if (*enabled == (current != prefetch::PreloadPagesState::kNoPreloading)) {
-    return true;
-  }
-  prefetch::SetPreloadPagesState(
-      pref_service, *enabled ? prefetch::PreloadPagesState::kStandardPreloading
-                             : prefetch::PreloadPagesState::kNoPreloading);
-  return true;
-}
-
 // A boolean shell key over the default of a content setting: true means
 // `on_setting`, false means the other of allow/block.
 template <ContentSettingsType kType, ContentSetting kOnSetting>
 std::optional<base::Value> ReadDefaultSetting(Profile* profile) {
-  return base::Value(HostContentSettingsMapFactory::GetForProfile(profile)
-                         ->GetDefaultContentSetting(kType) == kOnSetting);
+  auto* map = HostContentSettingsMapFactory::GetForProfile(profile);
+  if (!map || !content_settings::ContentSettingsRegistry::GetInstance()->Get(
+                  kType)) {
+    return std::nullopt;
+  }
+  return base::Value(map->GetDefaultContentSetting(kType) == kOnSetting);
 }
 
 template <ContentSettingsType kType, ContentSetting kOnSetting>
@@ -198,9 +187,9 @@ bool WriteDefaultSetting(Profile* profile, const base::Value& value) {
   constexpr ContentSetting kOffSetting = kOnSetting == CONTENT_SETTING_ALLOW
                                              ? CONTENT_SETTING_BLOCK
                                              : CONTENT_SETTING_ALLOW;
-  HostContentSettingsMapFactory::GetForProfile(profile)
-      ->SetDefaultContentSetting(kType, *on ? kOnSetting : kOffSetting);
-  return true;
+  return WriteDefaultSiteSetting(
+      HostContentSettingsMapFactory::GetForProfile(profile), kType,
+      *on ? kOnSetting : kOffSetting);
 }
 
 std::optional<base::Value> ReadTextScale(Profile* profile) {
@@ -232,6 +221,16 @@ struct CustomPref {
 };
 
 constexpr CustomPref kCustomPrefs[] = {
+    {"imageLoading", &ReadImageLoading, &WriteImageLoading},
+    {"cookieStorage", &ReadCookieStorage, &WriteCookieStorage},
+    {"webRtcIpHandling", &ReadWebRtcIpHandling, &WriteWebRtcIpHandling},
+    {"defaultSiteSettings", &ReadDefaultSiteSettings, &WriteDefaultSiteSettings},
+    {"secureDns", &ReadSecureDns, &WriteSecureDns},
+    {"thirdPartyCookies", &ReadThirdPartyCookies, &WriteThirdPartyCookies},
+    {"httpsFirst", &ReadHttpsFirst, &WriteHttpsFirst},
+    {"preloading", &ReadPreloading, &WritePreloading},
+    {"addressAutofill", &ReadAddressAutofill, &WriteAddressAutofill},
+    {"paymentAutofill", &ReadPaymentAutofill, &WritePaymentAutofill},
     {"blockThirdPartyCookies", &ReadBlockThirdPartyCookies,
      &WriteBlockThirdPartyCookies},
     {"safeBrowsing", &ReadSafeBrowsing, &WriteSafeBrowsing},
