@@ -1,0 +1,1 @@
+/mnt/d/Works/chromium-hmos/overlay/chromium-ui/entry/build/default/outputs/default/entry-default-signed.hap

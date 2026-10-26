@@ -1,0 +1,10 @@
+Already migrated: .
+Already migrated: v8
+Already migrated: third_party/angle
+Already migrated: third_party/dawn
+Already migrated: third_party/ffmpeg
+Already migrated: third_party/pdfium
+Already migrated: third_party/perfetto
+Already migrated: third_party/skia
+Already migrated: third_party/vulkan-loader/src
+Already migrated: third_party/webrtc
