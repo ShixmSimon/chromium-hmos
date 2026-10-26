@@ -746,6 +746,55 @@ Chromium 首次访问时重新抓。这是一直如此，不是偶尔。
 
 偏好键（只接受这些）：`blockThirdPartyCookies`、`doNotTrack`、`safeBrowsing`（`'off' | 'standard' | 'enhanced'`）、`preloadPages`、`popupsBlocked`、`javascriptEnabled`、`textScale`、`autofillAddresses`、`autofillCards`、`downloadAskWhereToSave`、`passwordVault`、`forceDarkWebContents`(网页强制深色,已打开的标签页立即生效)。
 
+`secureDns` 是新增的字符串偏好：内容为 JSON `{ "mode": "off" | "automatic" | "secure", "templates": "...", "managed": false }`。
+读取时 `managed` 必有；写入只需 `mode`、`templates`，不能用 `managed` 绕过策略。它存于当前 user-data-dir 的 **Local State**，不是 Profile 偏好；同一进程的普通/无痕窗口共用，手机一次性无痕 user-data-dir 独立、退出清除。旧 HAR 不返回这个键，外壳应显示不可用。
+`secure` 需要有效的非空 DoH 配置；`automatic` 加空模板表示尝试升级当前 DNS，可能回落明文；`off` 关闭 DoH。写入前一起校验模式、全部模板和两项策略权限，拒绝 HTTP、凭据、片段及过长配置；切入严格模式先写服务地址，退出时先写模式，避免严格模式观察到空服务列表。保存后外壳必须 `getPrefs` 读回确认，不能将 `prefsChanged` 当作 ECH 握手成功。
+ECH 保留 Chromium 的协商/重试逻辑；`secure` 是严格 DNS 模式，不要求所有网站都支持 ECH。连接验收见 [OHOS_SECURE_DNS_ECH.md](OHOS_SECURE_DNS_ECH.md)。
+
+
+`thirdPartyCookies` 与 `httpsFirst` 是新增的字符串偏好（内容为 JSON）。
+
+| 键 | 读取结构 | 写入结构 |
+|---|---|---|
+| `thirdPartyCookies` | `{ "mode": "incognito" \| "block", "managed": boolean }` | `{ "mode": "incognito" \| "block" }` |
+| `httpsFirst` | `{ "mode": "off" \| "balanced" \| "strict", "managed": boolean, "balancedAvailable": boolean }` | `{ "mode": "off" \| "balanced" \| "strict" }` |
+
+- 两者存于当前实例的原始 Profile，普通/无痕窗口共享。手机一次性无痕实例使用独立 user-data-dir，退出清除。读取不写入默认值。
+- `thirdPartyCookies` 复用 `kCookieControlsMode`；`incognito` 写入 `kIncognitoOnly`，`block` 写入 `kBlockThirdParty`。旧 `blockThirdPartyCookies` 布尔键继续兼容。此处是偏好，不是对站点例外/策略后的最终 Cookie 可访问性的诊断，也不会清除 Cookie。
+- `httpsFirst` 通过 `HttpsFirstModeService::GetCurrentSetting/UpdatePrefs` 读写，不绕过内核平衡模式及双偏好同步。`balancedAvailable` 为 false 时不可选 `balanced`。策略或 Advanced Protection 锁定时 `managed` 为 true，写入被拒绝。
+- OHOS 使用 Chromium 原生整页 HTTPS-First 警告，避开需要桌面 TabInterface 对话框承载的新 UI。升级、超时、回退、继续访问后的 HTTP host 例外和证书检查仍由原有内核实现。
+- 关闭 HTTPS-First 不会禁用 HSTS、其他自动升级或全部无痕/启发式保护。两项都不控制 NetworkKit 等系统网络请求。
+- 外壳必须 `getPrefs` 读回确认；缺键表示旧 HAR 不支持，应禁用控件。`prefsChanged` 仅用于通知，不能证明写入或网络行为成功。验收步骤见 [OHOS_PRIVACY_SETTINGS.md](OHOS_PRIVACY_SETTINGS.md)。
+
+
+`preloading` 是字符串偏好，读取 JSON `{ "mode": "off" | "standard" | "extended", "managed": boolean }`，写入只需 `{ "mode": "..." }`。
+它通过 `prefetch::GetPreloadPagesState/SetPreloadPagesState` 读取/修改 `prefetch::prefs::kNetworkPredictionOptions`，不会把已有扩展模式压成普通布尔值，也不会在打开页面时写入默认值。
+注册检查、策略拒写、旧 HAR 缺键禁用、写后读回和 Profile 范围与以上设置一致。旧 `preloadPages` 布尔接口保留，并加入相同的注册/策略检查；已是扩展模式时写入 true 保持扩展，关闭后再启用则使用标准模式。
+这是预加载偏好，不代表当前导航实际会执行预加载；无痕、节省模式、功能配置和站点条件仍由原内核判断，不保证仅用 Wi-Fi。
+
+
+`addressAutofill`、`paymentAutofill` 是带策略元数据的字符串偏好，读取 JSON `{ "mode": "off" | "on", "managed": boolean }`，写入只需 `{ "mode": "off" | "on" }`。
+两项分别使用 `autofill::prefs::kAutofillProfileEnabled`、`kAutofillCreditCardEnabled`，通过 Chromium 的 `Is/SetAutofillProfileEnabled`、`Is/SetAutofillPaymentMethodsEnabled` 读写；地址和付款方式独立，打开设置不修改默认值。
+缺失注册时不返回键，策略不可写时 `managed` 为 true，写入拒绝；旧 `autofillAddresses`、`autofillCards` 布尔接口继续兼容同一底层偏好和原有策略检查。
+读取/写入作用于当前实例的原始 Profile，遵循上述普通/无痕实例范围。外壳需读回确认，旧 HAR 缺键时禁用。关闭仅修改自动保存/填充偏好，不删除资料、不控制密码或 Password Vault、不授予付款云同步，也不绕过身份验证或无痕限制。
+
+
+`defaultSiteSettings` 是字符串偏好，读取 JSON `{ "items": [{ "type": "camera", "setting": "ask", "managed": false, "choices": ["block", "ask"] }] }`，写入只需 `{ "type": "camera", "setting": "block" }`。
+读取支持的类型与网站权限白名单一致，但只返回已在 ContentSettingsRegistry 注册、能提供标准默认值的类型。每项 `choices` 由 `IsDefaultSettingValid` 计算，不能照搬逐网站的“允许/询问/恢复默认”菜单；全局没有移除单个网站例外的 `default` 选项。
+有效默认值的 provider 为用户偏好或内置默认时允许修改；策略、扩展或其他 provider 控制时 `managed` 为 true，写入拒绝。旧 `setDefaultSiteSetting` 命令及 `popupsBlocked` / `javascriptEnabled` 布尔偏好统一使用相同保护，不能写入被遮蔽的用户默认值再报告成功。
+这仅设置默认规则，不修改已有站点例外或存储，不代表某站点实际权限或系统授权；相机/麦克风/定位等系统权限和安全上下文限制仍适用。作用于当前实例原始 Profile，遵循普通/无痕范围。旧 HAR 缺键禁用，保存后必须读回确认。
+
+
+`webRtcIpHandling` 是字符串偏好，读取 JSON `{ "mode": "default" | "default_public_and_private_interfaces" | "default_public_interface_only" | "disable_non_proxied_udp", "managed": boolean, "hasUrlOverrides": boolean }`，写入只需 `{ "mode": "..." }`。
+它读写原始 Profile 的 `prefs::kWebRTCIPHandlingPolicy`，四个值使用 Blink 常量，旧的空/未知值读取时按 renderer 的转换规则显示为 default，不在读取时重写偏好。注册缺失不返回键，策略/扩展不可写时拒写；外壳缺键禁用、保存后读回。
+`hasUrlOverrides` 仅表示已注册的 `kWebRTCIPHandlingUrl` 列表非空，不是当前网页实际命中规则的诊断。写入全局模式不会修改逐 URL 规则、mDNS、UDP 端口范围、媒体权限或现有连接。
+此项不是关闭 WebRTC 或强制全部流量走代理，也不保证隐藏所有 IP；禁止非代理 UDP 仍可能通过 TCP 直连，并可能影响通话。修改后应重新打开网页并建立新 PeerConnection，真实 ICE/代理路径需用新 HAR 验收。
+
+
+`cookieStorage` 是字符串偏好，读取 JSON `{ "mode": "allow" | "session_only" | "block", "managed": boolean }`，写入只需 `{ "mode": "..." }`。
+它读取/修改 HostContentSettingsMap 的 `ContentSettingsType::COOKIES` 全局默认值：对应 ALLOW、SESSION_ONLY、BLOCK。使用与默认网站权限相同的注册表合法性和有效 provider 检查；策略/扩展控制时禁用并拒写，旧 HAR 缺键禁用，写入后必须读回。
+这是 Cookie 默认保存策略，与第三方 Cookie 控制、站点例外共同决定实际行为；修改不重置例外、不修改第三方偏好、不立即清除已有资料。会话 Cookie 的结束/恢复按内核现有机制处理，不保证强制结束应用或恢复会话后立即删除，也不等同于退出清理全部网站数据。范围仍为当前实例原始 Profile。
+
 - `textScale` 是 50–200 的百分比。桌面版 Chromium 没有只放大文字的设置，所以这里改的是网页的默认缩放比例，整页一起放大。网页实际的默认缩放还要乘上系统字体大小（设置 > 显示 > 字体大小，`Configuration.fontSizeScale`，限制在 0.8–2.0），由引擎 HAR 的 `fontscale` 服务自动跟随，外壳不用处理；`textScale` 读出来的仍是外壳设的值，不含系统字体部分。自己设过缩放的网站保持自己的比例。`--disable-features=OhosFollowSystemFontSize` 可关闭跟随。
 - `urlProtectionApiVersion>=1` 将 `safeBrowsing` 映射为独立 OHOS 防钓鱼总开关，见下方“防钓鱼”。新配置默认关闭、来源 local；已有 standard/enhanced 不视为云查询同意。旧版/没有该能力字段时不能承诺安全浏览保护。新版使用原子配置接口切换来源；legacy `setPref` 仍作用于普通 Profile，且不会授予云查询权限。
 - 没有 `passwordFillRequiresAuth`（已去掉）：把已保存的密码填进网页总要验证身份，和查看、复制、编辑、导出一样，没有开关。设备上没有锁屏也没有录入生物特征时没有东西可以拿来验证，照常填充。
@@ -1290,3 +1339,8 @@ iframes, shadow DOM, PDFs or internal pages. No provider networking or credentia
 enter the kernel. The shell must obtain explicit user consent and pull batches;
 ordinary page loading never uploads text. `standard`, `quote`, `gray` presentation
 changes do not create new translation requests. Native device acceptance is pending.
+
+
+### 图片默认加载策略
+
+`imageLoading` 是字符串偏好，读取 JSON `{ "mode": "allow" | "block", "managed": boolean }`，写入 `{ "mode": "allow" | "block" }`。使用当前 Profile 的 IMAGES 默认内容设置，仅接受注册表允许的默认值；策略或扩展控制时拒写。保留站点例外，不改 Cookie、JavaScript 或媒体权限。未注册或旧 HAR 缺键时不可用；外壳保存后必须读回确认。修改后重新加载页面，已加载图片不保证立即移除；不代表阻止所有媒体或所有图片相关流量。

@@ -1,0 +1,64 @@
+Use the full-page HTTPS-First warning on OHOS, which has no desktop tab dialog host.
+
+diff --git a/chrome/browser/ssl/https_upgrades_navigation_throttle.cc b/chrome/browser/ssl/https_upgrades_navigation_throttle.cc
+--- a/chrome/browser/ssl/https_upgrades_navigation_throttle.cc
++++ b/chrome/browser/ssl/https_upgrades_navigation_throttle.cc
+@@ -12,6 +12,7 @@
+ #include "base/memory/weak_ptr.h"
+ #include "base/task/sequenced_task_runner.h"
+ #include "base/time/time.h"
++#include "build/build_config.h"
+ #include "chrome/browser/profiles/profile.h"
+ #include "chrome/browser/ssl/https_first_mode_settings_tracker.h"
+ #include "chrome/browser/ssl/https_only_mode_tab_helper.h"
+@@ -136,7 +137,8 @@
+       // Mark this as a fallback HTTP navigation and trigger the interstitial.
+       tab_helper->set_is_navigation_fallback(true);
+ 
+-      if (base::FeatureList::IsEnabled(
++      if (!BUILDFLAG(IS_OHOS) &&
++        base::FeatureList::IsEnabled(
+               security_interstitials::features::kHttpsFirstDialogUi)) {
+         // New dialog UI.
+         // Rewrite the response to a blank page. DidFinishNavigation will
+@@ -216,7 +218,8 @@
+     security_interstitials::https_only_mode::RecordInterstitialReason(
+         interstitial_state_);
+ 
+-    if (base::FeatureList::IsEnabled(
++    if (!BUILDFLAG(IS_OHOS) &&
++        base::FeatureList::IsEnabled(
+             security_interstitials::features::kHttpsFirstDialogUi)) {
+       // New dialog UI.
+       // Rewrite the response to a blank page and cancel the navigation.
+diff --git a/chrome/browser/ssl/https_only_mode_tab_helper.cc b/chrome/browser/ssl/https_only_mode_tab_helper.cc
+--- a/chrome/browser/ssl/https_only_mode_tab_helper.cc
++++ b/chrome/browser/ssl/https_only_mode_tab_helper.cc
+@@ -5,6 +5,7 @@
+ #include "chrome/browser/ssl/https_only_mode_tab_helper.h"
+ 
+ #include "base/feature_list.h"
++#include "build/build_config.h"
+ #include "chrome/browser/ssl/ask_before_http_dialog_controller.h"
+ #include "components/security_interstitials/core/features.h"
+ #include "components/tabs/public/tab_interface.h"
+@@ -18,7 +19,8 @@
+ 
+ void HttpsOnlyModeTabHelper::DidStartNavigation(
+     content::NavigationHandle* navigation_handle) {
+-  if (base::FeatureList::IsEnabled(
++  if (!BUILDFLAG(IS_OHOS) &&
++        base::FeatureList::IsEnabled(
+           security_interstitials::features::kHttpsFirstDialogUi)) {
+     // Close the Ask-before-HTTP dialog if a new navigation begins in the
+     // primary main frame. TabDialogManager has a parameter to close tab-modal
+@@ -69,7 +71,8 @@
+   // If dialog UI is enabled and this was a navigation cancelled by the
+   // throttle when we would interstitial the navigation, then trigger the
+   // dialog UI.
+-  if (base::FeatureList::IsEnabled(
++  if (!BUILDFLAG(IS_OHOS) &&
++        base::FeatureList::IsEnabled(
+           security_interstitials::features::kHttpsFirstDialogUi) &&
+       is_navigation_fallback_ &&
+       !navigation_handle->GetURL().SchemeIsCryptographic()) {

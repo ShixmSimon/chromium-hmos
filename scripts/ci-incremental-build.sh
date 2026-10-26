@@ -168,6 +168,11 @@ if [[ -n "${PACKAGE_ONLY:-}" ]]; then
 else
   compiled_here=true
 
+  # Shared by 154 and the prepared 155 snapshot.
+  apply_incremental_patch "${repo_root}/patches/ohos-secure-dns-ech.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-https-first-warning.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-shell-preloading.patch"
+
   # ---- incremental patches ---------------------------------------------------
   # Every incremental patch up to hmos-154-adapter 398a5ed (and those applied
   # by hand on this runner) was folded into chromium-154-harmonyos.patch and

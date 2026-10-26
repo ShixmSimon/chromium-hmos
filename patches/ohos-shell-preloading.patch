@@ -1,0 +1,13 @@
+Declare the direct pref_names.h dependency used by the OHOS preloading settings bridge.
+
+diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -1012,6 +1012,7 @@
+     "//chrome/browser/predictors:config",
+     "//chrome/browser/predictors/lcp_critical_path_predictor:impl",
+     "//chrome/browser/prefs",
++    "//chrome/browser/prefetch",
+     "//chrome/browser/preloading",
+     "//chrome/browser/preloading:prefs",
+     "//chrome/browser/preloading/prefetch/no_state_prefetch",

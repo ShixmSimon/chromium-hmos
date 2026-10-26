@@ -158,7 +158,18 @@ export type ShellPrefKey =
   // HarmonyOS's Password Vault fills and saves; Chromium keeps a silent copy.
   'passwordVault' |
   // Blink's auto dark mode for pages that have none; open tabs follow at once.
-  'forceDarkWebContents';
+  'forceDarkWebContents' |
+  // Validated Local State DNS config, JSON {mode, templates, managed?}.
+  'secureDns' | 'thirdPartyCookies' | 'httpsFirst' | 'preloading' |
+  // Autofill opt-in with policy metadata, JSON {mode: on/off, managed}.
+  'addressAutofill' | 'paymentAutofill' |
+  // JSON default rules with per-type choices and management metadata.
+  'defaultSiteSettings' |
+  // JSON {mode, managed, hasUrlOverrides}; global WebRTC IP policy.
+  'webRtcIpHandling' |
+  // JSON {mode: allow/session_only/block, managed}; default Cookie storage.
+  'cookieStorage' |
+  'imageLoading';
 
 export interface ShellPrefValue {
   key: ShellPrefKey;
