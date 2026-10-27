@@ -1,0 +1,143 @@
+name: Depot adapter trial
+
+on:
+  workflow_dispatch:
+
+# Serialize writers to the branch-specific trial cache across workflow runs.
+concurrency:
+  group: depot-trial-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify-publication:
+    if: github.ref == 'refs/heads/ci/depot-154' || github.ref == 'refs/heads/ci/depot-155'
+    runs-on: depot-ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      major: ${{ steps.engine.outputs.CHROMIUM_MAJOR }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select isolated trial engine
+        id: engine
+        run: python3 scripts/select-depot-engine.py
+      - name: Verify Depot branch isolation
+        run: python3 scripts/tests/test-depot-engine-selection.py
+      - name: Prepare native test tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends clang g++ libssl-dev pkg-config
+          python3 -m venv "$RUNNER_TEMP/depot-test-venv"
+          echo "$RUNNER_TEMP/depot-test-venv/bin" >> "$GITHUB_PATH"
+      - name: Record sandbox resources
+        run: |
+          uname -m
+          id
+          nproc
+          free -h
+          df -h .
+
+      - name: Verify branch isolation
+        run: python3 scripts/tests/test-ci-engine-selection.py
+      - name: Verify public tree
+        run: scripts/verify-public-tree.sh
+      - name: Check scripts
+        run: bash -n scripts/*.sh
+      - name: Check V8 builtins PGO and context snapshot configuration
+        run: |
+          python3 scripts/tests/test-v8-builtins-pgo.py
+          python3 scripts/tests/test-v8-context-snapshot.py
+      - name: Check JIT startup opt-in and interpreter fallback
+        run: scripts/test-jit-startup.sh
+      - name: Check incremental patches in Chromium and DEPS checkouts
+        run: python3 scripts/tests/test-incremental-patches.py
+      - name: Check AppGallery UA compatibility and mobile viewport wiring
+        run: python3 scripts/tests/test-appgallery-user-agent.py
+      - name: Check browser and web-app viewport isolation
+        run: python3 scripts/tests/test-web-app-viewport.py
+      - name: Check experimental OHOS fork server transport
+        run: scripts/test-ohos-fork-server.sh
+      - name: Check inherited trace descriptors and GPU state recovery
+        run: python3 scripts/tests/test-ohos-gpu-state-recovery.py
+      - name: Check experimental phone GPU frame transport
+        run: scripts/test-ohos-phone-gpu.sh
+      - name: Check startup handoff retry scheduling and cancellation
+        run: python3 scripts/tests/test-startup-handoff-retry.py
+      - name: Check native extension update result semantics
+        run: scripts/test-extension-updates.sh
+      - name: Check memfd write-seal contract
+        run: python3 scripts/check-memfd-seals.py
+      - name: Check test-page media byte ranges
+        run: python3 scripts/tests/test-serve-test-pages.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check URL protection policy and SDK boundary
+        run: node --test scripts/tests/url-check-service.test.mjs
+      - name: Check phishing snapshot packaging
+        run: python3 scripts/tests/test-phishing-rules.py
+      - name: Check signed phishing update artifacts
+        run: |
+          python3 -m pip install 'cryptography>=45,<47'
+          python3 scripts/tests/test-phishing-updates.py
+      - name: Apply adapter to pinned Chromium
+        env:
+          REQUIRE_COMPATIBLE: '1'
+        run: >-
+          scripts/check-upstream-adapter.sh
+          "${{ env.CHROMIUM_VERSION }}"
+          "${{ env.CHROMIUM_REVISION }}"
+      - name: Upload compatibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinned-adapter-report
+          path: upstream-compatibility.md
+
+      - name: Mount trial cache
+        uses: depot/cache-mount@v1
+        with:
+          name: chromium-hmos-depot-${{ steps.engine.outputs.CHROMIUM_MAJOR }}-probe-v1
+          path: /mnt/depot-probe
+      - name: Write persistence receipt
+        env:
+          RECEIPT: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os
+          from pathlib import Path
+          receipt = Path('/mnt/depot-probe/receipt.json')
+          previous = json.loads(receipt.read_text()) if receipt.exists() else None
+          print('Previous run receipt:', previous)
+          receipt.write_text(json.dumps({'id': os.environ['RECEIPT'],
+                                        'sha': os.environ['GITHUB_SHA'],
+                                        'major': os.environ['CHROMIUM_MAJOR']}))
+          PYCODE
+
+  verify-cache:
+    needs: verify-publication
+    runs-on: depot-ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: depot/cache-mount@v1
+        with:
+          name: chromium-hmos-depot-${{ needs.verify-publication.outputs.major }}-probe-v1
+          path: /mnt/depot-probe
+      - name: Verify receipt from the previous sandbox
+        env:
+          RECEIPT: ${{ github.run_id }}-${{ github.run_attempt }}
+          EXPECTED_MAJOR: ${{ needs.verify-publication.outputs.major }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os
+          from pathlib import Path
+          receipt = json.loads(Path('/mnt/depot-probe/receipt.json').read_text())
+          assert receipt == {'id': os.environ['RECEIPT'],
+                             'sha': os.environ['GITHUB_SHA'],
+                             'major': os.environ['EXPECTED_MAJOR']}, receipt
+          print('Cache persistence and engine isolation verified:', receipt)
+          PYCODE
