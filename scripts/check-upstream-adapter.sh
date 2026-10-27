@@ -43,6 +43,7 @@ grep '^diff --git ' "${project_root}/patches/chromium-154-harmonyos.patch" \
   "${project_root}/patches/ohos-phone-vulkan-video.patch" \
   "${project_root}/patches/ohos-webnn-nnrt.patch" \
   "${project_root}/patches/ohos-startup-probes.patch" \
+  "${project_root}/patches/ohos-https-first-warning.patch" \
   "${project_root}/patches/ohos-ime-explicit-keyboard-request.patch" -h |
   awk '{sub(/^b\//, "/", $4); print $4}' |
   LC_ALL=C sort -u >"${checkout}/.git/info/sparse-checkout"
@@ -143,6 +144,10 @@ if [[ "${compatible}" == true ]]; then
   fi
   if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
       "${project_root}/patches/ohos-startup-probes.patch" 2>"${failure_log}"; then
+    compatible=false
+  fi
+  if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
+      "${project_root}/patches/ohos-https-first-warning.patch" 2>"${failure_log}"; then
     compatible=false
   fi
   rsync -a "${project_root}/overlay/" "${checkout}/"

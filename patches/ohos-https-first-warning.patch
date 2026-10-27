@@ -1,4 +1,5 @@
 Use the full-page HTTPS-First warning on OHOS, which has no desktop tab dialog host.
+Exclude desktop dialog code at preprocessing time to avoid unreachable-code errors.
 
 diff --git a/chrome/browser/ssl/https_upgrades_navigation_throttle.cc b/chrome/browser/ssl/https_upgrades_navigation_throttle.cc
 --- a/chrome/browser/ssl/https_upgrades_navigation_throttle.cc
@@ -11,26 +12,56 @@ diff --git a/chrome/browser/ssl/https_upgrades_navigation_throttle.cc b/chrome/b
  #include "chrome/browser/profiles/profile.h"
  #include "chrome/browser/ssl/https_first_mode_settings_tracker.h"
  #include "chrome/browser/ssl/https_only_mode_tab_helper.h"
-@@ -136,7 +137,8 @@
+@@ -40,9 +41,11 @@
+ // If set, the fallback delay has been overridden for testing.
+ std::optional<base::TimeDelta> g_fallback_delay;
+ 
++#if !BUILDFLAG(IS_OHOS)
+ // TODO(crbug.com/351990829): Consider setting the page title and favicon to be
+ // more like interstitials.
+ inline constexpr char kBlankPageHtml[] = "<html></html>";
++#endif  // !BUILDFLAG(IS_OHOS)
+ 
+ }  // namespace
+ 
+@@ -136,6 +139,7 @@
        // Mark this as a fallback HTTP navigation and trigger the interstitial.
        tab_helper->set_is_navigation_fallback(true);
  
--      if (base::FeatureList::IsEnabled(
-+      if (!BUILDFLAG(IS_OHOS) &&
-+        base::FeatureList::IsEnabled(
++#if !BUILDFLAG(IS_OHOS)
+       if (base::FeatureList::IsEnabled(
                security_interstitials::features::kHttpsFirstDialogUi)) {
          // New dialog UI.
-         // Rewrite the response to a blank page. DidFinishNavigation will
-@@ -216,7 +218,8 @@
+@@ -143,7 +147,9 @@
+         // show the ABH dialog on top of this blank page.
+         return {content::NavigationThrottle::CANCEL, net::ERR_BLOCKED_BY_CLIENT,
+                 kBlankPageHtml};
+-      } else {
++      } else
++#endif  // !BUILDFLAG(IS_OHOS)
++      {
+         // Old full-page interstitial UI.
+         ukm::SourceId source_id =
+             ukm::ConvertToSourceId(navigation_handle()->GetNavigationId(),
+@@ -216,6 +222,7 @@
      security_interstitials::https_only_mode::RecordInterstitialReason(
          interstitial_state_);
  
--    if (base::FeatureList::IsEnabled(
-+    if (!BUILDFLAG(IS_OHOS) &&
-+        base::FeatureList::IsEnabled(
++#if !BUILDFLAG(IS_OHOS)
+     if (base::FeatureList::IsEnabled(
              security_interstitials::features::kHttpsFirstDialogUi)) {
        // New dialog UI.
-       // Rewrite the response to a blank page and cancel the navigation.
+@@ -224,7 +231,9 @@
+       // show the ABH dialog on top of this blank page.
+       return {content::NavigationThrottle::CANCEL, net::ERR_BLOCKED_BY_CLIENT,
+               kBlankPageHtml};
+-    } else {
++    } else
++#endif  // !BUILDFLAG(IS_OHOS)
++    {
+       std::unique_ptr<security_interstitials::HttpsOnlyModeBlockingPage>
+           blocking_page =
+               blocking_page_factory_->CreateHttpsOnlyModeBlockingPage(
 diff --git a/chrome/browser/ssl/https_only_mode_tab_helper.cc b/chrome/browser/ssl/https_only_mode_tab_helper.cc
 --- a/chrome/browser/ssl/https_only_mode_tab_helper.cc
 +++ b/chrome/browser/ssl/https_only_mode_tab_helper.cc
@@ -42,23 +73,35 @@ diff --git a/chrome/browser/ssl/https_only_mode_tab_helper.cc b/chrome/browser/s
  #include "chrome/browser/ssl/ask_before_http_dialog_controller.h"
  #include "components/security_interstitials/core/features.h"
  #include "components/tabs/public/tab_interface.h"
-@@ -18,7 +19,8 @@
+@@ -18,6 +19,7 @@
  
  void HttpsOnlyModeTabHelper::DidStartNavigation(
      content::NavigationHandle* navigation_handle) {
--  if (base::FeatureList::IsEnabled(
-+  if (!BUILDFLAG(IS_OHOS) &&
-+        base::FeatureList::IsEnabled(
++#if !BUILDFLAG(IS_OHOS)
+   if (base::FeatureList::IsEnabled(
            security_interstitials::features::kHttpsFirstDialogUi)) {
      // Close the Ask-before-HTTP dialog if a new navigation begins in the
-     // primary main frame. TabDialogManager has a parameter to close tab-modal
-@@ -69,7 +71,8 @@
+@@ -38,6 +40,7 @@
+       }
+     }
+   }
++#endif  // !BUILDFLAG(IS_OHOS)
+ 
+   // If the user was on an exempt net error and the tab was reloaded, only
+   // reset the exempt error state, but keep the upgrade state so the reload
+@@ -69,6 +72,7 @@
    // If dialog UI is enabled and this was a navigation cancelled by the
    // throttle when we would interstitial the navigation, then trigger the
    // dialog UI.
--  if (base::FeatureList::IsEnabled(
-+  if (!BUILDFLAG(IS_OHOS) &&
-+        base::FeatureList::IsEnabled(
++#if !BUILDFLAG(IS_OHOS)
+   if (base::FeatureList::IsEnabled(
            security_interstitials::features::kHttpsFirstDialogUi) &&
        is_navigation_fallback_ &&
-       !navigation_handle->GetURL().SchemeIsCryptographic()) {
+@@ -93,6 +97,7 @@
+     // TODO(crbug.com/351990829): Add the new icon and integration.
+     navigation_handle->GetWebContents()->DidChangeVisibleSecurityState();
+   }
++#endif  // !BUILDFLAG(IS_OHOS)
+ }
+ 
+ HttpsOnlyModeTabHelper::HttpsOnlyModeTabHelper(
