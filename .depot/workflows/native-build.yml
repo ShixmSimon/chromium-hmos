@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   native:
-    runs-on: ${{ vars.DEPOT_154_NATIVE_IMAGE && fromJSON(format('{{"size":"16x64","image":"{0}"}}', vars.DEPOT_154_NATIVE_IMAGE)) || 'depot-ubuntu-24.04-16' }}
+    runs-on: depot-ubuntu-24.04-16
     timeout-minutes: 360
     env:
       DEPOT_TRIAL_BRANCH: ci/depot-154
@@ -29,15 +29,29 @@ jobs:
         run: python3 scripts/select-depot-engine.py
       - name: Create native workspace on the local disk
         run: sudo install -d -o "$(id -u)" -g "$(id -g)" /mnt/chromium-154
+      - name: Restore source, SDK and compiled objects to the local disk
+        id: native-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /mnt/chromium-154/source
+            /mnt/chromium-154/depot_tools
+            /mnt/chromium-154/ohos_sdk
+            /mnt/chromium-154/sdk-inbox/sdk.ready
+            /mnt/chromium-154/cipd
+            /mnt/chromium-154/vpython
+            /mnt/chromium-154/cargo
+            /mnt/chromium-154/rustup
+          key: depot154-linux-x64-v2-${{ hashFiles('config/engines/154.json', 'config/args.plan_kirin_pc.gn', 'config/depot-154-sdk.json') }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            depot154-linux-x64-v2-${{ hashFiles('config/engines/154.json', 'config/args.plan_kirin_pc.gn', 'config/depot-154-sdk.json') }}-${{ github.sha }}-
+            depot154-linux-x64-v2-${{ hashFiles('config/engines/154.json', 'config/args.plan_kirin_pc.gn', 'config/depot-154-sdk.json') }}-
       - name: Prepare pinned Chromium and SDK
+        id: prepare
         run: |
           mkdir -p build-status
           set -o pipefail
           bash scripts/prepare-depot-154.sh 2>&1 | tee build-status/depot-preparation.log
-      - name: Save prepared source and toolchain snapshot
-        uses: depot/snapshot-action@v1
-        with:
-          image: txv6b5s15t.registry.depot.dev/chromium-154-native:prepared
       - name: Compile full native runtime
         run: |
           set -o pipefail
@@ -46,10 +60,6 @@ jobs:
         run: bash scripts/test-url-protection-native.sh
       - name: Package native runtime and symbols
         run: bash scripts/package-depot-native.sh
-      - name: Save compiled workspace snapshot
-        uses: depot/snapshot-action@v1
-        with:
-          image: txv6b5s15t.registry.depot.dev/chromium-154-native:compiled
       - name: Upload native runtime
         uses: actions/upload-artifact@v4
         with:
@@ -65,3 +75,19 @@ jobs:
           name: chromium-154-build-diagnostics-${{ github.sha }}
           path: build-status/
           retention-days: 7
+      # Save completed objects even after a compiler error, with a unique key
+      # so a subsequent retry can publish a newer, more complete cache entry.
+      - name: Save native workspace to Depot Cache
+        if: always() && !cancelled() && steps.prepare.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /mnt/chromium-154/source
+            /mnt/chromium-154/depot_tools
+            /mnt/chromium-154/ohos_sdk
+            /mnt/chromium-154/sdk-inbox/sdk.ready
+            /mnt/chromium-154/cipd
+            /mnt/chromium-154/vpython
+            /mnt/chromium-154/cargo
+            /mnt/chromium-154/rustup
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap the isolated local Depot workspace; snapshots preserve it across jobs.
+# Bootstrap the isolated local workspace restored/saved through actions/cache.
 set -euo pipefail
 readonly repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly cache=/mnt/chromium-154
@@ -84,6 +84,16 @@ for ((attempt=0; attempt<120; attempt++)); do
   sleep 5
 done
 [[ -f "$cache/sdk-inbox/sdk.ready" ]] || { echo 'SDK upload did not finish within ten minutes.' >&2; exit 1; }
+python3 - "$repo_root/config/depot-154-sdk.json" "$cache/sdk-inbox/sdk.ready" "$sdk/native/oh-uni-package.json" <<'PY'
+from pathlib import Path
+import json, sys
+expected = json.loads(Path(sys.argv[1]).read_text())
+actual = json.loads(Path(sys.argv[3]).read_text())
+if Path(sys.argv[2]).read_text().strip() != expected['archive_sha256']:
+    raise SystemExit('SDK archive checksum does not match this build configuration')
+if actual['version'] != expected['version'] or int(actual['apiVersion']) != expected['api']:
+    raise SystemExit('SDK version does not match this build configuration')
+PY
 [[ -f "$sdk/native/oh-uni-package.json" && -d "$sdk/native/sysroot/usr/include" ]] || {
   echo 'The uploaded SDK is incomplete.' >&2; exit 1;
 }
