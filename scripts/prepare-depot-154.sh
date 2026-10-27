@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap only the disposable Depot 154 disk; never touch a self-hosted tree.
+# Bootstrap the isolated local Depot workspace; snapshots preserve it across jobs.
 set -euo pipefail
 readonly repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly cache=/mnt/chromium-154
@@ -12,7 +12,11 @@ readonly revision="$(python3 -c 'import json; print(json.load(open("config/engin
   echo 'Only the isolated Depot 154 trial may initialize this disk.' >&2; exit 1;
 }
 [[ "$(uname -m)" == x86_64 ]] || { echo 'The native build requires an x86_64 host.' >&2; exit 1; }
-mountpoint -q "$cache" || { echo 'The Depot native cache must be mounted first.' >&2; exit 1; }
+if mountpoint -q "$cache"; then
+  echo 'Compile on the local disk; the shared cache filesystem stalls large Git writes.' >&2
+  exit 1
+fi
+[[ -d "$cache" && ! -L "$cache" ]] || { echo 'The local Depot workspace must exist first.' >&2; exit 1; }
 
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -qq

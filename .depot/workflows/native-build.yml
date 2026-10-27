@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   native:
-    runs-on: depot-ubuntu-24.04-16
+    runs-on: ${{ vars.DEPOT_154_NATIVE_IMAGE && fromJSON(format('{{"size":"16x64","image":"{0}"}}', vars.DEPOT_154_NATIVE_IMAGE)) || 'depot-ubuntu-24.04-16' }}
     timeout-minutes: 360
     env:
       DEPOT_TRIAL_BRANCH: ci/depot-154
@@ -24,18 +24,20 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Verify published trial commit
         run: python3 scripts/select-depot-engine.py
-      - name: Mount isolated native workspace
-        uses: depot/cache-mount@v1
-        with:
-          name: chromium-hmos-depot-154-native-v1
-          path: /mnt/chromium-154
+      - name: Create native workspace on the local disk
+        run: sudo install -d -o "$(id -u)" -g "$(id -g)" /mnt/chromium-154
       - name: Prepare pinned Chromium and SDK
         run: |
           mkdir -p build-status
           set -o pipefail
           bash scripts/prepare-depot-154.sh 2>&1 | tee build-status/depot-preparation.log
+      - name: Save prepared source and toolchain snapshot
+        uses: depot/snapshot-action@v1
+        with:
+          image: txv6b5s15t.registry.depot.dev/chromium-154-native:prepared
       - name: Compile full native runtime
         run: |
           set -o pipefail
@@ -44,6 +46,10 @@ jobs:
         run: bash scripts/test-url-protection-native.sh
       - name: Package native runtime and symbols
         run: bash scripts/package-depot-native.sh
+      - name: Save compiled workspace snapshot
+        uses: depot/snapshot-action@v1
+        with:
+          image: txv6b5s15t.registry.depot.dev/chromium-154-native:compiled
       - name: Upload native runtime
         uses: actions/upload-artifact@v4
         with:
