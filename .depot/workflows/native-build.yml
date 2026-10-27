@@ -1,0 +1,61 @@
+name: Depot Chromium 154 native build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: depot-native-${{ github.repository }}-154
+  cancel-in-progress: false
+
+jobs:
+  native:
+    runs-on: depot-ubuntu-24.04-16
+    timeout-minutes: 360
+    env:
+      DEPOT_TRIAL_BRANCH: ci/depot-154
+      NINJA_JOBS: '16'
+      NINJA_MAX_FAILURES: '5'
+      SKIP_PACKAGE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Verify published trial commit
+        run: python3 scripts/select-depot-engine.py
+      - name: Mount isolated native workspace
+        uses: depot/cache-mount@v1
+        with:
+          name: chromium-hmos-depot-154-native-v1
+          path: /mnt/chromium-154
+      - name: Prepare pinned Chromium and SDK
+        run: |
+          mkdir -p build-status
+          set -o pipefail
+          bash scripts/prepare-depot-154.sh 2>&1 | tee build-status/depot-preparation.log
+      - name: Compile full native runtime
+        run: |
+          set -o pipefail
+          bash scripts/ci-incremental-build.sh 2>&1 | tee build-status/native-build.log
+      - name: Check native phishing rule validation
+        run: bash scripts/test-url-protection-native.sh
+      - name: Package native runtime and symbols
+        run: bash scripts/package-depot-native.sh
+      - name: Upload native runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-154-native-${{ github.sha }}
+          path: artifacts/depot-native/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-154-build-diagnostics-${{ github.sha }}
+          path: build-status/
+          retention-days: 7
