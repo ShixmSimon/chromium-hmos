@@ -46,6 +46,15 @@ jobs:
           restore-keys: |
             depot154-linux-x64-v2-${{ hashFiles('config/engines/154.json', 'config/args.plan_kirin_pc.gn', 'config/depot-154-sdk.json') }}-${{ github.sha }}-
             depot154-linux-x64-v2-${{ hashFiles('config/engines/154.json', 'config/args.plan_kirin_pc.gn', 'config/depot-154-sdk.json') }}-
+      # Keep this separate: changing the source cache's path list would change
+      # its Actions cache version and invalidate the existing large archive.
+      - name: Restore downloaded system packages
+        id: apt-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /mnt/chromium-154/apt/archives
+          key: depot154-apt-ubuntu24-x64-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: depot154-apt-ubuntu24-x64-v1-
       - name: Prepare pinned Chromium and SDK
         id: prepare
         run: |
@@ -91,3 +100,9 @@ jobs:
             /mnt/chromium-154/cargo
             /mnt/chromium-154/rustup
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
+      - name: Save downloaded system packages
+        if: always() && !cancelled() && steps.prepare.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: /mnt/chromium-154/apt/archives
+          key: ${{ steps.apt-cache.outputs.cache-primary-key }}

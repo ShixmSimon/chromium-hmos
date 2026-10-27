@@ -18,6 +18,14 @@ if mountpoint -q "$cache"; then
 fi
 [[ -d "$cache" && ! -L "$cache" ]] || { echo 'The local Depot workspace must exist first.' >&2; exit 1; }
 
+# Cache downloaded packages, while installing them in each fresh runner's OS.
+# Caching /usr or dpkg state would skip the actual package installation.
+sudo install -d -m 0755 "$cache/apt/archives/partial"
+sudo tee /etc/apt/apt.conf.d/99-depot-native-cache >/dev/null <<APT
+Dir::Cache::archives "$cache/apt/archives";
+APT::Keep-Downloaded-Packages "true";
+Binary::apt::APT::Keep-Downloaded-Packages "true";
+APT
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv \

@@ -42,7 +42,9 @@ grep '^diff --git ' "${project_root}/patches/chromium-154-harmonyos.patch" \
   "${project_root}/patches/ohos-webnn-nnrt.patch" \
   "${project_root}/patches/ohos-startup-probes.patch" \
   "${project_root}/patches/ohos-https-first-warning.patch" \
-  "${project_root}/patches/ohos-ime-explicit-keyboard-request.patch" -h |
+  "${project_root}/patches/ohos-ime-explicit-keyboard-request.patch" \
+  "${project_root}/patches/ohos-egl-bottom-left-surface.patch" \
+  "${project_root}/patches/ohos-password-sync.patch" -h |
   awk '{sub(/^b\//, "/", $4); print $4}' |
   LC_ALL=C sort -u >"${checkout}/.git/info/sparse-checkout"
 git -C "${checkout}" fetch -q --depth=1 --filter=blob:none origin "${revision}"
@@ -150,6 +152,13 @@ if [[ "${compatible}" == true ]]; then
   fi
   if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
       "${project_root}/patches/ohos-https-first-warning.patch" 2>"${failure_log}"; then
+    compatible=false
+  fi
+  # These patches must also apply after a fresh adapter setup, which already
+  # contains the updated ASTC rule and extension updater source entries.
+  if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
+      "${project_root}/patches/ohos-egl-bottom-left-surface.patch" \
+      "${project_root}/patches/ohos-password-sync.patch" 2>"${failure_log}"; then
     compatible=false
   fi
   rsync -a "${project_root}/overlay/" "${checkout}/"
