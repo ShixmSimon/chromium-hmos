@@ -1,11 +1,11 @@
-name: Depot adapter trial
+name: Depot Chromium 154 trial
 
 on:
   workflow_dispatch:
 
 # Serialize writers to the branch-specific trial cache across workflow runs.
 concurrency:
-  group: depot-trial-${{ github.repository }}-${{ github.ref_name }}
+  group: depot-trial-${{ github.repository }}-154
   cancel-in-progress: false
 
 permissions:
@@ -13,9 +13,10 @@ permissions:
 
 jobs:
   verify-publication:
-    if: github.ref == 'refs/heads/ci/depot-154' || github.ref == 'refs/heads/ci/depot-155'
     runs-on: depot-ubuntu-24.04
     timeout-minutes: 30
+    env:
+      DEPOT_TRIAL_BRANCH: ci/depot-154
     outputs:
       major: ${{ steps.engine.outputs.CHROMIUM_MAJOR }}
     steps:
@@ -30,7 +31,7 @@ jobs:
       - name: Prepare native test tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends clang g++ libssl-dev pkg-config
+          sudo apt-get install -y --no-install-recommends clang g++ libssl-dev pkg-config python3-venv
           python3 -m venv "$RUNNER_TEMP/depot-test-venv"
           echo "$RUNNER_TEMP/depot-test-venv/bin" >> "$GITHUB_PATH"
       - name: Record sandbox resources

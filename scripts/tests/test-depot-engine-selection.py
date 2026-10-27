@@ -13,6 +13,24 @@ spec.loader.exec_module(module)
 
 
 class DepotEngineSelectionTest(unittest.TestCase):
+    def test_branch_dispatch_and_published_commit_dispatch(self):
+        sha = 'a' * 40
+        for ref in ('ci/depot-154', 'refs/heads/ci/depot-154', sha):
+            with self.subTest(ref=ref):
+                self.assertEqual(module.resolve_branch(ref, sha, 'ci/depot-154', sha),
+                                 'ci/depot-154')
+
+    def test_commit_dispatch_rejects_wrong_branch_stale_head_and_mismatched_sha(self):
+        sha = 'a' * 40
+        for ref, commit, remote in (
+                ('refs/heads/hmos-154-adapter', sha, sha),
+                ('refs/heads/ci/depot-155', sha, sha),
+                (sha, sha, 'b' * 40),
+                (sha, 'b' * 40, sha),
+                ('', sha, sha)):
+            with self.subTest(ref=ref, commit=commit, remote=remote), self.assertRaises(ValueError):
+                module.resolve_branch(ref, commit, 'ci/depot-154', remote)
+
     def test_engines_use_distinct_disks_and_existing_pins(self):
         for major in (154, 155):
             with self.subTest(major=major):
