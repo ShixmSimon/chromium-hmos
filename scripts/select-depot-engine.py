@@ -24,15 +24,14 @@ def select(branch):
     return values
 
 
-def resolve_branch(ref, sha, trial_branch, remote_sha):
+def resolve_branch(sha, trial_branch, remote_sha):
     select(trial_branch)  # Validate the allowlist before constructing a Git ref.
-    if ref in (trial_branch, f'refs/heads/{trial_branch}'):
+    # Local runs record a commit ref in the API, but synthesize GITHUB_REF from
+    # the default branch. Verify the published trial head and actual checkout
+    # instead of trusting that synthetic branch name.
+    if re.fullmatch(r'[0-9a-f]{40}', sha) and sha == remote_sha:
         return trial_branch
-    # Depot's local run API sets ref to the commit SHA. Accept only the exact
-    # published head of the trial branch selected by this workflow.
-    if re.fullmatch(r'[0-9a-f]{40}', ref) and ref == sha == remote_sha:
-        return trial_branch
-    raise ValueError(f'Ref {ref!r} does not identify the published {trial_branch} trial')
+    raise ValueError(f'Commit {sha!r} does not identify the published {trial_branch} trial')
 
 
 if __name__ == '__main__':
@@ -46,7 +45,7 @@ if __name__ == '__main__':
     actual_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     if actual_sha != sha:
         raise ValueError('Checkout does not match the requested commit')
-    branch = resolve_branch(os.environ.get('GITHUB_REF', ''), sha, trial, remote_sha)
+    branch = resolve_branch(sha, trial, remote_sha)
     values = select(branch)
     output = ''.join(f'{key}={value}\n' for key, value in values.items())
     print(output, end='')
