@@ -49,7 +49,11 @@ unit = r'''
 #include <string>
 #define LOG(level) std::ostringstream()
 namespace absl {
-template <typename F> struct Cleanup { F callback; ~Cleanup() { callback(); } };
+template <typename F> struct Cleanup {
+  F callback;
+  Cleanup(F value) : callback(value) {}
+  ~Cleanup() { callback(); }
+};
 }
 struct GURL {
   std::string value;
