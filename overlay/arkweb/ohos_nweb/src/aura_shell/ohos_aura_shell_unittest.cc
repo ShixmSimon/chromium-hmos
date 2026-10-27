@@ -590,6 +590,20 @@ TEST(NWebAuraShellTest, JitlessFollowsTheStartupConfig) {
                                "--js-flags=--jitless --wasm-jitless"));
 }
 
+TEST(NWebAuraShellTest, ExplicitJitlessSurvivesAdditionalV8Flags) {
+  AuraStartupConfig config;
+  config.jitless = true;
+  config.jit_compatibility = true;
+  config.additional_switches = {{"js-flags", "--trace-gc --nojitless"}};
+  OhosChromeMainRunner runner;
+  const auto arguments = runner.BuildArgumentsForTesting(config);
+  EXPECT_EQ(1, std::ranges::count_if(arguments, [](const std::string& argument) {
+              return argument.starts_with("--js-flags=");
+            }));
+  EXPECT_TRUE(ContainsArgument(
+      arguments, "--js-flags=--trace-gc --nojitless --jitless --wasm-jitless"));
+}
+
 TEST(NWebAuraShellTest, TabletUsesNativeChildProcessMode) {
   AuraStartupConfig config;
   config.device_class = "tablet";

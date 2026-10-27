@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "base/command_line.h"
+#include "base/process/ohos_jit_startup.h"
 #include "base/values.h"
 #include "base/version_info/version_info.h"
 #include "chrome/browser/profiles/profile.h"
@@ -107,7 +108,7 @@ void GetAboutInfo(const ShellCommandContext& context,
   // That flag is the answer: renderers are given the same --js-flags.
   const std::string js_flags =
       base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII("js-flags");
-  event.Set("jitEnabled", js_flags.find("--jitless") == std::string::npos);
+  event.Set("jitEnabled", !base::internal::JitlessRequested(js_flags));
   ReplyToShell(context, std::move(event));
 }
 

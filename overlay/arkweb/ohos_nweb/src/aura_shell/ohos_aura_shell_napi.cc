@@ -1200,6 +1200,7 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
   config.vulkan_hdr_peak_nits =
       dict.FindDouble("vulkanHdrPeakNits").value_or(0);
 
+  config.jit_compatibility = dict.FindBool("jitCompatibility").value_or(false);
   std::optional<bool> jitless = dict.FindBool("jitless");
   if (jitless.has_value()) {
     config.jitless = *jitless;
