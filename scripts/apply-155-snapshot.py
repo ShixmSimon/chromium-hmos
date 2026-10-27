@@ -16,6 +16,14 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
 
+def validate_source(path):
+    src = Path(path).resolve()
+    if src not in (Path('/root/chromium-155/src'),
+                   Path('/mnt/chromium-155/source/src')):
+        raise ValueError('Migration requires an isolated Chromium 155 source tree')
+    return src
+
+
 def apply_snapshot(target, patch):
     """Retry from upstream while keeping unchanged compiler inputs untouched."""
     paths = set(subprocess.check_output(
@@ -42,9 +50,7 @@ def apply_snapshot(target, patch):
 
 
 def main():
-    src = Path(sys.argv[1]).resolve()
-    if src != Path('/root/chromium-155/src'):
-        raise ValueError('Migration may only modify /root/chromium-155/src')
+    src = validate_source(sys.argv[1])
     manifest = json.loads((PATCHES / 'manifest.json').read_text())
     actual = subprocess.check_output(['git', '-C', str(src), 'rev-parse', 'HEAD'], text=True).strip()
     if actual != manifest['target_revision']:

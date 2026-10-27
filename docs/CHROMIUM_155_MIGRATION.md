@@ -36,3 +36,29 @@ Migration is complete only after patch/dependency migration, GN generation,
 the full native build, runtime packaging and native rule-validation tests
 pass. Phone/Pad runtime regression is recorded separately and must not be
 inferred from a successful build.
+
+The `ci/depot-155` trial also supports a fresh native build through
+`.depot/workflows/native-build.yml`. From its published, clean checkout, run
+`depot ci run --org <org-id> --workflow .depot/workflows/native-build.yml`.
+The workflow checks out the requested SHA and verifies it against the
+published trial branch; Depot's synthesized default branch ref is not used
+to choose the engine.
+
+Depot uses a 16-CPU Ubuntu 24.04 runner with Ninja `-j16` and the local
+`/mnt/chromium-155` disk. It downloads the pinned 155 source, DEPS and tools,
+then applies the same digest-checked migration snapshots as production.
+It does not require a pre-existing 154 checkout. Source, SDK, tools and
+completed objects are restored/saved with `actions/cache` under `depot155-*`
+keys, isolated from 154. Completed APT downloads use a separate cache, and
+OS packages are installed in every new sandbox. A prepared workspace is
+saved even after a compile failure, but not after cancellation.
+
+On the first cache miss, upload the private native target SDK subset to
+the authenticated Depot sandbox and extract it at
+`/mnt/chromium-155/ohos_sdk`. Write its verified archive SHA-256 to
+`/mnt/chromium-155/sdk-inbox/sdk.ready` only after extraction is complete.
+`config/depot-155-sdk.json` pins the SDK version, API and archive digest;
+the archive and signing material must not be committed to Git. Later runs
+restore this SDK from the isolated cache. The workflow uploads native
+runtime, symbols and diagnostics as CI artifacts, without publishing a
+release or packaging/signing a HAP.

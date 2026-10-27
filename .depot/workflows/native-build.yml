@@ -1,0 +1,109 @@
+name: Depot Chromium 155 native build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: depot-native-${{ github.repository }}-155
+  cancel-in-progress: false
+
+jobs:
+  native:
+    runs-on: depot-ubuntu-24.04-16
+    timeout-minutes: 360
+    env:
+      DEPOT_TRIAL_BRANCH: ci/depot-155
+      NINJA_JOBS: '16'
+      NINJA_MAX_FAILURES: '5'
+      SKIP_PACKAGE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify published trial commit
+        run: python3 scripts/select-depot-engine.py
+      - name: Create native workspace on the local disk
+        run: sudo install -d -o "$(id -u)" -g "$(id -g)" /mnt/chromium-155
+      - name: Restore source, SDK and compiled objects to the local disk
+        id: native-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /mnt/chromium-155/source
+            /mnt/chromium-155/depot_tools
+            /mnt/chromium-155/ohos_sdk
+            /mnt/chromium-155/sdk-inbox/sdk.ready
+            /mnt/chromium-155/cipd
+            /mnt/chromium-155/vpython
+            /mnt/chromium-155/cargo
+            /mnt/chromium-155/rustup
+          key: depot155-linux-x64-v2-${{ hashFiles('config/engines/155.json', 'config/args.plan_kirin_pc.gn', 'config/depot-155-sdk.json') }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            depot155-linux-x64-v2-${{ hashFiles('config/engines/155.json', 'config/args.plan_kirin_pc.gn', 'config/depot-155-sdk.json') }}-${{ github.sha }}-
+            depot155-linux-x64-v2-${{ hashFiles('config/engines/155.json', 'config/args.plan_kirin_pc.gn', 'config/depot-155-sdk.json') }}-
+      # Keep this separate: changing the source cache's path list would change
+      # its Actions cache version and invalidate the existing large archive.
+      # APT owns partial/ with mode 0700; cache only completed .deb downloads.
+      - name: Restore downloaded system packages
+        id: apt-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /mnt/chromium-155/apt/archives/*.deb
+          key: depot155-apt-ubuntu24-x64-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: depot155-apt-ubuntu24-x64-v1-
+      - name: Prepare pinned Chromium and SDK
+        id: prepare
+        run: |
+          mkdir -p build-status
+          set -o pipefail
+          bash scripts/prepare-depot-155.sh 2>&1 | tee build-status/depot-preparation.log
+      - name: Compile full native runtime
+        run: |
+          set -o pipefail
+          bash scripts/ci-incremental-build.sh 2>&1 | tee build-status/native-build.log
+      - name: Check native phishing rule validation
+        run: bash scripts/test-url-protection-native.sh
+      - name: Package native runtime and symbols
+        run: bash scripts/package-depot-native.sh
+      - name: Upload native runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-155-native-${{ github.sha }}
+          path: artifacts/depot-native/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-155-build-diagnostics-${{ github.sha }}
+          path: build-status/
+          retention-days: 7
+      # Save completed objects even after a compiler error, with a unique key
+      # so a subsequent retry can publish a newer, more complete cache entry.
+      - name: Save native workspace to Depot Cache
+        if: always() && !cancelled() && steps.prepare.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /mnt/chromium-155/source
+            /mnt/chromium-155/depot_tools
+            /mnt/chromium-155/ohos_sdk
+            /mnt/chromium-155/sdk-inbox/sdk.ready
+            /mnt/chromium-155/cipd
+            /mnt/chromium-155/vpython
+            /mnt/chromium-155/cargo
+            /mnt/chromium-155/rustup
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+      - name: Save downloaded system packages
+        if: always() && !cancelled() && steps.prepare.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: /mnt/chromium-155/apt/archives/*.deb
+          key: ${{ steps.apt-cache.outputs.cache-primary-key }}

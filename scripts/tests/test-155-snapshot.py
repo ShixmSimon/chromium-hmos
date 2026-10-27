@@ -15,6 +15,19 @@ spec.loader.exec_module(snapshot)
 
 
 class SnapshotRetryTest(unittest.TestCase):
+    def test_only_isolated_155_workspaces_are_allowed(self):
+        for name in ('/root/chromium-155/src', '/mnt/chromium-155/source/src'):
+            self.assertEqual(snapshot.validate_source(name), Path(name))
+        for name in ('/root/chromium-154/src', '/mnt/chromium-154/source/src',
+                     '/mnt/chromium-155/source', '/tmp/src'):
+            with self.subTest(path=name), self.assertRaises(ValueError):
+                snapshot.validate_source(name)
+        with tempfile.TemporaryDirectory() as folder:
+            alias = Path(folder) / 'src'
+            alias.symlink_to('/mnt/chromium-154/source/src')
+            with self.assertRaises(ValueError):
+                snapshot.validate_source(alias)
+
     def test_only_changed_or_retired_inputs_get_new_timestamps(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
