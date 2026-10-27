@@ -28,6 +28,9 @@ export interface BookmarkNode {
   // so it is the only reliable way to tell the bookmark bar from the mobile
   // folder -- which is where a new bookmark goes by default.
   rootType?: 'mobile' | 'bookmarkBar' | 'other';
+  // A deleted empty root is omitted from the main list. It remains an
+  // insertion destination; adding content makes it visible again.
+  deleted?: boolean;
   // searchBookmarks only: the titles from the permanent folder down to this
   // node's parent, for the "where it lives" line under a flat search hit.
   path?: string[];

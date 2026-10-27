@@ -612,6 +612,7 @@ BookmarkNode {
   id, parentId, type: 'url' | 'folder', title, url?, dateAdded, index,
   childCount?,   // 文件夹的直接子项数量，不递归
   rootType?,     // 'mobile' | 'bookmarkBar' | 'other'，仅三个根文件夹
+  deleted?,      // 默认根容器已删除且为空，书签页不展示；仍可作为新书签的目的地
   path?          // 仅 searchBookmarks：从根文件夹到父文件夹的标题
 }
 ```
@@ -633,13 +634,21 @@ bookmarkOpResult { requestId, ok, error?, failedIds? }
 | `error` | 含义 |
 |---|---|
 | `notFound` | `id` 不存在 |
-| `permanentNode` | 试图修改、移动或删除三个根文件夹 |
+| `permanentNode` | 试图改名、移动默认根文件夹，或修改其它内核永久节点 |
 | `invalidParent` | 目标 `parentId` 不存在或不是文件夹 |
 | `cycle` | 试图把文件夹移到它自己或它的子孙里 |
 | `invalidUrl` | `url` 不是合法网址，或对文件夹设网址 |
 | `unknown` | 其它失败，包括被策略管理的书签 |
 
 `updateBookmark` 先校验后写：`url` 会被拒时，`title` 也不会改。空 `title` 是允许的。
+
+`removeBookmark` / `removeBookmarks` 允许删除默认根文件夹：递归删除其子项，
+保留 Chromium 必需的根容器及固定 UUID，并在该节点元数据保存删除标记。
+书签页及侧栏隐藏 `deleted: true` 的空根容器；目的地选择仍可使用这些容器，
+新增或移入内容时清除标记并恢复显示。元数据随书签模型持久保存，重启后不会
+凭空恢复空文件夹。同步继续保留固定根 UUID，子项删除通过现有墓碑流程同步；
+根容器的显示标记是本机状态，不作为云端根节点删除。
+用户须确认文件夹及其内容一起删除；外壳等待成功回执，超时不能当作删除成功。
 
 批量命令（`moveBookmarks` / `removeBookmarks`）整批在一次 `BeginExtensiveChanges`
 里完成，**只推一次 `bookmarksChanged`**。同一批里同时包含某个文件夹和它的子孙

@@ -75,6 +75,9 @@ constexpr char kErrInvalidParent[] = "invalidParent";
 constexpr char kErrCycle[] = "cycle";
 constexpr char kErrInvalidUrl[] = "invalidUrl";
 constexpr char kErrUnknown[] = "unknown";
+// Permanent Chromium containers must survive. The shell may delete their
+// contents and remember that an empty container should no longer be listed.
+constexpr char kDeletedRootMetaKey[] = "ohos.shell.deleted_root";
 
 // Import and export, which fail in their own ways.
 constexpr char kErrWriteFailed[] = "writeFailed";
@@ -168,6 +171,10 @@ base::DictValue ToShellNode(BookmarkModel* model, const BookmarkNode* node) {
     result.Set("childCount", static_cast<int>(node->children().size()));
     if (const std::string_view root = RootTypeOf(model, node); !root.empty()) {
       result.Set("rootType", root);
+      std::string deleted;
+      result.Set("deleted", node->children().empty() &&
+                                node->GetMetaInfo(kDeletedRootMetaKey, &deleted) &&
+                                deleted == "1");
     }
   }
   return result;
@@ -246,13 +253,15 @@ const BookmarkNode* ReadInsertionParent(BookmarkModel* model,
 // that on instead of dropping the command silently.
 const BookmarkNode* ResolveEditableNode(BookmarkModel* model,
                                         const std::string* id,
-                                        std::string_view* error) {
+                                        std::string_view* error,
+                                        bool allow_root_removal = false) {
   const BookmarkNode* node = NodeById(model, id);
   if (!node) {
     *error = kErrNotFound;
     return nullptr;
   }
-  if (model->is_permanent_node(node)) {
+  if (model->is_permanent_node(node) &&
+      !(allow_root_removal && !RootTypeOf(model, node).empty())) {
     *error = kErrPermanentNode;
     return nullptr;
   }
@@ -262,6 +271,17 @@ const BookmarkNode* ResolveEditableNode(BookmarkModel* model,
     return nullptr;
   }
   return node;
+}
+
+void RemoveShellBookmark(BookmarkModel* model, const BookmarkNode* node) {
+  if (!RootTypeOf(model, node).empty()) {
+    while (!node->children().empty()) {
+      model->Remove(node->children().back().get(), kEditSource, FROM_HERE);
+    }
+    model->SetNodeMetaInfo(node, kDeletedRootMetaKey, "1");
+    return;
+  }
+  model->Remove(node, kEditSource, FROM_HERE);
 }
 
 // Where an insertion lands. Absent still means the end, which is what a shell
@@ -523,7 +543,8 @@ void MoveBookmark(const ShellCommandContext& context,
 std::vector<const BookmarkNode*> ReadBatchNodes(BookmarkModel* model,
                                                 const base::DictValue& command,
                                                 base::ListValue* failed_ids,
-                                                std::string_view* error) {
+                                                std::string_view* error,
+                                                bool allow_root_removal = false) {
   std::vector<const BookmarkNode*> nodes;
   const base::ListValue* ids = command.FindList("ids");
   if (!ids) {
@@ -533,8 +554,11 @@ std::vector<const BookmarkNode*> ReadBatchNodes(BookmarkModel* model,
   for (const base::Value& entry : *ids) {
     const std::string* id = entry.GetIfString();
     std::string_view reason;
-    if (const BookmarkNode* node = ResolveEditableNode(model, id, &reason)) {
-      nodes.push_back(node);
+    if (const BookmarkNode* node =
+            ResolveEditableNode(model, id, &reason, allow_root_removal)) {
+      if (std::find(nodes.begin(), nodes.end(), node) == nodes.end()) {
+        nodes.push_back(node);
+      }
       continue;
     }
     if (error->empty()) {
@@ -607,12 +631,13 @@ void RemoveBookmarks(const ShellCommandContext& context,
   base::ListValue failed_ids;
   std::string_view error;
   std::vector<const BookmarkNode*> nodes =
-      ReadBatchNodes(model, command, &failed_ids, &error);
+      ReadBatchNodes(model, command, &failed_ids, &error,
+                     /*allow_root_removal=*/true);
   DropNodesCarriedByOthers(&nodes);
   {
     model->BeginExtensiveChanges();
     for (const BookmarkNode* node : nodes) {
-      model->Remove(node, kEditSource, FROM_HERE);
+      RemoveShellBookmark(model, node);
     }
     model->EndExtensiveChanges();
   }
@@ -828,12 +853,15 @@ void RemoveBookmark(const ShellCommandContext& context,
                     const base::DictValue& command) {
   std::string_view error;
   const BookmarkNode* node =
-      ResolveEditableNode(model, command.FindString("id"), &error);
+      ResolveEditableNode(model, command.FindString("id"), &error,
+                          /*allow_root_removal=*/true);
   if (!node) {
     ReplyOpResult(context, command, error);
     return;
   }
-  model->Remove(node, kEditSource, FROM_HERE);
+  model->BeginExtensiveChanges();
+  RemoveShellBookmark(model, node);
+  model->EndExtensiveChanges();
   ReplyOpResult(context, command, std::string_view());
 }
 
@@ -1222,11 +1250,13 @@ class BookmarksWatcher : public bookmarks::BookmarkModelObserver {
                          size_t old_index,
                          const BookmarkNode* new_parent,
                          size_t new_index) override {
+    RestorePopulatedRoot(new_parent);
     NotifyChanged();
   }
   void BookmarkNodeAdded(const BookmarkNode* parent,
                          size_t index,
                          bool added_by_user) override {
+    RestorePopulatedRoot(parent);
     NotifyChanged();
   }
   void BookmarkNodeRemoved(const BookmarkNode* parent,
@@ -1237,6 +1267,9 @@ class BookmarksWatcher : public bookmarks::BookmarkModelObserver {
     NotifyChanged();
   }
   void BookmarkNodeChanged(const BookmarkNode* node) override {
+    NotifyChanged();
+  }
+  void BookmarkMetaInfoChanged(const BookmarkNode* node) override {
     NotifyChanged();
   }
   // The shell fetches favicons itself; a bookmark's cached icon loading is
@@ -1252,6 +1285,13 @@ class BookmarksWatcher : public bookmarks::BookmarkModelObserver {
   }
 
  private:
+  void RestorePopulatedRoot(const BookmarkNode* node) {
+    if (model_ && !RootTypeOf(model_.get(), node).empty() &&
+        !node->children().empty()) {
+      model_->DeleteNodeMetaInfo(node, kDeletedRootMetaKey);
+    }
+  }
+
   struct PendingCommand {
     ShellCommandContext context;
     std::string name;
