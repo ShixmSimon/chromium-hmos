@@ -93,6 +93,8 @@ struct AuraStartupConfig {
   double vulkan_hdr_white_nits = 0;
   double vulkan_hdr_peak_nits = 0;
   bool jitless = false;
+  // Explicit embedder opt-in to the firmware-specific JIT request.
+  bool jit_compatibility = false;
   bool fullscreen_requested = true;
   // Runs without a window next to another web engine, e.g. for Sync.
   bool headless = false;

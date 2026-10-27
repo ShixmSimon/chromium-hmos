@@ -135,6 +135,9 @@ export interface AuraStartupConfig {
   icuDataOffset?: number;
   icuDataLength?: number;
   jitless: boolean;
+  // Opt in to the OHOS JIT compatibility request after a failed memory probe.
+  // jitless always wins. Omitted/false keeps probe-only startup.
+  jitCompatibility?: boolean;
   // Off the GPU when the GPU's fences do not work. Unset lets the engine
   // decide, which is what a device should do; set only to run the
   // comparison the other way without a rebuild.

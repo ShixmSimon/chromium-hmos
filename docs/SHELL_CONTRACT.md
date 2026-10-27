@@ -1292,6 +1292,25 @@ ANGLE/Skia Vulkan、NativePixmap 互操作；具体限制和验收见 [手机 fo
 
 ## 10. 权限
 
+### JIT 启动策略（154 / 155，2026-10-27）
+
+`AuraStartupConfig.jitCompatibility?: boolean` 为外壳显式启用的兼容请求，内核默认
+`false`。非 headless 启动在 V8 和手机 fork server 创建前执行：先探测匿名 RW→RX；
+仅在 mmap/munmap 成功而 mprotect 返回 EINVAL/EACCES/EPERM 时，最多请求一次
+`prctl(0x6a6974, 0UL, 0UL, 0UL, 0UL)`，然后无论请求返回值如何都重新探测。
+仍失败时追加 `--jitless --wasm-jitless`，保留其他 V8 参数；后传的
+`additionalSwitches` 不能覆盖这项回退。`jitless:true` 或有效的 V8 `--jitless`
+选择优先，完全跳过探测和请求。headless 模式不发兼容请求。
+
+多窗口共用首次启动决定，更改 `jitless` / `jitCompatibility` 要冷启动。
+内存结果不持久化，下次启动重新探测。该私有接口不是通用授权；现有 ACL 与签名
+要求继续适用，不发送未验证的“关闭”子操作。已知实测条件、跨进程现象和未验证
+范围见 [JIT 调查](OHOS_JIT_AUTHORIZATION_INVESTIGATION.md)。
+
+`aboutInfo.jitEnabled` 表示本次引擎启动的 JIT 模式，不能由 ACL 授予、prctl 返回值
+或上次进程结果推断；也不等于每一个网页函数已执行 JIT 机器码。
+
+
 **JIT 需要重新签名（必须做）**：引擎 HAR 声明了 `ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY`，这是个 ACL 权限，外壳的签名 profile 里也必须带上它，否则会出现两种情况：
 - 安装时报 `9568289 grant request permissions failed`；
 - 装上后系统不给 JIT，引擎退回解释器（日志 `AuraShell JIT unavailable`）。JS 会慢好几倍，Cloudflare 人机验证也会失败（600010）。
@@ -1313,7 +1332,7 @@ HAR 的 `module.json5` 声明了 13 项权限(包括 WebAuthn 用到的 `ACCESS_
 | 一个进程只能有一个浏览器 `WebWindow` | 同一个进程里只能初始化一次 Chromium。多窗口(PWA)通过 `onAuxiliaryWindowState` 的 `pwa` 角色另开窗口。 |
 | 手机上默认是单进程模式 | 手机上网页和浏览器默认在同一个进程里(`--single-process`)。平板和 2in1 是多进程。可显式开启默认关闭的 `experimentalPhoneFork` 实验，验证范围见第 8 节。 |
 | 远程调试端口始终打开 | 非 headless 模式下,引擎监听 `127.0.0.1:9222`。**发布正式版之前必须关闭**,目前还没有开关。 |
-| JIT 取决于启动环境 | 构建包含 JIT 编译器，启动时探测能否映射可执行内存：能则启用（平板、2in1、调试签名的手机包），不能则用解释器（手机正式包，JS 简单循环约慢 5 倍），启动配置也可以要求 jitless。本次启动状态看 `aboutInfo.jitEnabled`。解释器模式下 WebAssembly 由 DrumBrake 解释器执行，能用但比 JIT 慢。 |
+| JIT 取决于启动环境 | 构建包含 JIT 编译器；匿名可执行内存探测失败时，可由外壳通过 `jitCompatibility:true` 尝试兼容请求并复测，仍失败则使用解释器。显式 jitless 优先。实际模式看 `aboutInfo.jitEnabled`，不由手机/平板或签名类型直接推断。解释器模式下 WebAssembly 使用 DrumBrake。 |
 | SURFACE 模式下的旋转未验证 | 手机横竖屏、平板和折叠屏的展开折叠,还需要在真机上确认。 |
 | 投屏、PWA 菜单的实现还在 `entry/` 里 | 新外壳需要的话,先从参考实现复制,之后会移进 HAR。 |
 
