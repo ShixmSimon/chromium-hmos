@@ -36,6 +36,7 @@
 #include "base/posix/global_descriptors.h"
 #include "base/process/fork_server_ohos.h"
 #include "base/process/launch_ohos.h"
+#include "base/process/ohos_jit_memory.h"
 #include "base/strings/string_number_conversions.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
@@ -417,6 +418,32 @@ int RunNativeChild(const char* encoded_params,
     }
   }
 #endif
+
+  // A renderer can be created long after the main-process startup probe,
+  // including after background cleanup. Revalidate in this process before V8
+  // initializes; do not reuse a stale parent result or enable compatibility in
+  // an isolated child. GPU and utility children keep their existing policy.
+  if (command_line.GetSwitchValueASCII("type") == "renderer") {
+    const std::string js_flags = command_line.GetSwitchValueASCII("js-flags");
+    if (!base::internal::JitlessRequested(js_flags)) {
+      const auto probe = base::internal::ProbeOhosJitMemory();
+      if (!probe.available) {
+        base::CommandLine renderer_command_line(launch_params.argv);
+        renderer_command_line.RemoveSwitch("js-flags");
+        renderer_command_line.AppendSwitchASCII(
+            "js-flags", js_flags + (js_flags.empty() ? "" : " ") +
+                            "--jitless --wasm-jitless");
+        launch_params.argv = renderer_command_line.argv();
+        LOG(ERROR) << "OHOS renderer JIT revalidation failed stage="
+                   << (probe.failure_stage ? probe.failure_stage : "unknown")
+                   << " map=" << probe.map_error
+                   << " protect=" << probe.protect_error
+                   << " discard=" << probe.discard_error
+                   << " unmap=" << probe.unmap_error
+                   << "; using interpreter before ChromeMain";
+      }
+    }
+  }
 
   // Arguments can contain user paths and URLs. A stage marker is sufficient
   // to distinguish bootstrap failure from a child stuck inside Chromium.

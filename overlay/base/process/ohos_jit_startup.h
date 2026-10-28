@@ -14,6 +14,8 @@ struct JitMemoryProbe {
   int map_error = 0;
   int protect_error = 0;
   int unmap_error = 0;
+  int discard_error = 0;
+  const char* failure_stage = nullptr;
 };
 
 struct JitCompatibilityRequest {
@@ -73,6 +75,7 @@ JitStartupResult PrepareJitStartup(bool disabled,
   const int error = result.before.protect_error;
   if (result.before.available || !allow_compatibility ||
       result.before.map_error || result.before.unmap_error ||
+      result.before.discard_error ||
       (error != EINVAL && error != EACCES && error != EPERM)) {
     return result;
   }

@@ -1,5 +1,29 @@
 # Mate 70 Pro+ JIT 授权路径调查（2026-10-26）
 
+## 后台恢复后 renderer CodeRange 初始化崩溃（2026-10-29）
+
+手机的浏览器主进程仍存活，但多次新建 renderer 均在进入 V8 后触发
+SIGTRAP。匹配 Build ID 的符号文件指向 `InitCodeRangeOnce` 的 OOM
+终止路径；系统报告中后续帧来自不可靠的栈扫描，尚未取得失败系统调用的
+errno，不能将其定性为物理内存不足或已证实的权限撤销。
+
+原启动探针仅测试一页 RW→RX，且只在主进程启动时运行。
+V8 ARM64 external CodeRange 的默认预留为 256 MiB，还会在
+`CodeRange::InitReservation` 中执行整段 RWX 和 MADV_DONTNEED。
+现改为共享的完整探针：PROT_NONE/MAP_NORESERVE 预留 → RWX → discard
+→ 单页 RW 写入 → RX → unmap。不会填满整块预留区域，也不执行生成代码。
+探针覆盖默认代码区操作，但不保证任意自定义 V8 参数、地址布局或后续分配成功。
+
+主进程保留既有、显式启用的兼容请求策略；每个 renderer 在 ChromeMain/V8
+初始化之前独立复测，不缓存主进程旧结果。失败时只在该 renderer 的已有
+js-flags 后追加 `--jitless --wasm-jitless`，避免循环启动即崩溃。
+子进程不会新增兼容请求；GPU/utility 的策略保持不变。
+失败阶段和 map/protect/discard/unmap errno 写入诊断，不记录 URL 或路径。
+
+回归验证覆盖各阶段失败、所有成功映射的清理、兼容请求后的复测、资源错误
+不触发兼容请求，以及显式 JITless 的优先级。真机仍需验证长时间后台及后台
+清理后打开多个页面；在完成实测前，不应宣称整个场景已修复。
+
 ## 最新结论：已验证自主开启入口（2026-10-26 19:13）
 
 用户提供的 VintagePomeloPro 引用 Wine 的 `ohos_jit_enable()`，调用
