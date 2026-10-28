@@ -87,6 +87,10 @@ class StoreUserAgentWatcher
  public:
   ~StoreUserAgentWatcher() override = default;
 
+  // NavigationHandle permits changing its UA flag only in DidStartNavigation.
+  // A redirect keeps the initial navigation's UA; the next navigation applies
+  // or restores the site policy. Re-entering this handler from a redirect
+  // trips NavigationRequest's CHECK(!ua_change_requires_reload_).
   void DidStartNavigation(content::NavigationHandle* handle) override {
     // Only the tab's own page. A same-document navigation keeps the UA it
     // committed with, and setting the flag on one does nothing.
@@ -161,10 +165,6 @@ class StoreUserAgentWatcher
     SetAuraShellUserAgentPinned(web_contents(), true);
     handle->SetIsOverridingUserAgent(true);
     applied = true;
-  }
-
-  void DidRedirectNavigation(content::NavigationHandle* handle) override {
-    DidStartNavigation(handle);
   }
 
  private:

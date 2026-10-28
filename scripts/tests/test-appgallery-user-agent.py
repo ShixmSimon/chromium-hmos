@@ -20,6 +20,11 @@ def function(text, signature):
 
 policy = function(source, 'bool IsHuaweiAppGallery(') + '\n' + function(source, 'std::string AppGalleryUserAgent(')
 method = function(source, 'bool ApplyAppGalleryUserAgent(')
+start_method = function(source, 'void DidStartNavigation(').replace(' override', '')
+restore_method = function(source, 'void RestoreUserAgent(')
+redirect_method = (function(source, 'void DidRedirectNavigation(').replace(' override', '')
+                   if 'void DidRedirectNavigation(' in source else '')
+store_policy = function(source, 'bool IsChromeWebStore(')
 classifier = function((ROOT / 'overlay/chrome/browser/ui/ohos/aura_shell_runtime_bridge.cc').read_text(),
                       'bool IsAuraShellRequestingDesktopSite(')
 viewport_patch = (ROOT / 'patches/ohos-mobile-ua-viewport.patch').read_text()
@@ -40,7 +45,16 @@ viewport = viewport.replace('chrome::ohos::IsAuraShellRequestingDesktopSite',
 unit = r'''
 #include <cassert>
 #include <optional>
+#include <sstream>
 #include <string>
+#define LOG(level) std::ostringstream()
+namespace absl {
+template <typename F> struct Cleanup {
+  F callback;
+  Cleanup(F value) : callback(value) {}
+  ~Cleanup() { callback(); }
+};
+}
 struct GURL {
   std::string value;
   bool SchemeIs(const char* scheme) const {
@@ -50,7 +64,12 @@ struct GURL {
     auto start = value.find("://") + 3;
     return value.substr(start, value.find('/', start) - start);
   }
+  std::string path() const {
+    auto start = value.find('/', value.find("://") + 3);
+    return start == std::string::npos ? "/" : value.substr(start);
+  }
 };
+std::string UrlForLog(const GURL&) { return "test-origin"; }
 namespace blink {
 struct UserAgentMetadata {
   bool mobile;
@@ -83,8 +102,20 @@ struct WebContents {
 struct NavigationHandle {
   GURL url;
   bool overriding = false;
+  bool starting = true;
+  bool main_frame = true;
+  bool same_document = false;
   GURL GetURL() { return url; }
-  void SetIsOverridingUserAgent(bool value) { overriding = value; }
+  bool IsInPrimaryMainFrame() const { return main_frame; }
+  bool IsSameDocument() const { return same_document; }
+  void SetIsOverridingUserAgent(bool value) {
+    // The public NavigationHandle API permits this only in DidStartNavigation.
+    assert(starting);
+    overriding = value;
+  }
+};
+struct WebContentsObserver {
+  void DidRedirectNavigation(NavigationHandle*) {}
 };
 }
 namespace embedder_support {
@@ -93,7 +124,9 @@ std::string GetUserAgentForOhos(bool mobile) {
                 : "Chrome/154.0.0.0 Safari/537.36 OpenHarmony/7.0";
 }
 blink::UserAgentMetadata GetUserAgentMetadataForOhos(bool mobile) { return {mobile}; }
+std::string GetOhosStoreUserAgent() { return "store desktop"; }
 }
+blink::UserAgentMetadata StoreUserAgentMetadata() { return {false}; }
 bool IsAuraShellMobilePhoneUi() { return true; }
 bool IsAuraShellUserAgentPinned(content::WebContents* tab) { return tab->pinned; }
 void SetAuraShellUserAgentPinned(content::WebContents* tab, bool value) { tab->pinned = value; }
@@ -103,13 +136,20 @@ blink::UserAgentOverride AuraShellDesktopSiteUserAgent() {
 CLASSIFIER
 VIEWPORT
 POLICY
-struct Watcher {
+STORE_POLICY
+struct Watcher : content::WebContentsObserver {
   content::WebContents* contents;
   content::WebContents* web_contents() { return contents; }
   blink::UserAgentOverride before_appgallery_;
   bool before_appgallery_pinned_ = false;
   std::string appgallery_ua_;
+  std::string store_ua_;
+  bool desktop_site_ = false;
+  explicit Watcher(content::WebContents* tab) : contents(tab) {}
 METHOD
+START_METHOD
+RESTORE_METHOD
+REDIRECT_METHOD
 };
 int main() {
   assert(IsHuaweiAppGallery({"https://appgallery.huawei.com/apptest/invite"}));
@@ -125,7 +165,7 @@ int main() {
       if (!empty) tab.ua = {desktop ? "desktop" : "mobile", blink::UserAgentMetadata{!desktop}};
       tab.pinned = desktop;
       auto baseline = tab.ua;
-      Watcher watcher{&tab, {}, false, {}};
+      Watcher watcher(&tab);
       content::NavigationHandle h{{"https://appgallery.huawei.com/apptest/invite"}, false};
       assert(watcher.ApplyAppGalleryUserAgent(&h));
       assert(tab.pinned && h.overriding && !tab.inherits);
@@ -143,7 +183,7 @@ int main() {
     }
   }
   content::WebContents tab;
-  Watcher watcher{&tab, {}, false, {}};
+  Watcher watcher(&tab);
   content::NavigationHandle h{{"https://appgallery.huawei.com/"}, false};
   watcher.ApplyAppGalleryUserAgent(&h);
   tab.ua = {"new desktop", blink::UserAgentMetadata{false}}; // user changes mode
@@ -154,8 +194,38 @@ int main() {
   assert(tab.ua.ua_string_override == "new desktop" && tab.pinned);
   watcher.ApplyAppGalleryUserAgent(&h);
   assert(tab.ua.ua_string_override == "new desktop");
+
+  // Follow redirects away from either store, then start a fresh navigation.
+  // Redirect callbacks must preserve the navigation's initial UA and must
+  // never invoke the start-only NavigationHandle setter (which CHECKs in
+  // Chromium). A fresh navigation must still restore the user's baseline.
+  for (const char* origin : {"https://chromewebstore.google.com/",
+                             "https://chrome.google.com/webstore/",
+                             "https://appgallery.huawei.com/apptest/invite"}) {
+    content::WebContents page;
+    page.ua = AuraShellDesktopSiteUserAgent();
+    page.pinned = true;
+    auto baseline = page.ua;
+    Watcher policy(&page);
+    content::NavigationHandle navigation{{origin}};
+    policy.DidStartNavigation(&navigation);
+    assert(navigation.overriding && page.pinned);
+    auto initial = page.ua;
+    navigation.starting = false;
+    for (const char* destination : {"https://example.com/redirect",
+                                    "https://appgallery.huawei.com/",
+                                    "https://chromewebstore.google.com/"}) {
+      navigation.url.value = destination;
+      policy.DidRedirectNavigation(&navigation);
+      assert(page.ua == initial);
+    }
+    navigation.url.value = "https://example.com/";
+    navigation.starting = true;
+    policy.DidStartNavigation(&navigation);
+    assert(page.ua == baseline && page.pinned && navigation.overriding);
+  }
 }
-'''.replace('POLICY', policy).replace('METHOD', method).replace('CLASSIFIER', classifier).replace('VIEWPORT', viewport)
+'''.replace('STORE_POLICY', store_policy).replace('POLICY', policy).replace('START_METHOD', start_method).replace('RESTORE_METHOD', restore_method).replace('REDIRECT_METHOD', redirect_method).replace('METHOD', method).replace('CLASSIFIER', classifier).replace('VIEWPORT', viewport)
 with tempfile.TemporaryDirectory(prefix='appgallery-ua-') as directory:
     cc = Path(directory) / 'policy.cc'
     exe = Path(directory) / 'policy'
@@ -163,4 +233,4 @@ with tempfile.TemporaryDirectory(prefix='appgallery-ua-') as directory:
     subprocess.run([os.environ.get('CXX', 'clang++'), '-std=c++20', '-Wall', '-Wextra',
                     '-Werror', str(cc), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
-print('AppGallery exact host, additive UA, metadata, refresh, mode changes and restoration passed.')
+print('Store UA exact hosts, metadata, mode changes, redirect lifecycle and restoration passed.')
