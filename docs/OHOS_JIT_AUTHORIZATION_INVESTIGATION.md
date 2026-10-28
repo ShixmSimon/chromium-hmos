@@ -7,6 +7,12 @@ SIGTRAP。匹配 Build ID 的符号文件指向 `InitCodeRangeOnce` 的 OOM
 终止路径；系统报告中后续帧来自不可靠的栈扫描，尚未取得失败系统调用的
 errno，不能将其定性为物理内存不足或已证实的权限撤销。
 
+随后在同一存活主进程的 debug 探针中取得直接证据：RW→RX 的 libc 和
+原始系统调用均返回 EINVAL(22)，匿名 RWX 映射也返回 EINVAL；请求兼容
+子操作 0 返回成功后，同一 PID 立即恢复全部匿名映射探针。memfd RX 仍被
+拒绝，不能将此解释为任意可执行内存权限已获得。该对照确认运行中的可执行
+内存可用性发生变化，但仍未证明后台清理就是系统状态变化的唯一触发因素。
+
 原启动探针仅测试一页 RW→RX，且只在主进程启动时运行。
 V8 ARM64 external CodeRange 的默认预留为 256 MiB，还会在
 `CodeRange::InitReservation` 中执行整段 RWX 和 MADV_DONTNEED。
@@ -18,6 +24,8 @@ V8 ARM64 external CodeRange 的默认预留为 256 MiB，还会在
 初始化之前独立复测，不缓存主进程旧结果。失败时只在该 renderer 的已有
 js-flags 后追加 `--jitless --wasm-jitless`，避免循环启动即崩溃。
 子进程不会新增兼容请求；GPU/utility 的策略保持不变。
+浏览器由隐藏恢复可见时，在原配置显式启用兼容且未 JITless 的前提下复测，
+必要时请求一次并复测。此时 V8 已运行，不修改主进程 V8 flags。
 失败阶段和 map/protect/discard/unmap errno 写入诊断，不记录 URL 或路径。
 
 回归验证覆盖各阶段失败、所有成功映射的清理、兼容请求后的复测、资源错误

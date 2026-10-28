@@ -48,6 +48,7 @@ class OhosChromeMainRunner {
 
   mutable std::mutex mutex_;
   bool started_ = false;
+  bool jit_visible_ = false;
   AuraStartupConfig startup_config_;
   std::vector<std::string> arguments_;
   std::thread chrome_thread_;

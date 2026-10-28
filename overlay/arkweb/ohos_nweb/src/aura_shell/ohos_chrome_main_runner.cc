@@ -392,6 +392,7 @@ bool OhosChromeMainRunner::EnsureStarted(const AuraStartupConfig& config) {
                "same UID, no renderer sandbox");
   }
   started_ = true;
+  jit_visible_ = false;
   if (!config.headless) {
     mcp_server_.Start();
   }
@@ -434,6 +435,38 @@ void OhosChromeMainRunner::SetBrowserStateCallback(
 
 void OhosChromeMainRunner::SetVisible(const std::string& component_id,
                                       bool visible) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const bool resumed = visible && !jit_visible_;
+    jit_visible_ = visible;
+    if (resumed && started_ && !startup_config_.headless &&
+        startup_config_.jit_compatibility) {
+      const base::CommandLine configured_command_line(arguments_);
+      const bool disabled = startup_config_.jitless || JitlessRequested(
+          configured_command_line.GetSwitchValueASCII("js-flags"));
+      // Firmware executable-memory availability can change while this PID is
+      // alive. Refresh before showing pages, with the original explicit opt-in.
+      // V8 is already initialized here: never change its flags in this process.
+      const auto jit = PrepareJitStartup(
+          disabled, /*allow_compatibility=*/true,
+          &base::internal::ProbeOhosJitMemory, &RequestJitCompatibility);
+      if (!jit.disabled &&
+          (jit.request_attempted || !jit.after.available)) {
+        AURA_LOG_E("AuraShell JIT resume available=%{public}d "
+                   "requested=%{public}d request_errno=%{public}d "
+                   "before_stage=%{public}s protect_errno=%{public}d "
+                   "after_stage=%{public}s map=%{public}d "
+                   "protect=%{public}d discard=%{public}d unmap=%{public}d",
+                   jit.after.available, jit.request_attempted,
+                   jit.request.error,
+                   jit.before.failure_stage ? jit.before.failure_stage : "none",
+                   jit.before.protect_error,
+                   jit.after.failure_stage ? jit.after.failure_stage : "none",
+                   jit.after.map_error, jit.after.protect_error,
+                   jit.after.discard_error, jit.after.unmap_error);
+      }
+    }
+  }
   const gfx::AcceleratedWidget widget =
       ui::GetOhosAcceleratedWidgetForNativeSurface(component_id);
   if (widget == gfx::kNullAcceleratedWidget && component_id != "aura_shell") {
