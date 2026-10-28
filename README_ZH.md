@@ -31,16 +31,17 @@
 - `overlay/`：新增的 HarmonyOS、ArkWeb、Ozone、Aura shell 与 ArkUI 源码。
 - `external/deps_code/webview/`：适配层需要的 WebView 接口源码。
 - `config/args.plan_kirin_pc.gn`：本次原生构建使用的 GN 参数。
-- `scripts/prepare-chromium-155.sh`：在 CI 中准备独立的 155 源码。
-- `.github/workflows/incremental-build.yml`：仅构建 154／155 adapter 分支，各自使用独立源码和输出目录。
+- `scripts/prepare-depot-155.sh`：在 Depot 中准备独立的 155 源码。
+- `.depot/workflows/`：154／155 正式分支使用 Depot CI，各自复用独立源码、工具链和编译缓存，见 [Depot CI](docs/DEPOT_CI.md)。
+- `_bak/workflows/`：原 GitHub Actions 工作流备份，不再自动执行。
 - `licenses/`：许可证正文与第三方许可证清单。
 - `SOURCE_MANIFEST.sha256`：原始源码公开快照的校验清单；当前迁移输入以 Git 提交和迁移清单为准。
 
-源码仓库不包含私有 HarmonyOS SDK 和签名材料。原生 HAR 与符号归档由对应分支的 CI release 生成。
+源码仓库不包含私有 HarmonyOS SDK 和签名材料。原生运行时与符号归档上传到 Depot CI 产物。
 
 ## 通过 CI 构建
 
-将源码改动推送到 `hmos-155-adapter`。CI 在 `/root/chromium-155/src` 同步固定依赖和工具链、应用迁移补丁，并编译和打包引擎 HAR。154 的源码及输出保留在 `/root/chromium-154/src`。
+将源码改动推送到 `hmos-155-adapter`。CI 在 `/mnt/chromium-155/source/src` 同步固定依赖和工具链、应用迁移补丁，并编译和打包原生运行时。源码、SDK 和编译对象使用独立于 154 的缓存；HAR/HAP 打包仍是单独步骤。
 
 目录和分支约定见 [BUILDING.md](BUILDING.md) 和[迁移说明](docs/CHROMIUM_155_MIGRATION.md)。`scripts/apply-adapter.sh` 保留用于历史 154 源码树。
 

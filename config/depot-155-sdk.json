@@ -1,0 +1,6 @@
+{
+  "api": 26,
+  "version": "26.0.0.105",
+  "archive_sha256": "3d0e8ec838c1ab7da548fafdec54fb1da0103df717ed489ff61e404ad60b6934",
+  "contents": "Native target sysroot, arm64 libraries, Clang 15.0.4 headers and arm64 runtimes"
+}

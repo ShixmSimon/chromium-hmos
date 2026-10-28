@@ -47,22 +47,23 @@ endorsed by Google, Chromium, Huawei, or the OpenHarmony project.
 - `external/deps_code/webview/`: WebView interface sources required by the
   adapter.
 - `config/args.plan_kirin_pc.gn`: GN arguments used by the tested native build.
-- `scripts/prepare-chromium-155.sh`: prepares the isolated 155 checkout in CI.
-- `.github/workflows/incremental-build.yml`: builds only the 154 and 155
-  adapter branches, each using its own persistent source and output paths.
+- `scripts/prepare-depot-155.sh`: prepares the isolated 155 checkout on Depot.
+- `.depot/workflows/`: adapter checks and cached native builds for 154/155;
+  see [docs/DEPOT_CI.md](docs/DEPOT_CI.md).
+- `_bak/workflows/`: archived GitHub Actions workflows (not executed).
 - `licenses/`: applicable license texts and the generated third-party credits.
 - `SOURCE_MANIFEST.sha256`: the original source-publication checksum list;
   current migration inputs are pinned by Git and the migration manifest.
 
 The source tree excludes the private HarmonyOS SDK and signing material.
-Native HAR and symbol archives are produced by branch-scoped CI releases.
+Native runtime and symbol archives are uploaded as Depot CI artifacts.
 
 ## Build through CI
 
-Push source changes to `hmos-155-adapter`. CI prepares `/root/chromium-155/src`,
+Push source changes to `hmos-155-adapter`. CI prepares `/mnt/chromium-155/source/src`,
 synchronizes the pinned dependencies and toolchain, applies the migration,
-then builds and packages the engine HAR. The stable 154 source and output
-remain at `/root/chromium-154/src`.
+then builds and packages the native runtime. Source, SDK and compiled objects
+are cached independently of 154. HAR/HAP packaging remains a separate step.
 
 See [BUILDING.md](BUILDING.md) and the
 [migration notes](docs/CHROMIUM_155_MIGRATION.md) for the branch and path

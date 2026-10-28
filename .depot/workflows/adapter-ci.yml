@@ -1,0 +1,109 @@
+name: Depot Chromium 155 adapter checks
+
+on:
+  push:
+    branches: [hmos-154-adapter, hmos-155-adapter]
+  pull_request:
+    branches: [hmos-154-adapter, hmos-155-adapter]
+  workflow_dispatch:
+
+# Keep adapter checks separate from the native build concurrency group.
+concurrency:
+  group: depot-adapter-${{ github.repository }}-155-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify-publication:
+    runs-on: depot-ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DEPOT_BRANCH: hmos-155-adapter
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select published engine
+        if: github.event_name != 'pull_request'
+        run: python3 scripts/select-depot-engine.py
+      - name: Select pull request compatibility target
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/select-ci-engine.py
+      - name: Verify Depot branch and checkout isolation
+        run: python3 scripts/tests/test-depot-engine-selection.py
+      - name: Prepare native test tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends clang g++ libssl-dev pkg-config python3-venv
+          python3 -m venv "$RUNNER_TEMP/depot-test-venv"
+          echo "$RUNNER_TEMP/depot-test-venv/bin" >> "$GITHUB_PATH"
+      - name: Record sandbox resources
+        run: |
+          uname -m
+          id
+          nproc
+          free -h
+          df -h .
+
+      - name: Verify branch isolation
+        run: python3 scripts/tests/test-ci-engine-selection.py
+      - name: Preserve completed 155 objects across snapshot retries
+        run: python3 scripts/tests/test-155-snapshot.py
+      - name: Verify public tree
+        run: scripts/verify-public-tree.sh
+      - name: Check scripts
+        run: for script in scripts/*.sh; do bash -n "$script"; done
+      - name: Check V8 builtins PGO and context snapshot configuration
+        run: |
+          python3 scripts/tests/test-v8-builtins-pgo.py
+          python3 scripts/tests/test-v8-context-snapshot.py
+      - name: Check JIT startup opt-in and interpreter fallback
+        run: scripts/test-jit-startup.sh
+      - name: Check incremental patches in Chromium and DEPS checkouts
+        run: python3 scripts/tests/test-incremental-patches.py
+      - name: Check AppGallery UA compatibility and mobile viewport wiring
+        run: python3 scripts/tests/test-appgallery-user-agent.py
+      - name: Check browser and web-app viewport isolation
+        run: python3 scripts/tests/test-web-app-viewport.py
+      - name: Check experimental OHOS fork server transport
+        run: scripts/test-ohos-fork-server.sh
+      - name: Check inherited trace descriptors and GPU state recovery
+        run: python3 scripts/tests/test-ohos-gpu-state-recovery.py
+      - name: Check experimental phone GPU frame transport
+        run: scripts/test-ohos-phone-gpu.sh
+      - name: Check startup handoff retry scheduling and cancellation
+        run: python3 scripts/tests/test-startup-handoff-retry.py
+      - name: Check native extension update result semantics
+        run: scripts/test-extension-updates.sh
+      - name: Check memfd write-seal contract
+        run: python3 scripts/check-memfd-seals.py
+      - name: Check test-page media byte ranges
+        run: python3 scripts/tests/test-serve-test-pages.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check URL protection policy and SDK boundary
+        run: node --test scripts/tests/url-check-service.test.mjs
+      - name: Check phishing snapshot packaging
+        run: python3 scripts/tests/test-phishing-rules.py
+      - name: Check signed phishing update artifacts
+        run: |
+          python3 -m pip install 'cryptography>=45,<47'
+          python3 scripts/tests/test-phishing-updates.py
+      - name: Apply adapter to pinned Chromium
+        env:
+          REQUIRE_COMPATIBLE: '1'
+        run: >-
+          scripts/check-upstream-adapter.sh
+          "${{ env.CHROMIUM_VERSION }}"
+          "${{ env.CHROMIUM_REVISION }}"
+      - name: Upload compatibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinned-adapter-report
+          path: upstream-compatibility.md
