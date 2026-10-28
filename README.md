@@ -47,23 +47,27 @@ endorsed by Google, Chromium, Huawei, or the OpenHarmony project.
 - `external/deps_code/webview/`: WebView interface sources required by the
   adapter.
 - `config/args.plan_kirin_pc.gn`: GN arguments used by the tested native build.
-- `scripts/prepare-depot-155.sh`: prepares the isolated 155 checkout on Depot.
-- `.depot/workflows/`: adapter checks and cached native builds for 154/155;
-  see [docs/DEPOT_CI.md](docs/DEPOT_CI.md).
-- `_bak/workflows/`: archived GitHub Actions workflows (not executed).
+- `scripts/prepare-chromium-155.sh`: prepares the isolated self-hosted 155 checkout.
+- `.github/workflows/`: GitHub Actions adapter checks, incremental native builds,
+  runtime inspection and stable tracking. Native builds use the existing
+  `self-hosted, harmonyos-chromium` runner.
+- `_bak/depot-workflows/`: archived Depot workflows (not automatically executed);
+  see [docs/DEPOT_CI.md](docs/DEPOT_CI.md) for historical setup.
 - `licenses/`: applicable license texts and the generated third-party credits.
 - `SOURCE_MANIFEST.sha256`: the original source-publication checksum list;
   current migration inputs are pinned by Git and the migration manifest.
 
 The source tree excludes the private HarmonyOS SDK and signing material.
-Native runtime and symbol archives are uploaded as Depot CI artifacts.
+CI packages the unsigned engine HAR and publishes it with native symbols and
+checksums as a GitHub prerelease. HAP signing stays on the developer machine.
 
 ## Build through CI
 
-Push source changes to `hmos-155-adapter`. CI prepares `/mnt/chromium-155/source/src`,
-synchronizes the pinned dependencies and toolchain, applies the migration,
-then builds and packages the native runtime. Source, SDK and compiled objects
-are cached independently of 154. HAR/HAP packaging remains a separate step.
+Push source changes to `hmos-155-adapter`. GitHub Actions prepares the isolated
+`/root/chromium-155/src` tree, builds the native runtime and packages the engine
+HAR. Both release branches share the existing self-hosted runner and serialize
+native work through the same concurrency group. Manual dispatch can upload a
+verification HAR without publishing a prerelease.
 
 See [BUILDING.md](BUILDING.md) and the
 [migration notes](docs/CHROMIUM_155_MIGRATION.md) for the branch and path

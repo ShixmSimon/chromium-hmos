@@ -1,16 +1,15 @@
-# Depot CI
+# Depot CI (archived)
 
-The `hmos-154-adapter` and `hmos-155-adapter` branches use
-`.depot/workflows/adapter-ci.yml` for adapter checks and
-`.depot/workflows/native-build.yml` for native compilation. Pushes trigger
-adapter checks; native input changes also trigger the native build. Both
-workflows support manual dispatch, and adapter checks run for supported PRs.
-Depot registers the workflow triggers from the repository's default branch,
-so both release branches appear in the trigger filters.
+On 2026-10-28 both release branches returned to GitHub Actions. The original
+workflows were restored unchanged from `_bak/workflows/` to `.github/workflows/`.
+Native builds use the existing `self-hosted, harmonyos-chromium` runner, with
+separate `/root/chromium-154/src` and `/root/chromium-155/src` trees and shared
+serialization. Adapter checks use GitHub-hosted runners.
 
-The former GitHub Actions files were moved unchanged to `_bak/workflows/`.
-They are retained for reference and do not run there. This also archives the
-old stable-tracking schedule and self-hosted runtime inspection workflow.
+Depot workflow files are retained under `_bak/depot-workflows/`; no active
+`.depot/workflows/` remains. The following describes the archived Depot setup
+and is not the current automatic CI path. Existing artifacts and caches remain
+available; restoring GitHub Actions does not delete them.
 
 ## Engine and cache isolation
 
@@ -48,7 +47,7 @@ After pushing a clean checkout of the corresponding release branch, a manual
 run can be started with:
 
 ```sh
-depot ci run --org <org-id> --workflow .depot/workflows/native-build.yml
+depot ci run --org <org-id> --workflow _bak/depot-workflows/native-build.yml
 ```
 
 The workflow validates native phishing rules, packages the runtime and
