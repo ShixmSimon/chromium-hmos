@@ -29,6 +29,7 @@
 #include "base/process/fork_server_ohos.h"
 #include "base/process/launch_ohos.h"
 #include "base/process/ohos_jit_startup.h"
+#include "base/process/ohos_jit_memory.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "ohos_nweb/src/nweb_hilog.h"
 #include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
@@ -42,7 +43,6 @@ namespace ohos_nweb {
 namespace {
 
 using base::internal::JitCompatibilityRequest;
-using base::internal::JitMemoryProbe;
 using base::internal::JitlessRequested;
 using base::internal::PrepareJitStartup;
 
@@ -53,30 +53,6 @@ using base::internal::PrepareJitStartup;
 #define AURA_LOG_E(...) \
   OH_LOG_Print(LOG_APP, LOG_ERROR, 0xc233, "AuraShell", __VA_ARGS__)
 
-
-// Probe the operation V8 needs, including a write fault and cleanup. This does
-// not execute generated code or certify every renderer allocation path.
-JitMemoryProbe ProbeJitMemory() {
-  JitMemoryProbe result;
-  const long page_size = sysconf(_SC_PAGESIZE);
-  if (page_size <= 0) {
-    result.map_error = EINVAL;
-    return result;
-  }
-  const size_t size = static_cast<size_t>(page_size);
-  void* page = mmap(nullptr, size, PROT_READ | PROT_WRITE,
-                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (page == MAP_FAILED) {
-    result.map_error = errno;
-    return result;
-  }
-  *static_cast<volatile unsigned char*>(page) = 0;
-  result.protect_error =
-      mprotect(page, size, PROT_READ | PROT_EXEC) == 0 ? 0 : errno;
-  result.unmap_error = munmap(page, size) == 0 ? 0 : errno;
-  result.available = !result.protect_error && !result.unmap_error;
-  return result;
-}
 
 JitCompatibilityRequest RequestJitCompatibility() {
   // WineHua's ohos_jit_enable ABI (suboperation 0), not JITFORT init (5).
@@ -102,7 +78,7 @@ void ConfigureJitStartup(const AuraStartupConfig& config,
   const auto jit = PrepareJitStartup(
       config.jitless || JitlessRequested(js_flags),
       allow_compatibility && config.jit_compatibility,
-      &ProbeJitMemory, &RequestJitCompatibility);
+      &base::internal::ProbeOhosJitMemory, &RequestJitCompatibility);
   AURA_LOG_I("AuraShell JIT %{public}s (config jitless=%{public}d "
              "compatibility=%{public}d requested=%{public}d)",
              jit.disabled ? "disabled" :
@@ -116,6 +92,14 @@ void ConfigureJitStartup(const AuraStartupConfig& config,
                jit.before.unmap_error, jit.request.result, jit.request.error,
                jit.after.map_error, jit.after.protect_error,
                jit.after.unmap_error);
+  }
+  if (!jit.disabled && !jit.after.available) {
+    AURA_LOG_E("AuraShell JIT CodeRange probe failed stage=%{public}s "
+               "map=%{public}d protect=%{public}d discard=%{public}d "
+               "unmap=%{public}d; using interpreter",
+               jit.after.failure_stage ? jit.after.failure_stage : "unknown",
+               jit.after.map_error, jit.after.protect_error,
+               jit.after.discard_error, jit.after.unmap_error);
   }
   if (jit.disabled || !jit.after.available) {
     std::erase_if(arguments, [](const std::string& argument) {
