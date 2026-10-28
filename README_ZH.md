@@ -31,8 +31,8 @@
 - `external/deps_code/webview/`：适配层需要的 WebView 接口源码。
 - `config/args.plan_kirin_pc.gn`：本次原生构建使用的 GN 参数。
 - `scripts/apply-adapter.sh`：将适配快照应用到指定 Chromium 基线。
-- `.depot/workflows/`：154／155 正式分支使用 Depot CI，各自复用独立源码、工具链和编译缓存，见 [Depot CI](docs/DEPOT_CI.md)。
-- `_bak/workflows/`：原 GitHub Actions 工作流备份，不再自动执行。
+- `.github/workflows/`：GitHub Actions 适配检查、增量构建、运行时检查与稳定版跟踪；原生构建沿用 `self-hosted, harmonyos-chromium` 运行器。
+- `_bak/depot-workflows/`：Depot 工作流归档，不自动执行；历史配置见 [Depot CI](docs/DEPOT_CI.md)。
 - `licenses/`：许可证正文与第三方许可证清单。
 - `SOURCE_MANIFEST.sha256`：除清单自身外，所有公开常规文件的 SHA-256。
 

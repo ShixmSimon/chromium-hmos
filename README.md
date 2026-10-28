@@ -48,9 +48,11 @@ endorsed by Google, Chromium, Huawei, or the OpenHarmony project.
 - `config/args.plan_kirin_pc.gn`: GN arguments used by the tested native build.
 - `scripts/apply-adapter.sh`: applies this snapshot to the pinned Chromium
   revision.
-- `.depot/workflows/`: adapter checks and cached native builds for 154/155;
-  see [docs/DEPOT_CI.md](docs/DEPOT_CI.md).
-- `_bak/workflows/`: archived GitHub Actions workflows (not executed).
+- `.github/workflows/`: GitHub Actions adapter checks, incremental native builds,
+  runtime inspection and stable tracking. Native builds use the existing
+  `self-hosted, harmonyos-chromium` runner.
+- `_bak/depot-workflows/`: archived Depot workflows (not automatically executed);
+  see [docs/DEPOT_CI.md](docs/DEPOT_CI.md) for historical setup.
 - `licenses/`: applicable license texts and the generated third-party credits.
 - `SOURCE_MANIFEST.sha256`: SHA-256 checksums for every published regular file
   except the manifest itself.
