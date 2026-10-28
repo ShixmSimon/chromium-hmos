@@ -48,8 +48,9 @@ endorsed by Google, Chromium, Huawei, or the OpenHarmony project.
 - `config/args.plan_kirin_pc.gn`: GN arguments used by the tested native build.
 - `scripts/apply-adapter.sh`: applies this snapshot to the pinned Chromium
   revision.
-- `.github/workflows/upstream-stable.yml`: checks official Chromium Stable
-  every six hours and can dispatch a licensed self-hosted HAP build.
+- `.depot/workflows/`: adapter checks and cached native builds for 154/155;
+  see [docs/DEPOT_CI.md](docs/DEPOT_CI.md).
+- `_bak/workflows/`: archived GitHub Actions workflows (not executed).
 - `licenses/`: applicable license texts and the generated third-party credits.
 - `SOURCE_MANIFEST.sha256`: SHA-256 checksums for every published regular file
   except the manifest itself.

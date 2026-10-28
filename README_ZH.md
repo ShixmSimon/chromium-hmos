@@ -31,7 +31,8 @@
 - `external/deps_code/webview/`：适配层需要的 WebView 接口源码。
 - `config/args.plan_kirin_pc.gn`：本次原生构建使用的 GN 参数。
 - `scripts/apply-adapter.sh`：将适配快照应用到指定 Chromium 基线。
-- `.github/workflows/upstream-stable.yml`：检查 Chromium Stable，并可触发带授权 SDK 的自托管构建。
+- `.depot/workflows/`：154／155 正式分支使用 Depot CI，各自复用独立源码、工具链和编译缓存，见 [Depot CI](docs/DEPOT_CI.md)。
+- `_bak/workflows/`：原 GitHub Actions 工作流备份，不再自动执行。
 - `licenses/`：许可证正文与第三方许可证清单。
 - `SOURCE_MANIFEST.sha256`：除清单自身外，所有公开常规文件的 SHA-256。
 

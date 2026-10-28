@@ -130,25 +130,3 @@ index a459db4..17ffae1 100644
    SkSurfaceProps surface_props;
  
    GrGLFramebufferInfo framebuffer_info = {0};
-diff --git a/gpu/config/gpu_driver_bug_list.json b/gpu/config/gpu_driver_bug_list.json
---- a/gpu/config/gpu_driver_bug_list.json
-+++ b/gpu/config/gpu_driver_bug_list.json
-@@ -5000,15 +5000,15 @@
-     {
-       "id": 971,
-       "cr_bugs": [
--        528131939
-+        551708184
-       ],
--      "description": "[HarmonyOS, from Android rule 483] Reset texture base level before calling glCompressedTexSubImage2D for ASTC textures to work around PowerVR driver bug.",
-+      "description": "[HarmonyOS, from Android rule 483] Reset texture base level before calling glCompressedTexImage2D or glCompressedTexSubImage2D for ASTC textures to work around PowerVR driver bug.",
-       "os": {
-         "type": "ohos"
-       },
-       "gl_vendor": "Imagination.*",
-       "features": [
--        "reset_base_level_for_astc_sub_image"
-+        "reset_base_level_for_astc_image"
-       ]
-     },
-     {
