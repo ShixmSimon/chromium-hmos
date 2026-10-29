@@ -469,9 +469,13 @@ export struct WebWindow {
       throw new Error('Failed to get Chromium runtime directory');
     }
 
-    const runtimeDir = `${hostContext.filesDir}/chromium-runtime`;
-    const localesDir = `${runtimeDir}/locales`;
     const runtimeVersion = this.readRuntimeAssetVersion(hostContext);
+    // Each manifest owns its extracted files. A -> B -> A must not reuse A's
+    // old completion marker while the shared directory still contains B.
+    // Isolation also keeps an interrupted extraction from changing another
+    // version's completed runtime, including versions using the legacy path.
+    const runtimeDir = `${hostContext.filesDir}/chromium-runtime/${runtimeVersion}`;
+    const localesDir = `${runtimeDir}/locales`;
     if (!fileIo.accessSync(runtimeDir)) {
       fileIo.mkdirSync(runtimeDir, true);
     }
