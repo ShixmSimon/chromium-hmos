@@ -311,6 +311,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection-updates.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-rule-sources.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-extension-updates.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-extensions-mobile-ui.patch"
   # Migrate the first translation patch before checking its prerequisites:
   # that version inserted lines inside their added hunks. The new version
   # adds separate blocks so every prerequisite remains reverse-checkable.

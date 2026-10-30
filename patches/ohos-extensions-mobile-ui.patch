@@ -1,0 +1,94 @@
+Make chrome://extensions usable on phone screens.
+
+The Extensions WebUI keeps desktop card and content widths. On narrow OHOS phone
+viewports that makes cards and subpages run past the right edge. Keep desktop
+unchanged while switching to fluid phone layout.
+
+--- a/chrome/browser/resources/extensions/manager.css
++++ b/chrome/browser/resources/extensions/manager.css
+@@ -87,3 +87,16 @@
+   width: 100%;
+ }
+ 
++
++
++/* HarmonyOS phone layout: remove the desktop sidebar width constraint. */
++@media (max-width: 600px) {
++  #left {
++    min-width: 0;
++  }
++
++  #right {
++    min-width: 0;
++    width: 100%;
++  }
++}
+--- a/chrome/browser/resources/extensions/item_list.css
++++ b/chrome/browser/resources/extensions/item_list.css
+@@ -120,3 +120,25 @@
+    * is clickable. */
+   z-index: 1;
+ }
++
++
++/* HarmonyOS phone layout: the desktop card width must not force a
++ * horizontal page overflow. */
++@media (max-width: 600px) {
++  .items-container,
++  #content-wrapper {
++    --extensions-card-width: min(400px, calc(100vw - 32px));
++  }
++
++  #content-wrapper {
++    box-sizing: border-box;
++    min-width: 0;
++    padding: 16px;
++  }
++
++  .items-container {
++    grid-template-columns: minmax(0, 1fr);
++    max-width: none;
++    width: 100%;
++  }
++}
+--- a/chrome/browser/resources/extensions/item.css
++++ b/chrome/browser/resources/extensions/item.css
+@@ -254,4 +254,22 @@
+ #a11yAssociation {
+   height: 0;
+   overflow: hidden;
++}
++
++
++/* HarmonyOS phone layout: keep card content inside the narrow viewport. */
++@media (max-width: 600px) {
++  #main {
++    padding: 12px;
++  }
++
++  #content {
++    margin-inline-start: 12px;
++    min-width: 0;
++  }
++
++  #button-strip {
++    flex-wrap: wrap;
++    gap: 8px;
++  }
+ }
+--- a/chrome/browser/resources/extensions/shared_style.css
++++ b/chrome/browser/resources/extensions/shared_style.css
+@@ -173,3 +173,13 @@
+     padding-inline-start: 0;
+   }
+ }
++
++
++/* HarmonyOS phone layout: internal extension pages use the viewport width. */
++@media (max-width: 600px) {
++  .page-content {
++    box-sizing: border-box;
++    max-width: 100%;
++    width: 100%;
++  }
++}
