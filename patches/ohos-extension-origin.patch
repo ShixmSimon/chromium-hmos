@@ -1,0 +1,76 @@
+Extension-initiated requests must not advertise a chrome-extension:// Origin.
+
+Sites that validate the Origin request header for CSRF (e.g. www.3gbizhi.com)
+answer 403 the moment an extension request carries
+"Origin: chrome-extension://<id>". Extension requests bypass CORS entirely,
+so the header buys nothing and only breaks those sites.
+
+Two layers are patched:
+
+1. Blink's ResourceRequestHead::SetHTTPOrigin() drops the header for
+   chrome-extension origins (extension pages, service worker, offscreen
+   document).
+2. The network service would synthesize the header straight back from
+   request_initiator in CorsURLLoader::MaybeSetOriginHeader(); drop it there
+   too when the initiator scheme is chrome-extension, including the
+   headers_update_params bookkeeping.
+
+Generated for Chromium 155.0.8059.91.
+
+diff --git a/third_party/blink/renderer/platform/loader/fetch/resource_request.cc b/third_party/blink/renderer/platform/loader/fetch/resource_request.cc
+index 1397eee..fc54f9e 100644
+--- a/third_party/blink/renderer/platform/loader/fetch/resource_request.cc
++++ b/third_party/blink/renderer/platform/loader/fetch/resource_request.cc
+@@ -329,6 +329,15 @@ void ResourceRequestHead::SetHttpHeaderField(const AtomicString& name,
+ }
+ 
+ void ResourceRequestHead::SetHTTPOrigin(const SecurityOrigin* origin) {
++  // OHOS: requests made by an extension (its pages, service worker and
++  // offscreen document) do not advertise "chrome-extension://..." as their
++  // Origin. Sites that validate Origin for CSRF reject that value outright,
++  // and extension requests bypass CORS anyway, so leaving the header out is
++  // both safe and what the sites expect.
++  if (origin->Protocol() == "chrome-extension") {
++    http_header_fields_.Remove(http_names::kOrigin);
++    return;
++  }
+   SetHttpHeaderField(http_names::kOrigin, origin->ToAtomicString());
+ }
+ 
+
+diff --git a/services/network/cors/cors_url_loader.cc b/services/network/cors/cors_url_loader.cc
+index 2a6c236a9b..4a23415e65 100644
+--- a/services/network/cors/cors_url_loader.cc
++++ b/services/network/cors/cors_url_loader.cc
+@@ -1241,12 +1241,31 @@ void CorsURLLoader::MaybeSetOriginHeader(
+   // security check here in the network service.
+   if (request_.headers.HasHeader(net::HttpRequestHeaders::kOrigin) &&
+       AllowUnsafeHeaders()) {
+     return;
+   }
+ 
++  // OHOS: extension-initiated requests must not advertise
++  // "chrome-extension://..." as their Origin. Sites that validate Origin for
++  // CSRF reject that value outright, and extension requests bypass CORS
++  // anyway. Blink's ResourceRequestHead::SetHTTPOrigin() already drops the
++  // header for this reason; this code used to synthesize it straight back.
++  if (request_.request_initiator &&
++      request_.request_initiator->scheme() == "chrome-extension") {
++    request_.headers.RemoveHeader(net::HttpRequestHeaders::kOrigin);
++    if (headers_update_params) {
++      std::erase(headers_update_params->removed_headers,
++                 net::HttpRequestHeaders::kOrigin);
++      headers_update_params->removed_headers.emplace_back(
++          net::HttpRequestHeaders::kOrigin);
++      headers_update_params->modified_headers.RemoveHeader(
++          net::HttpRequestHeaders::kOrigin);
++    }
++    return;
++  }
++
+   std::string origin_value = tainted_
+                                  ? url::Origin().Serialize()
+                                  : request_.request_initiator->Serialize();
+   if (headers_update_params) {
+     std::erase(headers_update_params->removed_headers,
+                net::HttpRequestHeaders::kOrigin);
