@@ -17,6 +17,10 @@ Two layers are patched:
 
 Generated for Chromium 155.0.8059.91.
 
+Integration: Chromium155 consumes these changes through
+patches/migration-155/chromium.patch and its integrity manifest. The standalone
+patch remains the PR4 reference; do not apply it again after that snapshot.
+
 diff --git a/third_party/blink/renderer/platform/loader/fetch/resource_request.cc b/third_party/blink/renderer/platform/loader/fetch/resource_request.cc
 index 1397eee..fc54f9e 100644
 --- a/third_party/blink/renderer/platform/loader/fetch/resource_request.cc
