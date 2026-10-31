@@ -39665,3 +39665,60 @@ index 1397eeebf997ba65b7e53d99e8a05a4042014092..fc54f9ee927ccf23e45dbccb0b7f1454
    SetHttpHeaderField(http_names::kOrigin, origin->ToAtomicString());
  }
  
+diff --git a/ui/events/BUILD.gn b/ui/events/BUILD.gn
+index 7340f556ad77ffb1a6daae6a3fc9f8f9a44062dd..606082afcb691ae9e89da4f467275d119cbd59f3 100644
+--- a/ui/events/BUILD.gn
++++ b/ui/events/BUILD.gn
+@@ -549,6 +549,10 @@ component("gesture_detection") {
+     "gesture_detection/touch_disposition_gesture_filter.h",
+   ]
+ 
++  if (is_ohos) {
++    sources += [ "gesture_detection/ohos_scroll_begin_hint.h" ]
++  }
++
+   public_deps = [ ":velocity_tracker" ]
+ 
+   deps = [
+diff --git a/ui/events/gesture_detection/gesture_provider.cc b/ui/events/gesture_detection/gesture_provider.cc
+index f27fa309e639e5d99cdc173924cdf52dd5d74f30..79b626ad45df39fe084ed37dc1c969ce9e8f095e 100644
+--- a/ui/events/gesture_detection/gesture_provider.cc
++++ b/ui/events/gesture_detection/gesture_provider.cc
+@@ -11,6 +11,7 @@
+ #include "base/memory/raw_ptr.h"
+ #include "base/time/time.h"
+ #include "base/trace_event/trace_event.h"
++#include "build/build_config.h"
+ #include "ui/base/ui_base_features.h"
+ #include "ui/events/event_constants.h"
+ #include "ui/events/gesture_detection/gesture_configuration.h"
+@@ -23,6 +24,10 @@
+ #include "ui/gfx/geometry/point_f.h"
+ #include "ui/gfx/geometry/vector2d_f.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "ui/events/gesture_detection/ohos_scroll_begin_hint.h"
++#endif
++
+ namespace ui {
+ namespace {
+ 
+@@ -648,6 +653,18 @@ class GestureProvider::GestureListenerImpl : public ScaleGestureListener,
+   GestureEventDetails CreateTouchGestureDetails(EventType type,
+                                                 float delta_x,
+                                                 float delta_y) const {
++#if BUILDFLAG(IS_OHOS)
++    const MotionEvent* down = gesture_provider_->current_down_event();
++    if (type == EventType::kGestureScrollBegin && down &&
++        down->GetToolType() == MotionEvent::ToolType::FINGER) {
++      // Choose the scroller using the dominant starting direction even if
++      // coalescing skipped the narrow initial snap channel. Keep real update
++      // deltas untouched so a two-axis scroller still receives diagonal pans.
++      const auto hint = internal::GetOhosScrollBeginHint(delta_x, delta_y);
++      delta_x = hint.x;
++      delta_y = hint.y;
++    }
++#endif
+     GestureEventDetails details(type, delta_x, delta_y);
+     details.set_device_type(GestureDeviceType::DEVICE_TOUCHSCREEN);
+     details.set_primary_unique_touch_event_id(
