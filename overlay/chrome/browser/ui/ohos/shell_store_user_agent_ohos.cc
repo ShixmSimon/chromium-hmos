@@ -13,6 +13,7 @@
 #include "chrome/browser/ui/ohos/shell_services_ohos.h"
 #include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
 #include "components/embedder_support/user_agent_utils.h"
+#include "components/google/core/common/google_util.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
@@ -58,6 +59,41 @@ std::string AppGalleryUserAgent(std::string user_agent) {
   return user_agent;
 }
 
+// AI Studio rejected GenerateContent with 403 when the same authenticated
+// request carried OpenHarmony/7.0, and returned 200 with only that product
+// token removed. Apply the same compatibility policy across Google services.
+bool IsGoogleService(const GURL& url) {
+  if (!url.SchemeIsHTTPOrHTTPS()) {
+    return false;
+  }
+  return google_util::IsGoogleAssociatedDomainUrl(url) ||
+         url.DomainIs("gmail.com") || url.DomainIs("googlemail.com") ||
+         url.DomainIs("google.dev") || url.DomainIs("google.org") ||
+         url.DomainIs("withgoogle.com") || url.DomainIs("youtube-nocookie.com") ||
+         url.DomainIs("youtu.be") || url.DomainIs("googleapis.com") ||
+         url.DomainIs("googleusercontent.com") || url.DomainIs("gstatic.com");
+}
+
+std::string GoogleUserAgent(std::string user_agent) {
+  const std::string token = " OpenHarmony/";
+  for (size_t start = user_agent.find(token); start != std::string::npos;
+       start = user_agent.find(token)) {
+    const size_t end = user_agent.find(' ', start + 1);
+    user_agent.erase(start, end == std::string::npos ? end : end - start);
+  }
+  return user_agent;
+}
+
+enum class SiteUserAgentPolicy { kNone, kAppGallery, kGoogle };
+
+SiteUserAgentPolicy UserAgentPolicyFor(const GURL& url) {
+  if (IsHuaweiAppGallery(url)) {
+    return SiteUserAgentPolicy::kAppGallery;
+  }
+  return IsGoogleService(url) ? SiteUserAgentPolicy::kGoogle
+                              : SiteUserAgentPolicy::kNone;
+}
+
 // The client hints that go with the store's user agent.
 //
 // The store reads the platform from Sec-CH-UA-Platform and
@@ -97,11 +133,14 @@ class StoreUserAgentWatcher
     if (!handle->IsInPrimaryMainFrame() || handle->IsSameDocument()) {
       return;
     }
-    if (IsHuaweiAppGallery(handle->GetURL()) && !store_ua_.empty() &&
+    const bool is_store = IsChromeWebStore(handle->GetURL());
+    if (!is_store && !store_ua_.empty() &&
         web_contents()->GetUserAgentOverride().ua_string_override == store_ua_) {
       RestoreUserAgent(handle);
     }
-    if (ApplyAppGalleryUserAgent(handle)) {
+    // The Web Store still needs its Linux desktop hints. Restore any general
+    // site override before that policy reads the user's mobile/desktop mode.
+    if (ApplySiteUserAgent(handle, /*restore_only=*/is_store)) {
       return;
     }
     // "Desktop site" uses this same mechanism, and when the reader has asked
@@ -112,9 +151,6 @@ class StoreUserAgentWatcher
         web_contents()->GetUserAgentOverride().ua_string_override;
     const bool ours = !store_ua_.empty() && current == store_ua_;
 
-    const bool is_store = IsChromeWebStore(handle->GetURL());
-    const std::string desktop =
-        AuraShellDesktopSiteUserAgent().ua_string_override;
     bool applied = false;
     // Logged on the way out, whatever this navigation turns out to be. There
     // was no way to see from outside which of these decided the outcome, so
@@ -145,13 +181,16 @@ class StoreUserAgentWatcher
       // so on a tablet or a PC there is nothing to weigh -- but on a phone
       // the desktop store is a worse page to read, and this is the switch
       // the reader already has for saying they want it anyway.
-      desktop_site_ = current == desktop;
+      before_store_ = web_contents()->GetUserAgentOverride();
+      before_store_pinned_ = IsAuraShellUserAgentPinned(web_contents());
+      desktop_site_ = IsAuraShellRequestingDesktopSite(web_contents());
       if (IsAuraShellMobilePhoneUi() && !desktop_site_) {
+        ApplySiteUserAgent(handle);
         return;
       }
     }
 
-    store_ua_ = embedder_support::GetOhosStoreUserAgent();
+    store_ua_ = GoogleUserAgent(embedder_support::GetOhosStoreUserAgent());
     blink::UserAgentOverride store;
     store.ua_string_override = store_ua_;
     // Linux, to agree with the X11 token in the string; see
@@ -170,31 +209,34 @@ class StoreUserAgentWatcher
  private:
   friend class content::WebContentsUserData<StoreUserAgentWatcher>;
 
-  // Restore the previous mode before the Chrome Web Store policy runs, so
-  // navigating directly between the two stores keeps desktop mode intact.
-  bool ApplyAppGalleryUserAgent(content::NavigationHandle* handle) {
-    const blink::UserAgentOverride current =
-        web_contents()->GetUserAgentOverride();
-    const bool ours = !appgallery_ua_.empty() &&
-                      current.ua_string_override == appgallery_ua_;
-    if (!IsHuaweiAppGallery(handle->GetURL())) {
-      if (ours) {
-        web_contents()->SetUserAgentOverride(
-            before_appgallery_, /*override_in_new_tabs=*/before_appgallery_pinned_);
-        SetAuraShellUserAgentPinned(web_contents(), before_appgallery_pinned_);
-        handle->SetIsOverridingUserAgent(
-            !before_appgallery_.ua_string_override.empty());
-      }
-      appgallery_ua_.clear();
+  // All site policies share one saved baseline. Restore it before switching
+  // policy, so an AppGallery token cannot leak into a Google document or vice
+  // versa. A manual UA/mode change becomes the new baseline.
+  bool ApplySiteUserAgent(content::NavigationHandle* handle,
+                          bool restore_only = false) {
+    const SiteUserAgentPolicy policy =
+        restore_only ? SiteUserAgentPolicy::kNone
+                     : UserAgentPolicyFor(handle->GetURL());
+    blink::UserAgentOverride current = web_contents()->GetUserAgentOverride();
+    const bool ours = !site_ua_.empty() &&
+                      current.ua_string_override == site_ua_;
+    if (ours && policy != site_policy_) {
+      web_contents()->SetUserAgentOverride(
+          before_site_, /*override_in_new_tabs=*/before_site_pinned_);
+      SetAuraShellUserAgentPinned(web_contents(), before_site_pinned_);
+      handle->SetIsOverridingUserAgent(!before_site_.ua_string_override.empty());
+      current = before_site_;
+    }
+    if (policy == SiteUserAgentPolicy::kNone) {
+      site_ua_.clear();
+      site_policy_ = SiteUserAgentPolicy::kNone;
       return false;
     }
-    // A manual mobile/desktop change while on this site becomes the new
-    // baseline. Leaving must not undo the reader's latest choice.
-    if (!ours) {
-      before_appgallery_ = current;
-      before_appgallery_pinned_ = IsAuraShellUserAgentPinned(web_contents());
+    if (!ours || policy != site_policy_) {
+      before_site_ = current;
+      before_site_pinned_ = IsAuraShellUserAgentPinned(web_contents());
     }
-    blink::UserAgentOverride compatible = before_appgallery_;
+    blink::UserAgentOverride compatible = before_site_;
     if (compatible.ua_string_override.empty()) {
       const bool mobile = IsAuraShellMobilePhoneUi();
       compatible.ua_string_override = embedder_support::GetUserAgentForOhos(mobile);
@@ -202,17 +244,21 @@ class StoreUserAgentWatcher
           embedder_support::GetUserAgentMetadataForOhos(mobile);
     }
     compatible.ua_string_override =
-        AppGalleryUserAgent(compatible.ua_string_override);
-    appgallery_ua_ = compatible.ua_string_override;
+        policy == SiteUserAgentPolicy::kGoogle
+            ? GoogleUserAgent(compatible.ua_string_override)
+            : AppGalleryUserAgent(compatible.ua_string_override);
+    site_ua_ = compatible.ua_string_override;
+    site_policy_ = policy;
     web_contents()->SetUserAgentOverride(compatible, /*override_in_new_tabs=*/false);
     SetAuraShellUserAgentPinned(web_contents(), true);
     handle->SetIsOverridingUserAgent(true);
     return true;
   }
 
-  blink::UserAgentOverride before_appgallery_;
-  bool before_appgallery_pinned_ = false;
-  std::string appgallery_ua_;
+  blink::UserAgentOverride before_site_;
+  bool before_site_pinned_ = false;
+  std::string site_ua_;
+  SiteUserAgentPolicy site_policy_ = SiteUserAgentPolicy::kNone;
 
   // What the store was actually sent, once the navigation is over. The
   // line at the start says what this watcher decided; this one says whether
@@ -240,23 +286,12 @@ class StoreUserAgentWatcher
                  << "]";
   }
 
-  // Hands the tab back the user agent it had before the store took it.
-  //
-  // Clearing the flag alone is not enough any more: on a phone this watcher
-  // only ever takes over from "desktop site", so leaving the store's string
-  // installed and unused would read to everything else as the reader having
-  // switched desktop sites off.
+  // Preserve the exact UA, hints and mode, including a custom user override.
   void RestoreUserAgent(content::NavigationHandle* handle) {
-    blink::UserAgentOverride restored;
-    if (desktop_site_) {
-      restored = AuraShellDesktopSiteUserAgent();
-    }
-    web_contents()->SetUserAgentOverride(restored,
-                                         /*override_in_new_tabs=*/false);
-    // Still deliberate if desktop sites are what the reader asked for; back
-    // to following the device if they are not.
-    SetAuraShellUserAgentPinned(web_contents(), desktop_site_);
-    handle->SetIsOverridingUserAgent(desktop_site_);
+    web_contents()->SetUserAgentOverride(
+        before_store_, /*override_in_new_tabs=*/before_store_pinned_);
+    SetAuraShellUserAgentPinned(web_contents(), before_store_pinned_);
+    handle->SetIsOverridingUserAgent(!before_store_.ua_string_override.empty());
     store_ua_.clear();
   }
 
@@ -266,6 +301,8 @@ class StoreUserAgentWatcher
 
   // The last override this watcher installed, empty until it installs one.
   std::string store_ua_;
+  blink::UserAgentOverride before_store_;
+  bool before_store_pinned_ = false;
   // Whether the tab was asking for desktop sites when the store took over,
   // and so what to hand back when it leaves.
   bool desktop_site_ = false;

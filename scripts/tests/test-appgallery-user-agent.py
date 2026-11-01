@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile the production AppGallery UA policy and exercise its lifecycle."""
+"""Compile the production site UA policies and exercise its lifecycle."""
 from pathlib import Path
 import os
 import re
@@ -19,7 +19,11 @@ def function(text, signature):
     return text[start:end]
 
 policy = function(source, 'bool IsHuaweiAppGallery(') + '\n' + function(source, 'std::string AppGalleryUserAgent(')
-method = function(source, 'bool ApplyAppGalleryUserAgent(')
+policy += '\n' + function(source, 'bool IsGoogleService(')
+policy += '\n' + function(source, 'std::string GoogleUserAgent(')
+policy += '\nenum class SiteUserAgentPolicy { kNone, kAppGallery, kGoogle };\n'
+policy += function(source, 'SiteUserAgentPolicy UserAgentPolicyFor(')
+method = function(source, 'bool ApplySiteUserAgent(')
 start_method = function(source, 'void DidStartNavigation(').replace(' override', '')
 restore_method = function(source, 'void RestoreUserAgent(')
 redirect_method = (function(source, 'void DidRedirectNavigation(').replace(' override', '')
@@ -59,6 +63,11 @@ struct GURL {
   std::string value;
   bool SchemeIs(const char* scheme) const {
     return value.starts_with(std::string(scheme) + "://");
+  }
+  bool SchemeIsHTTPOrHTTPS() const { return SchemeIs("https") || SchemeIs("http"); }
+  bool DomainIs(const char* domain) const {
+    const auto hostname = host();
+    return hostname == domain || hostname.ends_with(std::string(".") + domain);
   }
   std::string host() const {
     auto start = value.find("://") + 3;
@@ -124,14 +133,24 @@ std::string GetUserAgentForOhos(bool mobile) {
                 : "Chrome/154.0.0.0 Safari/537.36 OpenHarmony/7.0";
 }
 blink::UserAgentMetadata GetUserAgentMetadataForOhos(bool mobile) { return {mobile}; }
-std::string GetOhosStoreUserAgent() { return "store desktop"; }
+std::string GetOhosStoreUserAgent() { return "store desktop OpenHarmony/7.0"; }
 }
 blink::UserAgentMetadata StoreUserAgentMetadata() { return {false}; }
-bool IsAuraShellMobilePhoneUi() { return true; }
+bool phone_ui = true;
+bool IsAuraShellMobilePhoneUi() { return phone_ui; }
 bool IsAuraShellUserAgentPinned(content::WebContents* tab) { return tab->pinned; }
 void SetAuraShellUserAgentPinned(content::WebContents* tab, bool value) { tab->pinned = value; }
 blink::UserAgentOverride AuraShellDesktopSiteUserAgent() {
   return {"desktop", blink::UserAgentMetadata{false}};
+}
+// The upstream Google classifier is a dependency, not reimplemented by the
+// production policy. This fixture supplies representative upstream domains.
+namespace google_util {
+bool IsGoogleAssociatedDomainUrl(const GURL& url) {
+  return url.DomainIs("google.com") || url.DomainIs("google.co.uk") ||
+         url.DomainIs("google.com.hk") || url.DomainIs("youtube.com") ||
+         url.DomainIs("googlevideo.com") || url.DomainIs("ytimg.com");
+}
 }
 CLASSIFIER
 VIEWPORT
@@ -140,10 +159,13 @@ STORE_POLICY
 struct Watcher : content::WebContentsObserver {
   content::WebContents* contents;
   content::WebContents* web_contents() { return contents; }
-  blink::UserAgentOverride before_appgallery_;
-  bool before_appgallery_pinned_ = false;
-  std::string appgallery_ua_;
+  blink::UserAgentOverride before_site_;
+  bool before_site_pinned_ = false;
+  std::string site_ua_;
+  SiteUserAgentPolicy site_policy_ = SiteUserAgentPolicy::kNone;
   std::string store_ua_;
+  blink::UserAgentOverride before_store_;
+  bool before_store_pinned_ = false;
   bool desktop_site_ = false;
   explicit Watcher(content::WebContents* tab) : contents(tab) {}
 METHOD
@@ -167,17 +189,17 @@ int main() {
       auto baseline = tab.ua;
       Watcher watcher(&tab);
       content::NavigationHandle h{{"https://appgallery.huawei.com/apptest/invite"}, false};
-      assert(watcher.ApplyAppGalleryUserAgent(&h));
+      assert(watcher.ApplySiteUserAgent(&h));
       assert(tab.pinned && h.overriding && !tab.inherits);
       assert(tab.ua.ua_string_override.ends_with(token));
       assert(IsAuraShellRequestingDesktopSite(&tab) == (!empty && desktop));
       assert(MobileViewportEnabled(&tab) == (empty || !desktop));
       if (!empty) assert(tab.ua.ua_metadata_override == baseline.ua_metadata_override);
       auto compatible = tab.ua;
-      assert(watcher.ApplyAppGalleryUserAgent(&h)); // refresh must not save the temporary UA
+      assert(watcher.ApplySiteUserAgent(&h)); // refresh must not save the temporary UA
       assert(tab.ua == compatible);
       h.url.value = "https://example.com/";
-      assert(!watcher.ApplyAppGalleryUserAgent(&h));
+      assert(!watcher.ApplySiteUserAgent(&h));
       assert(tab.ua == baseline && tab.pinned == desktop);
       assert(h.overriding == !empty);
     }
@@ -185,15 +207,109 @@ int main() {
   content::WebContents tab;
   Watcher watcher(&tab);
   content::NavigationHandle h{{"https://appgallery.huawei.com/"}, false};
-  watcher.ApplyAppGalleryUserAgent(&h);
+  watcher.ApplySiteUserAgent(&h);
   tab.ua = {"new desktop", blink::UserAgentMetadata{false}}; // user changes mode
   tab.pinned = true;
-  watcher.ApplyAppGalleryUserAgent(&h);
+  watcher.ApplySiteUserAgent(&h);
   h.url.value = "https://example.com/";
-  watcher.ApplyAppGalleryUserAgent(&h);
+  watcher.ApplySiteUserAgent(&h);
   assert(tab.ua.ua_string_override == "new desktop" && tab.pinned);
-  watcher.ApplyAppGalleryUserAgent(&h);
+  watcher.ApplySiteUserAgent(&h);
   assert(tab.ua.ua_string_override == "new desktop");
+
+  for (const char* url : {"https://aistudio.google.com/", "https://accounts.google.com/",
+                         "https://gemini.google.com/", "https://www.google.co.uk/",
+                         "https://www.google.com.hk/", "https://m.youtube.com/",
+                         "https://youtu.be/", "https://gmail.com/",
+                         "https://ai.google.dev/", "https://www.google.org/",
+                         "https://www.withgoogle.com/", "https://www.youtube-nocookie.com/",
+                         "https://mail.googlemail.com/", "https://googleapis.com/",
+                         "https://content.googleapis.com/", "https://gstatic.com/",
+                         "https://googleusercontent.com/"})
+    assert(IsGoogleService({url}));
+  for (const char* url : {"https://google.com.evil.test/", "https://notgoogle.com/",
+                         "https://gmail.com.evil.test/", "https://evil-youtube.com/",
+                         "https://example.com/google.com", "file://google.com/"})
+    assert(!IsGoogleService({url}));
+  assert(GoogleUserAgent("Chrome/155 Mobile Safari/537.36 OpenHarmony/7.0") ==
+         "Chrome/155 Mobile Safari/537.36");
+  assert(GoogleUserAgent("Chrome/155 OpenHarmony/7.0 Safari/537.36") ==
+         "Chrome/155 Safari/537.36");
+  assert(GoogleUserAgent("Chrome/155 OpenHarmony/7.0 OpenHarmony/8.0") == "Chrome/155");
+  assert(GoogleUserAgent("Chrome/155 CustomOpenHarmony/7.0") ==
+         "Chrome/155 CustomOpenHarmony/7.0");
+
+  // Refresh, navigation between policies and manual mode changes must not
+  // replace the original mode with a temporary compatibility UA.
+  for (bool phone : {false, true}) {
+    phone_ui = phone;
+    for (bool desktop : {false, true}) {
+      content::WebContents page;
+      page.ua = {desktop ? "Chrome/155 Safari/537.36 OpenHarmony/7.0"
+                         : "Chrome/155 Mobile Safari/537.36 OpenHarmony/7.0",
+                 blink::UserAgentMetadata{!desktop}};
+      page.pinned = desktop;
+      const auto baseline = page.ua;
+      Watcher policy(&page);
+      content::NavigationHandle navigation{{"https://aistudio.google.com/"}};
+      for (const char* destination : {"https://aistudio.google.com/",
+                                      "https://aistudio.google.com/",
+                                      "https://appgallery.huawei.com/",
+                                      "https://m.youtube.com/",
+                                      "https://chromewebstore.google.com/",
+                                      "https://accounts.google.com/",
+                                      "https://example.com/"}) {
+        navigation.url.value = destination;
+        policy.DidStartNavigation(&navigation);
+        if (IsGoogleService(navigation.url)) {
+          assert(page.ua.ua_string_override.find(" OpenHarmony/") == std::string::npos);
+          assert(page.ua.ua_string_override.find(" ArkWeb/") == std::string::npos);
+          if (!IsChromeWebStore(navigation.url))
+            assert(page.ua.ua_metadata_override == baseline.ua_metadata_override);
+        } else if (IsHuaweiAppGallery(navigation.url)) {
+          assert(page.ua.ua_string_override == AppGalleryUserAgent(baseline.ua_string_override));
+        } else {
+          assert(page.ua == baseline && page.pinned == desktop);
+        }
+      }
+      navigation.url.value = "https://gemini.google.com/";
+      policy.DidStartNavigation(&navigation);
+      page.ua = {"custom latest mode OpenHarmony/8.0", blink::UserAgentMetadata{desktop}};
+      page.pinned = !desktop;
+      auto latest = page.ua;
+      policy.DidStartNavigation(&navigation);
+      navigation.url.value = "https://example.com/";
+      policy.DidStartNavigation(&navigation);
+      assert(page.ua == latest && page.pinned == !desktop);
+    }
+  }
+  // Device-following tabs have no explicit baseline override to restore.
+  for (bool phone : {false, true}) {
+    phone_ui = phone;
+    content::WebContents page;
+    Watcher policy(&page);
+    content::NavigationHandle navigation{{"https://gemini.google.com/"}};
+    policy.DidStartNavigation(&navigation);
+    assert(page.ua.ua_string_override.find(" OpenHarmony/") == std::string::npos);
+    assert(page.ua.ua_metadata_override->mobile == phone);
+    for (const char* destination : {"https://chromewebstore.google.com/",
+                                    "https://appgallery.huawei.com/",
+                                    "https://aistudio.google.com/",
+                                    "https://example.com/"}) {
+      navigation.url.value = destination;
+      policy.DidStartNavigation(&navigation);
+    }
+    assert(page.ua.ua_string_override.empty() && !page.pinned && !navigation.overriding);
+    navigation.url.value = "https://aistudio.google.com/";
+    navigation.main_frame = false;
+    policy.DidStartNavigation(&navigation);
+    assert(page.ua.ua_string_override.empty());
+    navigation.main_frame = true;
+    navigation.same_document = true;
+    policy.DidStartNavigation(&navigation);
+    assert(page.ua.ua_string_override.empty());
+  }
+  phone_ui = true;
 
   // Follow redirects away from either store, then start a fresh navigation.
   // Redirect callbacks must preserve the navigation's initial UA and must
@@ -201,7 +317,8 @@ int main() {
   // Chromium). A fresh navigation must still restore the user's baseline.
   for (const char* origin : {"https://chromewebstore.google.com/",
                              "https://chrome.google.com/webstore/",
-                             "https://appgallery.huawei.com/apptest/invite"}) {
+                             "https://appgallery.huawei.com/apptest/invite",
+                             "https://aistudio.google.com/"}) {
     content::WebContents page;
     page.ua = AuraShellDesktopSiteUserAgent();
     page.pinned = true;
@@ -233,4 +350,4 @@ with tempfile.TemporaryDirectory(prefix='appgallery-ua-') as directory:
     subprocess.run([os.environ.get('CXX', 'clang++'), '-std=c++20', '-Wall', '-Wextra',
                     '-Werror', str(cc), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
-print('Store UA exact hosts, metadata, mode changes, redirect lifecycle and restoration passed.')
+print('Google/AppGallery/Web Store UA hosts, token handling, metadata, cross-policy transitions, mode changes and restoration passed.')

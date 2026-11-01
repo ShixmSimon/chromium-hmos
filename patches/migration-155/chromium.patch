@@ -2790,7 +2790,7 @@ index 29f655d33e0447e556f75e6e9fc546e6e586f66f..254d46dd15d88acadf5f1d5879f9eec9
            Turned off
          </message>
 diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
-index b58905ddb371f96377320c2948fe64bb17257663..c9c6fdb9e19a1c0f6993399069703aafd2241a4a 100644
+index b58905ddb371f96377320c2948fe64bb17257663..c59becec6522ef557a28a1890162139984ff688b 100644
 --- a/chrome/browser/BUILD.gn
 +++ b/chrome/browser/BUILD.gn
 @@ -102,9 +102,9 @@ buildflag_header("buildflags") {
@@ -2905,12 +2905,13 @@ index b58905ddb371f96377320c2948fe64bb17257663..c9c6fdb9e19a1c0f6993399069703aaf
    if (!is_android || is_desktop_android) {
      deps += [ "//chrome/browser/ui/webui/discards" ]
    }
-@@ -1635,6 +1713,86 @@ source_set("core") {
+@@ -1635,6 +1713,87 @@ source_set("core") {
      }
    }
  
 +  if (is_ohos) {
 +    deps += [
++      "//components/google/core/common",
 +      "//components/ohos_system_service",
 +      "//components/security_interstitials/content:security_interstitial_page",
 +      "//crypto",
@@ -2992,7 +2993,7 @@ index b58905ddb371f96377320c2948fe64bb17257663..c9c6fdb9e19a1c0f6993399069703aaf
    if (is_android) {
      sources += [
        "after_startup_task_utils_android.cc",
-@@ -1827,9 +1985,14 @@ source_set("core") {
+@@ -1827,9 +1986,14 @@ source_set("core") {
  
    if (enable_screen_ai_service) {
      deps += [
@@ -3007,7 +3008,7 @@ index b58905ddb371f96377320c2948fe64bb17257663..c9c6fdb9e19a1c0f6993399069703aaf
      ]
    }
  
-@@ -2574,7 +2737,6 @@ source_set("browser") {
+@@ -2574,7 +2738,6 @@ source_set("browser") {
        "//chrome/browser/profile_resetter:impl",
        "//chrome/browser/record_replay",
        "//chrome/browser/record_replay:impl",
@@ -3015,7 +3016,7 @@ index b58905ddb371f96377320c2948fe64bb17257663..c9c6fdb9e19a1c0f6993399069703aaf
        "//chrome/browser/sharing_hub",
        "//chrome/browser/sharing_hub:impl",
        "//chrome/browser/smart_card",
-@@ -3121,7 +3283,7 @@ source_set("browser") {
+@@ -3121,7 +3284,7 @@ source_set("browser") {
      ]
    }
  
@@ -3024,7 +3025,7 @@ index b58905ddb371f96377320c2948fe64bb17257663..c9c6fdb9e19a1c0f6993399069703aaf
      deps += [ "//chrome/browser/ui/webui/ai_overlay_dialog:impl" ]
    }
  
-@@ -3187,6 +3349,12 @@ source_set("browser") {
+@@ -3187,6 +3350,12 @@ source_set("browser") {
      }
    }
  
@@ -3037,7 +3038,7 @@ index b58905ddb371f96377320c2948fe64bb17257663..c9c6fdb9e19a1c0f6993399069703aaf
    if (is_mac) {
      deps += [ "//chrome/browser/ui/webui/unexportable_keys_internals" ]
  
-@@ -3337,10 +3505,10 @@ source_set("browser") {
+@@ -3337,10 +3506,10 @@ source_set("browser") {
    }
  
    if (!is_android) {
@@ -3052,7 +3053,7 @@ index b58905ddb371f96377320c2948fe64bb17257663..c9c6fdb9e19a1c0f6993399069703aaf
    }
  
    # This target intentionally has no sources of its own and no
-@@ -3481,7 +3649,6 @@ group("browser_public_dependencies") {
+@@ -3481,7 +3650,6 @@ group("browser_public_dependencies") {
        "//components/enterprise/buildflags",
        "//components/lens:buildflags",
        "//components/webapps/common:mojo_bindings",
@@ -3060,7 +3061,7 @@ index b58905ddb371f96377320c2948fe64bb17257663..c9c6fdb9e19a1c0f6993399069703aaf
        "//third_party/lens_server_proto:lens_overlay_proto",
        "//third_party/nearby:encrypted_metadata_proto",
        "//third_party/nearby:rpc_resources_proto",
-@@ -3671,6 +3838,15 @@ group("browser_generated_files") {
+@@ -3671,6 +3839,15 @@ group("browser_generated_files") {
      public_deps +=
          [ "//chrome/browser/ui/webui/ai_overlay_dialog:mojo_bindings" ]
    }
@@ -3076,7 +3077,7 @@ index b58905ddb371f96377320c2948fe64bb17257663..c9c6fdb9e19a1c0f6993399069703aaf
    if (safe_browsing_mode == 1) {
      public_deps += [ "//chrome/browser/ui/webui/reset_password:mojo_bindings" ]
    }
-@@ -4520,3 +4696,11 @@ if (is_android) {
+@@ -4520,3 +4697,11 @@ if (is_android) {
      ]
    }
  }
