@@ -183,7 +183,12 @@ class StoreUserAgentWatcher
       // the reader already has for saying they want it anyway.
       before_store_ = web_contents()->GetUserAgentOverride();
       before_store_pinned_ = IsAuraShellUserAgentPinned(web_contents());
-      desktop_site_ = IsAuraShellRequestingDesktopSite(web_contents());
+      // At navigation start the pending entry may not yet carry the UA flag.
+      // Read the actual override rather than the pending entry's mode bit.
+      desktop_site_ =
+          current == AuraShellDesktopSiteUserAgent().ua_string_override ||
+          (before_store_.ua_metadata_override &&
+           !before_store_.ua_metadata_override->mobile);
       if (IsAuraShellMobilePhoneUi() && !desktop_site_) {
         ApplySiteUserAgent(handle);
         return;

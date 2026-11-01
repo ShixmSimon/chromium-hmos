@@ -91,7 +91,10 @@ struct UserAgentOverride {
 };
 }
 namespace content {
-struct NavigationEntry { bool GetIsOverridingUserAgent() const { return true; } };
+struct NavigationEntry {
+  bool overriding = true;
+  bool GetIsOverridingUserAgent() const { return overriding; }
+};
 struct NavigationController {
   NavigationEntry entry;
   const NavigationEntry* GetVisibleEntry() const { return &entry; }
@@ -283,6 +286,19 @@ int main() {
       assert(page.ua == latest && page.pinned == !desktop);
     }
   }
+  // A pending entry may not have inherited the UA flag at navigation start.
+  // The user's existing desktop override must still select the desktop store.
+  {
+    content::WebContents page;
+    page.ua = AuraShellDesktopSiteUserAgent();
+    page.pinned = true;
+    page.controller.entry.overriding = false;
+    Watcher policy(&page);
+    content::NavigationHandle navigation{{"https://chromewebstore.google.com/"}};
+    policy.DidStartNavigation(&navigation);
+    assert(page.ua.ua_string_override == "store desktop");
+  }
+
   // Device-following tabs have no explicit baseline override to restore.
   for (bool phone : {false, true}) {
     phone_ui = phone;
