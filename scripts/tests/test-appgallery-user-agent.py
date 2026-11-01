@@ -225,6 +225,8 @@ int main() {
                          "https://www.google.com.hk/", "https://m.youtube.com/",
                          "https://youtu.be/", "https://gmail.com/",
                          "https://ai.google.dev/", "https://www.google.org/",
+                         "https://g.co/", "https://goo.gl/", "https://forms.gle/",
+                         "https://about.google/", "https://example.goog/",
                          "https://www.withgoogle.com/", "https://www.youtube-nocookie.com/",
                          "https://mail.googlemail.com/", "https://googleapis.com/",
                          "https://content.googleapis.com/", "https://gstatic.com/",
@@ -232,7 +234,8 @@ int main() {
     assert(IsGoogleService({url}));
   for (const char* url : {"https://google.com.evil.test/", "https://notgoogle.com/",
                          "https://gmail.com.evil.test/", "https://evil-youtube.com/",
-                         "https://example.com/google.com", "file://google.com/"})
+                         "https://example.com/google.com", "file://google.com/",
+                         "https://google/", "https://notgoogle/", "https://about.google.evil.test/"})
     assert(!IsGoogleService({url}));
   assert(GoogleUserAgent("Chrome/155 Mobile Safari/537.36 OpenHarmony/7.0") ==
          "Chrome/155 Mobile Safari/537.36");

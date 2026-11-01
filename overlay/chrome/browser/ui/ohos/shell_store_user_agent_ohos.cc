@@ -70,6 +70,9 @@ bool IsGoogleService(const GURL& url) {
          url.DomainIs("gmail.com") || url.DomainIs("googlemail.com") ||
          url.DomainIs("google.dev") || url.DomainIs("google.org") ||
          url.DomainIs("withgoogle.com") || url.DomainIs("youtube-nocookie.com") ||
+         url.DomainIs("g.co") || url.DomainIs("goo.gl") ||
+         url.host().ends_with(".google") || url.host().ends_with(".goog") ||
+         url.host().ends_with(".gle") ||
          url.DomainIs("youtu.be") || url.DomainIs("googleapis.com") ||
          url.DomainIs("googleusercontent.com") || url.DomainIs("gstatic.com");
 }
