@@ -731,6 +731,8 @@ export interface AuxiliaryWindowState {
   // engine and on every window that is not one.
   pictureInPicture?: boolean;
   windowRole: 'auxiliary' | 'pwa' | 'browser';
+  devTools?: boolean;
+  devToolsOwner?: number;
   pwaAppId?: string;
   title?: string;
   url?: string;

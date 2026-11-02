@@ -527,7 +527,12 @@ void DispatchAuxiliaryWindowEvent(const ui::OhosLogicalWindowState& state) {
     event.Set("incognito", metadata->is_incognito);
     event.Set("browserPopup", metadata->is_web_popup);
   }
-  if (metadata && metadata->is_pwa) {
+  if (metadata && metadata->is_devtools) {
+    event.Set("devTools", true);
+    event.Set("devToolsOwner", static_cast<double>(metadata->devtools_owner));
+    event.Set("title", metadata->title);
+    event.Set("url", metadata->url);
+  } else if (metadata && metadata->is_pwa) {
     event.Set("windowRole", "pwa");
     event.Set("pwaAppId", metadata->app_id);
     event.Set("title", metadata->title);

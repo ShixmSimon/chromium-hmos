@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
+
+#include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/ui/ohos/shell_accessibility_ohos.h"
 #include "chrome/browser/ui/ohos/device_authenticator_ohos.h"
 #include "chrome/browser/ui/ohos/screen_orientation_delegate_ohos.h"
@@ -458,6 +460,12 @@ BrowserWindowInterface* FindBrowserForWebContents(
     });
   }
   return match;
+}
+
+DevToolsWindow* DevToolsForBrowser(BrowserWindowInterface* browser) {
+  TabStripModel* tabs = browser ? browser->GetTabStripModel() : nullptr;
+  return tabs ? DevToolsWindow::AsDevToolsWindow(tabs->GetActiveWebContents())
+              : nullptr;
 }
 
 bool MoveWebPopupToTab(BrowserWindowInterface* popup) {
@@ -4488,6 +4496,42 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
     return;
   }
 
+  if (*name == "setDevToolsVisible" || *name == "closeDevTools") {
+    const std::optional<int> tool_widget = command.FindInt("devToolsWidget");
+    BrowserWindowInterface* tools = tool_widget
+        ? FindBrowserForWidget(static_cast<gfx::AcceleratedWidget>(*tool_widget))
+        : nullptr;
+    DevToolsWindow* devtools = DevToolsForBrowser(tools);
+    content::WebContents* inspected = devtools ? devtools->GetInspectedWebContents() : nullptr;
+    BrowserWindowInterface* owner = FindBrowserForWebContents(inspected);
+    if (!owner || GetBrowserWidget(owner) != widget) {
+      return;
+    }
+    BrowserView* view = BrowserView::GetBrowserViewForBrowser(tools);
+    views::Widget* native = view ? view->GetWidget() : nullptr;
+    if (!native) {
+      return;
+    }
+    if (*name == "closeDevTools") {
+      native->Close();
+    } else if (command.FindBool("visible").value_or(false)) {
+      native->Show();
+      native->Activate();
+      if (content::WebContents* frontend = devtools->GetDevToolsWebContents()) {
+        frontend->Focus();
+      }
+    } else {
+      // Hide the window, not the WebContents/agent. Console and Network keep
+      // their session; the inspected page receives pointer and keyboard input.
+      native->Hide();
+      if (BrowserView* owner_view = BrowserView::GetBrowserViewForBrowser(owner)) {
+        owner_view->GetWidget()->Activate();
+      }
+      inspected->Focus();
+    }
+    return;
+  }
+
   if (*name == "setAnchorRects") {
     SetAuraShellAnchorRects(widget, command);
     return;
@@ -4791,6 +4835,31 @@ void ExecuteBrowserCommandOnUiThread(gfx::AcceleratedWidget widget,
   } else if (*name == "forward" && active &&
              active->GetController().CanGoForward()) {
     active->GetController().GoForward();
+  } else if (*name == "openDevTools") {
+    // Never fall back to the active tab: the confirmation names one target.
+    content::WebContents* target = FindTabById(tabs, command.FindString("id"));
+    const std::string* url = command.FindString("url");
+    if (target && target == active && url &&
+        target->GetVisibleURL().spec() == *url) {
+      // One phone session at a time. A previous target must not leave an
+      // unreachable frontend and agent running behind the new floating button.
+      if (IsAuraShellMobilePhoneUi()) {
+        std::vector<views::Widget*> previous;
+        GlobalBrowserCollection::GetInstance()->ForEach(
+            [&](BrowserWindowInterface* candidate) {
+              DevToolsWindow* tools = DevToolsForBrowser(candidate);
+              if (tools && tools->GetInspectedWebContents() != target &&
+                  FindBrowserForWebContents(tools->GetInspectedWebContents()) == browser) {
+                BrowserView* view = BrowserView::GetBrowserViewForBrowser(candidate);
+                if (view && view->GetWidget()) { previous.push_back(view->GetWidget()); }
+              }
+              return true;
+            });
+        for (views::Widget* previous_widget : previous) { previous_widget->Close(); }
+      }
+      DevToolsWindow::OpenDevToolsWindow(
+          target, DevToolsOpenedByAction::kMainMenuOrMainShortcut);
+    }
   } else if (*name == "reload" && active) {
     active->GetController().Reload(content::ReloadType::NORMAL,
                                    /*check_for_repost=*/false);
@@ -5738,6 +5807,9 @@ bool PostBrowserCommand(gfx::AcceleratedWidget widget,
       "back",
       "forward",
       "reload",
+      "openDevTools",
+      "setDevToolsVisible",
+      "closeDevTools",
       "stop",
       "home",
       "pwaHome",
@@ -6024,6 +6096,18 @@ std::optional<AuraShellWindowMetadata> GetAuraShellWindowMetadata(
   }
 
   AuraShellWindowMetadata metadata;
+  if (DevToolsWindow* tools = DevToolsForBrowser(browser);
+      tools && IsAuraShellMobilePhoneUi()) {
+    content::WebContents* inspected = tools->GetInspectedWebContents();
+    BrowserWindowInterface* owner = FindBrowserForWebContents(inspected);
+    metadata.is_devtools = true;
+    metadata.devtools_owner = GetBrowserWidget(owner);
+    if (inspected) {
+      metadata.title = base::UTF16ToUTF8(inspected->GetTitle());
+      metadata.url = inspected->GetVisibleURL().spec();
+    }
+    return metadata;
+  }
   metadata.is_pwa =
       browser->GetType() == BrowserWindowInterface::Type::TYPE_APP ||
       browser->GetType() == BrowserWindowInterface::Type::TYPE_APP_POPUP;

@@ -39708,3 +39708,33 @@ index 6dbd642348fc59008ddaa103edc5a712697756d1..94cb78cca43fe051068bf03d0e599814
    state.composited_scrolling_preference =
        static_cast<CompositedScrollingPreference>(
            full_context_.composited_scrolling_preference);
+
+diff --git a/chrome/browser/devtools/devtools_window.cc b/chrome/browser/devtools/devtools_window.cc
+--- a/chrome/browser/devtools/devtools_window.cc
++++ b/chrome/browser/devtools/devtools_window.cc
+@@ -3,6 +3,10 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/devtools/devtools_window.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
++#endif
+ 
+ #include <algorithm>
+ #include <memory>
+@@ -1386,6 +1390,14 @@
+     return nullptr;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  // The phone shell hosts DevTools in an independent surface. Docking into
++  // the inspected page would shrink it even while the tools are collapsed.
++  if (chrome::ohos::IsAuraShellMobilePhoneUi()) {
++    can_dock = false;
++  }
++#endif
++
+   SessionID inspected_browser_session_id = SessionID::InvalidValue();
+ #if BUILDFLAG(IS_ANDROID)
+   // Docking is not supported yet.

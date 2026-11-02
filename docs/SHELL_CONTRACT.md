@@ -1224,6 +1224,25 @@ XComponent({
 
 ---
 
+
+### 手机 DevTools 窗口
+
+手机菜单确认后发送 `openDevTools { id, url }`，内核只为当前标签且可见地址仍匹配的目标开启工具。
+手机 DevTools 禁止停靠到网页中，使用独立的 Chromium 前端窗口和 `aura_aux_<widget>` 表面。
+窗口状态额外带 `devTools: true`、`devToolsOwner`（所属浏览器 widget）、目标网页的 `title` / `url`。
+这些窗口不进入普通辅助窗口的 30% 高度布局。
+
+外壳首次收到窗口时显示悬浮按钮，发送 `setDevToolsVisible { devToolsWidget, visible: false }`。
+展开时发送同一命令的 `visible: true`，全屏容器按实际可用尺寸承载表面；收起或返回只隐藏同一个
+XComponent，不能卸载它，也不能关闭前端或 CDP agent。原生隐藏窗口归还网页输入焦点；展开则激活工具。
+`closeDevTools { devToolsWidget }` 才关闭窗口，`destroyed: true` 后移除表面和按钮。
+内核按工具窗口关联的被调试 WebContents 校验所属浏览器，拒绝其它窗口的显隐和关闭请求。
+目标标签关闭时沿用 Chromium 的 DevTools 清理；手机再次开启另一目标会关闭该浏览器之前的工具窗口。
+
+验收需使用含该协议的新 HAR：检查确认后按钮、拖动、重复展开/收起、Console/Network 连续记录、网页输入、
+旋转、返回收起、关闭工具以及关闭目标标签。JavaScript 断点暂停期间网页本身仍暂停，收起不隐式恢复执行。
+
+
 ## 8. 渲染约束
 
 网页通过 SURFACE 模式的 XComponent 上屏,是系统合成器里一个独立的图层,可以交给显示硬件直接合成。下面两种情况会让它退回 GPU 合成:系统每帧多做一次全屏绘制,更费电,也更容易掉帧。
