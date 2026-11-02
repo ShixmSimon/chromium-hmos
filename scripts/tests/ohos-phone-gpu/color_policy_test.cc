@@ -8,6 +8,15 @@
 
 int main() {
   using namespace ui;
+  // Reject RGBA8, RGB-only, float16 and partially truncated EGL imports even
+  // when the native parcel claims RGBA_1010102. Every channel matters.
+  assert(IsOhosTenBitGlFramebuffer(10, 10, 10, 2));
+  assert(!IsOhosTenBitGlFramebuffer(8, 8, 8, 8));
+  assert(!IsOhosTenBitGlFramebuffer(10, 10, 10, 0));
+  assert(!IsOhosTenBitGlFramebuffer(16, 16, 16, 16));
+  assert(!IsOhosTenBitGlFramebuffer(8, 10, 10, 2));
+  assert(!IsOhosTenBitGlFramebuffer(10, 8, 10, 2));
+  assert(!IsOhosTenBitGlFramebuffer(10, 10, 8, 2));
   const OhosOutputColor hdr{OhosOutputMode::kHdr10, 203000, 1000000};
   const OhosOutputColor sdr10{OhosOutputMode::kSdr10};
   const OhosOutputColor sdr8;

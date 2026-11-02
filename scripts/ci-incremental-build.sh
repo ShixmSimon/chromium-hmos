@@ -322,6 +322,7 @@ else
   bash "${repo_root}/scripts/setup-adblock-rust.sh" || die "Rust toolchain setup failed"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-msrt.patch" \
     "${src}/third_party/angle"
+  apply_incremental_patch "${repo_root}/patches/ohos-phone-gl-hdr.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

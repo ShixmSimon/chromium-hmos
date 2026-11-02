@@ -727,13 +727,65 @@ class PhoneGpuVSyncProvider final : public gfx::VSyncProvider {
   const uint64_t widget_;
 };
 
-class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
+class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL,
+                                    public OhosGlOutputColorClient {
  public:
   OhosPhoneGpuGLSurface(gl::GLDisplayEGL* display,
                         gfx::AcceleratedWidget widget)
       : PbufferGLSurfaceEGL(display, gfx::Size(1, 1)),
         widget_(widget),
-        timing_(widget) {}
+        timing_(widget) {
+    RegisterOhosGlOutputColorClient(static_cast<gl::GLSurface*>(this), this);
+  }
+  void InitializeOutputColor(bool requires_alpha) override {
+    if (color_initialized_)
+      return;
+    color_initialized_ = true;
+    requires_alpha_ = requires_alpha;
+    color_ = requires_alpha ? OhosOutputColor{} : GetOhosRequestedOutputColor();
+    if (color_.mode != OhosOutputMode::kSdr8 && !AllowOhosPhoneGlColor())
+      color_ = {};
+    if (color_.mode == OhosOutputMode::kHdr10 && !hdr_guard_.Validate())
+      color_ = {OhosOutputMode::kSdr10};
+    const auto requested = color_;
+    if (color_.mode != OhosOutputMode::kSdr8) {
+      auto* context = gl::GLContext::GetCurrent();
+      if (!context || !context->GetVersionInfo()->IsAtLeastGLES(3, 0))
+        ColorFailure("ten-bit GL output requires GLES3");
+      if (!ProbeColor(color_)) {
+        // A detached/hidden auxiliary surface is not a driver failure.
+        if (!probe_unavailable_)
+          ColorFailure("10-bit EGLImage/FBO probe");
+        color_ = {};
+      }
+      hdr_capable_ = color_.mode == OhosOutputMode::kHdr10;
+      if (hdr_capable_) {
+        hdr_color_ = color_;
+        if (!ReportOhosPhoneOutputColorReady(widget_, color_, color_generation_))
+          ColorFailure("publish verified GL HDR capability");
+        // Bootstrap/default content is SDR. Validate both queue states before
+        // Viz copies capabilities; a queued SDR frame must never land in PQ.
+        if (!ProbeColor({OhosOutputMode::kSdr10}))
+          ColorFailure("HDR to SDR10 bootstrap probe");
+      }
+    }
+    auto spaces = MakeOhosOutputColorSpaces(color_);
+    spaces.SetHDRMaxLuminanceRelative(1.f);
+    if (hdr_capable_) {
+      for (bool alpha : {false, true})
+        spaces.SetOutputColorSpaceAndFormat(gfx::ContentColorUsage::kHDR, alpha,
+            gfx::ColorSpace::CreateHDR10(), viz::SinglePlaneFormat::kRGBA_1010102);
+      spaces.SetSDRMaxLuminanceNits(requested.white_millinits / 1000.f);
+      spaces.SetHDRMaxLuminanceRelative(
+          static_cast<float>(requested.peak_millinits) / requested.white_millinits);
+    }
+    SetOhosEglOutputColorSpaces(static_cast<gl::GLSurface*>(this), spaces);
+    LOG(WARNING) << "OHOS phone GL: output verified hdr=" << hdr_capable_
+                 << " native_format=" << OhosOutputNativeFormat(color_);
+  }
+  void SetReshapeOutputColor(const OhosOutputColor& color) override {
+    reshape_color_ = color;
+  }
   EGLConfig GetConfig() override {
     base::AutoReset<bool> selecting(&selecting_config_, true);
     return PbufferGLSurfaceEGL::GetConfig();
@@ -748,6 +800,33 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
               float scale_factor,
               const gfx::ColorSpace& color_space,
               bool has_alpha) override {
+    if (!color_initialized_)
+      InitializeOutputColor(has_alpha);
+    const auto reshape_color = std::exchange(reshape_color_, std::nullopt);
+    OhosOutputColor next{color_.mode == OhosOutputMode::kSdr8
+                            ? OhosOutputMode::kSdr8 : OhosOutputMode::kSdr10};
+    if (color_space.IsHDR()) {
+      if (!hdr_capable_ || requires_alpha_ || has_alpha ||
+          color_space != gfx::ColorSpace::CreateHDR10() || !hdr_guard_.Validate())
+        ColorFailure("unverified HDR GL reshape");
+      next = reshape_color.value_or(hdr_color_);
+      if (next.mode != OhosOutputMode::kHdr10 || !ValidOhosOutputColor(next))
+        ColorFailure("invalid HDR GL luminance");
+    } else if (color_space != gfx::ColorSpace::CreateSRGB()) {
+      ColorFailure("unverified GL output color space");
+    }
+    if (has_alpha && color_.mode != OhosOutputMode::kSdr8)
+      ColorFailure("opaque GL output became transparent");
+    if (next != color_) {
+      ReleaseLease();
+      prepared_ = false;
+      if (next.mode != color_.mode) {
+        if (!CanSwitchOhosPhoneOutputColor(color_, next, hdr_capable_) ||
+            !ProbeColor(next))
+          ColorFailure("GL content color transition");
+      }
+      color_ = next;
+    }
     phone_gpu::Frame frame;
     frame.widget = widget_;
     frame.sequence = 1;
@@ -784,8 +863,11 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
       glGenFramebuffersEXT(1, &fbo_);
     glBindFramebufferEXT(GL_FRAMEBUFFER, fbo_);
     bool attached = false;
+    drop_frame_ = false;
     if (!sharing_disabled_)
       attached = AttachShared();
+    if (!attached && !drop_frame_ && color_.mode != OhosOutputMode::kSdr8)
+      ColorFailure("verified GL buffer acquisition/import failed");
     if (!attached)
       attached = AttachFallback(es3);
     failed_ = !attached;
@@ -800,7 +882,9 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
                               gfx::FrameData data) override {
     auto result = phone_gpu::Result::kFailed;
     if (!failed_ && prepared_) {
-      if (lease_) {
+      if (drop_frame_) {
+        result = phone_gpu::Result::kDropped;
+      } else if (lease_) {
         const EGLint attributes[] = {EGL_NONE};
         const EGLDisplay display =
             GetGLDisplay()->GetAs<gl::GLDisplayEGL>()->GetDisplay();
@@ -813,8 +897,16 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
         if (sync != EGL_NO_SYNC_KHR)
           eglDestroySyncKHR(display, sync);
         if (fence >= 0) {
-          result = PresentOhosPhoneGpuBuffer(widget_, lease_, fence);
+          result = PresentOhosPhoneGpuBuffer(widget_, lease_, fence,
+                                             color_, color_generation_);
           lease_ = 0;
+          if (result == phone_gpu::Result::kPresented && !logged_color_presented_) {
+            logged_color_presented_ = true;
+            LOG(WARNING) << "OHOS phone GL: color frame presented mode="
+                         << static_cast<uint32_t>(color_.mode)
+                         << " native_format=" << OhosOutputNativeFormat(color_)
+                         << " generation=" << color_generation_;
+          }
         } else {
           // Work may already be running: detach, never abort/reuse this buffer.
           ReleaseLease();
@@ -825,6 +917,8 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
     }
     prepared_ = false;
     failed_ = result == phone_gpu::Result::kFailed;
+    if (failed_ && color_.mode != OhosOutputMode::kSdr8)
+      ColorFailure("verified GL fence/presentation failed");
     base::TimeTicks timebase;
     base::TimeDelta interval;
     GetOhosPhoneGpuTiming(widget_, &timebase, &interval);
@@ -839,6 +933,8 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
     return failed_ ? gfx::SwapResult::SWAP_FAILED : gfx::SwapResult::SWAP_ACK;
   }
   void Destroy() override {
+    RegisterOhosGlOutputColorClient(static_cast<gl::GLSurface*>(this), nullptr);
+    SetOhosEglOutputColorSpaces(static_cast<gl::GLSurface*>(this), std::nullopt);
     ReleaseLease();
     ClearImports();
     if (OwnContextCurrent()) {
@@ -878,6 +974,15 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
   }
   void ClearImports() {
     const bool current = OwnContextCurrent();
+    if (current && fbo_) {
+      GLint draw = 0;
+      const bool es3 = gl::GLContext::GetCurrent()->GetVersionInfo()->IsAtLeastGLES(3, 0);
+      glGetIntegerv(es3 ? GL_DRAW_FRAMEBUFFER_BINDING : GL_FRAMEBUFFER_BINDING, &draw);
+      glBindFramebufferEXT(es3 ? GL_DRAW_FRAMEBUFFER : GL_FRAMEBUFFER, fbo_);
+      glFramebufferTexture2DEXT(es3 ? GL_DRAW_FRAMEBUFFER : GL_FRAMEBUFFER,
+                                GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+      glBindFramebufferEXT(es3 ? GL_DRAW_FRAMEBUFFER : GL_FRAMEBUFFER, draw);
+    }
     // Resize/teardown only, never per frame. Retire old GPU references first.
     if (current && !imports_.empty())
       glFinish();
@@ -895,7 +1000,49 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
     }
     imports_.clear();
   }
-  bool AttachShared() {
+  [[noreturn]] void ColorFailure(const char* reason) {
+    NoteOhosOutputColorFailure(reason);
+    ReportOhosPhoneOutputColorFailure();
+    // Restart with SDR8 capabilities. Never draw a queued PQ frame into the
+    // existing eight-bit readback fallback or leave stale HDR queue metadata.
+    _exit(76);
+  }
+  bool ProbeColor(const OhosOutputColor& color) {
+    ReleaseLease();
+    ClearImports();
+    prepared_ = false;
+    phone_gpu::SharedMessage probe;
+    probe_unavailable_ = false;
+    if (!CheckSharingExtensions())
+      return false;
+    if (!ProbeOhosPhoneOutputColor(widget_, color, &probe)) {
+      probe_unavailable_ = probe.packet.operation == phone_gpu::SharedOp::kUnavailable &&
+          probe.packet.result == static_cast<uint32_t>(phone_gpu::Result::kDropped);
+      return false;
+    }
+    color_ = color;
+    color_generation_ = probe.packet.color_generation;
+    logged_color_presented_ = false;
+    owner_context_ = eglGetCurrentContext();
+    GLint draw = 0, read = 0, texture = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture);
+    if (!fbo_)
+      glGenFramebuffersEXT(1, &fbo_);
+    glBindFramebufferEXT(GL_FRAMEBUFFER, fbo_);
+    const bool ok = AttachBuffer(probe);
+    // No draw submitted; return with the original acquire fence. Detach our
+    // EGLImage references before the next probe cleans/reconfigures the queue.
+    if (lease_ && !CancelOhosPhoneGpuBuffer(widget_, std::exchange(lease_, 0)))
+      ColorFailure("cancel GL probe lease");
+    ClearImports();
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, draw);
+    glBindFramebufferEXT(GL_READ_FRAMEBUFFER, read);
+    return ok;
+  }
+  bool CheckSharingExtensions() {
     const EGLDisplay display =
         GetGLDisplay()->GetAs<gl::GLDisplayEGL>()->GetDisplay();
     if (!checked_extensions_) {
@@ -908,16 +1055,29 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
         LOG(WARNING)
             << "OHOS phone GPU: native fence unavailable; readback fallback";
     }
-    if (sharing_disabled_)
+    return !sharing_disabled_;
+  }
+  bool AttachShared() {
+    if (!CheckSharingExtensions())
       return false;
+    if (color_.mode == OhosOutputMode::kHdr10 && !hdr_guard_.Validate())
+      ColorFailure("GL HDR display changed or unavailable");
     phone_gpu::Frame frame;
     frame.widget = widget_;
     frame.sequence = 1;
     frame.width = GetSize().width();
     frame.height = GetSize().height();
     phone_gpu::SharedMessage message;
-    if (!AcquireOhosPhoneGpuBuffer(frame, &message))
+    if (!AcquireOhosPhoneGpuBuffer(frame, &message, color_, color_generation_)) {
+      drop_frame_ = message.packet.operation == phone_gpu::SharedOp::kUnavailable &&
+          message.packet.result == static_cast<uint32_t>(phone_gpu::Result::kDropped);
       return false;
+    }
+    return AttachBuffer(message);
+  }
+  bool AttachBuffer(phone_gpu::SharedMessage& message) {
+    const EGLDisplay display =
+        GetGLDisplay()->GetAs<gl::GLDisplayEGL>()->GetDisplay();
     // A mapper/Binder regression must not freeze the GPU sequence forever.
     // Chromium's GPU recovery handles this exit; the browser detaches leases.
     if (!import_watchdog_) {
@@ -929,7 +1089,8 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
         &base::Watchdog::Disarm, base::Unretained(import_watchdog_.get())));
     const uint64_t lease = message.packet.lease;
     const uint32_t key = message.packet.prefix[0];
-    if (!imports_.contains(key)) {
+    const bool first_import = !imports_.contains(key);
+    if (first_import) {
       // NativeWindow normally rotates 3 buffers. Bound old surface generations.
       if (imports_.size() >= 8)
         ClearImports();
@@ -960,6 +1121,22 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
       ok = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER) ==
            GL_FRAMEBUFFER_COMPLETE;
     }
+    if (ok && first_import && color_.mode != OhosOutputMode::kSdr8) {
+      GLint red = 0, green = 0, blue = 0, alpha = 0;
+      glGetFramebufferAttachmentParameterivEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+          GL_FRAMEBUFFER_ATTACHMENT_RED_SIZE, &red);
+      glGetFramebufferAttachmentParameterivEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+          GL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE, &green);
+      glGetFramebufferAttachmentParameterivEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+          GL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE, &blue);
+      glGetFramebufferAttachmentParameterivEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+          GL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE, &alpha);
+      ok = IsOhosTenBitGlFramebuffer(red, green, blue, alpha) &&
+           glGetError() == GL_NO_ERROR;
+      if (!ok)
+        LOG(ERROR) << "OHOS phone GL: invalid ten-bit FBO " << red << "/"
+                   << green << "/" << blue << "/" << alpha;
+    }
     base::ScopedFD acquire(message.TakeFence());
     if (ok && acquire.is_valid()) {
       const EGLint attrs[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID, acquire.get(),
@@ -978,7 +1155,8 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
       // No drawing into the leased allocation has occurred yet.
       CancelOhosPhoneGpuBuffer(widget_, lease);
       sharing_disabled_ = true;
-      LOG(WARNING) << "OHOS phone GPU: shared import failed; readback fallback";
+      LOG(WARNING) << "OHOS phone GPU: shared import failed, color_mode="
+                   << static_cast<uint32_t>(color_.mode);
       return false;
     }
     lease_ = lease;
@@ -999,8 +1177,13 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
         glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
       }
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, GetSize().width(),
-                   GetSize().height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+      // Backpressure/hidden windows draw into a matching scratch target and
+      // drop the frame. Ten-bit/PQ data must never enter the SDR readback path.
+      const bool ten_bit = color_.mode != OhosOutputMode::kSdr8;
+      glTexImage2D(GL_TEXTURE_2D, 0, ten_bit ? GL_RGB10_A2 : GL_RGBA,
+                   GetSize().width(), GetSize().height(), 0, GL_RGBA,
+                   ten_bit ? GL_UNSIGNED_INT_2_10_10_10_REV : GL_UNSIGNED_BYTE,
+                   nullptr);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
       if (es3)
@@ -1077,6 +1260,17 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL {
   bool sharing_disabled_ = false;
   bool checked_extensions_ = false;
   bool logged_shared_ = false;
+  bool logged_color_presented_ = false;
+  bool color_initialized_ = false;
+  bool drop_frame_ = false;
+  bool probe_unavailable_ = false;
+  bool requires_alpha_ = true;
+  bool hdr_capable_ = false;
+  OhosOutputColor color_;
+  OhosOutputColor hdr_color_;
+  std::optional<OhosOutputColor> reshape_color_;
+  uint64_t color_generation_ = 0;
+  OhosHdrDisplayGuard hdr_guard_;
 };
 
 class GLOzoneEGLOhos : public GLOzoneEGL {

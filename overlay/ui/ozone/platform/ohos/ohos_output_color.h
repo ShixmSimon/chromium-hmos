@@ -45,6 +45,11 @@ constexpr bool CanSwitchOhosPhoneOutputColor(const OhosOutputColor& from,
   return ValidOhosOutputColor(from) && ValidOhosOutputColor(to) &&
          from.mode != to.mode && supported(from.mode) && supported(to.mode);
 }
+// NativeBuffer's advertised format is insufficient: verify what EGL actually
+// attached before publishing precision or wrapping the FBO as a Skia target.
+constexpr bool IsOhosTenBitGlFramebuffer(int red, int green, int blue, int alpha) {
+  return red == 10 && green == 10 && blue == 10 && alpha == 2;
+}
 constexpr uint32_t OhosOutputNativeFormat(const OhosOutputColor& color) {
   return color.mode == OhosOutputMode::kSdr8 ? 12u : 34u;
 }

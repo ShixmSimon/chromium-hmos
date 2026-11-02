@@ -1,0 +1,65 @@
+diff --git a/components/viz/service/display_embedder/skia_output_device_gl.cc b/components/viz/service/display_embedder/skia_output_device_gl.cc
+--- a/components/viz/service/display_embedder/skia_output_device_gl.cc
++++ b/components/viz/service/display_embedder/skia_output_device_gl.cc
+@@ -215,6 +215,10 @@
+   SkColorType color_type = params.image_info.colorType();
+   const bool has_alpha = !params.image_info.isOpaque();
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (params.ohos_output_color)
++    ui::SetOhosGlReshapeOutputColor(gl_surface_.get(), *params.ohos_output_color);
++#endif
+   if (!gl_surface_->Resize(size, params.device_scale_factor, params.color_space,
+                            has_alpha)) {
+     CheckForLoopFailures();
+@@ -223,18 +227,13 @@
+     return false;
+   }
+ #if BUILDFLAG(IS_OHOS)
+-  // A queued SDR8 reshape must not describe a ten-bit default framebuffer
+-  // as RGBA8 while the browser handles the new display capability event.
+-  if (!gl_surface_->GetBackingFramebufferObject()) {
+-    // Copy-output may leave an offscreen FBO bound. Its GL_RED_BITS does not
+-    // describe framebuffer zero; use the live native EGL window contract.
+-    const auto native_spaces =
+-        ui::GetOhosEglOutputColorSpaces(gl_surface_.get());
+-    if (native_spaces &&
+-        native_spaces->GetOutputFormat(gfx::ContentColorUsage::kSRGB, false) ==
+-            SinglePlaneFormat::kRGBA_1010102) {
+-      color_type = kRGBA_1010102_SkColorType;
+-    }
++  // Both native EGL windows and shared phone FBOs publish their actual
++  // allocation. A queued bootstrap reshape may still carry an SDR8 format.
++  const auto native_spaces = ui::GetOhosEglOutputColorSpaces(gl_surface_.get());
++  if (native_spaces &&
++      native_spaces->GetOutputFormat(gfx::ContentColorUsage::kSRGB, false) ==
++          SinglePlaneFormat::kRGBA_1010102) {
++    color_type = kRGBA_1010102_SkColorType;
+   }
+ #endif
+   SkSurfaceProps surface_props;
+diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+--- a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
++++ b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+@@ -97,6 +97,7 @@
+ #include "ui/gl/gl_surface.h"
+ #if BUILDFLAG(IS_OHOS)
+ #include "ui/gfx/vsync_provider.h"
++#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
+ #endif
+ #include "ui/gl/presenter.h"
+ #include "ui/gl/progress_reporter.h"
+@@ -2069,6 +2070,13 @@
+               GetDidSwapBuffersCompleteCallback());
+         } else {
+           // Used by Android, Linux, and Windows (when DComp has been disabled).
++#if BUILDFLAG(IS_OHOS)
++          // Probe/import the phone's real FBO before the output device copies
++          // its color capabilities. The context is current at this point.
++          ui::InitializeOhosGlOutputColor(
++              gl_surface_.get(), renderer_settings_.requires_alpha_channel);
++          context_state_->gr_context()->resetContext();
++#endif
+           output_device_ = std::make_unique<SkiaOutputDeviceGL>(
+               context_state_.get(), gl_surface_, feature_info_,
+               shared_gpu_deps_->memory_tracker(),

@@ -45,9 +45,9 @@ void RawSend(int socket,
   assert(sendmsg(socket, &msg, MSG_NOSIGNAL) == static_cast<ssize_t>(bytes));
 }
 int main() {
-  {
+  for (auto operation : {p::SharedOp::kGraphiteState, p::SharedOp::kGlColorState}) {
     p::SharedPacket control;
-    control.operation = p::SharedOp::kGraphiteState;
+    control.operation = operation;
     control.sequence = 1;
     control.widget = 1;
     assert(p::ValidSharedPacket(control, 0));
