@@ -219,6 +219,10 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-single-process-keep-browsing-instance.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-touch-menu-below-shell-bar.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-touch-caret-drag.patch"
+  # The phone GL HDR delta replaces lines introduced by the EGL patch. Unwind
+  # it before checking that prerequisite on a persistent second/retry build;
+  # the final apply below restores it after the other Viz patches.
+  retire_incremental_patch "${repo_root}/patches/ohos-phone-gl-hdr.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-egl-bottom-left-surface.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-password-sync.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-log-url-host-only.patch"
