@@ -806,9 +806,22 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL,
     OhosOutputColor next{color_.mode == OhosOutputMode::kSdr8
                             ? OhosOutputMode::kSdr8 : OhosOutputMode::kSdr10};
     if (color_space.IsHDR()) {
-      if (!hdr_capable_ || requires_alpha_ || has_alpha ||
-          color_space != gfx::ColorSpace::CreateHDR10() || !hdr_guard_.Validate())
+      // DirectRenderer applies GetWithSdrWhiteLevel() to the output space.
+      // Its PQ parameters therefore differ from CreateHDR10(), even though
+      // the native encoding is still full-range BT.2020/PQ. Metadata below
+      // carries the independently validated luminance for this frame.
+      const bool pq = color_space.GetPrimaryID() == gfx::ColorSpace::PrimaryID::BT2020 &&
+          color_space.GetTransferID() == gfx::ColorSpace::TransferID::PQ &&
+          color_space.GetMatrixID() == gfx::ColorSpace::MatrixID::RGB &&
+          color_space.GetRangeID() == gfx::ColorSpace::RangeID::FULL;
+      const bool display_valid = hdr_guard_.Validate();
+      if (!hdr_capable_ || requires_alpha_ || has_alpha || !pq || !display_valid) {
+        LOG(ERROR) << "OHOS phone GL: rejected HDR reshape space="
+                   << color_space.ToString() << " hdr_capable=" << hdr_capable_
+                   << " requires_alpha=" << requires_alpha_ << " alpha=" << has_alpha
+                   << " display_valid=" << display_valid;
         ColorFailure("unverified HDR GL reshape");
+      }
       next = reshape_color.value_or(hdr_color_);
       if (next.mode != OhosOutputMode::kHdr10 || !ValidOhosOutputColor(next))
         ColorFailure("invalid HDR GL luminance");
@@ -1022,6 +1035,7 @@ class OhosPhoneGpuGLSurface final : public gl::PbufferGLSurfaceEGL,
     }
     color_ = color;
     color_generation_ = probe.packet.color_generation;
+    fallback_size_ = gfx::Size();
     logged_color_presented_ = false;
     owner_context_ = eglGetCurrentContext();
     GLint draw = 0, read = 0, texture = 0;
