@@ -325,6 +325,7 @@ else
   bash "${repo_root}/scripts/setup-adblock-rust.sh" || die "Rust toolchain setup failed"
   apply_incremental_patch "${repo_root}/patches/ohos-angle-vulkan-msrt.patch" \
     "${src}/third_party/angle"
+  apply_incremental_patch "${repo_root}/patches/ohos-phone-gl-hdr.patch"
 
   fi
 

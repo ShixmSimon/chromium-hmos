@@ -39,6 +39,7 @@ struct BrightnessState {
   std::optional<OhosDisplayBrightness> value GUARDED_BY(lock);
   std::map<gfx::AcceleratedWidget, std::pair<bool, bool>> wsi_outputs GUARDED_BY(lock);
   std::map<const void*, gfx::DisplayColorSpaces> egl_outputs GUARDED_BY(lock);
+  std::map<const void*, OhosGlOutputColorClient*> gl_clients GUARDED_BY(lock);
   base::RepeatingClosure changed GUARDED_BY(lock);
 };
 BrightnessState& Brightness() {
@@ -381,6 +382,31 @@ gfx::DisplayColorSpaces MakeOhosOutputColorSpaces(
                                       color.white_millinits);
   }
   return spaces;
+}
+void RegisterOhosGlOutputColorClient(const void* surface,
+                                   OhosGlOutputColorClient* client) {
+  base::AutoLock lock(Brightness().lock);
+  if (client)
+    Brightness().gl_clients.insert_or_assign(surface, client);
+  else
+    Brightness().gl_clients.erase(surface);
+}
+namespace {
+OhosGlOutputColorClient* GlColorClient(const void* surface) {
+  base::AutoLock lock(Brightness().lock);
+  const auto it = Brightness().gl_clients.find(surface);
+  return it == Brightness().gl_clients.end() ? nullptr : it->second;
+}
+}  // namespace
+void InitializeOhosGlOutputColor(const void* surface, bool requires_alpha) {
+  // Client lifetime and these calls share the GPU sequence. Do not hold the
+  // registry lock across IPC or capability publication back into this registry.
+  if (auto* client = GlColorClient(surface))
+    client->InitializeOutputColor(requires_alpha);
+}
+void SetOhosGlReshapeOutputColor(const void* surface, const OhosOutputColor& color) {
+  if (auto* client = GlColorClient(surface))
+    client->SetReshapeOutputColor(color);
 }
 void SetOhosEglOutputColorSpaces(
     const void* surface, std::optional<gfx::DisplayColorSpaces> spaces) {

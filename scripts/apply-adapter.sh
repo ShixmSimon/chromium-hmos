@@ -52,6 +52,8 @@ git -C "${chromium_src}" apply \
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-phone-fork.patch"
 git -C "${chromium_src}" apply \
+  "${project_root}/patches/ohos-egl-bottom-left-surface.patch"
+git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-phone-gpu-shared-output.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-ime-explicit-keyboard-request.patch"
@@ -90,6 +92,7 @@ git -C "${chromium_src}" apply "${project_root}/patches/ohos-secure-dns-ech.patc
 git -C "${chromium_src}" apply "${project_root}/patches/ohos-https-first-warning.patch"
 git -C "${chromium_src}" apply "${project_root}/patches/ohos-shell-preloading.patch"
 git -C "${chromium_src}" apply "${project_root}/patches/ohos-extensions-mobile-ui.patch"
+git -C "${chromium_src}" apply "${project_root}/patches/ohos-phone-gl-hdr.patch"
 rsync -a "${project_root}/overlay/" "${chromium_src}/"
 
 deps_root="$(dirname "${chromium_src}")/deps_code/webview"

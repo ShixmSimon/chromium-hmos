@@ -726,9 +726,10 @@ std::vector<std::string> OhosChromeMainRunner::BuildArgumentsLocked(
     AppendToListSwitch(&arguments, "disable-features", "Vulkan");
   }
 
-  // Native EGL WSI needs the same user output mode and trusted luminance
-  // snapshot as Skia Vulkan. This does not change the phone fork's GL route.
-  if (((config.skia_backend == "vulkan" || graphite) && gpu_in_own_process) ||
+  // All verified outputs share the requested mode and trusted luminance.
+  // Keep the historical switch name for shell/config compatibility.
+  if ((config.experimental_phone_fork && gpu_in_own_process && !config.headless) ||
+      ((config.skia_backend == "vulkan" || graphite) && gpu_in_own_process) ||
       (!config.headless && config.angle_backend == "vulkan" &&
        !(config.experimental_phone_fork && config.gpu_process == "separate"))) {
     if (config.vulkan_output_mode == "sdr10" ||

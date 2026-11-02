@@ -22,6 +22,8 @@ bool OhosPhoneGpuHasPresented();
 bool AllowOhosPhoneVulkan();
 // Registers Graphite separately so a failed Dawn generation preserves Ganesh.
 bool AllowOhosPhoneGraphite();
+// GL color negotiation is independent of a failed Vulkan backend.
+bool AllowOhosPhoneGlColor();
 void ReportOhosPhoneVulkanFailure();
 void ReportOhosPhoneOutputColorFailure();
 bool ReportOhosPhoneOutputColorReady(uint64_t widget,

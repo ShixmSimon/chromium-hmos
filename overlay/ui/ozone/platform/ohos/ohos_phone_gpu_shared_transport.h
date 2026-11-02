@@ -46,7 +46,8 @@ enum class SharedOp : uint32_t {
   // carries its native format in prefix[8]; the reply carries the full parcel.
   kAllocateImage,
   kImage,
-  kGraphiteState
+  kGraphiteState,
+  kGlColorState
 };
 struct SharedPacket {
   uint32_t magic = kSharedMagic;

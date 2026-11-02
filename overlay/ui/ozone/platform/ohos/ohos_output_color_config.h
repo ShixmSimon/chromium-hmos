@@ -35,7 +35,20 @@ void SetOhosVerifiedWsiOutput(gfx::AcceleratedWidget widget, bool hdr, bool p3);
 void ResetOhosVerifiedWsiOutputs();
 bool HasOhosVerifiedWsiHdrOutput();
 bool HasOhosVerifiedWsiP3Output();
-// GPU-local capabilities of the live native EGL output (not phone pbuffers).
+// GPU-sequence-only hook for shared GL framebuffers. Initialize before Viz
+// copies capabilities, while the GL context is current. Unregister on Destroy.
+class OhosGlOutputColorClient {
+ public:
+  virtual void InitializeOutputColor(bool requires_alpha) = 0;
+  virtual void SetReshapeOutputColor(const OhosOutputColor& color) = 0;
+ protected:
+  virtual ~OhosGlOutputColorClient() = default;
+};
+void RegisterOhosGlOutputColorClient(const void* surface,
+                                   OhosGlOutputColorClient* client);
+void InitializeOhosGlOutputColor(const void* surface, bool requires_alpha);
+void SetOhosGlReshapeOutputColor(const void* surface, const OhosOutputColor& color);
+// GPU-local capabilities of live native EGL and phone shared GL outputs.
 // Keyed by GLSurface address so transparent popups keep their own SDR contract.
 void SetOhosEglOutputColorSpaces(
     const void* surface, std::optional<gfx::DisplayColorSpaces> spaces);

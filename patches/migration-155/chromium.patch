@@ -20117,7 +20117,7 @@ index d397f233014259257d4aa23d721676ee9f6a1dd8..1a1a449314a7a80a9401feacf4d8226f
    // PostSubBuffer() is called.
    virtual void ScheduleOverlays(SkiaOutputSurface::OverlayList overlays);
 diff --git a/components/viz/service/display_embedder/skia_output_device_gl.cc b/components/viz/service/display_embedder/skia_output_device_gl.cc
-index 09abdc9d3fae763158d141d2eca89438151a0a53..d2ef03ac67ada1d7183220b39fb60316dfef593c 100644
+index 09abdc9d3fae763158d141d2eca89438151a0a53..14ab01049f6a6a115924a1e130f572d03492ff56 100644
 --- a/components/viz/service/display_embedder/skia_output_device_gl.cc
 +++ b/components/viz/service/display_embedder/skia_output_device_gl.cc
 @@ -30,6 +30,9 @@
@@ -20130,7 +20130,7 @@ index 09abdc9d3fae763158d141d2eca89438151a0a53..d2ef03ac67ada1d7183220b39fb60316
  
  namespace viz {
  
-@@ -151,6 +154,20 @@ SkiaOutputDeviceGL::SkiaOutputDeviceGL(
+@@ -151,6 +154,20 @@
        color_type = kRGBA_8888_SkColorType;
      }
    }
@@ -20151,7 +20151,7 @@ index 09abdc9d3fae763158d141d2eca89438151a0a53..d2ef03ac67ada1d7183220b39fb60316
    // SRGB
    capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBA_8888] = color_type;
    capabilities_.sk_color_type_map[SinglePlaneFormat::kRGBX_8888] = color_type;
-@@ -188,7 +205,7 @@ bool SkiaOutputDeviceGL::Reshape(const ReshapeParams& params) {
+@@ -188,9 +205,13 @@
  #endif  // !BUILDFLAG(IS_CHROMEOS)
  
    const gfx::Size size = params.GfxSize();
@@ -20159,24 +20159,25 @@ index 09abdc9d3fae763158d141d2eca89438151a0a53..d2ef03ac67ada1d7183220b39fb60316
 +  SkColorType color_type = params.image_info.colorType();
    const bool has_alpha = !params.image_info.isOpaque();
  
++#if BUILDFLAG(IS_OHOS)
++  if (params.ohos_output_color)
++    ui::SetOhosGlReshapeOutputColor(gl_surface_.get(), *params.ohos_output_color);
++#endif
    if (!gl_surface_->Resize(size, params.device_scale_factor, params.color_space,
-@@ -198,10 +215,29 @@ bool SkiaOutputDeviceGL::Reshape(const ReshapeParams& params) {
+                            has_alpha)) {
+     CheckForLoopFailures();
+@@ -198,10 +219,24 @@
      base::debug::Alias(nullptr);
      return false;
    }
 +#if BUILDFLAG(IS_OHOS)
-+  // A queued SDR8 reshape must not describe a ten-bit default framebuffer
-+  // as RGBA8 while the browser handles the new display capability event.
-+  if (!gl_surface_->GetBackingFramebufferObject()) {
-+    // Copy-output may leave an offscreen FBO bound. Its GL_RED_BITS does not
-+    // describe framebuffer zero; use the live native EGL window contract.
-+    const auto native_spaces =
-+        ui::GetOhosEglOutputColorSpaces(gl_surface_.get());
-+    if (native_spaces &&
-+        native_spaces->GetOutputFormat(gfx::ContentColorUsage::kSRGB, false) ==
-+            SinglePlaneFormat::kRGBA_1010102) {
-+      color_type = kRGBA_1010102_SkColorType;
-+    }
++  // Both native EGL windows and shared phone FBOs publish their actual
++  // allocation. A queued bootstrap reshape may still carry an SDR8 format.
++  const auto native_spaces = ui::GetOhosEglOutputColorSpaces(gl_surface_.get());
++  if (native_spaces &&
++      native_spaces->GetOutputFormat(gfx::ContentColorUsage::kSRGB, false) ==
++          SinglePlaneFormat::kRGBA_1010102) {
++    color_type = kRGBA_1010102_SkColorType;
 +  }
 +#endif
    SkSurfaceProps surface_props;
@@ -20190,7 +20191,7 @@ index 09abdc9d3fae763158d141d2eca89438151a0a53..d2ef03ac67ada1d7183220b39fb60316
  
    auto* gr_context = context_state_->gr_context();
  
-@@ -307,6 +343,14 @@ void SkiaOutputDeviceGL::DoFinishSwapBuffers(const gfx::Size& size,
+@@ -307,6 +342,14 @@
  SkSurface* SkiaOutputDeviceGL::BeginPaint(
      std::vector<GrBackendSemaphore>* end_semaphores) {
    DCHECK(sk_surface_);
@@ -20699,20 +20700,21 @@ index c7763b1f3440c45aa1efec006f544a2bc2b98fdb..e23bbb477d70fe73a7bce081eca354fa
    void SetNeedsMeasureNextDrawLatency() override;
  
 diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
-index 8b2dfa6736b7136da297ed27662c044736dd324d..9119f60cf2c86c21f1d8881149ea1f67bae9ff7d 100644
+index 8b2dfa6736b7136da297ed27662c044736dd324d..f4c6dab73859611bea61bab9fadaa6422b23e1e9 100644
 --- a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
 +++ b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
-@@ -97,6 +97,9 @@
+@@ -97,6 +97,10 @@
  #include "ui/gl/gl_features.h"
  #include "ui/gl/gl_fence.h"
  #include "ui/gl/gl_surface.h"
 +#if BUILDFLAG(IS_OHOS)
 +#include "ui/gfx/vsync_provider.h"
++#include "ui/ozone/platform/ohos/ohos_output_color_config.h"
 +#endif
  #include "ui/gl/presenter.h"
  #include "ui/gl/progress_reporter.h"
  #include "url/gurl.h"
-@@ -108,6 +111,13 @@
+@@ -108,6 +112,13 @@
  
  #if BUILDFLAG(ENABLE_VULKAN)
  #include "components/viz/service/display_embedder/skia_output_device_vulkan.h"
@@ -20726,7 +20728,7 @@ index 8b2dfa6736b7136da297ed27662c044736dd324d..9119f60cf2c86c21f1d8881149ea1f67
  #include "gpu/vulkan/vulkan_device_queue.h"
  #include "gpu/vulkan/vulkan_fence_helper.h"
  #include "gpu/vulkan/vulkan_function_pointers.h"
-@@ -1903,6 +1913,21 @@ void SkiaOutputSurfaceImplOnGpu::SetFrameRate(
+@@ -1903,6 +1914,21 @@
  }
  #endif
  
@@ -20748,7 +20750,21 @@ index 8b2dfa6736b7136da297ed27662c044736dd324d..9119f60cf2c86c21f1d8881149ea1f67
  void SkiaOutputSurfaceImplOnGpu::SetCapabilitiesForTesting(
      const OutputSurface::Capabilities& capabilities) {
    // Check that we're using an offscreen surface.
-@@ -2061,6 +2086,17 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
+@@ -2022,6 +2048,13 @@
+               GetDidSwapBuffersCompleteCallback());
+         } else {
+           // Used by Android, Linux, and Windows (when DComp has been disabled).
++#if BUILDFLAG(IS_OHOS)
++          // Probe/import the phone's real FBO before the output device copies
++          // its color capabilities. The context is current at this point.
++          ui::InitializeOhosGlOutputColor(
++              gl_surface_.get(), renderer_settings_.requires_alpha_channel);
++          context_state_->gr_context()->resetContext();
++#endif
+           output_device_ = std::make_unique<SkiaOutputDeviceGL>(
+               context_state_.get(), gl_surface_, feature_info_,
+               shared_gpu_deps_->memory_tracker(),
+@@ -2061,6 +2094,17 @@
      return true;
    }
  
@@ -20766,7 +20782,7 @@ index 8b2dfa6736b7136da297ed27662c044736dd324d..9119f60cf2c86c21f1d8881149ea1f67
  #if BUILDFLAG(IS_ANDROID)
    if (vulkan_context_provider_->GetGrSecondaryCBDrawContext()) {
      output_device_ = std::make_unique<SkiaOutputDeviceVulkanSecondaryCB>(
-@@ -2097,8 +2133,8 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
+@@ -2097,8 +2141,8 @@
    if (!gpu_preferences_.disable_vulkan_surface) {
      output_device = SkiaOutputDeviceVulkan::Create(
          vulkan_context_provider_, dependency_->GetSurfaceHandle(),
@@ -20777,7 +20793,7 @@ index 8b2dfa6736b7136da297ed27662c044736dd324d..9119f60cf2c86c21f1d8881149ea1f67
    }
    if (MayFallBackToSkiaOutputDeviceX11()) {
  #if BUILDFLAG(SUPPORTS_OZONE_X11)
-@@ -2136,6 +2172,15 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
+@@ -2136,6 +2180,15 @@
  
  bool SkiaOutputSurfaceImplOnGpu::InitializeForDawn() {
  #if BUILDFLAG(SKIA_USE_DAWN)

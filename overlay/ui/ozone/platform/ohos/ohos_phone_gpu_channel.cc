@@ -37,6 +37,7 @@ struct Connection {
   std::atomic<bool> vulkan_requested{false};
   std::atomic<bool> graphite_requested{false};
   std::atomic<bool> color_retry{false};
+  std::atomic<bool> gl_color_requested{false};
   std::shared_ptr<Connection> predecessor;
   base::WaitableEvent retired{base::WaitableEvent::ResetPolicy::MANUAL,
                               base::WaitableEvent::InitialState::NOT_SIGNALED};
@@ -297,9 +298,11 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
           leases.erase(it);
         } else if (p.operation == Op::kColorReady) {
           const auto found = colors.find(p.widget);
-          const bool ready = (connection->vulkan_requested.load() ||
-                              connection->graphite_requested.load()) &&
-                             !Browser().vulkan_failed &&
+          const bool ready =
+                             (connection->gl_color_requested.load() ||
+                              ((connection->vulkan_requested.load() ||
+                                connection->graphite_requested.load()) &&
+                               !Browser().vulkan_failed)) &&
                              !OhosOutputColorFailed() &&
                              found != colors.end() &&
                              found->second.generation == p.color_generation &&
@@ -321,6 +324,13 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
           reply.result =
               static_cast<uint32_t>(supported ? phone_gpu::Result::kPresented
                                               : phone_gpu::Result::kDropped);
+        } else if (p.operation == Op::kGlColorState) {
+          const bool allowed = !OhosOutputColorFailed() &&
+                               phone_gpu::SharedBufferAllocatorReady();
+          if (allowed)
+            connection->gl_color_requested = true;
+          reply.result = static_cast<uint32_t>(allowed
+              ? phone_gpu::Result::kPresented : phone_gpu::Result::kDropped);
         } else if (p.operation == Op::kGraphiteState) {
           const bool allowed = !Browser().graphite_failed &&
                                !Browser().vulkan_failed &&
@@ -417,6 +427,8 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
       Browser().graphite_failed = true;
     else if (connection->vulkan_requested.load() && !connection->color_retry.load())
       Browser().vulkan_failed = true;
+    if (connection->gl_color_requested.load() && !connection->color_retry.load())
+      NoteOhosOutputColorFailure("GL color GPU generation ended");
     leases.clear();
     buffer_colors.Reset();
     connection->retired.Signal();
@@ -455,6 +467,9 @@ base::ProcessId LaunchOhosPhoneGpuChild(
       else if (Browser().current->vulkan_requested.load() &&
           !Browser().current->color_retry.load())
         Browser().vulkan_failed = true;
+      if (Browser().current->gl_color_requested.load() &&
+          !Browser().current->color_retry.load())
+        NoteOhosOutputColorFailure("GL color GPU generation replaced");
       Browser().current->active = false;
       shutdown(Browser().current->socket.get(), SHUT_RDWR);
     }
@@ -594,6 +609,15 @@ bool AllowOhosPhoneGraphite() {
     return false;
   phone_gpu::SharedMessage request, response;
   request.packet.operation = phone_gpu::SharedOp::kGraphiteState;
+  request.packet.widget = 1;
+  return ExchangeShared(&request, &response) &&
+         response.packet.operation == phone_gpu::SharedOp::kReply &&
+         response.packet.result ==
+             static_cast<uint32_t>(phone_gpu::Result::kPresented);
+}
+bool AllowOhosPhoneGlColor() {
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kGlColorState;
   request.packet.widget = 1;
   return ExchangeShared(&request, &response) &&
          response.packet.operation == phone_gpu::SharedOp::kReply &&
