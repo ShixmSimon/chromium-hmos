@@ -443,6 +443,7 @@ else
       obj/media/gpu/gpu/ohos_video_decoder.o
       obj/ohos_nweb/src/aura_shell/aura_shell_api/ohos_aura_shell_napi.o
       obj/components/viz/service/service/output_presenter_gl.o
+      obj/components/viz/service/service/skia_output_surface_impl_on_gpu.o
       obj/ohos_nweb/src/aura_shell/aura_shell_core/ohos_chrome_main_runner.o
       obj/chrome/browser/core/aura_shell_runtime_bridge.o
       obj/chrome/browser/core/shell_site_settings_ohos.o

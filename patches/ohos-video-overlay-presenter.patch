@@ -1,7 +1,8 @@
 diff --git a/components/viz/service/display_embedder/output_presenter_gl.cc b/components/viz/service/display_embedder/output_presenter_gl.cc
+index 95887eaa6e8d65f9c995029af3aae39cb95a946b..b320f5622f8d6acf3146624c6740b09f06aa2913 100644
 --- a/components/viz/service/display_embedder/output_presenter_gl.cc
 +++ b/components/viz/service/display_embedder/output_presenter_gl.cc
-@@ -68,6 +68,26 @@
+@@ -68,6 +68,25 @@ void OutputPresenterGL::InitializeCapabilities(
    capabilities->present_requires_make_current =
        !presenter_->SupportsPlaneGpuFences();
  
@@ -23,12 +24,19 @@ diff --git a/components/viz/service/display_embedder/output_presenter_gl.cc b/co
 +      kRGBA_8888_SkColorType;
 +  capabilities->sk_color_type_map[SinglePlaneFormat::kBGRA_8888] =
 +      kBGRA_8888_SkColorType;
-+  return;
-+#endif
++#else
    // TODO(crbug.com/40141277): only add supported formats base on
    // platform, driver, etc.
    capabilities->sk_color_type_map[SinglePlaneFormat::kBGR_565] =
-@@ -125,7 +145,11 @@
+@@ -88,6 +107,7 @@ void OutputPresenterGL::InitializeCapabilities(
+       kRGBA_1010102_SkColorType;
+   capabilities->sk_color_type_map[SinglePlaneFormat::kRGBA_F16] =
+       kRGBA_F16_SkColorType;
++#endif
+ }
+ 
+ bool OutputPresenterGL::Reshape(const ReshapeParams& params) {
+@@ -125,7 +145,11 @@ void OutputPresenterGL::ScheduleOverlayPlane(
      // properly.
      LOG_IF(WARNING, overlay_plane_candidate.is_root_render_pass)
          << "root_render_pass is missing overlay_image.";

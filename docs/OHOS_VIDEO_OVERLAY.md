@@ -613,11 +613,15 @@ Local checks passed:
   ContentSlot host. Production exports are restricted to the C interface.
 - Engine ArkTS checks and HAR packaging passed using the existing native
   runtime; this does **not** establish that new Chromium C++ code compiles.
-- A temporary ContentSlot test HAP compiled. Device disconnected before install;
-  the temporary shell source changes were restored and the normal HAP rebuilt.
+- A temporary ContentSlot HAP passed two create/submit/close cycles on the phone,
+  including recreation in the same process. The original parent identity matched,
+  the cyan primary stayed inside the clipped viewport, both release callbacks
+  arrived, and no test nodes remained after close. This found and fixed local
+  library symbol lookup (RTLD_DEFAULT could not see the ArkUI API). Temporary
+  shell sources were restored and the normal HAP rebuilt. See
+  [host evidence](../scripts/tests/ohos-video-overlay/content-host-evidence.json).
 
-Pending: full 155 kernel build; native ContentSlot parent identity/layout on the
-phone; actual webpage promotion for GL/Vulkan/Graphite; scroll/resize/fullscreen,
+Pending: full 155 kernel build; actual webpage promotion for GL/Vulkan/Graphite; scroll/resize/fullscreen,
 paused controls, CSS effects triggering demotion, re-promotion, live SDR/HDR
 changes, tab close/navigation/background and GPU process loss. The private RS
 compatibility gate remains firmware-specific, and other UI contexts fail closed.

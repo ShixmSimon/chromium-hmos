@@ -1,0 +1,20 @@
+11-03 14:32:52.404 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: attach node=1 render=1 add_render=0 add_content=0
+11-03 14:32:52.429 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: render_parent id=162285339279378 context=1 owned=1 found=1 match=1
+11-03 14:32:52.432 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: attach parent=162285339279378 session=1
+11-03 14:32:52.432 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: connected=1
+11-03 14:32:52.437 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: sent=1
+11-03 14:32:52.537 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: reply=2
+11-03 14:32:52.537 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: reply=4
+11-03 14:34:01.881 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: stopped=1
+11-03 14:34:01.887 37785 37904 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: release_record node=162285339279379 pid=0 seq=2476277761
+11-03 14:34:01.887 37785 37904 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: release_forward rc=0 fence=-1
+11-03 14:34:29.385 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: attach node=1 render=1 add_render=0 add_content=0
+11-03 14:34:29.388 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: render_parent id=162285339279382 context=1 owned=1 found=1 match=1
+11-03 14:34:29.393 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: attach parent=162285339279382 session=1
+11-03 14:34:29.393 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: connected=1
+11-03 14:34:29.396 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: sent=1
+11-03 14:34:29.495 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: reply=2
+11-03 14:34:29.495 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: reply=4
+11-03 14:35:08.108 37785 37785 I A03F01/com.miramira8295.lumiebrowser/LumieOverlayHost: stopped=1
+11-03 14:35:08.114 37785 38004 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: release_record node=162285339279383 pid=0 seq=2476277762
+11-03 14:35:08.114 37785 38004 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: release_forward rc=0 fence=-1

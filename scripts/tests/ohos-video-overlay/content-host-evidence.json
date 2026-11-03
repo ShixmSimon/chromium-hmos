@@ -1,0 +1,43 @@
+{
+  "date": "2026-11-03",
+  "source_commit": "b5ab1669c74af0b78ae5ca6ab31557499bf7d026",
+  "scope": "Native ContentSlot host with generated SDR primary; not Chromium webpage promotion or cross-process GPU test",
+  "device": "HUAWEI Mate 70 Pro+, API 26 retail",
+  "build": "temporary signed debug HAP, OHOS_OVERLAY_DIAGNOSTICS",
+  "hap_sha256": "53c916016fee8f51f088535a24039bff99b32e4c3ec1fe25c162d885755645ea",
+  "source_sha256": {
+    "ohos_overlay_session.cc": "98c5d3c366bc5c0db24ce07388eb864008626acdb1f802412a842a1857cd1cd9",
+    "ohos_overlay_session.h": "15e174376a5b43ffeb81cde0a05e32b311ee7026d80165421b49416bb3ab2647",
+    "ohos_rs_overlay_backend.cc": "7dbaa247b7707d6b0577ee6fd425c5a0b465a41af1f9bbff4b371c7acb5bcc39",
+    "ohos_rs_overlay_backend.h": "8a0b7390b20257a6faab5f6d95df0f9ae1f5ff588a20d70a8a435a0b11bcb72d",
+    "ohos_overlay_bridge.cc": "31114e5c1cdd6a75da31ffc3dc546ab6ac735ada0c1ce7091d8186d5e0a2e1a1",
+    "ohos_overlay_bridge.h": "7c93ec00b2bfccd027ef343a7e843001ba18c7f313f8a78734ac2dc10ee40e7c",
+    "ohos_overlay_host.cc": "42dd703c1cd0580ed4282b70ddbc6da4040d9092be8be86430b0aba8d75d250c",
+    "ohos_overlay_transport.cc": "6d454245820c6d9a34d573fbae9563cd0924eb16d81b279b64e07ffb1a28f978",
+    "ohos_overlay_transport.h": "1fa66c1084b0a9a727d6183f1c0d20c766f962eaac524149567d9bd01cdb03ee"
+  },
+  "cycles": 2,
+  "result": {
+    "owned_parent_identity_matched": true,
+    "socket_connected": 2,
+    "accepted": 2,
+    "commands_processed": 2,
+    "primary_release_callbacks": 2,
+    "remaining_nodes_after_each_close": 0,
+    "visible_fixture": "256x192 cyan primary inside clipped native ContentSlot viewport",
+    "recreated_in_same_process": true
+  },
+  "first_parent": 162285339279378,
+  "second_parent": 162285339279382,
+  "presentation_timestamp_verified": false,
+  "real_webpage_video_verified": false,
+  "limitations": [
+    "Only one UI context tested",
+    "Video plane was hidden in this primary-only host fixture",
+    "No physical luminance measurement requested"
+  ],
+  "artifacts": [
+    "content-host-device-2026-11-03.log",
+    "content-host-harness.patch"
+  ]
+}

@@ -1,0 +1,116 @@
+--- a/products/shell/src/main/cpp/CMakeLists.txt
++++ b/products/shell/src/main/cpp/CMakeLists.txt
+@@ -1,5 +1,16 @@
+ cmake_minimum_required(VERSION 3.5.0)
+-project(lumie_prewarm C)
++project(lumie_prewarm C CXX)
+ add_library(lumie_prewarm SHARED metadata_prewarm.c jit_probe.c)
+ target_compile_options(lumie_prewarm PRIVATE -Wall -Wextra -Werror -Wno-unused-command-line-argument)
+ target_link_libraries(lumie_prewarm PUBLIC libace_napi.z.so libhilog_ndk.z.so dl)
++
++set(OVERLAY_SRC /Volumes/OnshuoData/DevEcoStudioProjects/chromium-hmos/overlay/ui/ozone/platform/ohos)
++set(OVERLAY_TEST /Volumes/OnshuoData/DevEcoStudioProjects/chromium-hmos/scripts/tests/ohos-video-overlay)
++add_library(ohos_video_overlay SHARED ${OVERLAY_SRC}/ohos_overlay_session.cc ${OVERLAY_SRC}/ohos_rs_overlay_backend.cc ${OVERLAY_SRC}/ohos_overlay_bridge.cc ${OVERLAY_SRC}/ohos_overlay_transport.cc ${OVERLAY_SRC}/ohos_overlay_host.cc)
++target_compile_options(ohos_video_overlay PRIVATE -std=c++17 -fno-exceptions -fno-rtti -D_LIBCPP_ABI_NAMESPACE=__h -Wall -Wextra -Werror -Wno-unused-command-line-argument -fvisibility=hidden)
++target_link_libraries(ohos_video_overlay PRIVATE native_buffer ipc_capi ace_ndk.z uv dl hilog_ndk.z)
++target_compile_definitions(ohos_video_overlay PRIVATE OHOS_OVERLAY_DIAGNOSTICS)
++target_sources(lumie_prewarm PRIVATE ${OVERLAY_TEST}/content_host_probe.cpp ${OVERLAY_SRC}/ohos_overlay_transport.cc)
++target_include_directories(lumie_prewarm PRIVATE ${OVERLAY_SRC})
++target_compile_features(lumie_prewarm PRIVATE cxx_std_17)
++target_link_libraries(lumie_prewarm PRIVATE ohos_video_overlay native_buffer ipc_capi ace_ndk.z)
+--- a/products/shell/src/main/cpp/metadata_prewarm.c
++++ b/products/shell/src/main/cpp/metadata_prewarm.c
+@@ -158,9 +158,16 @@
+ napi_value ProbeJitMappings(napi_env env, napi_callback_info info);
+ napi_value RequestCompatJit(napi_env env, napi_callback_info info);
+ 
++napi_value StartOverlayContentProbe(napi_env, napi_callback_info);
++napi_value PollOverlayContentProbe(napi_env, napi_callback_info);
++napi_value StopOverlayContentProbe(napi_env, napi_callback_info);
++
+ static napi_value Init(napi_env env, napi_value exports)
+ {
+     napi_property_descriptor methods[] = {
++        {"startOverlayHost", NULL, StartOverlayContentProbe, NULL, NULL, NULL, napi_default, NULL},
++        {"pollOverlayHost", NULL, PollOverlayContentProbe, NULL, NULL, NULL, napi_default, NULL},
++        {"stopOverlayHost", NULL, StopOverlayContentProbe, NULL, NULL, NULL, napi_default, NULL},
+         {"prewarm", NULL, Prewarm, NULL, NULL, NULL, napi_default, NULL},
+         {"probeJit", NULL, ProbeJit, NULL, NULL, NULL, napi_default, NULL},
+         {"requestJitFort", NULL, RequestJitFort, NULL, NULL, NULL, napi_default, NULL},
+--- a/products/shell/src/main/cpp/types/liblumie_prewarm/Index.d.ts
++++ b/products/shell/src/main/cpp/types/liblumie_prewarm/Index.d.ts
+@@ -8,3 +8,8 @@
+ export const probeJitMappings: () => void;
+ /** Explicit debug experiment with WineHua's separate JIT compatibility request. */
+ export const requestCompatJit: () => string;
++
++import { NodeContent } from '@kit.ArkUI';
++export const startOverlayHost: (content: NodeContent) => number;
++export const pollOverlayHost: () => number;
++export const stopOverlayHost: () => number;
+--- a/products/shell/src/main/ets/entryability/EntryAbility.ets
++++ b/products/shell/src/main/ets/entryability/EntryAbility.ets
+@@ -1,3 +1,4 @@
++import '../pages/OverlayContentProbe';
+ import { ProfileStartup } from './ProfileStartup';
+ import { LaunchWant } from './LaunchWant';
+ import { ProcessModeStartup } from '../startup/ProcessModeStartup';
+@@ -213,6 +214,11 @@
+   }
+ 
+   private setupWindowStage(windowStage: window.WindowStage): void {
++    if (BuildProfile.DEBUG) {
++      windowStage.getMainWindowSync().setWindowKeepScreenOn(true);
++      windowStage.loadContentByName('OverlayContentProbe');
++      return;
++    }
+     if (this.profileStartup.showFailure(windowStage)) { return; }
+     // Keep live content on hot continuation; reload explicitly if the system removed it.
+     const mainWindow = windowStage.getMainWindowSync();
+--- /dev/null
++++ b/products/shell/src/main/ets/pages/OverlayContentProbe.ets
+@@ -0,0 +1,44 @@
++import { NodeContent } from '@kit.ArkUI';
++import metadataPrewarm from 'liblumie_prewarm.so';
++
++@Entry({ routeName: 'OverlayContentProbe' })
++@ComponentV2
++export struct OverlayContentProbe {
++  private content: NodeContent = new NodeContent();
++  private timer: number = -1;
++  @Local stage: number = 0;
++
++  aboutToDisappear(): void {
++    this.stop();
++  }
++
++  private start(): void {
++    this.stage = metadataPrewarm.startOverlayHost(this.content);
++    if (this.stage > 0 && this.timer < 0) {
++      this.timer = setInterval((): void => {
++        this.stage = metadataPrewarm.pollOverlayHost();
++      }, 100);
++    }
++  }
++
++  private stop(): void {
++    if (this.timer >= 0) { clearInterval(this.timer); this.timer = -1; }
++    this.stage = metadataPrewarm.stopOverlayHost();
++  }
++
++  build() {
++    Column({ space: 16 }) {
++      Text('Overlay ContentSlot test').fontSize(22)
++      Text(`stage=${this.stage}`).id('overlay-stage')
++      Row({ space: 16 }) {
++        Button('Start').id('overlay-start').onClick((): void => { this.start(); })
++        Button('Stop').id('overlay-stop').onClick((): void => { this.stop(); })
++      }
++      Stack({ alignContent: Alignment.TopStart }) {
++        Text('Owned webpage viewport').fontSize(14)
++        ContentSlot(this.content)
++      }.width('100%').height(240).backgroundColor('#333333').clip(true).hitTestBehavior(HitTestMode.None)
++      Text('Cyan fixture must stay inside the viewport; Stop removes it.')
++    }.width('100%').height('100%').padding({ top: 64, left: 20, right: 20 }).backgroundColor('#EEEEEE')
++  }
++}
