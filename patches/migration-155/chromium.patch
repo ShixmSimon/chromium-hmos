@@ -27643,7 +27643,7 @@ index b1cf8912af9e09c8ead578bbf81652fa390d1121..92799abb9f95d8de7019eefdb25aa9d5
        is_readonly_, OzoneImageBacking::AccessStream::kWebGPU, std::move(fence));
  
 diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc b/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
-index 08f1a9913d731fe9f941056243b9ace935c2b6c4..58aafdcf3bf568c5a6956abc2e62e0a6f1894d87 100644
+index 08f1a9913d731fe9f941056243b9ace935c2b6c4..353c0278f8355b4e004a1537e49d573d04cab68f 100644
 --- a/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
 +++ b/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
 @@ -12,6 +12,9 @@
@@ -28000,7 +28000,7 @@ index 08f1a9913d731fe9f941056243b9ace935c2b6c4..58aafdcf3bf568c5a6956abc2e62e0a6
 +      !si_info.usage.HasAll(SHARED_IMAGE_USAGE_DISPLAY_READ |
 +                            SHARED_IMAGE_USAGE_RASTER_READ) ||
 +      !(SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ |
-+        SHARED_IMAGE_USAGE_WEBGPU_READ).HasAll(si_info.usage) ||
++        SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_SCANOUT).HasAll(si_info.usage) ||
 +      si_info.size != pixmap->GetBufferSize() ||
 +      si_info.format != pixmap->GetSharedImageFormat()) {
 +    return nullptr;
@@ -28099,11 +28099,20 @@ index 08f1a9913d731fe9f941056243b9ace935c2b6c4..58aafdcf3bf568c5a6956abc2e62e0a6
  
    if (!gl_textures_.empty()) {
      // Ensure that a context is current before glDeleteTexture().
-@@ -619,6 +978,34 @@ void ExternalVkImageBacking::EndAccess(bool readonly,
+@@ -619,6 +978,43 @@ void ExternalVkImageBacking::EndAccess(bool readonly,
    }
  }
  
 +#if BUILDFLAG(IS_OHOS)
++void ExternalVkImageBacking::AbortOhosOverlayAccess(
++    std::vector<ExternalSemaphore> semaphores) {
++  EndAccess(/*readonly=*/true, ExternalSemaphore(), /*is_gl=*/false);
++  // No external read was submitted. Preserve every dependency for the next
++  // reader (or destruction), including after a failed sync-file merge.
++  std::move(semaphores.begin(), semaphores.end(),
++            std::back_inserter(read_semaphores_));
++}
++
 +void ExternalVkImageBacking::QuarantineOhosVideoAccess() {
 +  static base::NoDestructor<OhosVideoQuarantinedLeases> quarantine;
 +  {
@@ -28134,7 +28143,7 @@ index 08f1a9913d731fe9f941056243b9ace935c2b6c4..58aafdcf3bf568c5a6956abc2e62e0a6
  bool ExternalVkImageBacking::CheckSupportForAccessStream(
      SharedImageAccessStream stream,
      viz::SharedImageFormat format,
-@@ -651,6 +1038,18 @@ SharedImageBackingType ExternalVkImageBacking::GetType() const {
+@@ -651,6 +1047,18 @@ SharedImageBackingType ExternalVkImageBacking::GetType() const {
  }
  
  void ExternalVkImageBacking::Update(gfx::GpuFenceHandle in_fence) {
@@ -28153,7 +28162,7 @@ index 08f1a9913d731fe9f941056243b9ace935c2b6c4..58aafdcf3bf568c5a6956abc2e62e0a6
    DCHECK(in_fence.is_null());
  }
  
-@@ -730,6 +1129,15 @@ void ExternalVkImageBacking::ReturnPendingSemaphoresWithFenceHelper(
+@@ -730,6 +1138,15 @@ void ExternalVkImageBacking::ReturnPendingSemaphoresWithFenceHelper(
      std::vector<ExternalSemaphore> semaphores) {
    std::move(semaphores.begin(), semaphores.end(),
              std::back_inserter(pending_semaphores_));
@@ -28169,7 +28178,7 @@ index 08f1a9913d731fe9f941056243b9ace935c2b6c4..58aafdcf3bf568c5a6956abc2e62e0a6
    external_semaphore_pool()->ReturnSemaphoresWithFenceHelper(
        std::move(pending_semaphores_));
    pending_semaphores_.clear();
-@@ -742,7 +1150,14 @@ std::unique_ptr<DawnImageRepresentation> ExternalVkImageBacking::ProduceDawn(
+@@ -742,7 +1159,14 @@ std::unique_ptr<DawnImageRepresentation> ExternalVkImageBacking::ProduceDawn(
      wgpu::BackendType backend_type,
      std::vector<wgpu::TextureFormat> view_formats,
      scoped_refptr<SharedContextState> context_state) {
@@ -28186,7 +28195,7 @@ index 08f1a9913d731fe9f941056243b9ace935c2b6c4..58aafdcf3bf568c5a6956abc2e62e0a6
  
    if (wgpu_format == wgpu::TextureFormat::Undefined) {
 diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.h b/gpu/command_buffer/service/shared_image/external_vk_image_backing.h
-index 033df00ac3cc4b0e5e660f77029aa7da1624ae01..c9262b3088bae41809df91e4077000847cc2b1b7 100644
+index 033df00ac3cc4b0e5e660f77029aa7da1624ae01..ac717c78e30a89bfb65f734811f7f8db127a50f5 100644
 --- a/gpu/command_buffer/service/shared_image/external_vk_image_backing.h
 +++ b/gpu/command_buffer/service/shared_image/external_vk_image_backing.h
 @@ -34,6 +34,15 @@ class VulkanImage;
@@ -28205,12 +28214,14 @@ index 033df00ac3cc4b0e5e660f77029aa7da1624ae01..c9262b3088bae41809df91e407700084
    static std::unique_ptr<ExternalVkImageBacking> Create(
        scoped_refptr<SharedContextState> context_state,
        bool enable_webgpu_on_vk_via_gl_interop,
-@@ -149,6 +158,13 @@ class ExternalVkImageBacking final : public ClearTrackingSharedImageBacking {
+@@ -149,6 +158,15 @@ class ExternalVkImageBacking final : public ClearTrackingSharedImageBacking {
                   ExternalSemaphore external_semaphore,
                   bool is_gl);
  
 +#if BUILDFLAG(IS_OHOS)
 +  void QuarantineOhosVideoAccess();
++  // Cancel a read whose dependencies were not consumed by an overlay.
++  void AbortOhosOverlayAccess(std::vector<ExternalSemaphore> semaphores);
 +#endif
 +#if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
 +  void EndOhosDawnAccess(std::vector<ExternalSemaphore> semaphores);
@@ -28220,7 +28231,7 @@ index 033df00ac3cc4b0e5e660f77029aa7da1624ae01..c9262b3088bae41809df91e407700084
    SharedImageBackingType GetType() const override;
    bool SupportsAccess(SharedImageAccessStream stream,
 diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc
-index 66aa946ebc4aab55337b2109756b2b9a017ecd60..e9e33be7298ed83f5e8aad309284e87d84647717 100644
+index 66aa946ebc4aab55337b2109756b2b9a017ecd60..dc50b9c5af1f8dec518d3d92739977e08f08bff2 100644
 --- a/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc
 +++ b/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc
 @@ -122,7 +122,11 @@ bool IsFormatSupported(viz::SharedImageFormat format,
@@ -28248,12 +28259,21 @@ index 66aa946ebc4aab55337b2109756b2b9a017ecd60..e9e33be7298ed83f5e8aad309284e87d
  #if BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DAWN)
        SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_WEBGPU_WRITE |
        SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE |
+@@ -171,7 +180,7 @@ SharedImageUsageSet SupportedUsage() {
+       SHARED_IMAGE_USAGE_CPU_WRITE_ONLY |
+       SHARED_IMAGE_USAGE_RASTER_COPY_SOURCE | SHARED_IMAGE_USAGE_CPU_READ;
+ 
+-#if BUILDFLAG(IS_FUCHSIA)
++#if BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_OHOS)
+   supported_usage |= SHARED_IMAGE_USAGE_SCANOUT;
+ #endif
+ 
 @@ -275,6 +284,24 @@ bool ExternalVkImageBackingFactory::IsSupported(
      gfx::GpuMemoryBufferType gmb_type,
      GrContextType gr_context_type,
      base::span<const uint8_t> pixel_data) {
 +#if BUILDFLAG(IS_OHOS)
-+  if (usage.Has(SHARED_IMAGE_USAGE_WEBGPU_READ)) {
++  if (usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_SCANOUT)) {
 +    if (gmb_type != gfx::NATIVE_PIXMAP || !format.is_multi_plane() ||
 +        !format.PrefersExternalSampler()) {
 +      return false;
@@ -28265,7 +28285,7 @@ index 66aa946ebc4aab55337b2109756b2b9a017ecd60..e9e33be7298ed83f5e8aad309284e87d
 +        !usage.HasAll(SHARED_IMAGE_USAGE_RASTER_READ |
 +                      SHARED_IMAGE_USAGE_DISPLAY_READ) ||
 +        !(SHARED_IMAGE_USAGE_RASTER_READ | SHARED_IMAGE_USAGE_DISPLAY_READ |
-+          SHARED_IMAGE_USAGE_WEBGPU_READ).HasAll(usage)) {
++          SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_SCANOUT).HasAll(usage)) {
 +      return false;
 +    }
 +  }
@@ -28702,7 +28722,7 @@ index c0d773a6f85c9fdbf1a5ed18168e1d3432ed98b4..3414e2ece79e6ab3fff6247f4db0b7b4
    // allocations/deallocations of textures and their EGLImages. That's
    // especially handy for raster tasks as there can be tens of tasks resulting
 diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
-index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..1ee6103a9ce6a9825c808d0b92d75643d9c29995 100644
+index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..46c224f254e9805766f4bfeec23badec4af1ee1c 100644
 --- a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
 +++ b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
 @@ -10,12 +10,18 @@
@@ -28743,14 +28763,18 @@ index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..1ee6103a9ce6a9825c808d0b92d75643
    backing->SetCleared();
  
    return backing;
-@@ -255,13 +273,36 @@ bool OzoneImageBackingFactory::IsSupported(
+@@ -255,13 +273,40 @@ bool OzoneImageBackingFactory::IsSupported(
      return false;
    }
  
 +#if BUILDFLAG(IS_OHOS)
-+  // OH_NativeBuffers back video frames (NV12, P010) and WebGPU's textures;
-+  // every other single-plane image stays where it was, a GL texture.
-+  if (format.is_single_plane() &&
++  // Native buffers also back the SDR primary plane of the RS presenter.
++  // Keep unrelated single-plane GL allocations on their existing path.
++  const bool overlay_primary = usage.HasAll(
++      SHARED_IMAGE_USAGE_SCANOUT | SHARED_IMAGE_USAGE_DISPLAY_WRITE) &&
++      (format == viz::SinglePlaneFormat::kRGBA_8888 ||
++       format == viz::SinglePlaneFormat::kBGRA_8888);
++  if (format.is_single_plane() && !overlay_primary &&
 +      gr_context_type != GrContextType::kGraphiteDawn &&
 +      !usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_WEBGPU_WRITE |
 +                      SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE |
@@ -28782,7 +28806,7 @@ index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..1ee6103a9ce6a9825c808d0b92d75643
    bool used_by_gl = (HasGLES2ReadOrWriteUsage(usage)) ||
                      (used_by_skia && gr_context_type == GrContextType::kGL);
    if (used_by_vulkan && !CanImportNativePixmapToVulkan()) {
-@@ -271,7 +312,25 @@ bool OzoneImageBackingFactory::IsSupported(
+@@ -271,7 +316,25 @@ bool OzoneImageBackingFactory::IsSupported(
      return false;
    }
    auto* factory = ui::OzonePlatform::GetInstance()->GetSurfaceFactoryOzone();
@@ -28802,14 +28826,14 @@ index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..1ee6103a9ce6a9825c808d0b92d75643
 +      SupportsOhosGraphiteVideo(shared_context_state_.get()) &&
 +      usage.HasAll(SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ) &&
 +      (SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ |
-+       SHARED_IMAGE_USAGE_WEBGPU_READ).HasAll(usage);
++       SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_SCANOUT).HasAll(usage);
 +  can_create_pixmap |= native_decoder_import;
 +#endif
 +  if (!can_create_pixmap) {
      return false;
    }
  
-@@ -372,7 +431,9 @@ bool OzoneImageBackingFactory::CanVulkanSynchronizeGpuFence() {
+@@ -372,7 +435,9 @@ bool OzoneImageBackingFactory::CanVulkanSynchronizeGpuFence() {
  }
  
  bool OzoneImageBackingFactory::CanImportNativePixmapToWebGPU() {
@@ -28820,7 +28844,7 @@ index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..1ee6103a9ce6a9825c808d0b92d75643
    // Safe to always return true here, as it's not possible to create a WebGPU
    // adapter that doesn't support importing native pixmaps:
    // https://source.chromium.org/chromium/chromium/src/+/main:gpu/command_buffer/service/webgpu_decoder_impl.cc;drc=daed597d580d450d36578c0cc53b4f72d3b507da;l=1291
-@@ -396,7 +457,9 @@ bool OzoneImageBackingFactory::CanImportNativePixmapToWebGPU() {
+@@ -396,7 +461,9 @@ bool OzoneImageBackingFactory::CanImportNativePixmapToWebGPU() {
  }
  
  bool OzoneImageBackingFactory::CanWebGPUSynchronizeGpuFence() {
@@ -39860,3 +39884,78 @@ index 95887eaa6e8d65f9c995029af3aae39cb95a946b..b320f5622f8d6acf3146624c6740b09f
    }
  #elif BUILDFLAG(IS_ANDROID)
    gl::OverlayImage overlay_image =
+diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_overlay_representation.cc b/gpu/command_buffer/service/shared_image/external_vk_image_overlay_representation.cc
+index e6974ebf47ee5e7aace1e1d5604986501ec0a43a..5988e7f30caa3392bc3fe70bcc88638eef6613ba 100644
+--- a/gpu/command_buffer/service/shared_image/external_vk_image_overlay_representation.cc
++++ b/gpu/command_buffer/service/shared_image/external_vk_image_overlay_representation.cc
+@@ -6,6 +6,14 @@
+ 
+ #include "build/build_config.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include <fcntl.h>
++#include <linux/sync_file.h>
++#include <sys/ioctl.h>
++
++#include "base/posix/eintr_wrapper.h"
++#endif
++
+ #if BUILDFLAG(IS_FUCHSIA)
+ #include "gpu/vulkan/fuchsia/vulkan_fuchsia_ext.h"
+ #endif
+@@ -34,6 +42,55 @@ bool ExternalVkImageOverlayImageRepresentation::BeginReadAccess(
+     return false;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (vk_image_backing_->format().PrefersExternalSampler()) {
++    // These are decoder/Dawn SYNC_FD dependencies. Duplicate their existing
++    // handles: exporting an imported VkSemaphore would consume its payload.
++    // RS accepts one sync_file, so merge all prior readers without a CPU wait.
++    base::ScopedFD merged;
++    bool valid = true;
++    for (auto& semaphore : read_begin_semaphores_) {
++      auto handle = semaphore.handle();
++      if (handle.vk_handle_type() !=
++          VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT) {
++        valid = false;
++        break;
++      }
++      auto fd = handle.TakeHandle();
++      if (!fd.is_valid()) {
++        valid = false;
++        break;
++      }
++      if (!merged.is_valid()) {
++        merged = std::move(fd);
++        continue;
++      }
++      struct sync_merge_data merge = {};
++      merge.name[0] = 'R';
++      merge.name[1] = 'S';
++      merge.fd2 = fd.get();
++      merge.fence = -1;
++      if (HANDLE_EINTR(ioctl(merged.get(), SYNC_IOC_MERGE, &merge)) < 0) {
++        valid = false;
++        break;
++      }
++      merged.reset(merge.fence);
++      if (!merged.is_valid() ||
++          HANDLE_EINTR(fcntl(merged.get(), F_SETFD, FD_CLOEXEC)) < 0) {
++        valid = false;
++        break;
++      }
++    }
++    if (!valid) {
++      vk_image_backing_->AbortOhosOverlayAccess(
++          std::move(read_begin_semaphores_));
++      read_begin_semaphores_.clear();
++      return false;
++    }
++    acquire_fence.Adopt(std::move(merged));
++    return true;
++  }
++#endif
+   GetAcquireFence(acquire_fence);
+   return true;
+ }

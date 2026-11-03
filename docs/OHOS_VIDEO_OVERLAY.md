@@ -587,6 +587,12 @@ The code now connects these stages:
    Swap completion waits for replaced RS reads/fences; browser-held decoder
    leases survive a GPU disconnect. Close is asynchronous with no fake release.
 
+Native video import whitelists accept read-only SCANOUT on Vulkan and Graphite;
+the Ozone factory also accepts the presenter's SDR RGBA/BGRA primary. Vulkan
+overlay access duplicates existing SYNC_FD dependencies and merges multiple
+fences without CPU waiting. A failed merge restores every pending dependency
+before returning failure, so fallback cannot reuse an unfinished decoder read.
+
 The first processed primary reports GPU startup success and the independent
 video path's HDR capability, without requiring a PQ webpage framebuffer. HDR
 video retains native P010/PQ and static metadata; webpage text remains SDR. A

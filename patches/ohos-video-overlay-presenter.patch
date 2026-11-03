@@ -80,3 +80,176 @@ diff --git a/gpu/command_buffer/service/shared_image/shared_image_manager.cc b/g
    return supports_overlays_on_ozone_;
  #elif BUILDFLAG(IS_WIN)
    return gl::DirectCompositionTextureSupported();
+diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc b/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
+--- a/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
++++ b/gpu/command_buffer/service/shared_image/external_vk_image_backing.cc
+@@ -560,7 +560,7 @@
+       !si_info.usage.HasAll(SHARED_IMAGE_USAGE_DISPLAY_READ |
+                             SHARED_IMAGE_USAGE_RASTER_READ) ||
+       !(SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ |
+-        SHARED_IMAGE_USAGE_WEBGPU_READ).HasAll(si_info.usage) ||
++        SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_SCANOUT).HasAll(si_info.usage) ||
+       si_info.size != pixmap->GetBufferSize() ||
+       si_info.format != pixmap->GetSharedImageFormat()) {
+     return nullptr;
+@@ -979,6 +979,15 @@
+ }
+ 
+ #if BUILDFLAG(IS_OHOS)
++void ExternalVkImageBacking::AbortOhosOverlayAccess(
++    std::vector<ExternalSemaphore> semaphores) {
++  EndAccess(/*readonly=*/true, ExternalSemaphore(), /*is_gl=*/false);
++  // No external read was submitted. Preserve every dependency for the next
++  // reader (or destruction), including after a failed sync-file merge.
++  std::move(semaphores.begin(), semaphores.end(),
++            std::back_inserter(read_semaphores_));
++}
++
+ void ExternalVkImageBacking::QuarantineOhosVideoAccess() {
+   static base::NoDestructor<OhosVideoQuarantinedLeases> quarantine;
+   {
+diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing.h b/gpu/command_buffer/service/shared_image/external_vk_image_backing.h
+--- a/gpu/command_buffer/service/shared_image/external_vk_image_backing.h
++++ b/gpu/command_buffer/service/shared_image/external_vk_image_backing.h
+@@ -160,6 +160,8 @@
+ 
+ #if BUILDFLAG(IS_OHOS)
+   void QuarantineOhosVideoAccess();
++  // Cancel a read whose dependencies were not consumed by an overlay.
++  void AbortOhosOverlayAccess(std::vector<ExternalSemaphore> semaphores);
+ #endif
+ #if BUILDFLAG(IS_OHOS) && BUILDFLAG(USE_DAWN)
+   void EndOhosDawnAccess(std::vector<ExternalSemaphore> semaphores);
+diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc
+--- a/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc
++++ b/gpu/command_buffer/service/shared_image/external_vk_image_backing_factory.cc
+@@ -180,7 +180,7 @@
+       SHARED_IMAGE_USAGE_CPU_WRITE_ONLY |
+       SHARED_IMAGE_USAGE_RASTER_COPY_SOURCE | SHARED_IMAGE_USAGE_CPU_READ;
+ 
+-#if BUILDFLAG(IS_FUCHSIA)
++#if BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_OHOS)
+   supported_usage |= SHARED_IMAGE_USAGE_SCANOUT;
+ #endif
+ 
+@@ -285,7 +285,7 @@
+     GrContextType gr_context_type,
+     base::span<const uint8_t> pixel_data) {
+ #if BUILDFLAG(IS_OHOS)
+-  if (usage.Has(SHARED_IMAGE_USAGE_WEBGPU_READ)) {
++  if (usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_SCANOUT)) {
+     if (gmb_type != gfx::NATIVE_PIXMAP || !format.is_multi_plane() ||
+         !format.PrefersExternalSampler()) {
+       return false;
+@@ -297,7 +297,7 @@
+         !usage.HasAll(SHARED_IMAGE_USAGE_RASTER_READ |
+                       SHARED_IMAGE_USAGE_DISPLAY_READ) ||
+         !(SHARED_IMAGE_USAGE_RASTER_READ | SHARED_IMAGE_USAGE_DISPLAY_READ |
+-          SHARED_IMAGE_USAGE_WEBGPU_READ).HasAll(usage)) {
++          SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_SCANOUT).HasAll(usage)) {
+       return false;
+     }
+   }
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+@@ -274,9 +274,13 @@
+   }
+ 
+ #if BUILDFLAG(IS_OHOS)
+-  // OH_NativeBuffers back video frames (NV12, P010) and WebGPU's textures;
+-  // every other single-plane image stays where it was, a GL texture.
+-  if (format.is_single_plane() &&
++  // Native buffers also back the SDR primary plane of the RS presenter.
++  // Keep unrelated single-plane GL allocations on their existing path.
++  const bool overlay_primary = usage.HasAll(
++      SHARED_IMAGE_USAGE_SCANOUT | SHARED_IMAGE_USAGE_DISPLAY_WRITE) &&
++      (format == viz::SinglePlaneFormat::kRGBA_8888 ||
++       format == viz::SinglePlaneFormat::kBGRA_8888);
++  if (format.is_single_plane() && !overlay_primary &&
+       gr_context_type != GrContextType::kGraphiteDawn &&
+       !usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_WEBGPU_WRITE |
+                       SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE |
+@@ -327,7 +331,7 @@
+       SupportsOhosGraphiteVideo(shared_context_state_.get()) &&
+       usage.HasAll(SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ) &&
+       (SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ |
+-       SHARED_IMAGE_USAGE_WEBGPU_READ).HasAll(usage);
++       SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_SCANOUT).HasAll(usage);
+   can_create_pixmap |= native_decoder_import;
+ #endif
+   if (!can_create_pixmap) {
+diff --git a/gpu/command_buffer/service/shared_image/external_vk_image_overlay_representation.cc b/gpu/command_buffer/service/shared_image/external_vk_image_overlay_representation.cc
+--- a/gpu/command_buffer/service/shared_image/external_vk_image_overlay_representation.cc
++++ b/gpu/command_buffer/service/shared_image/external_vk_image_overlay_representation.cc
+@@ -5,6 +5,14 @@
+ #include "gpu/command_buffer/service/shared_image/external_vk_image_overlay_representation.h"
+ 
+ #include "build/build_config.h"
++
++#if BUILDFLAG(IS_OHOS)
++#include <fcntl.h>
++#include <linux/sync_file.h>
++#include <sys/ioctl.h>
++
++#include "base/posix/eintr_wrapper.h"
++#endif
+ 
+ #if BUILDFLAG(IS_FUCHSIA)
+ #include "gpu/vulkan/fuchsia/vulkan_fuchsia_ext.h"
+@@ -34,6 +42,55 @@
+     return false;
+   }
+ 
++#if BUILDFLAG(IS_OHOS)
++  if (vk_image_backing_->format().PrefersExternalSampler()) {
++    // These are decoder/Dawn SYNC_FD dependencies. Duplicate their existing
++    // handles: exporting an imported VkSemaphore would consume its payload.
++    // RS accepts one sync_file, so merge all prior readers without a CPU wait.
++    base::ScopedFD merged;
++    bool valid = true;
++    for (auto& semaphore : read_begin_semaphores_) {
++      auto handle = semaphore.handle();
++      if (handle.vk_handle_type() !=
++          VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT) {
++        valid = false;
++        break;
++      }
++      auto fd = handle.TakeHandle();
++      if (!fd.is_valid()) {
++        valid = false;
++        break;
++      }
++      if (!merged.is_valid()) {
++        merged = std::move(fd);
++        continue;
++      }
++      struct sync_merge_data merge = {};
++      merge.name[0] = 'R';
++      merge.name[1] = 'S';
++      merge.fd2 = fd.get();
++      merge.fence = -1;
++      if (HANDLE_EINTR(ioctl(merged.get(), SYNC_IOC_MERGE, &merge)) < 0) {
++        valid = false;
++        break;
++      }
++      merged.reset(merge.fence);
++      if (!merged.is_valid() ||
++          HANDLE_EINTR(fcntl(merged.get(), F_SETFD, FD_CLOEXEC)) < 0) {
++        valid = false;
++        break;
++      }
++    }
++    if (!valid) {
++      vk_image_backing_->AbortOhosOverlayAccess(
++          std::move(read_begin_semaphores_));
++      read_begin_semaphores_.clear();
++      return false;
++    }
++    acquire_fence.Adopt(std::move(merged));
++    return true;
++  }
++#endif
+   GetAcquireFence(acquire_fence);
+   return true;
+ }

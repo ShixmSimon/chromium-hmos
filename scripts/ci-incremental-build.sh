@@ -429,6 +429,9 @@ else
       obj/chrome/browser/supervised_user/impl/supervised_user_verification_page_youtube.o
       obj/chrome/browser/supervised_user/impl/supervised_user_verification_page_blocked_sites.o
       obj/gpu/command_buffer/service/gles2_sources/external_vk_image_backing.o
+      obj/gpu/command_buffer/service/gles2_sources/external_vk_image_backing_factory.o
+      obj/gpu/command_buffer/service/gles2_sources/external_vk_image_overlay_representation.o
+      obj/gpu/command_buffer/service/gles2_sources/ozone_image_backing_factory.o
       obj/gpu/command_buffer/service/gles2_sources/webgpu_decoder_impl.o
       obj/gpu/command_buffer/service/gles2_sources/vulkan_in_process_context_provider.o
       obj/gpu/command_buffer/service/gles2_sources/skia_vk_ozone_image_representation.o
