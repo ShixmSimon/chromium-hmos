@@ -20586,7 +20586,7 @@ index 379320beeb756cbdcebfbf9f38e83ad5339f99d7..da5042ffd8cd349934ee4f3756538c38
    bool RecreateSwapChain(const SkImageInfo& image_info,
                           int sample_count,
 diff --git a/components/viz/service/display_embedder/skia_output_surface_impl.cc b/components/viz/service/display_embedder/skia_output_surface_impl.cc
-index 3f5a7816c9881298b1f78b772915a9e159b68599..76ddc7772716c2b6e28a1f000331b47a00118a80 100644
+index 3f5a7816c9881298b1f78b772915a9e159b68599..608ba099998c492f36e65bf102f4369a5184f1a3 100644
 --- a/components/viz/service/display_embedder/skia_output_surface_impl.cc
 +++ b/components/viz/service/display_embedder/skia_output_surface_impl.cc
 @@ -16,6 +16,7 @@
@@ -20685,6 +20685,25 @@ index 3f5a7816c9881298b1f78b772915a9e159b68599..76ddc7772716c2b6e28a1f000331b47a
  void SkiaOutputSurfaceImpl::SetCapabilitiesForTesting(
      gfx::SurfaceOrigin output_surface_origin) {
    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+@@ -1547,6 +1585,18 @@ GrBackendFormat SkiaOutputSurfaceImpl::GetGrBackendFormatForTexture(
+         impl_on_gpu_->GetFeatureInfo(), gl_storage_internal_format,
+         gr_context_thread_safe_);
+ 
++#if BUILDFLAG(IS_OHOS)
++    // OHOS leaves the client texture target at zero for native video without
++    // GLES2 usage, so WebGL copies it through Raster instead of consuming it
++    // directly. That client-access restriction is not the Ganesh GL texture
++    // type: Ozone imports external-sampler video as GL_TEXTURE_EXTERNAL_OES.
++    // Passing zero here produces kNone and aborts Skia when an underlay is
++    // demoted and the video quad needs ordinary GL composition.
++    if (si_format.PrefersExternalSampler()) {
++      return GrBackendFormats::MakeGL(texture_storage_format,
++                                      GL_TEXTURE_EXTERNAL_OES);
++    }
++#endif
+     return GrBackendFormats::MakeGL(texture_storage_format,
+                                     image_context->texture_target());
+   }
 diff --git a/components/viz/service/display_embedder/skia_output_surface_impl.h b/components/viz/service/display_embedder/skia_output_surface_impl.h
 index c7763b1f3440c45aa1efec006f544a2bc2b98fdb..e23bbb477d70fe73a7bce081eca354fa172e88f0 100644
 --- a/components/viz/service/display_embedder/skia_output_surface_impl.h

@@ -8,8 +8,8 @@
       "path": ".",
       "patch": "chromium.patch",
       "base": "f043649a0ef1fd96e48d56ddbfc8a4a99aa2ca37",
-      "sha256": "5845f692ba49d379e5537101ebb666a8037ffa0cf884a07269de5ed03b5589e0",
-      "bytes": 1709400,
+      "sha256": "8b32c9cd1fc174e9320459db75a8b323c8d9f1d5b378949dc91c73035b1740c4",
+      "bytes": 1710407,
       "source_base": "b510e9d7cd3a2fbd78d0ddc42234103206c5f78d"
     },
     {
