@@ -38,7 +38,7 @@ async function layers() {
   return stdout.split('\n').filter(line => /Name \[Lumie(?:Web|Video)Layer\]/.test(line));
 }
 async function logs() {
-  const {stdout} = await exec(hdc, ['-t', serial, 'shell', 'hilog', '-x', '-e', 'OHOS overlay:'], {maxBuffer: 4*1024*1024, timeout: 10000});
+  const {stdout} = await exec(hdc, ['-t', serial, 'shell', 'hilog', '-x', '-t', 'app', '-T', 'Chromium', '-e', 'OHOS overlay:'], {maxBuffer: 4*1024*1024, timeout: 10000});
   const fresh = stdout.split('\n').filter(line => line.includes('OHOS overlay:') && !seenLogs.has(line));
   fresh.forEach(line => seenLogs.add(line));
   return fresh;

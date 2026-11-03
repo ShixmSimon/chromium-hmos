@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <cmath>
 #include <map>
+#include <string_view>
 #include <utility>
 #include "base/files/scoped_file.h"
 #include "base/functional/bind.h"
@@ -60,7 +61,8 @@ OhosOverlayRect Rect(const gfx::RectF& r) {
   return {r.x(), r.y(), r.width(), r.height()};
 }
 bool VideoFormat(viz::SharedImageFormat f) {
-  f.ClearPrefersExternalSampler();
+  if (f.PrefersExternalSampler())
+    f.ClearPrefersExternalSampler();
   return f == viz::MultiPlaneFormat::kNV12 || f == viz::MultiPlaneFormat::kP010;
 }
 class Candidates final : public OverlayCandidatesOzone {
@@ -69,8 +71,10 @@ class Candidates final : public OverlayCandidatesOzone {
   void CheckOverlaySupport(OverlaySurfaceCandidateList* list) override {
     for (auto& c : *list)
       c.overlay_handled = false;
-    if (!IsAvailable(widget_) || list->size() != 2)
+    if (!IsAvailable(widget_) || list->size() != 2) {
+      Report(!IsAvailable(widget_) ? "presenter-unavailable" : "plane-count");
       return;
+    }
     OverlaySurfaceCandidate *primary = nullptr, *video = nullptr;
     for (auto& c : *list) {
       if (c.plane_z_order == 0)
@@ -78,25 +82,43 @@ class Candidates final : public OverlayCandidatesOzone {
       else if (c.plane_z_order == -1)
         video = &c;
     }
-    if (!primary || !video)
+    if (!primary || !video) {
+      Report("plane-order");
       return;
+    }
     const auto& p = *primary;
     const auto& v = *video;
-    if (p.color_space.IsHDR() || !Integral(p.display_rect) ||
-        !Integral(v.display_rect) || !p.display_rect.Contains(v.display_rect) ||
-        !Identity(p.transform) || !Identity(v.transform) || !v.is_opaque ||
-        v.opacity != 1 || !v.rounded_corners.IsEmpty() || v.background_color ||
-        !VideoFormat(v.format) ||
-        (v.clip_rect && !gfx::RectF(*v.clip_rect).Contains(v.display_rect)) ||
-        v.crop_rect.IsEmpty() || !gfx::RectF(1.f, 1.f).Contains(v.crop_rect) ||
-        (v.color_space.IsHDR() &&
-         v.color_space.GetTransferID() != gfx::ColorSpace::TransferID::PQ))
+    const char* rejection = nullptr;
+    if (p.color_space.IsHDR() || !Integral(p.display_rect))
+      rejection = "primary-color-or-geometry";
+    else if (!Integral(v.display_rect))
+      rejection = "video-non-integral-geometry";
+    else if (!p.display_rect.Contains(v.display_rect))
+      rejection = "video-outside-primary";
+    else if (!Identity(p.transform) || !Identity(v.transform))
+      rejection = "transform";
+    else if (!v.is_opaque || v.opacity != 1 ||
+             !v.rounded_corners.IsEmpty() || v.background_color)
+      rejection = "video-blending-or-rounded-corners";
+    else if (!VideoFormat(v.format))
+      rejection = "video-format";
+    else if (v.clip_rect &&
+             !gfx::RectF(*v.clip_rect).Contains(v.display_rect))
+      rejection = "video-clipped";
+    else if (v.crop_rect.IsEmpty() ||
+             !gfx::RectF(1.f, 1.f).Contains(v.crop_rect))
+      rejection = "video-crop";
+    else if (v.color_space.IsHDR() &&
+             v.color_space.GetTransferID() != gfx::ColorSpace::TransferID::PQ)
+      rejection = "video-hdr-transfer";
+    // Resolve the original decoder acquisition before punching the hole.
+    else if (!v.native_pixmap || !GetOhosVideoOverlayToken(*v.native_pixmap))
+      rejection = "video-pixmap-or-token";
+    if (rejection) {
+      Report(rejection, &v);
       return;
-    // The synchronous pixmap provider must resolve the original decoder
-    // acquisition before Chromium punches a hole in the primary. The token
-    // is checked again at Schedule/Submit to handle navigation races.
-    if (!v.native_pixmap || !GetOhosVideoOverlayToken(*v.native_pixmap))
-      return;
+    }
+    Report("supported", &v);
     primary->overlay_handled = video->overlay_handled = true;
   }
   void ObserveHardwareCapabilities(
@@ -111,6 +133,20 @@ class Candidates final : public OverlayCandidatesOzone {
   }
 
  private:
+  void Report(std::string_view result,
+              const OverlaySurfaceCandidate* video = nullptr) {
+    const auto now = base::TimeTicks::Now();
+    if (result == last_result_ || now - last_report_ < base::Seconds(1))
+      return;
+    last_result_ = result;
+    last_report_ = now;
+    LOG(WARNING) << "OHOS overlay: candidate=" << result << " widget=" << widget_
+                 << " video=" << (video ? video->display_rect.ToString() : "none")
+                 << " crop=" << (video ? video->crop_rect.ToString() : "none")
+                 << " format=" << (video ? video->format.ToString() : "none");
+  }
+  std::string_view last_result_;
+  base::TimeTicks last_report_;
   gfx::AcceleratedWidget widget_;
 };
 class Manager final : public OverlayManagerOzone {
@@ -278,7 +314,7 @@ class Presenter final : public gl::Presenter {
     SwapCompletionCallback complete;
     PresentationCallback feedback;
   };
-  void Fail() {
+  void Fail(const char* reason) {
     SetAvailable(widget_, false);
     timer_.Stop();
     socket_.reset();
@@ -288,7 +324,7 @@ class Presenter final : public gl::Presenter {
     last_[1] = {};
     auto flights = std::move(flights_);
     LOG(ERROR) << "OHOS overlay: channel/plane rejected; recreate output "
-                  "without promotion";
+                  "without promotion; reason=" << reason;
     for (auto& [seq, f] : flights) {
       if (f->complete)
         std::move(f->complete)
@@ -300,7 +336,7 @@ class Presenter final : public gl::Presenter {
   void Poll() {
     auto keep_alive = base::WrapRefCounted(this);
     if (invalid_) {
-      Fail();
+      Fail("invalid-scheduled-frame");
       return;
     }
     if (!socket_.is_valid())
@@ -310,7 +346,16 @@ class Presenter final : public gl::Presenter {
           base::TimeTicks::Now() - f->queued_at > base::Seconds(10)) {
         // Recreate the GPU output, but let the browser keep polling/draining
         // real RS leases. A timeout never fabricates a buffer release.
-        Fail();
+        for (const auto& [pending_seq, pending] : flights_) {
+          LOG(ERROR) << "OHOS overlay: timeout sequence=" << pending_seq
+                     << " accepted=" << pending->accepted
+                     << " processed=" << pending->processed
+                     << " primary_released=" << pending->released[0]
+                     << " video_released=" << pending->released[1]
+                     << " primary_content=" << pending->content[0]
+                     << " video_content=" << pending->content[1];
+        }
+        Fail("completion-timeout");
         return;
       }
     }
@@ -319,7 +364,7 @@ class Presenter final : public gl::Presenter {
         continue;
       if (!SendWireMessage(socket_.get(), *f->message)) {
         if (errno != EAGAIN && errno != EWOULDBLOCK)
-          Fail();
+          Fail("send");
         return;
       }
       f->sent = true;
@@ -329,7 +374,7 @@ class Presenter final : public gl::Presenter {
       WireMessage msg;
       if (!ReceiveWireMessage(socket_.get(), &msg)) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
-          Fail();
+          Fail("receive");
           return;
         }
         break;
@@ -337,7 +382,7 @@ class Presenter final : public gl::Presenter {
       const auto& p = msg.packet;
       auto it = flights_.find(p.sequence);
       if (it == flights_.end()) {
-        Fail();
+        Fail("unknown-sequence");
         return;
       }
       auto& f = *it->second;
@@ -358,7 +403,10 @@ class Presenter final : public gl::Presenter {
         f.released[p.plane] = true;
         f.images[p.plane].reset();
       } else {
-        Fail();
+        LOG(ERROR) << "OHOS overlay: reply operation="
+                   << static_cast<unsigned>(p.operation) << " result=" << p.result
+                   << " sequence=" << p.sequence << " plane=" << p.plane;
+        Fail("rejected-or-unexpected-reply");
         return;
       }
     }
@@ -368,7 +416,7 @@ class Presenter final : public gl::Presenter {
                       [](const auto& item) { return item.second->processed; });
       if (processed) {
         if (!ReportOhosPhoneOverlayPresented(widget_)) {
-          Fail();
+          Fail("presentation-report");
           return;
         }
         reported_ = true;
