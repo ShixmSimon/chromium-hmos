@@ -422,9 +422,13 @@ class Presenter final : public gl::Presenter {
         reported_ = true;
       }
     }
-    // Completing frame N allows BufferQueue to end read access to N-1.
-    // Wait for EVERY replaced earlier content lease, including a paused video
-    // whose original read may be many frames old. Reused content stays read.
+    // BufferQueue can render into a retired primary again after swap ACK, so
+    // every replaced primary must have its real RS release before completion.
+    // Video is different: it is imported read-only, and the browser's separate
+    // Video/Buffer lease keeps the original decoder acquisition alive until RS
+    // releases it, even after SharedImage access ends. Keep its Flight/image
+    // until kReleased, but do not gate swap ACK on it. RS can retain two video
+    // buffers; waiting for N-1 here prevents submitting the N+1 that retires it.
     std::vector<SwapCompletionCallback> completions;
     std::vector<PresentationCallback> feedbacks;
     for (auto& [seq, f] : flights_) {
@@ -436,9 +440,8 @@ class Presenter final : public gl::Presenter {
       for (const auto& [older, prior] : flights_) {
         if (older >= seq)
           break;
-        for (unsigned i = 0; i < 2; ++i)
-          if (!prior->released[i] && prior->content[i] != f->content[i])
-            ready = false;
+        if (!prior->released[0] && prior->content[0] != f->content[0])
+          ready = false;
       }
       if (!ready)
         break;
