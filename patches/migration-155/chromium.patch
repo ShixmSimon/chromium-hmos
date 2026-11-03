@@ -21662,7 +21662,7 @@ index 6bd3ed3b25e60041094a6cb74a6726e85bb2b3bf..4c83e502e1616a3cc50de1028b280cb1
                           &GpuDataManagerObserver::OnGpuProcessCrashed);
  }
 diff --git a/content/browser/gpu/gpu_process_host.cc b/content/browser/gpu/gpu_process_host.cc
-index 456ef0928171fbee2609d0323ac0db7adb0e2319..2425b51b8440eed6fc9271ab3513e5f347f9d28a 100644
+index 456ef0928171fbee2609d0323ac0db7adb0e2319..39af78088a74db834f2c18db60bbf884b6ad4231 100644
 --- a/content/browser/gpu/gpu_process_host.cc
 +++ b/content/browser/gpu/gpu_process_host.cc
 @@ -1420,6 +1420,29 @@ bool GpuProcessHost::LaunchGpuProcess() {
@@ -21675,7 +21675,7 @@ index 456ef0928171fbee2609d0323ac0db7adb0e2319..2425b51b8440eed6fc9271ab3513e5f3
 +        "user-data-dir",
 +        browser_command_line.GetSwitchValuePath("user-data-dir"));
 +  for (const char* name :
-+       {"ohos-vulkan-output", "ohos-hdr-white-millinits",
++       {"ohos-video-overlays", "ohos-vulkan-output", "ohos-hdr-white-millinits",
 +        "ohos-hdr-peak-millinits", "ohos-hdr-fixed-luminance"}) {
 +    if (browser_command_line.HasSwitch(name))
 +      cmd_line->AppendSwitchASCII(
@@ -28722,10 +28722,14 @@ index c0d773a6f85c9fdbf1a5ed18168e1d3432ed98b4..3414e2ece79e6ab3fff6247f4db0b7b4
    // allocations/deallocations of textures and their EGLImages. That's
    // especially handy for raster tasks as there can be tens of tasks resulting
 diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
-index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..46c224f254e9805766f4bfeec23badec4af1ee1c 100644
+index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..ee3c2bdcf122ea98dfb156596a00d550020bb567 100644
 --- a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
 +++ b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
-@@ -10,12 +10,18 @@
+@@ -7,15 +7,22 @@
+ #include <dawn/dawn_proc_table.h>
+ #include <dawn/native/DawnNative.h>
+ 
++#include "base/command_line.h"
  #include "base/logging.h"
  #include "base/memory/scoped_refptr.h"
  #include "build/build_config.h"
@@ -28744,7 +28748,7 @@ index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..46c224f254e9805766f4bfeec23badec
  #include "gpu/command_buffer/service/shared_image/shared_image_format_service_utils.h"
  #include "gpu/command_buffer/service/shared_memory_region_wrapper.h"
  #include "gpu/config/gpu_finch_features.h"
-@@ -221,6 +227,18 @@ std::unique_ptr<SharedImageBacking> OzoneImageBackingFactory::CreateSharedImage(
+@@ -221,6 +228,18 @@ std::unique_ptr<SharedImageBacking> OzoneImageBackingFactory::CreateSharedImage(
  
    auto backing = std::make_unique<OzoneImageBacking>(
        mailbox, si_info, shared_context_state_, std::move(pixmap), workarounds_);
@@ -28763,7 +28767,7 @@ index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..46c224f254e9805766f4bfeec23badec
    backing->SetCleared();
  
    return backing;
-@@ -255,13 +273,40 @@ bool OzoneImageBackingFactory::IsSupported(
+@@ -255,13 +274,40 @@ bool OzoneImageBackingFactory::IsSupported(
      return false;
    }
  
@@ -28806,24 +28810,30 @@ index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..46c224f254e9805766f4bfeec23badec
    bool used_by_gl = (HasGLES2ReadOrWriteUsage(usage)) ||
                      (used_by_skia && gr_context_type == GrContextType::kGL);
    if (used_by_vulkan && !CanImportNativePixmapToVulkan()) {
-@@ -271,7 +316,25 @@ bool OzoneImageBackingFactory::IsSupported(
+@@ -271,7 +317,31 @@ bool OzoneImageBackingFactory::IsSupported(
      return false;
    }
    auto* factory = ui::OzonePlatform::GetInstance()->GetSurfaceFactoryOzone();
 -  if (!factory->CanCreateNativePixmapForFormat(format)) {
 +  bool can_create_pixmap = factory->CanCreateNativePixmapForFormat(format);
-+#if BUILDFLAG(IS_OHOS) && BUILDFLAG(SKIA_USE_DAWN)
++#if BUILDFLAG(IS_OHOS)
 +  // A forked GPU may import the browser decoder's existing parcel without
 +  // gaining permission to allocate YUV buffers or access system services.
 +  // Keep renderer/CPU allocation requests on their existing rejected path.
 +  auto native_format = format;
 +  if (native_format.is_multi_plane())
 +    native_format.ClearPrefersExternalSampler();
++  bool native_video_reader =
++      gr_context_type == GrContextType::kGL &&
++      base::CommandLine::ForCurrentProcess()->HasSwitch("ohos-video-overlays");
++#if BUILDFLAG(SKIA_USE_DAWN)
++  native_video_reader |= SupportsOhosGraphiteVideo(shared_context_state_.get());
++#endif
 +  const bool native_decoder_import =
 +      gmb_type == gfx::NATIVE_PIXMAP && format.PrefersExternalSampler() &&
 +      (native_format == viz::MultiPlaneFormat::kNV12 ||
 +       native_format == viz::MultiPlaneFormat::kP010) &&
-+      SupportsOhosGraphiteVideo(shared_context_state_.get()) &&
++      native_video_reader &&
 +      usage.HasAll(SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ) &&
 +      (SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ |
 +       SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_SCANOUT).HasAll(usage);
@@ -28833,7 +28843,7 @@ index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..46c224f254e9805766f4bfeec23badec
      return false;
    }
  
-@@ -372,7 +435,9 @@ bool OzoneImageBackingFactory::CanVulkanSynchronizeGpuFence() {
+@@ -372,7 +442,9 @@ bool OzoneImageBackingFactory::CanVulkanSynchronizeGpuFence() {
  }
  
  bool OzoneImageBackingFactory::CanImportNativePixmapToWebGPU() {
@@ -28844,7 +28854,7 @@ index 99dd3cba74f508c8a24dd35e81865d6828e1a1da..46c224f254e9805766f4bfeec23badec
    // Safe to always return true here, as it's not possible to create a WebGPU
    // adapter that doesn't support importing native pixmaps:
    // https://source.chromium.org/chromium/chromium/src/+/main:gpu/command_buffer/service/webgpu_decoder_impl.cc;drc=daed597d580d450d36578c0cc53b4f72d3b507da;l=1291
-@@ -396,7 +461,9 @@ bool OzoneImageBackingFactory::CanImportNativePixmapToWebGPU() {
+@@ -396,7 +468,9 @@ bool OzoneImageBackingFactory::CanImportNativePixmapToWebGPU() {
  }
  
  bool OzoneImageBackingFactory::CanWebGPUSynchronizeGpuFence() {
@@ -28882,18 +28892,20 @@ index c1a90b229aa25d517af6af6eb2ba0a3891b8aa53..0d4c8a5ecbe19630328a2d04514568cf
    virtual std::optional<VulkanYCbCrInfo> GetVkCbCrInfo(
        SharedContextState* context_state);
 diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
-index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d41402a670 100644
+index 42b433dccffbde6d3c85b300108b2f37c9a653e0..d99b90f29b4a828485aab98daa896ab577166f48 100644
 --- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
 +++ b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
-@@ -7,6 +7,7 @@
+@@ -7,7 +7,9 @@
  #include <inttypes.h>
  
  #include <memory>
 +#include <string_view>
  
++#include "base/command_line.h"
  #include "base/debug/crash_logging.h"
  #include "base/debug/dump_without_crashing.h"
-@@ -46,6 +47,10 @@
+ #include "base/metrics/histogram_functions.h"
+@@ -46,6 +48,10 @@
  #include "ui/gfx/gpu_memory_buffer_handle.h"
  #include "ui/gl/gl_display.h"
  #include "ui/gl/gl_implementation.h"
@@ -28904,7 +28916,7 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
  #include "ui/gl/gl_switches.h"
  #include "ui/gl/gl_utils.h"
  #include "ui/gl/gl_version_info.h"
-@@ -56,8 +61,16 @@
+@@ -56,8 +62,16 @@
  #include "gpu/command_buffer/service/vulkan_context_provider.h"
  #include "gpu/vulkan/vulkan_device_queue.h"
  
@@ -28922,7 +28934,7 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
  #endif
  
  #if BUILDFLAG(IS_ANDROID)
-@@ -87,6 +100,7 @@
+@@ -87,6 +101,7 @@
  
  #if BUILDFLAG(IS_FUCHSIA)
  #include <lib/zx/channel.h>
@@ -28930,7 +28942,7 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
  #include "gpu/vulkan/vulkan_device_queue.h"
  #include "gpu/vulkan/vulkan_implementation.h"
  #endif  // BUILDFLAG(IS_FUCHSIA)
-@@ -96,6 +110,7 @@
+@@ -96,6 +111,7 @@
  #endif  // BUILDFLAG(IS_ANDROID)
  
  #if BUILDFLAG(USE_DAWN)
@@ -28938,7 +28950,7 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
  #include "gpu/command_buffer/service/shared_image/dawn_image_backing_factory.h"
  #endif  // BUILDFLAG(USE_DAWN)
  
-@@ -124,7 +139,8 @@ const char* GmbTypeToString(gfx::GpuMemoryBufferType type) {
+@@ -124,7 +140,8 @@ const char* GmbTypeToString(gfx::GpuMemoryBufferType type) {
      case gfx::IO_SURFACE_BUFFER:
        return "platform";
  #endif
@@ -28948,7 +28960,7 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
      case gfx::NATIVE_PIXMAP:
        return "platform";
  #endif
-@@ -145,7 +161,8 @@ gfx::GpuMemoryBufferType GetNativeBufferType() {
+@@ -145,7 +162,8 @@ gfx::GpuMemoryBufferType GetNativeBufferType() {
    return gfx::GpuMemoryBufferType::IO_SURFACE_BUFFER;
  #elif BUILDFLAG(IS_ANDROID)
    return gfx::GpuMemoryBufferType::ANDROID_HARDWARE_BUFFER;
@@ -28958,10 +28970,17 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
    return gfx::GpuMemoryBufferType::NATIVE_PIXMAP;
  #elif BUILDFLAG(IS_WIN)
    return gfx::GpuMemoryBufferType::DXGI_SHARED_HANDLE;
-@@ -344,6 +361,28 @@ SharedImageFactory::SharedImageFactory(
+@@ -344,6 +362,35 @@ SharedImageFactory::SharedImageFactory(
    }
  #endif  // BUILDFLAG(ENABLE_VULKAN) && (BUILDFLAG(IS_LINUX) ||
          // BUILDFLAG(IS_FUCHSIA))
++#if BUILDFLAG(IS_OHOS)
++  if (ui::IsOhosPhoneGpuChild() && gr_context_type_ == GrContextType::kGL &&
++      base::CommandLine::ForCurrentProcess()->HasSwitch("ohos-video-overlays")) {
++    factories_.push_back(std::make_unique<OzoneImageBackingFactory>(
++        context_state_, workarounds_));
++  }
++#endif
 +#if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_OHOS)
 +  if (gr_context_type_ == GrContextType::kVulkan ||
 +      gr_context_type_ == GrContextType::kGraphiteDawn) {
@@ -28987,7 +29006,7 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
  #endif  // BUILDFLAG(IS_OZONE)
  
  #if BUILDFLAG(IS_APPLE)
-@@ -837,6 +876,34 @@ gpu::SharedImageCapabilities SharedImageFactory::MakeCapabilities() {
+@@ -837,6 +884,40 @@ gpu::SharedImageCapabilities SharedImageFactory::MakeCapabilities() {
    gpu::SharedImageCapabilities shared_image_caps;
    shared_image_caps.supports_scanout_shared_images =
        shared_image_manager_->SupportsScanoutImages();
@@ -29001,6 +29020,12 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
 +  const bool native_import = native_extensions &&
 +      std::string_view(native_extensions).find("EGL_OHOS_image_native_buffer") !=
 +          std::string_view::npos;
++  if (ui::IsOhosPhoneGpuChild() && context_state_ &&
++      gr_context_type_ == GrContextType::kGL && native_import &&
++      gl::GLFence::IsGpuFenceSupported() &&
++      base::CommandLine::ForCurrentProcess()->HasSwitch("ohos-video-overlays")) {
++    shared_image_caps.supports_ohos_video_native_buffers = true;
++  }
 +  shared_image_caps.supports_ohos_native_rgba_f16 =
 +      context_state_ && gr_context_type_ == GrContextType::kGL &&
 +      gl::GetANGLEImplementation() == gl::ANGLEImplementation::kVulkan &&
@@ -29022,7 +29047,7 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
  
  #if BUILDFLAG(IS_WIN)
    // Scanout for software video frames is supported on Windows except on D3D9.
-@@ -851,13 +918,37 @@ gpu::SharedImageCapabilities SharedImageFactory::MakeCapabilities() {
+@@ -851,13 +932,37 @@ gpu::SharedImageCapabilities SharedImageFactory::MakeCapabilities() {
        gr_context_type_ == GrContextType::kGraphiteDawn;
    shared_image_caps.supports_r16_shared_images =
        is_angle_metal || is_skia_graphite;
@@ -29060,7 +29085,7 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
    }
    if (!context_state_) {
      shared_image_caps.is_r16f_supported = false;
-@@ -873,6 +964,24 @@ gpu::SharedImageCapabilities SharedImageFactory::MakeCapabilities() {
+@@ -873,6 +978,24 @@ gpu::SharedImageCapabilities SharedImageFactory::MakeCapabilities() {
              kA16_float_SkColorType);
    }
  
@@ -29085,7 +29110,7 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
    const bool display_compositor_on_another_thread =
        shared_image_manager_->display_context_on_another_thread();
    if (!context_state_) {
-@@ -963,8 +1072,9 @@ SharedImageBackingFactory* SharedImageFactory::GetFactoryByUsage(
+@@ -963,8 +1086,9 @@ SharedImageBackingFactory* SharedImageFactory::GetFactoryByUsage(
      gfx::GpuMemoryBufferType gmb_type,
      std::optional<SharedImageAccessStream> stream,
      const AccessParams* params) {

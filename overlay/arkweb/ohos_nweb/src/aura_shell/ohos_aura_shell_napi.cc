@@ -1189,6 +1189,9 @@ AuraStartupConfig ParseStartupConfig(const std::string& config_json) {
     config.additional_switches.push_back({"ohos-download-dir", *directory});
   }
 
+  if (dict.FindBool("enableVideoOverlays").value_or(false)) {
+    config.additional_switches.push_back({"ohos-video-overlays", ""});
+  }
   config.experimental_phone_fork =
       dict.FindBool("experimentalPhoneFork").value_or(false);
   config.gpu_rasterization = dict.FindBool("gpuRasterization");

@@ -188,6 +188,10 @@ else
   #
   # and retire_incremental_patch backs one out again.
 
+  # The presenter layers over video-import and HDR output patches. Remove it
+  # first so their idempotence checks see the prerequisite versions.
+  retire_incremental_patch "${repo_root}/patches/ohos-video-overlay-presenter.patch"
+
   apply_incremental_patch "${repo_root}/patches/ohos-dawn-instance-diagnostics.patch" \
     "${src}/third_party/dawn"
 
@@ -432,6 +436,7 @@ else
       obj/gpu/command_buffer/service/gles2_sources/external_vk_image_backing_factory.o
       obj/gpu/command_buffer/service/gles2_sources/external_vk_image_overlay_representation.o
       obj/gpu/command_buffer/service/gles2_sources/ozone_image_backing_factory.o
+      obj/gpu/command_buffer/service/gles2_sources/shared_image_factory.o
       obj/gpu/command_buffer/service/gles2_sources/webgpu_decoder_impl.o
       obj/gpu/command_buffer/service/gles2_sources/vulkan_in_process_context_provider.o
       obj/gpu/command_buffer/service/gles2_sources/skia_vk_ozone_image_representation.o

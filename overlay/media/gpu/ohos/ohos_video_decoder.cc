@@ -301,7 +301,7 @@ void OhosVideoDecoder::OnBrowserGpuInitialized(
   surface_enabled_ =
       browser_sii_ && !browser_sii_->IsLost() &&
       browser_sii_->GetCapabilities().supports_ohos_video_native_buffers;
-  LOG(WARNING) << "OHOS phone video: Vulkan native-buffer path="
+  LOG(WARNING) << "OHOS phone video: native-buffer path="
                << surface_enabled_;
   FinishInitialize(std::move(init_cb));
 }

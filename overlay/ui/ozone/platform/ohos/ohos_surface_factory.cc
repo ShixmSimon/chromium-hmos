@@ -1352,7 +1352,10 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
 
   bool CanImportNativePixmap(viz::SharedImageFormat format) override {
     return IsOhosNativePixmapFormat(format) &&
-           (!IsOhosPhoneGpuChild() || IsOffscreenNativeFormat(format));
+           (!IsOhosPhoneGpuChild() || IsOffscreenNativeFormat(format) ||
+            (format.PrefersExternalSampler() &&
+             base::CommandLine::ForCurrentProcess()->HasSwitch(
+                 "ohos-video-overlays")));
   }
 
   // A YUV buffer is sampled whole, through GL_TEXTURE_EXTERNAL_OES with the
@@ -1366,7 +1369,10 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
       GLenum target,
       GLuint texture_id) override {
     if (IsOhosPhoneGpuChild() &&
-        !IsOffscreenNativeFormat(pixmap->GetSharedImageFormat()))
+        !IsOffscreenNativeFormat(pixmap->GetSharedImageFormat()) &&
+        !(pixmap->GetSharedImageFormat().PrefersExternalSampler() &&
+          base::CommandLine::ForCurrentProcess()->HasSwitch(
+              "ohos-video-overlays")))
       return nullptr;
     if (plane_index.has_value() &&
         (!pixmap->GetSharedImageFormat().is_single_plane() || *plane_index != 0)) {

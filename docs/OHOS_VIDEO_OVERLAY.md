@@ -592,6 +592,10 @@ the Ozone factory also accepts the presenter's SDR RGBA/BGRA primary. Vulkan
 overlay access duplicates existing SYNC_FD dependencies and merges multiple
 fences without CPU waiting. A failed merge restores every pending dependency
 before returning failure, so fallback cannot reuse an unfinished decoder read.
+For fork GLES, the startup flag is forwarded to the GPU and enables importing
+browser-owned NV12/P010 parcels through the existing Ozone EGL path when native
+image import and native fences are supported. It does not permit YUV allocation
+in the child. Without this opt-in, GLES retains its previous decoder path.
 
 The first processed primary reports GPU startup success and the independent
 video path's HDR capability, without requiring a PQ webpage framebuffer. HDR
