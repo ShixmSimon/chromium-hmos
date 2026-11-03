@@ -5,7 +5,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <limits>
-#include <set>
 
 namespace ui::ohos_overlay {
 namespace {
@@ -42,8 +41,8 @@ bool ValidPlane(const Plane& p, bool primary) {
 }
 }  // namespace
 
-Session::Session(Backend& backend, size_t max_frames)
-    : backend_(backend), max_frames_(max_frames) {}
+Session::Session(Backend& backend, size_t max_allocations_per_plane)
+    : backend_(backend), max_allocations_per_plane_(max_allocations_per_plane) {}
 Session::~Session() {
   // Dropping an outstanding decoder lease corrupts displayed frames. The
   // caller must finish asynchronous close, never impose a destruction timeout.
@@ -91,11 +90,16 @@ SubmitResult Session::Submit(Frame& f) {
   };
   if (!reusable(f.primary, 0) || (f.video && !reusable(*f.video, 1)))
     return SubmitResult::kUnsupported;
-  std::set<uint64_t> frames;
+  // Primary and video retire independently. Counting distinct submission IDs
+  // lets retained video fill the entire budget and block a web-only update
+  // that RS needs in order to return the previous primary. Bound each queue,
+  // retaining every real read lease until its release and fences complete.
+  size_t allocations[2] = {};
   for (const auto& [id, held] : leases_)
-    frames.insert(held.submission);
-  if (((!f.primary.reuse || (f.video && !f.video->reuse)) &&
-       frames.size() >= max_frames_) ||
+    ++allocations[held.plane];
+  if ((!f.primary.reuse && allocations[0] >= max_allocations_per_plane_) ||
+      (f.video && !f.video->reuse &&
+       allocations[1] >= max_allocations_per_plane_) ||
       (!f.primary.reuse && leases_.count(f.primary.lease->allocation_id())) ||
       (f.video && !f.video->reuse &&
        leases_.count(f.video->lease->allocation_id())))

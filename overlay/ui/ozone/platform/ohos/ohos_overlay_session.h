@@ -105,7 +105,7 @@ enum class State { kRunning, kWaitingForCommands, kDraining, kClosed };
 // until closed(), including navigation, GPU loss, and hidden-window teardown.
 class Session {
  public:
-  explicit Session(Backend& backend, size_t max_frames = 4);
+  explicit Session(Backend& backend, size_t max_allocations_per_plane = 4);
   ~Session();
   Session(const Session&) = delete;
   Session& operator=(const Session&) = delete;
@@ -133,7 +133,7 @@ class Session {
     Color color;
   };
   Backend& backend_;
-  const size_t max_frames_;
+  const size_t max_allocations_per_plane_;
   State state_ = State::kRunning;
   uint64_t last_submission_ = 0;
   std::map<uint64_t, Held> leases_;

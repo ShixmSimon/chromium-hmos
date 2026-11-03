@@ -217,6 +217,43 @@ int main() {
     assert(released == 5);
     Finish(s, b);
   }
+  // Video-only updates keep one primary, then web-only updates keep one video.
+  // Distinct submission IDs are not queue depth: retained video must not
+  // prevent the next primary that releases its predecessor from being sent.
+  {
+    FakeBackend b;
+    Session s(b, 4);
+    auto submit = [&](uint64_t primary, uint64_t video, bool reuse_primary,
+                      bool reuse_video) {
+      Frame f;
+      f.primary = MakePlane(primary, released, ready, false);
+      f.primary.reuse = reuse_primary;
+      if (video) {
+        f.video = MakePlane(video, released, ready, true);
+        f.video->reuse = reuse_video;
+      }
+      f.primary_has_video_hole = video != 0;
+      return s.Submit(f);
+    };
+    assert(submit(10, 11, false, false) == SubmitResult::kAccepted);
+    assert(submit(10, 21, true, false) == SubmitResult::kAccepted);
+    assert(submit(10, 31, true, false) == SubmitResult::kAccepted);
+    b.releases = {{1, 10, 0, true, true}};
+    assert(submit(40, 31, false, true) == SubmitResult::kAccepted);
+    assert(submit(50, 31, false, true) == SubmitResult::kAccepted);
+    assert(submit(50, 41, true, false) == SubmitResult::kAccepted);
+    // Each individual plane remains bounded; reuse and demotion still work
+    // when the other plane is full. No unreleased allocation is discarded.
+    assert(submit(50, 51, true, false) == SubmitResult::kBusy);
+    assert(submit(60, 0, false, false) == SubmitResult::kAccepted);
+    b.releases = {{1, 11, 1, true, true}, {2, 21, 1, true, true},
+                  {3, 31, 1, true, true}, {4, 40, 0, true, true},
+                  {5, 50, 0, true, true}, {6, 41, 1, true, true},
+                  {7, 60, 0, true, true}};
+    s.Poll();
+    assert(s.outstanding_allocations() == 0);
+    Finish(s, b);
+  }
   // Hundreds of recycled allocations: no fixed test-slot/marker limit, and a
   // delayed callback from an earlier use must not retire the current read.
   released = 0;
