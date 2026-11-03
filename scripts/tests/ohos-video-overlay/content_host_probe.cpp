@@ -67,8 +67,12 @@ extern "C" napi_value StartOverlayContentProbe(napi_env env,
   OH_NativeBuffer_Unmap(buffer);
   OH_NativeBuffer_SetColorSpace(buffer, OH_COLORSPACE_SRGB_FULL);
   using Writer = int32_t (*)(OH_NativeBuffer*, OHIPCParcel*);
-  auto writer = reinterpret_cast<Writer>(
-      dlsym(RTLD_DEFAULT, "OH_NativeBuffer_WriteToParcel"));
+  void* library = dlopen("libnative_buffer.so", RTLD_NOW | RTLD_NOLOAD);
+  auto writer = library ? reinterpret_cast<Writer>(
+                              dlsym(library, "OH_NativeBuffer_WriteToParcel"))
+                        : nullptr;
+  if (library)
+    dlclose(library);
   auto* parcel = OH_IPCParcel_Create();
   WireMessage frame;
   auto& p = frame.packet;

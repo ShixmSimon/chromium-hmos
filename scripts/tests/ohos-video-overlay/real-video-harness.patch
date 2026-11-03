@@ -14,7 +14,7 @@ index f71ef34..8830ce0 100644
 +set(OVERLAY_SRC ${OVERLAY_ROOT}/overlay/ui/ozone/platform/ohos)
 +add_library(ohos_video_overlay SHARED ${OVERLAY_SRC}/ohos_overlay_session.cc ${OVERLAY_SRC}/ohos_rs_overlay_backend.cc ${OVERLAY_SRC}/ohos_overlay_bridge.cc)
 +target_compile_options(ohos_video_overlay PRIVATE -std=c++17 -fno-exceptions -fno-rtti -D_LIBCPP_ABI_NAMESPACE=__h -Wall -Wextra -Werror -Wno-unused-command-line-argument)
-+target_link_libraries(ohos_video_overlay PUBLIC native_buffer dl libhilog_ndk.z.so)
++target_link_libraries(ohos_video_overlay PUBLIC native_buffer ace_ndk.z dl libhilog_ndk.z.so)
 +target_compile_definitions(ohos_video_overlay PRIVATE OHOS_OVERLAY_DIAGNOSTICS)
 +target_include_directories(lumie_prewarm PRIVATE ${OVERLAY_SRC} ${OVERLAY_ROOT}/scripts/tests/ohos-video-overlay)
 +target_sources(lumie_prewarm PRIVATE ${OVERLAY_ROOT}/scripts/tests/ohos-video-overlay/real_video_harness.cpp ${OVERLAY_ROOT}/scripts/tests/ohos-video-overlay/hdr_buffer_probe.cpp)

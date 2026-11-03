@@ -4,6 +4,7 @@
 // crosses.
 #include "ohos_rs_overlay_backend.h"
 
+#include <arkui/native_render.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <link.h>
@@ -134,8 +135,10 @@ struct Api {
   template <typename T>
   bool Get(T& target, const char* symbol, size_t n = 0, uint32_t hash = 0) {
     void* value = dlsym(rs, symbol);
-    if (!value || (n && Hash(value, n) != hash))
+    if (!value || (n && Hash(value, n) != hash)) {
+      TRACE("abi_rejected symbol=%{public}s", symbol);
       return false;
+    }
     target = reinterpret_cast<T>(value);
     return true;
   }
@@ -685,9 +688,14 @@ class RsBackend final : public Backend {
 uint64_t ResolveOwnedRenderNode(uint64_t token, void* node) {
   if (!node || (token >> 32) != static_cast<uint64_t>(gettid()))
     return 0;
-  auto create = dlsym(RTLD_DEFAULT, "OH_ArkUI_RenderNodeUtils_CreateNode");
-  if (!create || Hash(create, 148) != 0x2d4d8cab)
+  // This dependency is RTLD_LOCAL in an ArkTS native module; RTLD_DEFAULT
+  // does not necessarily see it. Fingerprint the linked public entry point.
+  auto create = reinterpret_cast<void*>(&OH_ArkUI_RenderNodeUtils_CreateNode);
+  if (!create || Hash(create, 148) != 0x2d4d8cab) {
+    TRACE("render_parent_create_fingerprint=%{public}u",
+          create ? Hash(create, 148) : 0);
     return 0;
+  }
   Api api;
   if (!api.Load()) {
     if (api.surface)
@@ -712,6 +720,11 @@ uint64_t ResolveOwnedRenderNode(uint64_t token, void* node) {
                 reinterpret_cast<uintptr_t>(context.object) + 40, full_id, 0);
   const bool match = found.object && found.object == owned.object &&
                      found.control == owned.control;
+  TRACE(
+      "render_parent id=%{public}llu context=%{public}d owned=%{public}d "
+      "found=%{public}d match=%{public}d",
+      static_cast<unsigned long long>(full_id), !!context.object,
+      !!owned.object, !!found.object, match);
   api.Drop(found);
   api.Drop(context);
   if (api.surface)

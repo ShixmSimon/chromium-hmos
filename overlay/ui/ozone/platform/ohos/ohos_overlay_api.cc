@@ -2,10 +2,9 @@
 // Use of this source code is governed by a BSD-style license in LICENSE.
 #include "ui/ozone/platform/ohos/ohos_overlay_api.h"
 #include <dlfcn.h>
-#include "base/no_destructor.h"
 namespace ui {
 const OhosOverlayApi* GetOhosOverlayApi() {
-  static const base::NoDestructor<OhosOverlayApi> api([] {
+  static const OhosOverlayApi api = [] {
     OhosOverlayApi result;
     // Keep the module loaded while callbacks/RS leases may still be in flight.
     void* library = dlopen("libohos_video_overlay.so", RTLD_NOW | RTLD_LOCAL);
@@ -24,7 +23,7 @@ const OhosOverlayApi* GetOhosOverlayApi() {
         !result.register_video || !result.unregister_video)
       return OhosOverlayApi{};
     return result;
-  }());
-  return api->attach ? api.get() : nullptr;
+  }();
+  return api.attach ? &api : nullptr;
 }
 }  // namespace ui

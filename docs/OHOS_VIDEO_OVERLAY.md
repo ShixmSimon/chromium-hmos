@@ -567,7 +567,7 @@ The code now connects these stages:
 
 1. `ohos_video_decoder` registers each original browser-process decoder read
    with an unpredictable acquisition token. NativePixmapHandle/Mojo carries the
-   token to the fork GPU. Only registered reads receive SCANOUT/allow_overlay.
+   token to the fork GPU. Only registered reads receive SCANOUT usage.
 2. The Ozone candidate oracle requires that original NativePixmap/token, an
    opaque NV12 or P010 video, supported PQ/SDR color, integral geometry, identity
    transform, no rounded corners/effects and a contained clip. Chromium's

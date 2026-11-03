@@ -1328,7 +1328,8 @@ void OhosVideoDecoder::ConvertBrowserFrame(
     frame->set_color_space(output.color_space);
     frame->set_hdr_metadata(output.hdr_metadata);
     frame->metadata().power_efficient = true;
-    frame->metadata().allow_overlay = overlay_token != 0;
+    // TransferableResource derives overlay eligibility from the SharedImage's
+    // SCANOUT usage. VideoFrameMetadata no longer carries allow_overlay.
     // Graphite native reads retain the imported pixmap until the exported
     // Dawn completion fence signals (ohos_native_video::Retire).
     // WaitBrowserFrameLease consequently cannot return the decoder buffer

@@ -19,6 +19,13 @@
 #include <string>
 #include "ohos_overlay_transport.h"
 #include "ohos_rs_overlay_backend.h"
+#ifdef OHOS_OVERLAY_DIAGNOSTICS
+#include <hilog/log.h>
+#define HOST_TRACE(...) \
+  OH_LOG_Print(LOG_APP, LOG_INFO, 0xD003F01, "LumieOverlayHost", __VA_ARGS__)
+#else
+#define HOST_TRACE(...) ((void)0)
+#endif
 
 namespace ui::ohos_overlay {
 namespace {
@@ -110,8 +117,15 @@ struct Host {
       return current[0] && current[0]->content == p.primary.content ? current[0]
                                                                     : nullptr;
     using Reader = int32_t (*)(OHIPCParcel*, OH_NativeBuffer**);
-    auto reader = reinterpret_cast<Reader>(
-        dlsym(RTLD_DEFAULT, "OH_NativeBuffer_ReadFromParcel"));
+    static Reader reader = [] {
+      void* library = dlopen("libnative_buffer.so", RTLD_NOW | RTLD_NOLOAD);
+      auto fn = library ? reinterpret_cast<Reader>(
+                              dlsym(library, "OH_NativeBuffer_ReadFromParcel"))
+                        : nullptr;
+      if (library)
+        dlclose(library);  // The host's direct dependency keeps it loaded.
+      return fn;
+    }();
     using Parcel =
         std::unique_ptr<OHIPCParcel, decltype(&OH_IPCParcel_Destroy)>;
     Parcel parcel(OH_IPCParcel_Create(), &OH_IPCParcel_Destroy);
@@ -383,9 +397,18 @@ extern "C" int OhosOverlayAttachContent(uint32_t version,
     if (host->node)
       host->api->disposeNode(host->node);
   };
-  if (!host->node || !host->render ||
-      OH_ArkUI_RenderNodeUtils_AddRenderNode(host->node, host->render) ||
-      OH_ArkUI_NodeContent_AddNode(host->content, host->node)) {
+  const int add_render =
+      host->node && host->render
+          ? OH_ArkUI_RenderNodeUtils_AddRenderNode(host->node, host->render)
+          : -1;
+  const int add_content =
+      !add_render ? OH_ArkUI_NodeContent_AddNode(host->content, host->node)
+                  : -1;
+  HOST_TRACE(
+      "attach node=%{public}d render=%{public}d add_render=%{public}d "
+      "add_content=%{public}d",
+      !!host->node, !!host->render, add_render, add_content);
+  if (add_render || add_content) {
     cleanup();
     return 0;
   }
@@ -407,6 +430,8 @@ extern "C" int OhosOverlayAttachContent(uint32_t version,
   const uint64_t token = (static_cast<uint64_t>(gettid()) << 32) | 1;
   const uint64_t parent = ResolveOwnedRenderNode(token, host->render);
   host->session = parent ? OhosOverlayCreate(version, token, parent) : nullptr;
+  HOST_TRACE("attach parent=%{public}llu session=%{public}d",
+             static_cast<unsigned long long>(parent), !!host->session);
   if (!host->session) {
     cleanup();
     uv_close(reinterpret_cast<uv_handle_t*>(&host->timer),
