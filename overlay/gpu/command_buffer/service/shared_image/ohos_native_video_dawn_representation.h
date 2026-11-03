@@ -32,72 +32,10 @@
 #include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"  // nogncheck
 
+#include "gpu/command_buffer/service/shared_image/ohos_native_video_retirement.h"
+
 namespace gpu {
-namespace ohos_native_video {
 
-// A decoder queue slot must not be reused if a completion fence was lost.
-inline void Quarantine(scoped_refptr<gfx::NativePixmap> pixmap,
-                       scoped_refptr<SharedContextState> context) {
-  struct Leases {
-    base::Lock lock;
-    std::vector<scoped_refptr<gfx::NativePixmap>> pixmaps;
-  };
-  static base::NoDestructor<Leases> leases;
-  {
-    base::AutoLock lock(leases->lock);
-    leases->pixmaps.push_back(std::move(pixmap));
-  }
-  if (!context->context_lost())
-    context->MarkContextLost();
-  LOG(ERROR) << "OHOS Dawn native video: completion unknown; decoder lease retained";
-}
-
-// Read-lock sync tokens order command submission. Retain the actual decoder
-// lease separately until Dawn's GPU completion fence signals, without waiting
-// on the GPU main thread or copying any pixels.
-inline void Retire(scoped_refptr<gfx::NativePixmap> pixmap,
-                   scoped_refptr<SharedContextState> context,
-                   gfx::GpuFenceHandle fence) {
-  if (fence.is_null())
-    return;
-  pollfd descriptor{fence.Peek(), POLLIN, 0};
-  const int result = poll(&descriptor, 1, 0);
-  if (result > 0 && (descriptor.revents & POLLIN) &&
-      !(descriptor.revents & (POLLERR | POLLNVAL | POLLHUP))) {
-    TRACE_EVENT_INSTANT("gpu", "OhosNativeVideoLeaseCompleted");
-    return;
-  }
-  if (context->context_lost() ||
-      (result < 0 && errno != EINTR) ||
-      (descriptor.revents & (POLLERR | POLLNVAL | POLLHUP))) {
-    Quarantine(std::move(pixmap), std::move(context));
-    return;
-  }
-  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
-      FROM_HERE,
-      base::BindOnce(&Retire, std::move(pixmap), std::move(context),
-                     std::move(fence)),
-      base::Milliseconds(4));
-}
-
-inline bool Merge(base::ScopedFD& merged, int fd) {
-  if (fd == -1)
-    return true;  // An already-signaled sync-file fence.
-  if (fd < -1)
-    return false;
-  if (!merged.is_valid()) {
-    merged.reset(dup(fd));
-    return merged.is_valid();
-  }
-  sync_merge_data data{};
-  data.fd2 = fd;
-  if (ioctl(merged.get(), SYNC_IOC_MERGE, &data) != 0)
-    return false;
-  merged.reset(data.fence);
-  return merged.is_valid();
-}
-
-}  // namespace ohos_native_video
 
 // Graphite and GL/WebGPU share this native-video ownership protocol.
 // Ozone's ordinary Dawn representation has planar views and a single access

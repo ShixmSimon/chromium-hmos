@@ -312,3 +312,23 @@ A production build must package the new bridge and opt in through
 including paused scrolling, promotion/demotion, HDR-to-SDR changes and process
 loss, independently for GL/Vulkan/Graphite. Host checks alone must not change
 the default activation flag.
+
+`webpage_promotion_validation.mjs` uses the minimal `promotion.html` fixture.
+It requires both an advancing video and visible `LumieWebLayer` /
+`LumieVideoLayer` records, checks paused repositioning, forces demotion with a
+CSS filter, and verifies re-promotion for SDR8, SDR10 and HDR10. It also requires
+presenter command-processing logs; command processing is not physical display
+timing or proof of HDR luminance. Run separately for each backend:
+
+```sh
+node scripts/tests/ohos-video-overlay/webpage_promotion_validation.mjs \
+  http://127.0.0.1:19422 \
+  http://127.0.0.1:18880/video-overlay-hdr/promotion.html \
+  /tmp/lumie-webpage-promotion-gl DEVICE_SERIAL
+```
+
+The output directory must be new. Only the created tab is closed. The test
+retains filtered test-layer records and presenter logs, not other windows'
+trees. Screenshots, scroll/fullscreen, navigation/background and GPU-loss
+checks remain separate qualification steps. Syntax checking the script is
+not a device result.

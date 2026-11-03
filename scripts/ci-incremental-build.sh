@@ -436,6 +436,7 @@ else
       obj/gpu/command_buffer/service/gles2_sources/external_vk_image_backing_factory.o
       obj/gpu/command_buffer/service/gles2_sources/external_vk_image_overlay_representation.o
       obj/gpu/command_buffer/service/gles2_sources/ozone_image_backing_factory.o
+      obj/gpu/command_buffer/service/gles2_sources/ozone_image_backing.o
       obj/gpu/command_buffer/service/gles2_sources/shared_image_factory.o
       obj/gpu/command_buffer/service/gles2_sources/webgpu_decoder_impl.o
       obj/gpu/command_buffer/service/gles2_sources/vulkan_in_process_context_provider.o

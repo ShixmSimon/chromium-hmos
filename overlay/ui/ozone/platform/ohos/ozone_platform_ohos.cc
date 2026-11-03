@@ -76,7 +76,9 @@ class OzonePlatformOhos : public OzonePlatform {
 
   const PlatformRuntimeProperties& GetPlatformRuntimeProperties() override {
     static PlatformRuntimeProperties properties;
-    properties.supports_overlays = IsOhosPhoneGpuChild();
+    properties.supports_overlays =
+        IsOhosPhoneGpuChild() &&
+        base::CommandLine::ForCurrentProcess()->HasSwitch("ohos-video-overlays");
     properties.supports_native_pixmaps =
         !IsOhosPhoneGpuChild() &&
         !(base::CommandLine::ForCurrentProcess()->HasSwitch(

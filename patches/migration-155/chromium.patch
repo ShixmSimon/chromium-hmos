@@ -26881,14 +26881,15 @@ index 8e34aaf7f5e7dfd5122cb75e3fb87535b438e910..c76c449e5525b612be010898625baee8
    bool supports_ycbcr_nv12_sampling = false;
    bool supports_ycbcr_p010_sampling = false;
 diff --git a/gpu/command_buffer/service/BUILD.gn b/gpu/command_buffer/service/BUILD.gn
-index 58537a332eddd97d207e04fe4c21ded1fbf6bb53..1050eb12ea1846099593cc5475275716e5242b1b 100644
+index 58537a332eddd97d207e04fe4c21ded1fbf6bb53..21bdaa4dc05cc65b100a5828411ca9de9a35fd28 100644
 --- a/gpu/command_buffer/service/BUILD.gn
 +++ b/gpu/command_buffer/service/BUILD.gn
-@@ -438,6 +438,16 @@ target(link_target_type, "gles2_sources") {
+@@ -438,6 +438,17 @@ target(link_target_type, "gles2_sources") {
      }
    }
  
 +  if (is_ohos) {
++    sources += [ "shared_image/ohos_native_video_retirement.h" ]
 +    deps += [ "//ui/ozone/platform/ohos:native_window_registry" ]
 +    if (use_dawn) {
 +      sources += [
@@ -26901,7 +26902,7 @@ index 58537a332eddd97d207e04fe4c21ded1fbf6bb53..1050eb12ea1846099593cc5475275716
    if (enable_vulkan) {
      deps += [ "//gpu/vulkan" ]
  
-@@ -453,7 +463,7 @@ target(link_target_type, "gles2_sources") {
+@@ -453,7 +464,7 @@ target(link_target_type, "gles2_sources") {
        "vulkan_in_process_context_provider.h",
      ]
  
@@ -28511,18 +28512,22 @@ index 02de61447fdeafb7979e28ff86a1a6f369642dfc..0160b0f6783a874231e8c11a4ab2a302
          gl_type != static_cast<GLenum>(preferred_type)) {
        if (format_ == viz::SinglePlaneFormat::kBGRA_8888 ||
 diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
-index 6855b869a598589406e026f5f444578294547c32..fb04137b302efe4bf843c8d36bc80461c5b3c702 100644
+index 6855b869a598589406e026f5f444578294547c32..5a837c12d171f67d73f708b79ade884e8665b9dd 100644
 --- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
 +++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
-@@ -15,6 +15,7 @@
+@@ -15,7 +15,11 @@
  #include "base/memory/scoped_refptr.h"
  #include "base/notimplemented.h"
  #include "base/numerics/checked_math.h"
 +#include "base/trace_event/trace_event.h"
  #include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "gpu/command_buffer/service/shared_image/ohos_native_video_retirement.h"
++#endif
  #include "components/viz/common/resources/shared_image_format_utils.h"
  #include "gpu/command_buffer/common/mailbox.h"
-@@ -50,12 +51,19 @@
+ #include "gpu/command_buffer/common/shared_image_info.h"
+@@ -50,12 +54,19 @@
  #include "gpu/command_buffer/service/shared_image/vulkan_ozone_image_representation.h"
  #include "gpu/vulkan/vulkan_image.h"
  #include "gpu/vulkan/vulkan_implementation.h"
@@ -28542,7 +28547,7 @@ index 6855b869a598589406e026f5f444578294547c32..fb04137b302efe4bf843c8d36bc80461
  #include "gpu/command_buffer/service/shared_image/skia_graphite_dawn_image_representation.h"
  #include "third_party/skia/include/gpu/graphite/Context.h"
  #include "third_party/skia/include/gpu/graphite/Image.h"
-@@ -150,6 +158,29 @@ OzoneImageBacking::GetSinglePlaneGpuMemoryBufferHandle(uint32_t index) {
+@@ -150,6 +161,29 @@ OzoneImageBacking::GetSinglePlaneGpuMemoryBufferHandle(uint32_t index) {
  #endif  // BUILDFLAG(IS_FUCHSIA)
  }
  
@@ -28572,7 +28577,7 @@ index 6855b869a598589406e026f5f444578294547c32..fb04137b302efe4bf843c8d36bc80461
  std::unique_ptr<DawnImageRepresentation> OzoneImageBacking::ProduceDawn(
      SharedImageManager* manager,
      MemoryTypeTracker* tracker,
-@@ -161,7 +192,33 @@ std::unique_ptr<DawnImageRepresentation> OzoneImageBacking::ProduceDawn(
+@@ -161,7 +195,33 @@ std::unique_ptr<DawnImageRepresentation> OzoneImageBacking::ProduceDawn(
    CHECK(!(usage().Has(SHARED_IMAGE_USAGE_CPU_ONLY_READ_WRITE)));
  
  #if BUILDFLAG(USE_DAWN)
@@ -28606,7 +28611,7 @@ index 6855b869a598589406e026f5f444578294547c32..fb04137b302efe4bf843c8d36bc80461
    if (webgpu_format == wgpu::TextureFormat::Undefined) {
      return nullptr;
    }
-@@ -345,9 +402,20 @@ OzoneImageBacking::ProduceSkiaGanesh(
+@@ -345,9 +405,20 @@ OzoneImageBacking::ProduceSkiaGanesh(
        auto vk_format = format().is_single_plane()
                             ? ToVkFormat(format(), /*plane_index=*/0)
                             : ToVkFormatExternalSampler(format());
@@ -28630,7 +28635,26 @@ index 6855b869a598589406e026f5f444578294547c32..fb04137b302efe4bf843c8d36bc80461
        if (!vulkan_image) {
          return nullptr;
        }
-@@ -518,13 +586,21 @@ std::unique_ptr<VulkanImageRepresentation> OzoneImageBacking::ProduceVulkan(
+@@ -445,6 +516,18 @@ OzoneImageBacking::OzoneImageBacking(
+ }
+ 
+ OzoneImageBacking::~OzoneImageBacking() {
++#if BUILDFLAG(IS_OHOS)
++  if (format().PrefersExternalSampler() && pixmap_ && context_state_) {
++    // A decoder may recycle this allocation as soon as its imported pixmap is
++    // destroyed. Preserve both dropped-frame producer dependencies and each
++    // stream's last GPU read until their actual sync-file fences signal.
++    ohos_native_video::Retire(pixmap_, context_state_,
++                              external_write_fence_.Clone());
++    ohos_native_video::Retire(pixmap_, context_state_, write_fence_.Clone());
++    for (auto& [stream, fence] : read_fences_)
++      ohos_native_video::Retire(pixmap_, context_state_, fence.Clone());
++  }
++#endif
+   for (auto& [context, holder] : per_context_cached_textures_holders_) {
+     context->RemoveObserver(this);
+     // We only need to remove textures here. If the context was lost or
+@@ -518,13 +601,21 @@ std::unique_ptr<VulkanImageRepresentation> OzoneImageBacking::ProduceVulkan(
      }
  #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
    }
@@ -28659,11 +28683,16 @@ index 6855b869a598589406e026f5f444578294547c32..fb04137b302efe4bf843c8d36bc80461
  
    if (!vulkan_image) {
      return nullptr;
-@@ -872,6 +948,16 @@ bool OzoneImageBacking::BeginAccess(bool readonly,
+@@ -872,12 +963,34 @@ bool OzoneImageBacking::BeginAccess(bool readonly,
      need_end_fence = true;
    }
  
 +#if BUILDFLAG(IS_OHOS)
++  if (readonly && access_stream == AccessStream::kGL && pixmap_ &&
++      format().PrefersExternalSampler()) {
++    // Even a read-only imported buffer has an external decoder producer.
++    need_end_fence = true;
++  }
 +  if (readonly && access_stream == AccessStream::kVulkan && pixmap_ &&
 +      format().is_single_plane() &&
 +      usage().HasAny(SHARED_IMAGE_USAGE_WEBGPU_WRITE |
@@ -28676,6 +28705,19 @@ index 6855b869a598589406e026f5f444578294547c32..fb04137b302efe4bf843c8d36bc80461
    return true;
  }
  
+ void OzoneImageBacking::EndAccess(bool readonly,
+                                   AccessStream access_stream,
+                                   gfx::GpuFenceHandle fence) {
++#if BUILDFLAG(IS_OHOS)
++  if (readonly && access_stream == AccessStream::kGL && pixmap_ &&
++      format().PrefersExternalSampler() && fence.is_null()) {
++    // Export failure must never turn an unfinished read into early reuse.
++    ohos_native_video::Quarantine(pixmap_, context_state_);
++  }
++#endif
+   // Track reads and writes if not being used for concurrent read/writes.
+   if (!usage().Has(SHARED_IMAGE_USAGE_CONCURRENT_READ_WRITE)) {
+     if (readonly) {
 diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.h b/gpu/command_buffer/service/shared_image/ozone_image_backing.h
 index c0d773a6f85c9fdbf1a5ed18168e1d3432ed98b4..3414e2ece79e6ab3fff6247f4db0b7b410144386 100644
 --- a/gpu/command_buffer/service/shared_image/ozone_image_backing.h

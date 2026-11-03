@@ -341,3 +341,73 @@ diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory
        usage.HasAll(SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ) &&
        (SHARED_IMAGE_USAGE_DISPLAY_READ | SHARED_IMAGE_USAGE_RASTER_READ |
         SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_SCANOUT).HasAll(usage);
+diff --git a/gpu/command_buffer/service/BUILD.gn b/gpu/command_buffer/service/BUILD.gn
+--- a/gpu/command_buffer/service/BUILD.gn
++++ b/gpu/command_buffer/service/BUILD.gn
+@@ -439,6 +439,7 @@
+   }
+ 
+   if (is_ohos) {
++    sources += [ "shared_image/ohos_native_video_retirement.h" ]
+     deps += [ "//ui/ozone/platform/ohos:native_window_registry" ]
+     if (use_dawn) {
+       sources += [
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+@@ -17,7 +17,10 @@
+ #include "base/numerics/checked_math.h"
+ #include "base/trace_event/trace_event.h"
+ #include "build/build_config.h"
++#if BUILDFLAG(IS_OHOS)
++#include "gpu/command_buffer/service/shared_image/ohos_native_video_retirement.h"
++#endif
+ #include "components/viz/common/gpu/vulkan_context_provider.h"
+ #include "components/viz/common/resources/shared_image_format_utils.h"
+ #include "gpu/command_buffer/common/mailbox.h"
+ #include "gpu/command_buffer/common/shared_image_info.h"
+@@ -513,6 +516,18 @@
+ }
+ 
+ OzoneImageBacking::~OzoneImageBacking() {
++#if BUILDFLAG(IS_OHOS)
++  if (format().PrefersExternalSampler() && pixmap_ && context_state_) {
++    // A decoder may recycle this allocation as soon as its imported pixmap is
++    // destroyed. Preserve both dropped-frame producer dependencies and each
++    // stream's last GPU read until their actual sync-file fences signal.
++    ohos_native_video::Retire(pixmap_, context_state_,
++                              external_write_fence_.Clone());
++    ohos_native_video::Retire(pixmap_, context_state_, write_fence_.Clone());
++    for (auto& [stream, fence] : read_fences_)
++      ohos_native_video::Retire(pixmap_, context_state_, fence.Clone());
++  }
++#endif
+   for (auto& [context, holder] : per_context_cached_textures_holders_) {
+     context->RemoveObserver(this);
+     // We only need to remove textures here. If the context was lost or
+@@ -949,6 +964,11 @@
+   }
+ 
+ #if BUILDFLAG(IS_OHOS)
++  if (readonly && access_stream == AccessStream::kGL && pixmap_ &&
++      format().PrefersExternalSampler()) {
++    // Even a read-only imported buffer has an external decoder producer.
++    need_end_fence = true;
++  }
+   if (readonly && access_stream == AccessStream::kVulkan && pixmap_ &&
+       format().is_single_plane() &&
+       usage().HasAny(SHARED_IMAGE_USAGE_WEBGPU_WRITE |
+@@ -964,6 +984,13 @@
+ void OzoneImageBacking::EndAccess(bool readonly,
+                                   AccessStream access_stream,
+                                   gfx::GpuFenceHandle fence) {
++#if BUILDFLAG(IS_OHOS)
++  if (readonly && access_stream == AccessStream::kGL && pixmap_ &&
++      format().PrefersExternalSampler() && fence.is_null()) {
++    // Export failure must never turn an unfinished read into early reuse.
++    ohos_native_video::Quarantine(pixmap_, context_state_);
++  }
++#endif
+   // Track reads and writes if not being used for concurrent read/writes.
+   if (!usage().Has(SHARED_IMAGE_USAGE_CONCURRENT_READ_WRITE)) {
+     if (readonly) {

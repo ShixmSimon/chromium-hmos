@@ -596,6 +596,10 @@ For fork GLES, the startup flag is forwarded to the GPU and enables importing
 browser-owned NV12/P010 parcels through the existing Ozone EGL path when native
 image import and native fences are supported. It does not permit YUV allocation
 in the child. Without this opt-in, GLES retains its previous decoder path.
+Native YUV GL reads always export an end fence. Ozone destruction retains the
+imported decoder pixmap until producer and reader fences signal; a failed GL
+fence export quarantines the lease and marks the context lost. GL and Dawn
+share this asynchronous retirement helper.
 
 The first processed primary reports GPU startup success and the independent
 video path's HDR capability, without requiring a PQ webpage framebuffer. HDR
