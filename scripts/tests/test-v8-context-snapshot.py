@@ -74,6 +74,7 @@ int main() {
             out.mkdir()
             (out / 'locales').mkdir()
             for name in ['libweb_engine.so', 'libnweb_render.so', 'liblumie_adblock.so',
+                         'libohos_video_overlay.so',
                          'libEGL_angle.so', 'libGLESv2_angle.so', 'icudtl.dat', 'snapshot_blob.bin',
                          'chrome_100_percent.pak', 'chrome_200_percent.pak',
                          'headless_command_resources.pak', 'resources.pak', 'locales/en-US.pak']:
