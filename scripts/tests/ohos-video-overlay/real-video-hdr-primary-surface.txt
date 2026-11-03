@@ -1,0 +1,36 @@
+-- SurfaceNode
+ID: 103409927586029
+Name: LumieWebLayer
+SrcRect: [0,0,1280,720]
+DstRect: [100,450,1100,619]
+CornerRadius: [0.000000,0.000000,0.000000,0.000000]
+Bounds: [1100.000000,618.750000]
+ContextClipRegion: [ empty ]
+Zorder: 1000.000000
+IsOnTheTree: 1
+Visible: 1
+OcclusionBg: 0
+Alpha: 1.000000(include ContextAlpha: 1.000000)
+GlobalAlpha: 1.000000
+Region [Empty]
+Consumer Info: 
+
+BufferQueue:
+      default-size = [0x0], FIFO = 16, name = LumieWebLayer, uniqueId = 6966436959134, usedBufferListLen = 16, freeBufferListLen = 0, dirtyBufferListLen = 0, totalBuffersMemSize = 57600.00(KiB), hdrWhitePointBrightness = 0.000000, sdrWhitePointBrightness = 0.000000, lockLastFlushedBuffer seq = 4294967295
+      bufferQueueCache:
+        sequence = 1577910671, bufferId = 456552412225751864, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910672, bufferId = 456552412225751865, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910673, bufferId = 456552412225751866, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910674, bufferId = 456552412225751867, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910675, bufferId = 456552412225751868, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910676, bufferId = 456552412225751869, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910677, bufferId = 456552412225751870, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910678, bufferId = 456552412225751871, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910679, bufferId = 456552412225751872, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910680, bufferId = 456552412225751873, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910681, bufferId = 456552412225751874, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910682, bufferId = 456552412225751875, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910683, bufferId = 456552412225751876, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910684, bufferId = 456552412225751877, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910685, bufferId = 456552412225751878, state = 1, listenerClientPid = 24077, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).
+        sequence = 1577910686, bufferId = 456552412225751879, state = 3, listenerClientPid = 0, timestamp = 0, damagesRect = [0] = [0, 0, 1280, 720], config = [1280x720, 8, 12, 1544, 0, 4, 0],2294273,  [staticMetadata:  ],[dynamicMetadata:  ],[metadataType: 0], scalingMode = 1, HDR = 0,  bufferWith = 1280, bufferHeight = 720, bufferMemSize = 3600.00(KiB).

@@ -12,6 +12,7 @@
 #include <cmath>
 #include <map>
 #include <memory>
+#include <set>
 
 #include "base/files/scoped_file.h"
 #include "base/functional/bind.h"
@@ -23,6 +24,7 @@
 #include "base/task/thread_pool.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
 #include "ui/ozone/platform/ohos/ohos_output_color_config.h"
+#include "ui/ozone/platform/ohos/ohos_overlay_api.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_presenter.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_buffer.h"
 #include "ui/ozone/platform/ohos/ohos_vsync_provider.h"
@@ -84,6 +86,7 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
     std::unique_ptr<phone_gpu::SharedBufferLease> buffer;
   };
   std::map<uint64_t, Pending> leases;
+  std::set<uint64_t> overlay_widgets;
   phone_gpu::SharedBufferColorState buffer_colors;
   // Bound to this connection and widget. A probe sequence is a fresh color
   // generation; a second probe is rejected while any lease is outstanding.
@@ -125,7 +128,26 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
         if (Browser().current != connection || !connection->active.load())
           break;
         using Op = phone_gpu::SharedOp;
-        if (p.operation == Op::kAllocateImage) {
+        if (p.operation == Op::kOpenOverlayChannel) {
+          const auto* api = GetOhosOverlayApi();
+          const auto id = GetOhosNativeSurfaceComponentIdForWidget(p.widget);
+          const int fd = api && id ? api->connect(id->c_str()) : -1;
+          reply.operation = fd >= 0 ? Op::kOverlayChannel : Op::kUnavailable;
+          if (fd >= 0) {
+            response.fds.push_back(fd);
+            reply.fd_count = 1;
+            overlay_widgets.insert(p.widget);
+          }
+        } else if (p.operation == Op::kOverlayPresented &&
+                   overlay_widgets.count(p.widget)) {
+          connection->presented = true;
+          // Host creation passed the RS firmware/layout gate, and its first
+          // primary batch completed. That delegate path supports original
+          // P010 PQ buffers independently of the GPU's SDR primary format.
+          SetOhosVerifiedOverlayOutput(p.widget,
+                                       OhosSingleDisplaySupportsHdr10());
+          reply.result = static_cast<uint32_t>(phone_gpu::Result::kPresented);
+        } else if (p.operation == Op::kAllocateImage) {
           if (!phone_gpu::AllocateSharedImage(p.width, p.height, p.prefix[8],
                                                &response)) {
             response.CloseFds();
@@ -475,6 +497,7 @@ base::ProcessId LaunchOhosPhoneGpuChild(
     }
     Browser().current = connection;
     SetOhosVerifiedPhoneHdrOutput(false);
+    ResetOhosVerifiedOverlayOutputs();
   }
   base::ThreadPool::PostTask(FROM_HERE,
                              {base::MayBlock(), base::WithBaseSyncPrimitives()},
@@ -550,6 +573,29 @@ bool ExchangeShared(phone_gpu::SharedMessage* request,
   return true;
 }
 }  // namespace
+base::ScopedFD OpenOhosPhoneOverlayChannel(uint64_t widget) {
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kOpenOverlayChannel;
+  request.packet.widget = widget;
+  if (!ExchangeShared(&request, &response) ||
+      response.packet.operation != phone_gpu::SharedOp::kOverlayChannel ||
+      response.fds.size() != 1)
+    return {};
+  base::ScopedFD fd(response.fds.front());
+  response.fds.clear();
+  return fd;
+}
+
+bool ReportOhosPhoneOverlayPresented(uint64_t widget) {
+  phone_gpu::SharedMessage request, response;
+  request.packet.operation = phone_gpu::SharedOp::kOverlayPresented;
+  request.packet.widget = widget;
+  return ExchangeShared(&request, &response) &&
+         response.packet.operation == phone_gpu::SharedOp::kReply &&
+         response.packet.result ==
+             static_cast<uint32_t>(phone_gpu::Result::kPresented);
+}
+
 bool AllocateOhosPhoneGpuImage(uint32_t width,
                                uint32_t height,
                                uint32_t native_format,

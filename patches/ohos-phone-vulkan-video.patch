@@ -998,7 +998,7 @@ diff --git a/gpu/vulkan/vulkan_image.h b/gpu/vulkan/vulkan_image.h
 diff --git a/ui/gfx/mojom/native_handle_types.mojom b/ui/gfx/mojom/native_handle_types.mojom
 --- a/ui/gfx/mojom/native_handle_types.mojom
 +++ b/ui/gfx/mojom/native_handle_types.mojom
-@@ -22,6 +22,14 @@
+@@ -22,6 +22,16 @@
  [EnableIf=supports_native_pixmap]
  struct NativePixmapHandle {
    array<NativePixmapPlane> planes;
@@ -1010,13 +1010,15 @@ diff --git a/ui/gfx/mojom/native_handle_types.mojom b/ui/gfx/mojom/native_handle
 +  array<handle<platform>> ohos_buffer_fds;
 +  [EnableIf=is_ohos]
 +  handle<platform>? ohos_video_release_fd;
++  [EnableIf=is_ohos]
++  uint64 ohos_overlay_token;
  
    [EnableIf=is_chromeos|is_linux]
    uint64 modifier;
 diff --git a/ui/gfx/mojom/native_handle_types_mojom_traits.cc b/ui/gfx/mojom/native_handle_types_mojom_traits.cc
 --- a/ui/gfx/mojom/native_handle_types_mojom_traits.cc
 +++ b/ui/gfx/mojom/native_handle_types_mojom_traits.cc
-@@ -141,6 +141,33 @@
+@@ -141,6 +141,34 @@
    out->ram_coherency = data.ram_coherency();
  #endif
  
@@ -1040,6 +1042,7 @@ diff --git a/ui/gfx/mojom/native_handle_types_mojom_traits.cc b/ui/gfx/mojom/nat
 +      return false;
 +    out->ohos_buffer_fds.push_back(h.TakeFD());
 +  }
++  out->ohos_overlay_token = data.ohos_overlay_token();
 +  auto release = data.TakeOhosVideoReleaseFd();
 +  if (release.is_valid()) {
 +    if (!release.is_fd())
@@ -1053,7 +1056,7 @@ diff --git a/ui/gfx/mojom/native_handle_types_mojom_traits.cc b/ui/gfx/mojom/nat
 diff --git a/ui/gfx/mojom/native_handle_types_mojom_traits.h b/ui/gfx/mojom/native_handle_types_mojom_traits.h
 --- a/ui/gfx/mojom/native_handle_types_mojom_traits.h
 +++ b/ui/gfx/mojom/native_handle_types_mojom_traits.h
-@@ -103,6 +103,26 @@
+@@ -103,6 +103,29 @@
    }
  #endif  // BUILDFLAG(IS_FUCHSIA)
  
@@ -1073,6 +1076,9 @@ diff --git a/ui/gfx/mojom/native_handle_types_mojom_traits.h b/ui/gfx/mojom/nati
 +      fds.emplace_back(std::move(fd));
 +    return fds;
 +  }
++  static uint64_t ohos_overlay_token(const gfx::NativePixmapHandle& h) {
++    return h.ohos_overlay_token;
++  }
 +  static PlatformHandle ohos_video_release_fd(gfx::NativePixmapHandle& h) {
 +    return PlatformHandle(std::move(h.ohos_video_release_fd));
 +  }
@@ -1083,11 +1089,12 @@ diff --git a/ui/gfx/mojom/native_handle_types_mojom_traits.h b/ui/gfx/mojom/nati
 diff --git a/ui/gfx/native_pixmap_handle.cc b/ui/gfx/native_pixmap_handle.cc
 --- a/ui/gfx/native_pixmap_handle.cc
 +++ b/ui/gfx/native_pixmap_handle.cc
-@@ -135,6 +135,22 @@
+@@ -135,6 +135,23 @@
    clone.ram_coherency = handle.ram_coherency;
  #endif
  
 +#if BUILDFLAG(IS_OHOS)
++  clone.ohos_overlay_token = handle.ohos_overlay_token;
 +  clone.ohos_buffer_prefix = handle.ohos_buffer_prefix;
 +  clone.ohos_buffer_tail = handle.ohos_buffer_tail;
 +  for (const auto& fd : handle.ohos_buffer_fds) {
@@ -1109,7 +1116,7 @@ diff --git a/ui/gfx/native_pixmap_handle.cc b/ui/gfx/native_pixmap_handle.cc
 diff --git a/ui/gfx/native_pixmap_handle.h b/ui/gfx/native_pixmap_handle.h
 --- a/ui/gfx/native_pixmap_handle.h
 +++ b/ui/gfx/native_pixmap_handle.h
-@@ -77,6 +77,16 @@
+@@ -77,6 +77,17 @@
    NativePixmapHandle& operator=(NativePixmapHandle&& other);
  
    std::vector<NativePixmapPlane> planes;
@@ -1122,6 +1129,7 @@ diff --git a/ui/gfx/native_pixmap_handle.h b/ui/gfx/native_pixmap_handle.h
 +  // Last GPU reference closes this endpoint after Vulkan work completes.
 +  // The browser retains the decoder queue lease until its peer sees EOF.
 +  base::ScopedFD ohos_video_release_fd;
++  uint64_t ohos_overlay_token = 0;
 +#endif
  
  #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OHOS)
@@ -1962,12 +1970,21 @@ index f72baba..c9ed1a7 100644
  #include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
  #endif
  #include "gpu/vulkan/vulkan_device_queue.h"
-@@ -2194,6 +2197,15 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
+@@ -2194,6 +2197,24 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
  
  bool SkiaOutputSurfaceImplOnGpu::InitializeForDawn() {
  #if BUILDFLAG(SKIA_USE_DAWN)
 +#if BUILDFLAG(IS_OHOS)
 +  if (!dependency_->IsOffscreen()) {
++    if (auto presenter = dependency_->CreatePresenter()) {
++      presenter_ = presenter.get();
++      output_device_ = std::make_unique<SkiaOutputDeviceBufferQueue>(
++          std::make_unique<OutputPresenterGL>(std::move(presenter), dependency_),
++          dependency_, shared_image_representation_factory_.get(),
++          shared_gpu_deps_->memory_tracker(), GetDidSwapBuffersCompleteCallback(),
++          GetReleaseOverlaysCallback());
++      return true;
++    }
 +    output_device_ = std::make_unique<SkiaOutputDeviceOhosGraphite>(
 +        context_state_, dependency_->GetSurfaceHandle(),
 +        renderer_settings_.requires_alpha_channel,

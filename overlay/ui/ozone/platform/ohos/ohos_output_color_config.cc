@@ -7,6 +7,7 @@
 #include <window_manager/oh_display_manager.h>
 #include <atomic>
 #include <map>
+#include <set>
 #include "base/command_line.h"
 #include "base/files/file_util.h"
 #include "base/logging.h"
@@ -38,6 +39,7 @@ struct BrightnessState {
   base::Lock lock;
   std::optional<OhosDisplayBrightness> value GUARDED_BY(lock);
   std::map<gfx::AcceleratedWidget, std::pair<bool, bool>> wsi_outputs GUARDED_BY(lock);
+  std::set<gfx::AcceleratedWidget> overlay_hdr_outputs GUARDED_BY(lock);
   std::map<const void*, gfx::DisplayColorSpaces> egl_outputs GUARDED_BY(lock);
   std::map<const void*, OhosGlOutputColorClient*> gl_clients GUARDED_BY(lock);
   base::RepeatingClosure changed GUARDED_BY(lock);
@@ -51,6 +53,7 @@ std::atomic<bool> verified_phone_hdr{false};
 std::atomic<bool> verified_phone_p3{false};
 std::atomic<bool> verified_wsi_hdr{false};
 std::atomic<bool> verified_wsi_p3{false};
+std::atomic<bool> verified_overlay_hdr{false};
 base::FilePath FailurePath() {
   auto directory = base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
       "user-data-dir");
@@ -274,6 +277,39 @@ void ResetOhosVerifiedWsiOutputs() {
 }
 bool HasOhosVerifiedWsiHdrOutput() { return verified_wsi_hdr.load(); }
 bool HasOhosVerifiedWsiP3Output() { return verified_wsi_p3.load(); }
+void SetOhosVerifiedOverlayOutput(gfx::AcceleratedWidget widget, bool hdr) {
+  base::RepeatingClosure changed;
+  {
+    base::AutoLock lock(Brightness().lock);
+    auto& outputs = Brightness().overlay_hdr_outputs;
+    if (hdr)
+      outputs.insert(widget);
+    else
+      outputs.erase(widget);
+    const bool any = !outputs.empty();
+    if (verified_overlay_hdr.exchange(any) != any)
+      changed = Brightness().changed;
+  }
+  LOG(WARNING) << "OHOS overlay HDR capability: widget=" << widget
+               << " hdr=" << hdr;
+  if (changed)
+    changed.Run();
+}
+void ResetOhosVerifiedOverlayOutputs() {
+  base::RepeatingClosure changed;
+  {
+    base::AutoLock lock(Brightness().lock);
+    Brightness().overlay_hdr_outputs.clear();
+    if (verified_overlay_hdr.exchange(false))
+      changed = Brightness().changed;
+  }
+  if (changed)
+    changed.Run();
+}
+bool HasOhosVerifiedOverlayHdrOutput() {
+  return verified_overlay_hdr.load();
+}
+
 void ApplyOhosDisplayBrightness(gfx::DisplayColorSpaces& spaces) {
   if (auto value = GetOhosDisplayBrightness()) {
     const auto color = OhosContentOutputColor(*value);

@@ -1,0 +1,285 @@
+{
+  "date": "2026-11-03",
+  "device": "HUAWEI Mate 70 Pro+ / API 26 Release",
+  "browser": "Chrome/155.0.8059.91",
+  "backend": {
+    "glImplementationParts": "(gl=egl-angle,angle=opengles)",
+    "glRenderer": "ANGLE (HUAWEI, Maleoon 920, OpenGL ES 3.2 B312.c42a19c9862541c1979a8f370a4a3f75ec3ffb8d)",
+    "skiaBackendType": "GaneshGL"
+  },
+  "started": "2026-11-03T04:37:28.914Z",
+  "finished": "2026-11-03T04:38:16.248Z",
+  "scope": "Installed browser baseline only; no HAP replacement; native HDR helper and independent video presenter not installed",
+  "clips": [
+    {
+      "id": "sdr-avc",
+      "playing": true,
+      "visibility": "visible",
+      "quality": {
+        "totalVideoFrames": 100,
+        "droppedVideoFrames": 0
+      },
+      "dynamic_range_high": false,
+      "platform_decoder": "true",
+      "decoder_name": "Unknown Video Decoder",
+      "track": [
+        {
+          "alpha mode": "is_opaque",
+          "codec": "h264",
+          "coded size": "1280x720",
+          "color space": {
+            "matrix": "BT709",
+            "primaries": "BT709",
+            "range": "LIMITED",
+            "transfer": "BT709"
+          },
+          "encryption scheme": "Unencrypted",
+          "has extra data": true,
+          "hdr metadata": {},
+          "natural size": "1280x720",
+          "orientation": "0°",
+          "profile": "h264 high",
+          "visible rect": "0,0 1280x720"
+        }
+      ],
+      "sha256": "bc0dc7af19bda1bb15eac3c2684b1982dd6dc980e6fd15911fb8ae3bc0725d24"
+    },
+    {
+      "id": "sdr-hevc10",
+      "playing": true,
+      "visibility": "visible",
+      "quality": {
+        "totalVideoFrames": 98,
+        "droppedVideoFrames": 0
+      },
+      "dynamic_range_high": false,
+      "platform_decoder": "true",
+      "decoder_name": "Unknown Video Decoder",
+      "track": [
+        {
+          "alpha mode": "is_opaque",
+          "codec": "hevc",
+          "coded size": "1280x720",
+          "color space": {
+            "matrix": "BT709",
+            "primaries": "BT709",
+            "range": "LIMITED",
+            "transfer": "BT709"
+          },
+          "encryption scheme": "Unencrypted",
+          "has extra data": true,
+          "hdr metadata": {},
+          "natural size": "1280x720",
+          "orientation": "0°",
+          "profile": "hevc main 10",
+          "visible rect": "0,0 1280x720"
+        }
+      ],
+      "sha256": "247c4b2449216aef839512a1d7ef32fa87eaf8ee3c59575c57c2b26fdf4f2608"
+    },
+    {
+      "id": "hdr10-hevc",
+      "playing": true,
+      "visibility": "visible",
+      "quality": {
+        "totalVideoFrames": 99,
+        "droppedVideoFrames": 0
+      },
+      "dynamic_range_high": false,
+      "platform_decoder": "true",
+      "decoder_name": "Unknown Video Decoder",
+      "track": [
+        {
+          "alpha mode": "is_opaque",
+          "codec": "hevc",
+          "coded size": "1280x720",
+          "color space": {
+            "matrix": "BT2020_NCL",
+            "primaries": "BT2020",
+            "range": "LIMITED",
+            "transfer": "SMPTEST2084"
+          },
+          "encryption scheme": "Unencrypted",
+          "has extra data": true,
+          "hdr metadata": {
+            "clli": "{maxCLL:1000.000000, maxFALL:198.000000}",
+            "mdcv": "{red:[0.70800000,0.29200000], green:[0.17000000,0.79699999], blue:[0.13100000,0.04600000], white:[0.31270000,0.32900000], maxLum:1000.000000, minLum:0.000100}"
+          },
+          "natural size": "1280x720",
+          "orientation": "0°",
+          "profile": "hevc main 10",
+          "visible rect": "0,0 1280x720"
+        }
+      ],
+      "sha256": "c3022f0294e6ecef676cdddff04faea637d2dc0cd3d5cee95985e7ab2d64777e"
+    },
+    {
+      "id": "pq-vp9",
+      "playing": true,
+      "visibility": "visible",
+      "quality": {
+        "totalVideoFrames": 102,
+        "droppedVideoFrames": 1
+      },
+      "dynamic_range_high": false,
+      "platform_decoder": "false",
+      "decoder_name": "VpxVideoDecoder",
+      "track": [
+        {
+          "alpha mode": "is_opaque",
+          "codec": "vp9",
+          "coded size": "1280x720",
+          "color space": {
+            "matrix": "BT2020_NCL",
+            "primaries": "BT2020",
+            "range": "LIMITED",
+            "transfer": "SMPTEST2084"
+          },
+          "encryption scheme": "Unencrypted",
+          "has extra data": false,
+          "hdr metadata": {},
+          "natural size": "1280x720",
+          "orientation": "0°",
+          "profile": "vp9 profile2",
+          "visible rect": "0,0 1280x720"
+        }
+      ],
+      "sha256": "eadabd760fce1c214f5dff1f6044d24afbc19b09bad8d186e447548e4d049733"
+    }
+  ],
+  "checks": {
+    "fullscreen_entered": true,
+    "subtitle_occlusion_visual": "checked on device screenshots; foreground overlays visible",
+    "sdr_hdr_sdr_returned": true,
+    "stop_cancels": true,
+    "rapid_selection_seek": true,
+    "physical_hdr_brightness": "not measured",
+    "decoder_nativebuffer_metadata_helper": "not run; current decoder uses buffer mode",
+    "independent_video_layer": "not implemented/enabled",
+    "hdr_output": "not active in this session; page capability false and aura_shellSurface HDR=0"
+  },
+  "surfaces": {
+    "sdr-avc": {
+      "hdr_flags": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "metadata_types": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "static_metadata": [
+        "  ",
+        "  ",
+        "  ",
+        "  ",
+        "  "
+      ],
+      "node": "217784906678332"
+    },
+    "hdr10-hevc": {
+      "hdr_flags": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "metadata_types": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "static_metadata": [
+        "  ",
+        "  ",
+        "  ",
+        "  ",
+        "  "
+      ],
+      "node": "217784906678332"
+    },
+    "pq-vp9": {
+      "hdr_flags": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "metadata_types": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "static_metadata": [
+        "  ",
+        "  ",
+        "  ",
+        "  ",
+        "  "
+      ],
+      "node": "217784906678332"
+    },
+    "returned-sdr": {
+      "hdr_flags": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "metadata_types": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "static_metadata": [
+        "  ",
+        "  ",
+        "  ",
+        "  ",
+        "  "
+      ],
+      "node": "217784906678332"
+    }
+  },
+  "known_issue": "Desktop Esc fullscreen-exit prompt still displayed on phone",
+  "local_evidence_directory": "/tmp/lumie-hdr-device-20261103-run2",
+  "evidence_sha256": {
+    "sdr-hevc10-surface.txt": "cb94696ad7b7bb906259c875d24ace689e2052662d03009e2ade2afa79177733",
+    "sdr-avc-screen.txt": "daf23d63f32c70547246dbb95d06ca469f68a899d1f8423a0681f332ab3bbe4d",
+    "returned-sdr-surface.txt": "4480711c7d4bbe9537db057391179449dc95af2964867f51d158084574d22831",
+    "hdr10-occlusion.png": "494caf3ea37d62ebdb9c0f81c3d4c3356bf9de03329e305503ab3bba8922baf0",
+    "pq-vp9-surface.txt": "e4a3089c6bd4edec9a3f393659350ab5ced86578a5abf66414dd9f7e6c3c69ae",
+    "hdr10-hevc-screen.txt": "d064591f0e51c0b818bcce81ca45e92632de6354c885fc9ef6dfbd93113b4fc9",
+    "report.json": "6a26a5f5412df8ff4e422347dfd5efb0e11cafb5773c3198d0f178537c275667",
+    "returned-sdr-RSTree.txt": "5ca404620b5670133e4ba6125e8da39bf5676d09a8e20e55e0d750bf858a80aa",
+    "sdr-hevc10-RSTree.txt": "507daebd148ba451aca037ca83b67c1999aa233664d4d7d16b6012f6eb0287ab",
+    "pq-vp9-screen.txt": "d064591f0e51c0b818bcce81ca45e92632de6354c885fc9ef6dfbd93113b4fc9",
+    "hdr10-hevc-surface.txt": "7abb101d41e9c00ec6b6060ab3763d7be35491b10d371db6ed322a4e02c5dda8",
+    "sdr-avc-RSTree.txt": "35f6c7da71301662365561ad9d4ffbf53e8827eebc52ead873dc7bbb02ee2896",
+    "hdr10-page.png": "bec1d30d34d932cdd0c00b21dc273b9d58072150734613565530cdae460afab2",
+    "hdr10-fullscreen.png": "db387779958be686a5d814b7be495976fbc91c432c808a46d1d928834015a920",
+    "hdr10-hevc-RSTree.txt": "66530a7953ed3c70f4f4704177ed32631ffef4c1e6e298904ee4a30238454b28",
+    "sdr-avc-surface.txt": "639505cf73219a7bee77bd532a8b029f1ba049aa937438a95078c7eac4ec6230",
+    "media-events.json": "fbdff4891e339407194f57e876f5734e95a457fb3f992d3366589b84dc40d06d",
+    "returned-sdr-screen.txt": "daf23d63f32c70547246dbb95d06ca469f68a899d1f8423a0681f332ab3bbe4d",
+    "pq-vp9-RSTree.txt": "4177a7148bc0ca57665b0fb19fec19f19d86c7191da9f6985edb8f13e3e50f1e",
+    "sdr-hevc10-screen.txt": "d064591f0e51c0b818bcce81ca45e92632de6354c885fc9ef6dfbd93113b4fc9"
+  },
+  "target_closed": true,
+  "cleanup_errors": []
+}

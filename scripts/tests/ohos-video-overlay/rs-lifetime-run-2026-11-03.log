@@ -1,0 +1,165 @@
+11-03 11:13:35.954 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=0 ok=1 generation=1
+11-03 11:13:35.954 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=0 accepted=1
+11-03 11:13:35.956 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=1 ok=1 generation=1
+11-03 11:13:35.956 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=1 accepted=1
+11-03 11:13:35.956 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: create_complete result=0 visible_layers=0 buffers_submitted=0
+11-03 11:13:35.990 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=0 slot=0 sequence=2109800458 new_frame=0 acquire_fence=-1 monotonic_ns=286316364673624
+11-03 11:13:35.991 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=1 slot=1 sequence=2109800459 new_frame=0 acquire_fence=-1 monotonic_ns=286316364824874
+11-03 11:13:35.991 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=0 consumed=1
+11-03 11:13:35.999 32193 32388 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=286316364561685 source=9061523925246148610 count=1 first=0 last=0
+11-03 11:13:56.079 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: present_query layer=0 sequence=2109800458 type=1 rc=40602000 value=-1
+11-03 11:13:56.079 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: present_query layer=0 sequence=2109800458 type=2 rc=40602000 value=-1
+11-03 11:13:56.079 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: present_query layer=1 sequence=2109800459 type=1 rc=40602000 value=-1
+11-03 11:13:56.079 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: present_query layer=1 sequence=2109800459 type=2 rc=40602000 value=-1
+11-03 11:13:56.079 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: lifetime_result phase=75 result=-1
+11-03 11:14:04.197 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=1 consumed=1
+11-03 11:14:04.197 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: detach_clean_submitted generation=1 flush=1
+11-03 11:14:04.197 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: lifetime_result phase=70 result=0
+11-03 11:14:04.200 32193 32388 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=286344572959985 source=9061523925246148610 count=1 first=1 last=1
+11-03 11:14:04.293 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: surface_background layer=0 rc=0
+11-03 11:14:04.293 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: surface_background layer=1 rc=0
+11-03 11:14:04.294 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=2 consumed=1
+11-03 11:14:04.294 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: lifetime_result phase=74 result=0
+11-03 11:14:04.302 32193 32388 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=1 fence=-1
+11-03 11:14:04.302 32193 32388 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=1 rc=0
+11-03 11:14:04.302 32193 32388 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=0 fence=-1
+11-03 11:14:04.302 32193 32388 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=0 rc=0
+11-03 11:14:04.302 32193 32388 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=286344672815734 source=9061523925246148610 count=1 first=2 last=2
+11-03 11:23:55.520 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: allocation_unreferenced slot=0 sequence=2109800458 source=server_release
+11-03 11:23:55.520 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: allocation_unreferenced slot=1 sequence=2109800459 source=server_release
+11-03 11:23:55.520 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: drain_pending=0
+11-03 11:23:55.528 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_owner_dropped previous_owners_minus_one=0
+11-03 11:23:55.529 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_owner_dropped previous_owners_minus_one=0
+11-03 11:23:55.529 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=3 consumed=1
+11-03 11:23:55.529 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: destroy_submitted generation=1 flush=1
+11-03 11:23:55.529 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: lifetime_result phase=72 result=0
+11-03 11:23:55.535 32193 35512 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=286935912204824 source=9061523925246148610 count=1 first=3 last=3
+11-03 11:24:57.580 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=0 ok=1 generation=2
+11-03 11:24:57.580 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=0 accepted=1
+11-03 11:24:57.580 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=1 ok=1 generation=2
+11-03 11:24:57.580 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=1 accepted=1
+11-03 11:24:57.580 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: create_complete result=0 visible_layers=0 buffers_submitted=0
+11-03 11:24:58.135 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=0 slot=2 sequence=2109800472 new_frame=0 acquire_fence=-1 monotonic_ns=286998509047061
+11-03 11:24:58.135 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=1 slot=3 sequence=2109800473 new_frame=0 acquire_fence=-1 monotonic_ns=286998509079405
+11-03 11:24:58.135 32193 32193 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=4 consumed=1
+11-03 11:24:58.139 32193 42677 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=286998518394407 source=9061523925246148610 count=1 first=4 last=4
+11-03 11:26:39.173 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=0 ok=1 generation=1
+11-03 11:26:39.173 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=0 accepted=1
+11-03 11:26:39.175 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=1 ok=1 generation=1
+11-03 11:26:39.175 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=1 accepted=1
+11-03 11:26:39.175 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: create_complete result=0 visible_layers=0 buffers_submitted=0
+11-03 11:26:39.191 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=0 slot=0 sequence=2933129222 new_frame=0 acquire_fence=-1 monotonic_ns=287099565050655
+11-03 11:26:39.191 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=1 slot=1 sequence=2933129223 new_frame=0 acquire_fence=-1 monotonic_ns=287099565128780
+11-03 11:26:39.191 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=0 consumed=1
+11-03 11:26:39.203 44756 44813 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287099571617525 source=12597694057662119938 count=1 first=0 last=0
+11-03 11:27:11.454 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieGpuFence: export rc=0 fd=33 ready=0 revents=0 monotonic_ns=287131828238624 elapsed_ms=0
+11-03 11:27:11.457 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=0 slot=2 sequence=2933129225 new_frame=1 acquire_fence=-1 monotonic_ns=287131831266592
+11-03 11:27:11.457 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=1 slot=3 sequence=2933129224 new_frame=1 acquire_fence=172 monotonic_ns=287131831289249
+11-03 11:27:11.457 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=1 consumed=1
+11-03 11:27:11.458 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=2 consumed=1
+11-03 11:27:11.458 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: detach_clean_submitted generation=1 flush=1
+11-03 11:27:11.458 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: surface_background layer=0 rc=0
+11-03 11:27:11.459 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: surface_background layer=1 rc=0
+11-03 11:27:11.459 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=3 consumed=1
+11-03 11:27:11.459 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: producer_pending slot=3 monotonic_ns=287131832835655
+11-03 11:27:11.459 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: drain_pending=4
+11-03 11:27:11.459 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: inflight_teardown detach=0 background=0 destroy=1
+11-03 11:27:11.470 44756 44814 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287131841545607 source=12597694057662119938 count=1 first=1 last=1
+11-03 11:27:11.470 44756 44813 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=1 fence=-1
+11-03 11:27:11.470 44756 44813 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=1 rc=0
+11-03 11:27:11.470 44756 44813 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=0 fence=-1
+11-03 11:27:11.470 44756 44813 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=0 rc=0
+11-03 11:27:11.486 44756 44813 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287131858182408 source=12597694057662119938 count=1 first=2 last=2
+11-03 11:27:11.502 44756 44813 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287131874671153 source=12597694057662119938 count=1 first=3 last=3
+11-03 11:27:11.956 44756 45731 I A03F00/com.miramira8295.lumiebrowser/LumieGpuFence: gate_signal rc=0 monotonic_ns=287132329644249 elapsed_ms=501
+11-03 11:27:11.957 44756 45731 I A03F00/com.miramira8295.lumiebrowser/LumieGpuFence: gpu_queue_idle rc=0 monotonic_ns=287132330895811
+11-03 11:27:25.601 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: allocation_unreferenced slot=0 sequence=2933129222 source=server_release monotonic_ns=287145974720030
+11-03 11:27:25.601 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: allocation_unreferenced slot=1 sequence=2933129223 source=server_release monotonic_ns=287145974750655
+11-03 11:27:25.601 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: drain_pending=2
+11-03 11:27:25.601 44756 44756 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: lifetime_result phase=72 result=1
+11-03 11:29:32.185 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=0 ok=1 generation=1
+11-03 11:29:32.185 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=0 accepted=1
+11-03 11:29:32.187 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=1 ok=1 generation=1
+11-03 11:29:32.187 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=1 accepted=1
+11-03 11:29:32.187 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: create_complete result=0 visible_layers=0 buffers_submitted=0
+11-03 11:29:32.197 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=0 slot=0 sequence=3111321606 new_frame=0 acquire_fence=-1 monotonic_ns=287272571172842
+11-03 11:29:32.197 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=1 slot=1 sequence=3111321607 new_frame=0 acquire_fence=-1 monotonic_ns=287272571228311
+11-03 11:29:32.197 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=0 consumed=1
+11-03 11:29:32.205 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287272575838934 source=13363024519338393602 count=1 first=0 last=0
+11-03 11:29:52.812 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieGpuFence: export rc=0 fd=290 ready=0 revents=0 monotonic_ns=287293186099561 elapsed_ms=0
+11-03 11:29:52.813 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=0 slot=2 sequence=3111321609 new_frame=1 acquire_fence=-1 monotonic_ns=287293186896592
+11-03 11:29:52.813 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=1 slot=3 sequence=3111321608 new_frame=1 acquire_fence=295 monotonic_ns=287293186914092
+11-03 11:29:52.813 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=1 consumed=1
+11-03 11:29:52.813 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: detach_deferred waiting_for_submit_marker=1
+11-03 11:29:52.813 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: initial_teardown_attempt result=1
+11-03 11:29:52.828 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=0 fence=308
+11-03 11:29:52.828 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=0 rc=0
+11-03 11:29:52.828 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=1 fence=309
+11-03 11:29:52.828 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=1 rc=0
+11-03 11:29:52.828 47475 47667 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287293199699343 source=13363024519338393602 count=1 first=1 last=1
+11-03 11:29:52.914 47475 47667 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=0 rc=0
+11-03 11:29:52.915 47475 47667 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=1 rc=0
+11-03 11:29:52.915 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=2 consumed=1
+11-03 11:29:52.915 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: detach_clean_submitted generation=1 flush=1
+11-03 11:29:52.915 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: surface_background layer=0 rc=0
+11-03 11:29:52.915 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: surface_background layer=1 rc=0
+11-03 11:29:52.915 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=3 consumed=1
+11-03 11:29:52.916 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: allocation_unreferenced slot=0 sequence=3111321606 source=server_release monotonic_ns=287293289756905
+11-03 11:29:52.916 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: allocation_unreferenced slot=1 sequence=3111321607 source=server_release monotonic_ns=287293289792530
+11-03 11:29:52.916 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: producer_pending slot=3 monotonic_ns=287293289816749
+11-03 11:29:52.916 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: drain_pending=2
+11-03 11:29:52.916 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: inflight_teardown detach=0 background=0 destroy=1
+11-03 11:29:52.916 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: lifetime_result phase=77 result=1
+11-03 11:29:52.918 47475 47667 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287293290972844 source=13363024519338393602 count=1 first=2 last=2
+11-03 11:29:52.925 47475 47667 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287293299293666 source=13363024519338393602 count=1 first=3 last=3
+11-03 11:29:53.312 47475 48430 I A03F00/com.miramira8295.lumiebrowser/LumieGpuFence: gate_signal rc=0 monotonic_ns=287293686038467 elapsed_ms=500
+11-03 11:29:53.313 47475 48430 I A03F00/com.miramira8295.lumiebrowser/LumieGpuFence: gpu_queue_idle rc=0 monotonic_ns=287293686735811
+11-03 11:29:53.748 47475 47667 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=3 fence=292
+11-03 11:29:53.748 47475 47667 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=3 rc=0
+11-03 11:29:53.748 47475 47667 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=2 fence=-1
+11-03 11:29:53.748 47475 47667 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=2 rc=0
+11-03 11:30:16.804 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: allocation_unreferenced slot=2 sequence=3111321609 source=server_release monotonic_ns=287317177990811
+11-03 11:30:16.804 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: allocation_unreferenced slot=3 sequence=3111321608 source=server_release monotonic_ns=287317178150967
+11-03 11:30:16.804 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: drain_pending=0
+11-03 11:30:16.805 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_owner_dropped previous_owners_minus_one=0
+11-03 11:30:16.805 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_owner_dropped previous_owners_minus_one=0
+11-03 11:30:16.806 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=4 consumed=1
+11-03 11:30:16.806 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: destroy_submitted generation=1 flush=1
+11-03 11:30:16.806 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: lifetime_result phase=72 result=0
+11-03 11:30:16.814 47475 47667 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287317187541145 source=13363024519338393602 count=1 first=4 last=4
+11-03 11:30:33.930 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=0 ok=1 generation=2
+11-03 11:30:33.930 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=0 accepted=1
+11-03 11:30:33.930 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=1 ok=1 generation=2
+11-03 11:30:33.930 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=1 accepted=1
+11-03 11:30:33.930 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: create_complete result=0 visible_layers=0 buffers_submitted=0
+11-03 11:30:34.112 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=0 slot=4 sequence=3111321610 new_frame=0 acquire_fence=-1 monotonic_ns=287334486601905
+11-03 11:30:34.112 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: native_set_buffer layer=1 slot=5 sequence=3111321611 new_frame=0 acquire_fence=-1 monotonic_ns=287334486631124
+11-03 11:30:34.112 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=5 consumed=1
+11-03 11:30:34.119 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287334491513181 source=13363024519338393602 count=1 first=5 last=5
+11-03 11:31:16.687 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: present_query layer=0 sequence=3111321610 type=1 rc=40602000 value=-1
+11-03 11:31:16.687 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: present_query layer=0 sequence=3111321610 type=2 rc=40602000 value=-1
+11-03 11:31:16.688 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: present_query layer=1 sequence=3111321611 type=1 rc=40602000 value=-1
+11-03 11:31:16.688 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: present_query layer=1 sequence=3111321611 type=2 rc=40602000 value=-1
+11-03 11:31:16.688 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: lifetime_result phase=75 result=-1
+11-03 11:31:16.797 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=6 consumed=1
+11-03 11:31:16.797 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: detach_clean_submitted generation=2 flush=1
+11-03 11:31:16.797 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: lifetime_result phase=70 result=0
+11-03 11:31:16.809 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287377181513564 source=13363024519338393602 count=1 first=6 last=6
+11-03 11:31:16.918 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: surface_background layer=0 rc=0
+11-03 11:31:16.918 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: surface_background layer=1 rc=0
+11-03 11:31:16.918 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=7 consumed=1
+11-03 11:31:16.918 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: lifetime_result phase=74 result=0
+11-03 11:31:16.925 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287377297892343 source=13363024519338393602 count=1 first=7 last=7
+11-03 11:31:16.945 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=5 fence=-1
+11-03 11:31:16.945 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=5 rc=0
+11-03 11:31:16.946 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=4 fence=-1
+11-03 11:31:16.946 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=4 rc=0
+11-03 11:31:42.266 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: allocation_unreferenced slot=4 sequence=3111321610 source=server_release monotonic_ns=287402640560030
+11-03 11:31:42.266 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: allocation_unreferenced slot=5 sequence=3111321611 source=server_release monotonic_ns=287402640571124
+11-03 11:31:42.266 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: drain_pending=0
+11-03 11:31:42.267 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_owner_dropped previous_owners_minus_one=0
+11-03 11:31:42.267 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_owner_dropped previous_owners_minus_one=0
+11-03 11:31:42.267 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_marker sequence=8 consumed=1
+11-03 11:31:42.268 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: destroy_submitted generation=2 flush=1
+11-03 11:31:42.268 47475 47475 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: lifetime_result phase=72 result=0
+11-03 11:31:42.275 47475 47620 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=287402648396900 source=13363024519338393602 count=1 first=8 last=8

@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/ohos/config.gni")
 import("//gpu/vulkan/features.gni")
 
 visibility = [ "//ui/ozone/*" ]
@@ -41,6 +42,9 @@ source_set("native_window_registry") {
     "ohos_gpu_child_channel.h",
     "ohos_native_window_registry.cc",
     "ohos_native_window_registry.h",
+    "ohos_overlay_api.cc",
+    "ohos_overlay_api.h",
+    "ohos_overlay_bridge.h",
     "ohos_output_color.h",
     "ohos_output_color_config.cc",
     "ohos_output_color_config.h",
@@ -94,6 +98,10 @@ source_set("ohos") {
     "ohos_video_graphite_metadata.h",
     "ohos_native_window_adapter.cc",
     "ohos_native_window_adapter.h",
+    "ohos_overlay_presenter.cc",
+    "ohos_overlay_presenter.h",
+    "ohos_overlay_transport.cc",
+    "ohos_overlay_transport.h",
     "ohos_platform_window.cc",
     "ohos_platform_window.h",
     "ohos_screen.cc",
@@ -122,6 +130,7 @@ source_set("ohos") {
   deps = [
     ":event_source",
     ":native_window_registry",
+    ":overlay_bridge",
     "//base",
     "//components/viz/common/resources:shared_image_format",
     "//skia",
@@ -148,4 +157,28 @@ source_set("ohos") {
     # shape.
     deps += [ "//gpu/vulkan/ohos" ]
   }
+}
+
+# Isolated NDK compilation is required: RenderService uses libc++ __h, whereas
+# Chromium uses __Cr. Only the C ABI in ohos_overlay_bridge.h crosses this edge.
+action("overlay_bridge") {
+  script = "build_overlay_bridge.py"
+  inputs = [
+    "ohos_overlay_session.cc",
+    "ohos_overlay_session.h",
+    "ohos_rs_overlay_backend.cc",
+    "ohos_rs_overlay_backend.h",
+    "ohos_overlay_bridge.cc",
+    "ohos_overlay_bridge.h",
+    "ohos_overlay_transport.cc",
+    "ohos_overlay_transport.h",
+    "ohos_overlay_host.cc",
+  ]
+  outputs = [ "$root_out_dir/libohos_video_overlay.so" ]
+  args = [
+    "--sdk",
+    rebase_path(ohos_sdk_root, root_build_dir),
+    "--out",
+    rebase_path(outputs[0], root_build_dir),
+  ]
 }

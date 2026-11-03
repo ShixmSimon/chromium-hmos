@@ -94,6 +94,9 @@ export type ShellSurface =
   | 'permissionPrompt';
 
 export interface AuraStartupConfig {
+  // Opt in while Chromium presenter/device integration is being qualified.
+  // The original compositor remains the default until end-to-end testing.
+  enableVideoOverlays?: boolean;
   startUrl: string;
   uiProfile: 'phone' | 'tablet' | 'pc';
   uiFamily: 'aura_pc' | 'aura_tablet' | 'mobile_phone' | 'mobile_large';

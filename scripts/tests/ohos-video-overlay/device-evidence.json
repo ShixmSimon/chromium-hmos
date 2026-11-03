@@ -1,0 +1,689 @@
+{
+  "date": "2026-11-02",
+  "device_model": "Mate 70 Pro+",
+  "symbol_probe": {
+    "source": "symbol_probe.c",
+    "sha256": "74d6e73cddd209bbf7a7e8587f626aaa683ea7474da73df1ce290f98e577838a",
+    "log_time": "17:28:42",
+    "scope": "/system/lib64/librender_service_client.z.so",
+    "available": [
+      "SetDelegateMode",
+      "SetDelegateDstRect",
+      "SetDelegateSrcRect",
+      "CleanBuffer",
+      "TransactionBegin",
+      "TransactionCommit",
+      "FlushImplicitTransaction"
+    ],
+    "rtld_default_hits": 0,
+    "matching_loaded_libraries": 3,
+    "library_list_truncated": false,
+    "symbol_hits": 7,
+    "private_function_calls": 0
+  },
+  "normal_app_restore": {
+    "date": "2026-11-02",
+    "hap_sha256": "353e8f4f6a9e9e4414d494b8fe20c9022ad953c7a7965c45a11c9738fa563a03",
+    "probe_absent_from_prewarm_library": true,
+    "unchanged_kernel_raw_entries": 90,
+    "install": "PASS",
+    "launch_smoke": "PASS",
+    "visual_checks": [
+      "chrome://gpu rendered and reported Chrome/155.0.8059.91",
+      "https://example.com/ navigation completed and rendered page body"
+    ],
+    "automation_note": "devecocli verify unavailable without a configured model; used CLI UI controls and inspected screenshots",
+    "overlay_presentation_tested": false
+  },
+  "symbol_probe_scope_limits": [
+    "No private ABI invocation",
+    "No display-layer creation",
+    "No multi-layer presentation validation",
+    "No server feature enablement validation",
+    "No SetBuffer/callback ABI verification"
+  ],
+  "render_service_probe": {
+    "date": "2026-11-03",
+    "device_model": "Mate 70 Pro+",
+    "process_id": 28467,
+    "sources": {
+      "rs_api_probe.c": "7354163ebaf40db01e1d3ec62e0f3133ad62e92036dd8e24e304e5a5f7ed0c2c",
+      "rs_buffer_callback.cpp": "932126d2163dbff25523f8e8bb430ff3b8de9f7110f4fdbb91ee14dcc7b80568"
+    },
+    "tested_c_source_sha256": "ca3e90c11f8b077995aa9584ef32753dcf204a092e511dc22d32f1c240230a2d",
+    "post_test_source_change": "Corrected diagnostic visibility field for phases 52/54 and clarified ABI comment; behavior unchanged. Both sources compile with -Wall -Wextra -Werror.",
+    "log": {
+      "path": "rs-device-run-2026-11-03.log",
+      "sha256": "3cddf307e00a42b0f1beaeea86db1cb52f9a7805bfa56cd58dcf0571f165f7ad"
+    },
+    "layers_created": 2,
+    "delegate_mode_accepted": 2,
+    "set_buffer_submissions": 10,
+    "transaction_callbacks": 5,
+    "buffer_release_callbacks": 8,
+    "release_fences_polled_signaled_and_closed": 6,
+    "hidden_frame_releases_without_fence": 2,
+    "last_allocations_retained_until_process_exit": 2,
+    "visual_checks": [
+      "Both 320x180 RGBA textures display all 8 columns and 6 rows",
+      "Both move by (100,200)",
+      "Both hide, restore at moved positions, hide again"
+    ],
+    "screenshots": [
+      {
+        "phase": 50,
+        "path": "/tmp/lumie-video-overlay/rs-validation/gravity50.png",
+        "sha256": "d40d4d1bed0a9a984f7cd2fa56a274a78cbf752d14b07b8320270af9d5d5872d"
+      },
+      {
+        "phase": 51,
+        "path": "/tmp/lumie-video-overlay/rs-validation/gravity51.png",
+        "sha256": "d7dc7b669d2481162b63b4c54f013214219dd005e796b6b2e4cbef29bb7eb95e"
+      },
+      {
+        "phase": 52,
+        "path": "/tmp/lumie-video-overlay/rs-validation/gravity52.png",
+        "sha256": "906dc71fe787dc8d5824da0209110127baae443a15a3be1777d7c4c9b9e53b62"
+      },
+      {
+        "phase": 53,
+        "path": "/tmp/lumie-video-overlay/rs-validation/gravity53.png",
+        "sha256": "6988501c42126db448a2abd59b57bc49da8cdea5944c3c6860e9778a05342240"
+      },
+      {
+        "phase": 54,
+        "path": "/tmp/lumie-video-overlay/rs-validation/gravity54.png",
+        "sha256": "cbd098867c786cbe75460a8f2373a3ec838c957001fe0ebdb7c458e475e73f66"
+      }
+    ],
+    "delayed_acquire_test": {
+      "status": "NOT_RUN",
+      "software_fence_device": "/dev/sw_sync",
+      "open_errno": 2,
+      "reason": "No software sync device. Requires real GPU/native-fence producer; no fake eventfd substituted.",
+      "later_test": "See delayed_gpu_probe for the subsequent real GPU delayed-write experiment."
+    },
+    "limitations": [
+      "No delayed-acquire atomic presentation proof",
+      "No physical-display timestamp proof",
+      "No real decoder buffers or YUV/HDR presentation",
+      "No cross-process transfer or webpage hole",
+      "No explicit node destruction or decoder allocation reuse"
+    ],
+    "temporary_harness_removed_from_source": true,
+    "normal_app_restore": {
+      "hap_sha256": "ba768e80780e69e95e13523dc60874863216e1e5f01e19efac8c0959460bfdf5",
+      "unchanged_kernel_raw_entries": 90,
+      "rs_probe_absent": true,
+      "install": "PASS",
+      "launch_smoke": "PASS",
+      "test_nodes_absent_from_render_tree": true
+    },
+    "validation_notes": [
+      "Standalone ArkTS check could not resolve generated BuildProfile; actual HAP build passed.",
+      "Restoring old source timestamps first retained a stale native object; touching restored sources forced recompilation and final HAP verified probe-free.",
+      "The captured buffer_retire signaled=1 includes both actual signaled fences and the two -1 no-fence cases."
+    ]
+  },
+  "delayed_gpu_probe": {
+    "date": "2026-11-03",
+    "device_model": "Mate 70 Pro+",
+    "gpu": "Maleoon 920",
+    "vulkan_api": "1.3",
+    "final_test_process_id": 59796,
+    "sources": {
+      "rs_api_probe.c": "1641d1ec4f9fa954479a7af30e10f87ceca2b741fe741c41b6bc37857191db2a",
+      "rs_buffer_callback.cpp": "2d00661096b2e94a3767fd57b42ab1c0f62c72f4d3d999817a90054e7dee0e2c",
+      "gpu_fence_probe.c": "fca0a940b416ef4f59b1dd82ba41d804b9c5de2805423852c132e5eda66dd445",
+      "analyze_recording.py": "22d423868aa2407388250df11a72f0f7199c12dc6970175748f2fd78e69d116a",
+      "lumie-debug-harness.patch": "035fd87f0f0d904f648c2216b83ab55a7589ef12a96d064e56857d4a876a5bb8"
+    },
+    "source_scope": "Final sources were built and exercised in PID 59796 (50,62,63,4). PID 52241 tested the same delayed GPU writer before paired-preflight refactoring.",
+    "log": {
+      "path": "rs-fence-run-2026-11-03.log",
+      "sha256": "a75d3d5e915ced6d2f8f5109a7cda3172ff31f5e3e3f1123d3233d1f3f11b899"
+    },
+    "producer": "Host timeline gates GPU clear of an imported RGBA NativeBuffer; pending binary SYNC_FD exported before delayed GPU write. Red sentinel becomes magenta only on the GPU.",
+    "delay_ms": 500,
+    "pending_fence_export_observed": true,
+    "recordings": [
+      {
+        "video": "/tmp/lumie-video-overlay/fence-validation/gpu-write500.mp4",
+        "dimensions": [
+          894,
+          1920
+        ],
+        "points": {
+          "web": [
+            102,
+            340
+          ],
+          "video": [
+            238,
+            462
+          ]
+        },
+        "frame_count": 428,
+        "states": [
+          {
+            "colors": [
+              "blue",
+              "yellow"
+            ],
+            "count": 87
+          },
+          {
+            "colors": [
+              "green",
+              "magenta"
+            ],
+            "count": 341
+          }
+        ],
+        "transitions": [
+          {
+            "frame": 0,
+            "pts": 0.0,
+            "patches": {
+              "web": {
+                "rgb": [
+                  0,
+                  102,
+                  254
+                ],
+                "color": "blue"
+              },
+              "video": {
+                "rgb": [
+                  254,
+                  219,
+                  1
+                ],
+                "color": "yellow"
+              }
+            },
+            "previous_frame_gap_ms": null
+          },
+          {
+            "frame": 87,
+            "pts": 12.5928,
+            "patches": {
+              "web": {
+                "rgb": [
+                  1,
+                  203,
+                  35
+                ],
+                "color": "green"
+              },
+              "video": {
+                "rgb": [
+                  220,
+                  0,
+                  220
+                ],
+                "color": "magenta"
+              }
+            },
+            "previous_frame_gap_ms": 16.500000000000625
+          }
+        ],
+        "scope": "Recorded patch samples only; not physical presentation timestamps.",
+        "phase": 60,
+        "process_id": 52241,
+        "sha256": "009c3a43a7c2d4bc3f027e65a47371d6a686f82cad6013475853ddd25606d488",
+        "analysis_path": "/tmp/lumie-video-overlay/fence-validation/gpu-write500-analysis.json",
+        "analysis_sha256": "ceb8a60e0a22f240c66ae4189f02ecbdf7d0c2457b7c5fe523f631c43d53ae0c"
+      },
+      {
+        "video": "/tmp/lumie-video-overlay/fence-validation/gpu-move500.mp4",
+        "dimensions": [
+          894,
+          1920
+        ],
+        "points": {
+          "web": [
+            170,
+            475
+          ],
+          "video": [
+            340,
+            611
+          ],
+          "old_corner": [
+            102,
+            340
+          ]
+        },
+        "frame_count": 122,
+        "states": [
+          {
+            "colors": [
+              "blue",
+              "yellow",
+              "blue"
+            ],
+            "count": 79
+          },
+          {
+            "colors": [
+              "green",
+              "magenta",
+              "other"
+            ],
+            "count": 43
+          }
+        ],
+        "transitions": [
+          {
+            "frame": 0,
+            "pts": 0.0,
+            "patches": {
+              "web": {
+                "rgb": [
+                  23,
+                  117,
+                  255
+                ],
+                "color": "blue"
+              },
+              "video": {
+                "rgb": [
+                  254,
+                  220,
+                  0
+                ],
+                "color": "yellow"
+              },
+              "old_corner": {
+                "rgb": [
+                  0,
+                  102,
+                  254
+                ],
+                "color": "blue"
+              }
+            },
+            "previous_frame_gap_ms": null
+          },
+          {
+            "frame": 79,
+            "pts": 7.028244,
+            "patches": {
+              "web": {
+                "rgb": [
+                  1,
+                  203,
+                  35
+                ],
+                "color": "green"
+              },
+              "video": {
+                "rgb": [
+                  220,
+                  0,
+                  220
+                ],
+                "color": "magenta"
+              },
+              "old_corner": {
+                "rgb": [
+                  17,
+                  17,
+                  17
+                ],
+                "color": "other"
+              }
+            },
+            "previous_frame_gap_ms": 18.38799999999985
+          }
+        ],
+        "scope": "Recorded patch samples only; not physical presentation timestamps.",
+        "phase": 61,
+        "process_id": 52241,
+        "sha256": "623226af59553c07631d4212dbd284cdccfff666535cfe3970a648a3571146da",
+        "analysis_path": "/tmp/lumie-video-overlay/fence-validation/gpu-move500-analysis.json",
+        "analysis_sha256": "2e54bf0a0e1d9bf33a2de82452681593164308d59b7f534d84824bf4b2a4cc44"
+      },
+      {
+        "video": "/tmp/lumie-video-overlay/fence-validation/preflight-resize.mp4",
+        "dimensions": [
+          894,
+          1920
+        ],
+        "points": {
+          "web": [
+            170,
+            475
+          ],
+          "video": [
+            340,
+            611
+          ],
+          "old_corner": [
+            102,
+            340
+          ]
+        },
+        "frame_count": 156,
+        "states": [
+          {
+            "colors": [
+              "blue",
+              "yellow",
+              "blue"
+            ],
+            "count": 107
+          },
+          {
+            "colors": [
+              "green",
+              "magenta",
+              "other"
+            ],
+            "count": 49
+          }
+        ],
+        "transitions": [
+          {
+            "frame": 0,
+            "pts": 0.0,
+            "patches": {
+              "web": {
+                "rgb": [
+                  23,
+                  117,
+                  255
+                ],
+                "color": "blue"
+              },
+              "video": {
+                "rgb": [
+                  254,
+                  220,
+                  0
+                ],
+                "color": "yellow"
+              },
+              "old_corner": {
+                "rgb": [
+                  0,
+                  102,
+                  254
+                ],
+                "color": "blue"
+              }
+            },
+            "previous_frame_gap_ms": null
+          },
+          {
+            "frame": 107,
+            "pts": 22.673133,
+            "patches": {
+              "web": {
+                "rgb": [
+                  1,
+                  203,
+                  35
+                ],
+                "color": "green"
+              },
+              "video": {
+                "rgb": [
+                  220,
+                  0,
+                  220
+                ],
+                "color": "magenta"
+              },
+              "old_corner": {
+                "rgb": [
+                  17,
+                  17,
+                  17
+                ],
+                "color": "other"
+              }
+            },
+            "previous_frame_gap_ms": 18.933000000000533
+          }
+        ],
+        "scope": "Recorded patch samples only; not physical presentation timestamps.",
+        "phase": 63,
+        "process_id": 59796,
+        "sha256": "9bc653450faf96cc7c6c18c2c8c1537aa0a243f07e861cae36738617057604a1",
+        "analysis_path": "/tmp/lumie-video-overlay/fence-validation/preflight-resize-analysis.json",
+        "analysis_sha256": "e7dccf59b0546f4fe6702bb4dab0e58327e9a8672581a7a61ae13ca5ff2cac17"
+      }
+    ],
+    "final_run_monotonic_ns": {
+      "export_pending": 284480645040497,
+      "paired_flush": 284480645895185,
+      "transaction_callback": 284480655888559,
+      "gate_signal": 284481146343310,
+      "gpu_queue_idle": 284481147594403
+    },
+    "transaction_callback_precedes_gpu_idle_ms": 491.705844,
+    "failure_injection": {
+      "phase": 62,
+      "point": "Second layer preparation, after first CPU buffer is prepared",
+      "staged_commands": 0,
+      "observed": "Old blue/yellow pair remained; phase 63 retry succeeded using the unconsumed callback slots.",
+      "scope": "Local preparation failure only; server enqueue rejection and rollback not tested."
+    },
+    "geometry": {
+      "phase_50": [
+        [
+          100,
+          450,
+          1000,
+          700
+        ],
+        [
+          320,
+          650,
+          600,
+          340
+        ]
+      ],
+      "phase_61": [
+        [
+          200,
+          650,
+          1000,
+          700
+        ],
+        [
+          420,
+          850,
+          600,
+          340
+        ]
+      ],
+      "phase_63": [
+        [
+          200,
+          650,
+          750,
+          525
+        ],
+        [
+          420,
+          850,
+          450,
+          255
+        ]
+      ]
+    },
+    "lifecycle": {
+      "background": "Home screen contained no probe layers",
+      "foreground": "Existing resized pair reappeared without resubmitting buffers",
+      "phase_4": "Layers hidden and temporary keep-screen-on disabled",
+      "explicit_node_destruction": "NOT_TESTED; final allocation refs still retained until process exit"
+    },
+    "screenshots": [
+      {
+        "path": "/tmp/lumie-video-overlay/fence-validation/prepare-failure.png",
+        "sha256": "58d14969e053b735023378ae362685f40f9291caea05f96066e3cf687723f7f8"
+      },
+      {
+        "path": "/tmp/lumie-video-overlay/fence-validation/resized.png",
+        "sha256": "8a0e0d98d4487a83d538d36eff54fef322b635ac2b24a4c95458f29decad2afb"
+      },
+      {
+        "path": "/tmp/lumie-video-overlay/fence-validation/background.png",
+        "sha256": "16d2d11805b50b9e3c917bff7c7d42e344843a3c422946223c72aabb10d17b03"
+      },
+      {
+        "path": "/tmp/lumie-video-overlay/fence-validation/foreground.png",
+        "sha256": "53aaa99f98bdb9f4510d054469fb0357480db47ccc0b9f1f7e69928541f61947"
+      },
+      {
+        "path": "/tmp/lumie-video-overlay/fence-validation/restored-app.png",
+        "sha256": "9ed7620103942bb6b5acff969d7a6d282fb54fe5255722cad06fed92cf5275e8"
+      }
+    ],
+    "validation": {
+      "native_warnings_as_errors": "PASS for all three native sources",
+      "experimental_hap_build": "PASS",
+      "experimental_install_smoke": "PASS"
+    },
+    "limitations": [
+      "Recorded frames are not physical scanout timestamps or a guarantee for every vsync.",
+      "No real decoder/video buffers, NV12/P010 display, HDR, webpage transparency or cross-process handoff.",
+      "No server-side failed-enqueue rollback or explicit node destruction/recreation.",
+      "Vulkan is used only as a probe fence producer; GL/Graphite production integration is untested."
+    ],
+    "normal_app_restore": {
+      "hap_sha256": "fed38e022eb3819848581361fd8c532aa66fa5618d6893818815e0405b24d288",
+      "unchanged_kernel_raw_entries": 90,
+      "rs_and_gpu_probes_absent": true,
+      "install": "PASS",
+      "launch_smoke": "PASS",
+      "test_nodes_absent_from_render_tree": true,
+      "temporary_harness_removed_from_source": true
+    },
+    "later_lifetime_test": "See lifetime_probe for explicit retirement, node destruction/recreation and guarded in-flight closure."
+  },
+  "lifetime_probe": {
+    "date": "2026-11-03",
+    "device_model": "Mate 70 Pro+",
+    "final_process_id": 47475,
+    "sources": {
+      "rs_api_probe.c": "12d50a36847db83af543bd07fc2e3eb32280d5130fef57e026099964c885526d",
+      "rs_buffer_callback.cpp": "ad367550827beb67fba48ba0fbcdb707df806c806489476aee063e20127d4f99",
+      "gpu_fence_probe.c": "fca0a940b416ef4f59b1dd82ba41d804b9c5de2805423852c132e5eda66dd445",
+      "lumie-debug-harness.patch": "c176b727fefd43b07c134d19b470e248385a8c8bceb5172a8796fa7d7a5b050c"
+    },
+    "log": {
+      "path": "rs-lifetime-run-2026-11-03.log",
+      "sha256": "8a8b86f7cb2c9ecce73d9187006c7069c071f3b13ad21177c2b95be01fdf8b12"
+    },
+    "ordered_close": [
+      "Wait for exact latest buffer transaction marker (command acknowledgment only)",
+      "Hide, detach, CleanBuffer(true), flush",
+      "ProducerSurface::GoBackground for both nodes, flush",
+      "Require matching server release plus signaled release fence and retained producer fence",
+      "Serialize retirement against ReleaseBuffer; remove routing entry; unreference native allocation",
+      "Drop last system shared node references and flush destruction"
+    ],
+    "negative_cases": [
+      {
+        "process_id": 23908,
+        "case": "Detach and CleanBuffer alone",
+        "result": "Two final allocations stayed pending"
+      },
+      {
+        "process_id": 44756,
+        "case": "Immediate cleanup before submitted transaction acknowledgment",
+        "result": "Old pair released; new pair remained pending after GPU completion; retained until process exit"
+      }
+    ],
+    "final_results": {
+      "submitted_native_allocations": 6,
+      "server_release_callbacks": 6,
+      "real_release_fds_polled_and_closed": 3,
+      "server_no_fence_releases": 3,
+      "native_refs_explicitly_released": 6,
+      "node_generations": 2,
+      "last_owner_node_releases": 4,
+      "last_owner_counts_minus_one": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "submit_marker_deferral_observed": true,
+      "producer_pending_deferral_observed": true,
+      "in_process_recreation_visually_verified": true,
+      "first_destroy_render_tree_has_no_test_nodes": true
+    },
+    "inflight_times_monotonic_ns": {
+      "export_pending": 287293186099561,
+      "close_retry_producer_still_pending": 287293289816749,
+      "gate_signal": 287293686038467,
+      "gpu_queue_idle": 287293686735811
+    },
+    "presentation_query": {
+      "types": [
+        1,
+        2
+      ],
+      "return_code": 40602000,
+      "output_value": -1,
+      "status": "No usable presentation time; this does not prove universal device non-support",
+      "future_presenter_policy": "Unavailable/failure presentation feedback; never substitute marker time or Now()"
+    },
+    "abi_fingerprints_fnv1a32": {
+      "RSSurfaceNode::CleanBuffer/20": "0x0cd5d9fd",
+      "RSNode::RemoveChild/1176": "0xd791aac8",
+      "RSSurfaceNode::~RSSurfaceNode/1576": "0x7194ed42",
+      "RSSurfaceNode::GetSurface/264": "0x108d9ce0",
+      "ProducerSurface::GoBackground/92": "0x2ef7d186"
+    },
+    "validation": {
+      "native_warnings_as_errors": "PASS",
+      "hap_build": "PASS",
+      "experimental_install_smoke": "PASS",
+      "arkts_standalone": "Generated BuildProfile resolution failed; actual HAP ArkTS compilation passed"
+    },
+    "artifacts": [
+      {
+        "path": "/tmp/lumie-video-overlay/lifetime-validation/recreated.png",
+        "sha256": "a0e4439af18703513d3c4d3fdffc4892925f9ab295d201aeb87a57079061efe6"
+      },
+      {
+        "path": "/tmp/lumie-video-overlay/lifetime-validation/ordered-recreated.png",
+        "sha256": "5e0910870d26e9ee67467174c1c24620207905251493c5a3386eb584e10d3b89"
+      },
+      {
+        "path": "/tmp/lumie-video-overlay/lifetime-validation/destroyed-rstree.txt",
+        "sha256": "1833cb04e7c42132c39d0c8b6acc4dc60aa2d0c0a5a9efad6bdff153aca2cb20"
+      },
+      {
+        "path": "/tmp/lumie-video-overlay/lifetime-validation/ordered-destroyed-rstree.txt",
+        "sha256": "74377203ef2d7a308848936f2c9ef4b07a94ba9b7476dd93742d90e80855a221"
+      },
+      {
+        "path": "/tmp/lumie-video-overlay/lifetime-validation/restored-rstree.txt",
+        "sha256": "2c7781f64b594f6e84878ca34aef46f6e13498ae1ba66004098771658cd9d986"
+      }
+    ],
+    "normal_app_restore": {
+      "hap_sha256": "3ab41a381c0db66c81fa7bf1c63ff1bb34641baac7d9640c8d6b5fff459c45f8",
+      "unchanged_kernel_raw_entries": 90,
+      "probes_absent": true,
+      "temporary_harness_removed_from_source": true,
+      "install": "PASS",
+      "launch_smoke": "PASS",
+      "render_tree_test_nodes_absent": true,
+      "visual_check": "Not assessed: user had foregrounded another application after CLI launch; unrelated screenshot excluded."
+    },
+    "remaining_limits": [
+      "Firmware-pinned private ABI; app context/listener refs and callback slots remain bounded debug state",
+      "No actual decoder lease, buffer reuse, cross-process presentation or browser overlay integration",
+      "No measured physical presentation timestamp",
+      "No server-side failed-enqueue rollback or process-loss recovery"
+    ]
+  }
+}

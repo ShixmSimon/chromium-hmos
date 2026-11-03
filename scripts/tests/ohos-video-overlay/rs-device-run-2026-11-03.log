@@ -1,0 +1,92 @@
+11-03 09:48:24.734 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: library=/system/lib64/librender_service_client.z.so symbols=3982
+11-03 09:48:24.763 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: library=/system/lib64/chipset-pub-sdk/libsurface.z.so symbols=1136
+11-03 09:48:24.767 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: inventory_done exports=199
+11-03 09:48:24.769 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: create_prerequisites factory=1 manager=1 context=1 delegate=1
+11-03 09:48:24.769 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: context_found token=122264834015233
+11-03 09:48:24.782 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=0 ok=1
+11-03 09:48:24.782 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: hardware_enabled layer=0
+11-03 09:48:24.782 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=0 accepted=1
+11-03 09:48:24.784 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: node_create layer=1 ok=1
+11-03 09:48:24.784 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: hardware_enabled layer=1
+11-03 09:48:24.784 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: delegate_mode layer=1 accepted=1
+11-03 09:48:24.784 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: create_complete result=0 visible_layers=0 buffers_submitted=0
+11-03 09:48:24.790 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: paint_flush layer=0 rc=0 stride=1280
+11-03 09:48:24.797 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: paint_flush layer=1 rc=0 stride=1280
+11-03 09:48:24.797 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: app_canvas_visible=1
+11-03 09:48:24.798 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: explicit_context_flush phase=0
+11-03 09:48:24.798 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: show_submitted phase=0 visibility=1
+11-03 09:48:32.584 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d706d8ca 1dd8d6d 19fa792]release_listener_registered=1
+11-03 09:48:32.584 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d706d8ca 1dd8d6d 19fa792]software_fence_device available=0 errno=2
+11-03 09:48:32.584 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d706d8ca 1dd8d6d 19fa792]app_canvas_visible=1
+11-03 09:48:32.588 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d706d8ca 1dd8d6d 19fa792]native_set_buffer layer=0 slot=0 sequence=1865613318
+11-03 09:48:32.591 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d706d8ca 1dd8d6d 19fa792]native_set_buffer layer=1 slot=1 sequence=1865613319
+11-03 09:48:32.592 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d706d8ca 1dd8d6d 19fa792]transaction_listener_registered=1
+11-03 09:48:32.592 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d706d8ca 1dd8d6d 19fa792]transaction_marker sequence=0 consumed=1
+11-03 09:48:32.592 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d706d8ca 1dd8d6d 19fa792]explicit_context_flush phase=50
+11-03 09:48:32.592 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d706d8ca 1dd8d6d 19fa792]show_submitted phase=50 visibility=1
+11-03 09:48:32.608 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=282455537342653 source=8012748162022244354 count=1 first=0 last=0
+11-03 09:48:32.608 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_record node=122264834015330 pid=0 queue=6966436958749 seq=106302472
+11-03 09:48:32.608 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_record node=122264834015331 pid=0 queue=6966436958750 seq=106302473
+11-03 09:49:06.982 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d92ceccc 3bc8cf4 32b1e85]app_canvas_visible=1
+11-03 09:49:06.985 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d92ceccc 3bc8cf4 32b1e85]native_set_buffer layer=0 slot=2 sequence=1865613320
+11-03 09:49:06.989 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d92ceccc 3bc8cf4 32b1e85]native_set_buffer layer=1 slot=3 sequence=1865613321
+11-03 09:49:06.989 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d92ceccc 3bc8cf4 32b1e85]transaction_marker sequence=1 consumed=1
+11-03 09:49:06.989 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d92ceccc 3bc8cf4 32b1e85]explicit_context_flush phase=51
+11-03 09:49:06.989 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13d92ceccc 3bc8cf4 32b1e85]show_submitted phase=51 visibility=1
+11-03 09:49:07.005 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_record node=122264834015330 pid=0 queue=6966436958749 seq=1865613318
+11-03 09:49:07.005 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=0 fence=247
+11-03 09:49:07.005 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=0 rc=0
+11-03 09:49:07.005 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_record node=122264834015331 pid=0 queue=6966436958750 seq=1865613319
+11-03 09:49:07.005 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=1 fence=287
+11-03 09:49:07.005 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=1 rc=0
+11-03 09:49:07.005 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=282489934834852 source=8012748162022244354 count=1 first=1 last=1
+11-03 09:49:43.599 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13db779a88 2c3d7a2 2efc07c]app_canvas_visible=1
+11-03 09:49:43.603 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13db779a88 2c3d7a2 2efc07c]native_set_buffer layer=0 slot=4 sequence=1865613322
+11-03 09:49:43.606 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13db779a88 2c3d7a2 2efc07c]native_set_buffer layer=1 slot=5 sequence=1865613323
+11-03 09:49:43.606 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13db779a88 2c3d7a2 2efc07c]buffer_retire slot=0 signaled=1
+11-03 09:49:43.606 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13db779a88 2c3d7a2 2efc07c]buffer_retire slot=1 signaled=1
+11-03 09:49:43.606 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13db779a88 2c3d7a2 2efc07c]transaction_marker sequence=2 consumed=1
+11-03 09:49:43.607 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13db779a88 2c3d7a2 2efc07c]explicit_context_flush phase=52
+11-03 09:49:43.607 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13db779a88 2c3d7a2 2efc07c]show_submitted phase=52 visibility=1
+11-03 09:49:43.620 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_record node=122264834015330 pid=0 queue=6966436958749 seq=1865613320
+11-03 09:49:43.620 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=2 fence=295
+11-03 09:49:43.620 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=2 rc=0
+11-03 09:49:43.620 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_record node=122264834015331 pid=0 queue=6966436958750 seq=1865613321
+11-03 09:49:43.620 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=3 fence=296
+11-03 09:49:43.620 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=3 rc=0
+11-03 09:49:43.620 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=282526550289467 source=8012748162022244354 count=1 first=2 last=2
+11-03 09:49:55.117 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13dc301899 1b36389 2f970a7]app_canvas_visible=1
+11-03 09:49:55.121 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13dc301899 1b36389 2f970a7]native_set_buffer layer=0 slot=6 sequence=1865613324
+11-03 09:49:55.125 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13dc301899 1b36389 2f970a7]native_set_buffer layer=1 slot=7 sequence=1865613325
+11-03 09:49:55.125 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13dc301899 1b36389 2f970a7]buffer_retire slot=2 signaled=1
+11-03 09:49:55.125 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13dc301899 1b36389 2f970a7]buffer_retire slot=3 signaled=1
+11-03 09:49:55.125 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13dc301899 1b36389 2f970a7]transaction_marker sequence=3 consumed=1
+11-03 09:49:55.125 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13dc301899 1b36389 2f970a7]explicit_context_flush phase=53
+11-03 09:49:55.125 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13dc301899 1b36389 2f970a7]show_submitted phase=53 visibility=1
+11-03 09:49:55.142 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_record node=122264834015330 pid=0 queue=6966436958749 seq=1865613322
+11-03 09:49:55.142 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=4 fence=-1
+11-03 09:49:55.142 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=4 rc=0
+11-03 09:49:55.142 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_record node=122264834015331 pid=0 queue=6966436958750 seq=1865613323
+11-03 09:49:55.142 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=5 fence=-1
+11-03 09:49:55.142 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=5 rc=0
+11-03 09:49:55.142 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=282538071348655 source=8012748162022244354 count=1 first=3 last=3
+11-03 09:50:48.668 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13df88c73b 1bbc63b 30ad67b]app_canvas_visible=1
+11-03 09:50:48.672 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13df88c73b 1bbc63b 30ad67b]native_set_buffer layer=0 slot=8 sequence=1865613326
+11-03 09:50:48.675 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13df88c73b 1bbc63b 30ad67b]native_set_buffer layer=1 slot=9 sequence=1865613327
+11-03 09:50:48.675 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13df88c73b 1bbc63b 30ad67b]buffer_retire slot=4 signaled=1
+11-03 09:50:48.675 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13df88c73b 1bbc63b 30ad67b]buffer_retire slot=5 signaled=1
+11-03 09:50:48.675 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13df88c73b 1bbc63b 30ad67b]transaction_marker sequence=4 consumed=1
+11-03 09:50:48.675 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13df88c73b 1bbc63b 30ad67b]explicit_context_flush phase=54
+11-03 09:50:48.675 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13df88c73b 1bbc63b 30ad67b]show_submitted phase=54 visibility=1
+11-03 09:50:48.690 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_record node=122264834015330 pid=0 queue=6966436958749 seq=1865613324
+11-03 09:50:48.690 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=6 fence=307
+11-03 09:50:48.690 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=6 rc=0
+11-03 09:50:48.690 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_record node=122264834015331 pid=0 queue=6966436958750 seq=1865613325
+11-03 09:50:48.690 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: buffer_release slot=7 fence=308
+11-03 09:50:48.690 28467 28645 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: release_forward slot=7 rc=0
+11-03 09:50:48.690 28467 28647 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: transaction_complete timestamp=282591619660067 source=8012748162022244354 count=1 first=4 last=4
+11-03 09:51:28.957 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13e20d346d 298b0d2 b1a3a]app_canvas_visible=1
+11-03 09:51:28.957 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13e20d346d 298b0d2 b1a3a]buffer_retire slot=6 signaled=1
+11-03 09:51:28.957 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13e20d346d 298b0d2 b1a3a]buffer_retire slot=7 signaled=1
+11-03 09:51:28.958 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13e20d346d 298b0d2 b1a3a]explicit_context_flush phase=4
+11-03 09:51:28.958 28467 28467 I A03F00/com.miramira8295.lumiebrowser/LumieRsProbe: [a92ab13e20d346d 298b0d2 b1a3a]show_submitted phase=4 visibility=0

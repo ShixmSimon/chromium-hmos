@@ -1,0 +1,161 @@
+{
+  "date": "2026-11-03",
+  "device": "Mate 70 Pro+",
+  "api": 26,
+  "scope": "Shared native bridge in temporary Lumie debug harness; generated alpha primary, actual hardware video decoder; no Chromium overlay promotion enabled",
+  "process_pid": 24077,
+  "full_runs": [
+    {
+      "fixture": "sdr-avc.mp4",
+      "index": 0,
+      "active_layers": 2,
+      "drain": [
+        180,
+        180,
+        0
+      ],
+      "seconds": 9.56,
+      "errors": [],
+      "layers_after_close": 0,
+      "pass": true
+    },
+    {
+      "fixture": "sdr-hevc10.mp4",
+      "index": 1,
+      "active_layers": 2,
+      "drain": [
+        180,
+        180,
+        0
+      ],
+      "seconds": 11.19,
+      "errors": [],
+      "layers_after_close": 0,
+      "pass": true
+    },
+    {
+      "fixture": "hdr10-hevc.mp4",
+      "index": 2,
+      "active_layers": 2,
+      "drain": [
+        180,
+        180,
+        0
+      ],
+      "seconds": 8.84,
+      "errors": [],
+      "layers_after_close": 0,
+      "pass": true
+    },
+    {
+      "fixture": "sdr-avc.mp4",
+      "index": 3,
+      "active_layers": 2,
+      "drain": [
+        180,
+        180,
+        0
+      ],
+      "seconds": 11.2,
+      "errors": [],
+      "layers_after_close": 0,
+      "pass": true
+    },
+    {
+      "fixture": "hdr10-hevc.mp4",
+      "index": 4,
+      "active_layers": 2,
+      "drain": [
+        180,
+        180,
+        0
+      ],
+      "seconds": 11.38,
+      "errors": [],
+      "layers_after_close": 0,
+      "pass": true
+    }
+  ],
+  "interrupted_and_recovery_runs": [
+    {
+      "fixture": "hdr10-hevc.mp4",
+      "index": 0,
+      "active_layers": 2,
+      "drain": [
+        35,
+        35,
+        0
+      ],
+      "seconds": 3.51,
+      "errors": [],
+      "layers_after_close": 0,
+      "pass": true
+    },
+    {
+      "fixture": "sdr-avc.mp4",
+      "index": 1,
+      "active_layers": 2,
+      "drain": [
+        180,
+        180,
+        0
+      ],
+      "seconds": 10.43,
+      "errors": [],
+      "layers_after_close": 0,
+      "pass": true
+    }
+  ],
+  "submitted_and_returned_total": 1115,
+  "hdr": {
+    "format": 35,
+    "color_space": 10,
+    "public_hdr_type": 1,
+    "rs_hdr_type": 2,
+    "mastering_max_nits": 1000,
+    "mastering_min_nits": 0.0001,
+    "max_cll": 1000,
+    "max_fall": 198,
+    "rs_static_bytes_match_decoder": true,
+    "rs_legacy_HDR_field": 0,
+    "physical_hdr_output": "unverified",
+    "presentation_timestamp": "unavailable"
+  },
+  "validation": {
+    "native_arm64_library": "passed --no-undefined",
+    "temporary_hap_build": "passed",
+    "host_asan_ubsan": "passed; 500 recycled allocation generations",
+    "normal_app_restored": true,
+    "normal_app_smoke": "PASS",
+    "normal_hap_sha256": "be10bde9c2113449a90f1d329f1bac63622a9c9815a4a1af1fdaa7c6a743a861",
+    "normal_hap_probe_library_and_exports_absent": true,
+    "unchanged_kernel_named_entries": 63,
+    "all_other_native_libraries_unchanged": 4
+  },
+  "not_covered": [
+    "Chromium presenter/oracle/SharedImage/GPU IPC integration",
+    "physical HDR luminance",
+    "physical scanout atomicity",
+    "paused allocation reuse",
+    "live same-queue HDR/SDR reconfiguration",
+    "server enqueue rejection",
+    "process loss",
+    "duplicate stale releases across allocation reuse",
+    "HLG/Vivid/VP9 software path",
+    "playback pacing/AV sync"
+  ],
+  "source_sha256": {
+    "overlay/ui/ozone/platform/ohos/ohos_overlay_bridge.h": "2f19e5c80477cf20355faebe9b4334cd4e0e8def2a7d12c9243018d10d9341c0",
+    "overlay/ui/ozone/platform/ohos/ohos_overlay_session.cc": "389f43d978d6db914cd30357656ed0ee705c1f3ecb52a823d7d11946a0c80670",
+    "overlay/ui/ozone/platform/ohos/ohos_overlay_bridge.cc": "696b786122732bab7c8ac5e99d5995caf55c1c6845086cd3084f6ee040687a5e",
+    "overlay/ui/ozone/platform/ohos/ohos_overlay_session.h": "d1eca6894d81d1b75a2f940bd5a6a639b03d9303bfac688c488334130c0f8f7b",
+    "overlay/ui/ozone/platform/ohos/ohos_rs_overlay_backend.h": "22117c090bb2d4277f7bb45702da912fb4248a0a61cb61c98e27c005af87923e",
+    "overlay/ui/ozone/platform/ohos/ohos_rs_overlay_backend.cc": "b5540c17ae91cad9aeeaa70b778e07df9b3dccbcb6f9300760b641124271a2c9",
+    "scripts/tests/ohos-video-overlay/real_video_harness.cpp": "cc09125006f40189b5b7dbc01da579d79bde4a0ac42c1b3b1cd6be98bc4534ca",
+    "scripts/tests/ohos-video-overlay/session_test.cc": "d8ded5bcabda6a22677a29c3238aa13d4518be4309c7a2ef4b79fe1c6ddcaee7",
+    "scripts/tests/ohos-video-overlay/real-video-harness.patch": "a2cda85638cdcb59b97e0422593745159057669b4be39538ef42e280705cd685",
+    "scripts/build-ohos-overlay-bridge.sh": "81039ae103d0463605bc10a9ee7bdbeeea0d6321a0a238c79a6b6c8b3e17d23f"
+  },
+  "local_full_evidence": "/tmp/lumie-real-overlay-integration",
+  "local_hdr_screenshot": "/tmp/lumie-real-overlay-integration/matrix/hdr.png"
+}

@@ -1,0 +1,91 @@
+--- a/products/shell/src/main/cpp/CMakeLists.txt
++++ b/products/shell/src/main/cpp/CMakeLists.txt
+@@ -1,5 +1,15 @@
+ cmake_minimum_required(VERSION 3.5.0)
+-project(lumie_prewarm C)
++project(lumie_prewarm C CXX)
+ add_library(lumie_prewarm SHARED metadata_prewarm.c jit_probe.c)
+ target_compile_options(lumie_prewarm PRIVATE -Wall -Wextra -Werror -Wno-unused-command-line-argument)
+ target_link_libraries(lumie_prewarm PUBLIC libace_napi.z.so libhilog_ndk.z.so dl)
++
++target_sources(lumie_prewarm PRIVATE /Volumes/OnshuoData/DevEcoStudioProjects/chromium-hmos/scripts/tests/ohos-video-overlay/rs_api_probe.c)
++target_link_libraries(lumie_prewarm PUBLIC native_window native_buffer)
++
++set(RS_CALLBACK /Volumes/OnshuoData/DevEcoStudioProjects/chromium-hmos/scripts/tests/ohos-video-overlay/rs_buffer_callback.cpp)
++target_sources(lumie_prewarm PRIVATE ${RS_CALLBACK})
++set_source_files_properties(${RS_CALLBACK} PROPERTIES COMPILE_FLAGS "-std=c++17 -fno-exceptions -fno-rtti -D_LIBCPP_ABI_NAMESPACE=__h")
++
++target_sources(lumie_prewarm PRIVATE /Volumes/OnshuoData/DevEcoStudioProjects/chromium-hmos/scripts/tests/ohos-video-overlay/gpu_fence_probe.c)
++target_link_libraries(lumie_prewarm PUBLIC vulkan)
+--- a/products/shell/src/main/cpp/metadata_prewarm.c
++++ b/products/shell/src/main/cpp/metadata_prewarm.c
+@@ -158,9 +158,16 @@
+ napi_value ProbeJitMappings(napi_env env, napi_callback_info info);
+ napi_value RequestCompatJit(napi_env env, napi_callback_info info);
+ 
++napi_value ProbeRsApi(napi_env env, napi_callback_info info);
++napi_value ProbeRsCreate(napi_env env, napi_callback_info info);
++napi_value ProbeRsShow(napi_env env, napi_callback_info info);
++
+ static napi_value Init(napi_env env, napi_value exports)
+ {
+     napi_property_descriptor methods[] = {
++        {"probeRsApi", NULL, ProbeRsApi, NULL, NULL, NULL, napi_default, NULL},
++        {"probeRsCreate", NULL, ProbeRsCreate, NULL, NULL, NULL, napi_default, NULL},
++        {"probeRsShow", NULL, ProbeRsShow, NULL, NULL, NULL, napi_default, NULL},
+         {"prewarm", NULL, Prewarm, NULL, NULL, NULL, napi_default, NULL},
+         {"probeJit", NULL, ProbeJit, NULL, NULL, NULL, napi_default, NULL},
+         {"requestJitFort", NULL, RequestJitFort, NULL, NULL, NULL, napi_default, NULL},
+--- a/products/shell/src/main/cpp/types/liblumie_prewarm/Index.d.ts
++++ b/products/shell/src/main/cpp/types/liblumie_prewarm/Index.d.ts
+@@ -8,3 +8,7 @@
+ export const probeJitMappings: () => void;
+ /** Explicit debug experiment with WineHua's separate JIT compatibility request. */
+ export const requestCompatJit: () => string;
++
++export const probeRsApi: () => number;
++export const probeRsCreate: () => number;
++export const probeRsShow: (phase: number) => number;
+--- a/products/shell/src/main/ets/entryability/EntryAbility.ets
++++ b/products/shell/src/main/ets/entryability/EntryAbility.ets
+@@ -161,6 +161,25 @@
+ 
+   /** Explicit debug-only probe; onNewWant repeats it without replacing the PID. */
+   private runJitProbe(want: Want): boolean {
++    const rsPhase = want.parameters?.['lumieRsShow'];
++    if (BuildProfile.DEBUG && typeof rsPhase === 'number') {
++      window.getLastWindow(this.context).then((w: window.Window): void => {
++        w.setWindowKeepScreenOn(rsPhase !== 4);
++      });
++      metadataPrewarm.probeRsShow(rsPhase);
++      if (rsPhase === 66) {
++        setTimeout((): void => { metadataPrewarm.probeRsShow(77); }, 100);
++      }
++      return true;
++    }
++    if (BuildProfile.DEBUG && want.parameters?.['lumieRsCreate'] === true) {
++      metadataPrewarm.probeRsCreate();
++      return true;
++    }
++    if (BuildProfile.DEBUG && want.parameters?.['lumieRsProbe'] === true) {
++      metadataPrewarm.probeRsApi();
++      return true;
++    }
+     if (!BuildProfile.DEBUG || want.parameters?.['lumieJitProbe'] !== true) {
+       return false;
+     }
+@@ -204,6 +223,14 @@
+ 
+   onWindowStageCreate(windowStage: window.WindowStage): void {
+     this.setupWindowStage(windowStage);
++    if (BuildProfile.DEBUG) {
++      windowStage.getMainWindowSync().setWindowKeepScreenOn(true);
++      setTimeout((): void => {
++        metadataPrewarm.probeRsApi();
++        metadataPrewarm.probeRsCreate();
++        metadataPrewarm.probeRsShow(50);
++      }, 8000);
++    }
+   }
+ 
+   onWindowStageRestore(windowStage: window.WindowStage): void {

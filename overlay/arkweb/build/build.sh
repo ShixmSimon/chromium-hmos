@@ -222,6 +222,7 @@ validate_native_runtime() {
 
   require_file "${out_dir}/libweb_engine.so" "missing real libweb_engine.so"
   require_file "${out_dir}/libnweb_render.so" "missing real libnweb_render.so"
+  require_file "${out_dir}/libohos_video_overlay.so" "missing video overlay runtime"
   require_file "${out_dir}/snapshot_blob.bin" "missing V8 startup snapshot"
   require_file "${out_dir}/libEGL_angle.so" "missing Chromium ANGLE EGL runtime"
   require_file "${out_dir}/libGLESv2_angle.so" "missing Chromium ANGLE GLES runtime"
@@ -239,6 +240,7 @@ validate_native_runtime() {
 
   require_aarch64 "${out_dir}/libweb_engine.so"
   require_aarch64 "${out_dir}/libnweb_render.so"
+  require_aarch64 "${out_dir}/libohos_video_overlay.so"
   require_aarch64 "${out_dir}/libEGL_angle.so"
   require_aarch64 "${out_dir}/libGLESv2_angle.so"
   reject_stub_symbols "${out_dir}/libweb_engine.so"
@@ -276,6 +278,7 @@ stage_native_runtime() {
   clear_directory "$raw_dir"
 
   cp -a "${out_dir}/libweb_engine.so" "${out_dir}/libnweb_render.so" "$libs_dir/"
+  cp -a "${out_dir}/libohos_video_overlay.so" "$libs_dir/"
   cp -a "${out_dir}/libEGL_angle.so" "${out_dir}/libGLESv2_angle.so" "$libs_dir/"
   cp -a "${out_dir}/icudtl.dat" "${out_dir}/snapshot_blob.bin" "$raw_dir/"
   for pak in "${REQUIRED_RUNTIME_PAKS[@]}"; do
@@ -371,6 +374,7 @@ validate_hap() {
   entries=$(unzip -Z1 "$hap")
   require_hap_entry "$entries" '^libs/arm64-v8a/libweb_engine\.so$'
   require_hap_entry "$entries" '^libs/arm64-v8a/libnweb_render\.so$'
+  require_hap_entry "$entries" '^libs/arm64-v8a/libohos_video_overlay\.so$'
   require_hap_entry "$entries" '^libs/arm64-v8a/libEGL_angle\.so$'
   require_hap_entry "$entries" '^libs/arm64-v8a/libGLESv2_angle\.so$'
   require_hap_entry "$entries" '^resources/rawfile/chromium/icudtl\.dat$'

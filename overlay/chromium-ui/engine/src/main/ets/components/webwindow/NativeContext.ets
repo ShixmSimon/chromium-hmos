@@ -14,6 +14,7 @@
  */
 
 import { common } from '@kit.AbilityKit';
+import { NodeContent } from '@kit.ArkUI';
 import { TranslationStyle, TranslationResult, TranslationReleaseReason } from './TranslationTypes';
 import { DisplayBrightnessBridge, DisplayBrightnessNativePort } from '../../utils/DisplayBrightnessBridge';
 import { BluetoothBridge, BluetoothNativePort } from '../../utils/BluetoothBridge';
@@ -742,6 +743,8 @@ export interface AuxiliaryWindowState {
 }
 
 export interface INativeContext extends BluetoothNativePort, UsbNativePort, SystemServiceNativePort, DisplayBrightnessNativePort {
+  AttachOverlayContent?(xComponentId: string, content: NodeContent): void;
+  DetachOverlayContent?(xComponentId: string): void;
   Initialize(xComponentId: string, configJson: string, onWindowAction: (action: string) => void): void;
   OnSurfaceCreated(xComponentId: string): void;
   OnSurfaceChanged(

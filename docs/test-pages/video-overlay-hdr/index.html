@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lumie 视频图层 / HDR 测试</title>
+<link rel="stylesheet" href="style.css">
+<main>
+  <h1>视频图层 / HDR 测试</h1>
+  <p>自生成灰阶与移动方块，1280×720 / 30 fps / 6 秒，无音轨。网页白字用于检查字幕与视频层叠加。</p>
+  <p class="notice">网页播放成功和 HDR 能力上报不能证明独立图层或 HDR 出屏；原生缓冲区、系统图层和实际显示均需另行验证。</p>
+  <label>测试备注（内核版本、后端、设备）<input id="notes" placeholder="例如：155 / OpenGL / Mate 70"></label>
+  <div class="controls">
+    <label>素材 <select id="clip" disabled></select></label>
+    <button id="play" disabled>载入并播放</button><button id="pause">暂停 / 继续</button>
+    <button id="seek">前进 2 秒</button><button id="stop">停止并释放媒体</button>
+    <label><input id="loop" type="checkbox" checked>循环</label>
+  </div>
+  <div class="controls">
+    <button id="cycle" disabled>SDR → HDR10 → SDR（各 6 秒）</button>
+    <button id="fullscreen">容器全屏</button>
+    <label><input id="subtitle" type="checkbox" checked>网页字幕</label>
+    <label><input id="danmaku" type="checkbox">滚动弹幕</label>
+    <label><input id="occlusion" type="checkbox">不透明遮挡</label>
+    <label><input id="small" type="checkbox">缩小</label>
+    <label><input id="transform" type="checkbox">旋转 / 圆角（回退场景）</label>
+    <label>填充 <select id="fit"><option>contain</option><option>cover</option><option>fill</option></select></label>
+  </div>
+  <div id="stage">
+    <video id="video" controls playsinline muted loop preload="metadata"></video>
+    <div id="sub">网页字幕 · SDR 白色 · 不应被视频覆盖</div>
+    <div id="dan" hidden>滚动弹幕：观察文字层次与视频边界</div>
+    <div id="occluder" hidden>网页遮挡区域</div>
+  </div>
+  <p id="patches">HDR 灰阶从左到右：0 / 0.1 / 1 / 10 / 100 / 203 / 400 / 1000 nit。下方白块移动。SDR 的后三档限于参考白。</p>
+  <p id="status" role="status">正在读取素材清单…</p>
+  <button id="export">导出诊断 JSON</button>
+  <pre id="stats"></pre>
+  <details><summary>事件记录（最近 300 条）</summary><pre id="events"></pre></details>
+  <section class="scroll-area"><h2>滚动测试区域</h2><p>上下滚动让播放器离开和返回视口，检查视频层跟随、裁剪、残影。全屏退出后再测试尺寸和遮挡。</p></section>
+</main>
+<script src="test.js" defer></script>
+</html>

@@ -1,4 +1,6 @@
+import { NodeContent } from '@kit.ArkUI';
 export interface AuraStartupConfig {
+  enableVideoOverlays?: boolean;
   startUrl: string;
   uiProfile: 'phone' | 'tablet' | 'pc';
   uiFamily: 'aura_pc' | 'aura_tablet' | 'mobile_phone' | 'mobile_large';
@@ -53,3 +55,6 @@ export const SetUsbEventCallback: (
 ) => void;
 export const CompleteUsbMessage: (xComponentId: string, messageJson: string) => void;
 export const Shutdown: (xComponentId: string) => void;
+
+export const AttachOverlayContent: (xComponentId: string, content: NodeContent) => void;
+export const DetachOverlayContent: (xComponentId: string) => void;

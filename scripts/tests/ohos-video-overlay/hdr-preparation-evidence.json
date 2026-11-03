@@ -1,0 +1,251 @@
+{
+  "schema": 1,
+  "date": "2026-11-03",
+  "scope": "Host preparation only; no device installation or real-video HDR validation",
+  "media": [
+    {
+      "file": "sdr-avc.mp4",
+      "bytes": 15911,
+      "sha256": "bc0dc7af19bda1bb15eac3c2684b1982dd6dc980e6fd15911fb8ae3bc0725d24",
+      "verification": {
+        "full_decode": "passed",
+        "frames": 180,
+        "patch_samples": [
+          {
+            "nominal_nits": 0,
+            "expected_y": 16,
+            "decoded_y": 16
+          },
+          {
+            "nominal_nits": 0.1,
+            "expected_y": 17,
+            "decoded_y": 17
+          },
+          {
+            "nominal_nits": 1,
+            "expected_y": 26,
+            "decoded_y": 26
+          },
+          {
+            "nominal_nits": 10,
+            "expected_y": 80,
+            "decoded_y": 80
+          },
+          {
+            "nominal_nits": 100,
+            "expected_y": 235,
+            "decoded_y": 235
+          },
+          {
+            "nominal_nits": 100,
+            "expected_y": 235,
+            "decoded_y": 235
+          },
+          {
+            "nominal_nits": 100,
+            "expected_y": 235,
+            "decoded_y": 235
+          },
+          {
+            "nominal_nits": 100,
+            "expected_y": 235,
+            "decoded_y": 235
+          }
+        ]
+      }
+    },
+    {
+      "file": "sdr-hevc10.mp4",
+      "bytes": 34013,
+      "sha256": "247c4b2449216aef839512a1d7ef32fa87eaf8ee3c59575c57c2b26fdf4f2608",
+      "verification": {
+        "full_decode": "passed",
+        "frames": 180,
+        "patch_samples": [
+          {
+            "nominal_nits": 0,
+            "expected_y": 64,
+            "decoded_y": 64
+          },
+          {
+            "nominal_nits": 0.1,
+            "expected_y": 68,
+            "decoded_y": 68
+          },
+          {
+            "nominal_nits": 1,
+            "expected_y": 103,
+            "decoded_y": 103
+          },
+          {
+            "nominal_nits": 10,
+            "expected_y": 319,
+            "decoded_y": 319
+          },
+          {
+            "nominal_nits": 100,
+            "expected_y": 940,
+            "decoded_y": 940
+          },
+          {
+            "nominal_nits": 100,
+            "expected_y": 940,
+            "decoded_y": 940
+          },
+          {
+            "nominal_nits": 100,
+            "expected_y": 940,
+            "decoded_y": 940
+          },
+          {
+            "nominal_nits": 100,
+            "expected_y": 940,
+            "decoded_y": 940
+          }
+        ]
+      }
+    },
+    {
+      "file": "hdr10-hevc.mp4",
+      "bytes": 57059,
+      "sha256": "c3022f0294e6ecef676cdddff04faea637d2dc0cd3d5cee95985e7ab2d64777e",
+      "verification": {
+        "full_decode": "passed",
+        "frames": 180,
+        "patch_samples": [
+          {
+            "nominal_nits": 0,
+            "expected_y": 64,
+            "decoded_y": 64
+          },
+          {
+            "nominal_nits": 0.1,
+            "expected_y": 119,
+            "decoded_y": 119
+          },
+          {
+            "nominal_nits": 1,
+            "expected_y": 195,
+            "decoded_y": 195
+          },
+          {
+            "nominal_nits": 10,
+            "expected_y": 327,
+            "decoded_y": 327
+          },
+          {
+            "nominal_nits": 100,
+            "expected_y": 509,
+            "decoded_y": 509
+          },
+          {
+            "nominal_nits": 203,
+            "expected_y": 573,
+            "decoded_y": 573
+          },
+          {
+            "nominal_nits": 400,
+            "expected_y": 636,
+            "decoded_y": 636
+          },
+          {
+            "nominal_nits": 1000,
+            "expected_y": 723,
+            "decoded_y": 723
+          }
+        ]
+      }
+    },
+    {
+      "file": "pq-vp9.webm",
+      "bytes": 10867,
+      "sha256": "eadabd760fce1c214f5dff1f6044d24afbc19b09bad8d186e447548e4d049733",
+      "verification": {
+        "full_decode": "passed",
+        "frames": 180,
+        "patch_samples": [
+          {
+            "nominal_nits": 0,
+            "expected_y": 64,
+            "decoded_y": 64
+          },
+          {
+            "nominal_nits": 0.1,
+            "expected_y": 119,
+            "decoded_y": 119
+          },
+          {
+            "nominal_nits": 1,
+            "expected_y": 195,
+            "decoded_y": 195
+          },
+          {
+            "nominal_nits": 10,
+            "expected_y": 327,
+            "decoded_y": 327
+          },
+          {
+            "nominal_nits": 100,
+            "expected_y": 509,
+            "decoded_y": 509
+          },
+          {
+            "nominal_nits": 203,
+            "expected_y": 573,
+            "decoded_y": 573
+          },
+          {
+            "nominal_nits": 400,
+            "expected_y": 636,
+            "decoded_y": 636
+          },
+          {
+            "nominal_nits": 1000,
+            "expected_y": 723,
+            "decoded_y": 723
+          }
+        ]
+      }
+    }
+  ],
+  "host_browser": "Chrome/156.0.8078.80",
+  "web_checks": [
+    "four verified fixtures",
+    "no horizontal overflow",
+    "decoded sdr-avc",
+    "decoded sdr-hevc10",
+    "decoded hdr10-hevc",
+    "decoded pq-vp9",
+    "layout controls",
+    "SDR HDR SDR returned to SDR",
+    "stop cancels pending transition",
+    "rapid selection latest wins",
+    "native evidence remains unmeasured"
+  ],
+  "web_report": "/tmp/lumie-hdr-web-qa/report.json",
+  "mobile_screenshot": "/tmp/lumie-hdr-web-qa/mobile.png",
+  "native_compile": {
+    "target": "aarch64-linux-ohos",
+    "flags": "-std=c++17 -Wall -Wextra -Werror -fPIC",
+    "result": "passed",
+    "output": "/tmp/lumie-hdr-buffer-probe.o"
+  },
+  "source_sha256": {
+    "docs/test-pages/video-overlay-hdr/index.html": "3052ef3314bb401f93314d8502709e38d104f25ffa6b20184fde89ab6bafdb22",
+    "docs/test-pages/video-overlay-hdr/style.css": "db37703c119f7fc4892250c548266e032be437cb5571109dcf022635e83fcbae",
+    "docs/test-pages/video-overlay-hdr/test.js": "ac08bad6b45ebb71cdbb5298474cc543b10bdc69ae7eff779b47ba59ec2864b5",
+    "scripts/tests/ohos-video-overlay/generate_hdr_media.py": "475cbbda24cc46f1ae457d638ade7af82eb53978225d83e5df43f38b607a38a4",
+    "scripts/tests/ohos-video-overlay/hdr_buffer_probe.h": "b0ae6b7b187425bb24b5006f49c6025dd834d280688cdf6f50b0f5882970c311",
+    "scripts/tests/ohos-video-overlay/hdr_buffer_probe.cpp": "d53c426cfb1f57b353fd4633536ac4d68ba4a02621fc2003f7804a667d7507ef",
+    "scripts/tests/ohos-video-overlay/web_smoke.mjs": "343a3b0835d748adfad4437350e5e615a2f2501657a7c882a531a9ecbcc03a4e"
+  },
+  "device_validation": "not run",
+  "production_integration": "not enabled",
+  "http_range_check": {
+    "status": 206,
+    "range": "bytes 0-31/57059",
+    "response_bytes": 32
+  },
+  "web_report_sha256": "e5c365c702c9ef1bb8734d51f475972d7a96951645873953ba4cfb60c53c7f28",
+  "mobile_screenshot_sha256": "a432dafe9775ba52c811cfb5116b3e880e270aad392347f3cb8997cf021cf9ab"
+}

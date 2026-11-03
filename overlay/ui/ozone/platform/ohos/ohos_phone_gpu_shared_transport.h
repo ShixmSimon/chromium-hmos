@@ -47,7 +47,10 @@ enum class SharedOp : uint32_t {
   kAllocateImage,
   kImage,
   kGraphiteState,
-  kGlColorState
+  kGlColorState,
+  kOpenOverlayChannel,
+  kOverlayChannel,
+  kOverlayPresented
 };
 struct SharedPacket {
   uint32_t magic = kSharedMagic;

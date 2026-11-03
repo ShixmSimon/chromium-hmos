@@ -1,0 +1,140 @@
+11-03 13:10:00.101 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16ca7e5448 1dbc466 1a70756]decoder=OMX.hisi.video.decoder.avc size=1280x720
+11-03 13:10:00.114 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16ca7e5448 1dbc466 1a70756]start rc=0
+11-03 13:10:00.245 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 seq=101128328 width=1280 height=720 stride=1280 format=24 color_result=0 color=8
+11-03 13:10:00.245 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=0 result=50102000 size=0
+11-03 13:10:00.245 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=1 result=50102000 size=0
+11-03 13:10:00.245 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 seq=1577910281 width=1280 height=720 stride=5120 format=12 color_result=0 color=25
+11-03 13:10:00.245 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=0 result=50102000 size=0
+11-03 13:10:00.245 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=1 result=50102000 size=0
+11-03 13:10:00.246 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=1 released=0
+11-03 13:10:00.256 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=2 released=0
+11-03 13:10:00.293 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=3 released=1
+11-03 13:10:00.333 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=4 released=2
+11-03 13:10:01.208 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=30 released=28
+11-03 13:10:02.309 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=60 released=58
+11-03 13:10:03.790 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=90 released=88
+11-03 13:10:05.279 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=120 released=117
+11-03 13:10:06.738 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=150 released=148
+11-03 13:10:08.033 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=180 released=178
+11-03 13:10:08.865 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: drained submitted=180 released=180 outstanding=0
+11-03 13:10:10.260 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16cb222e4d 9af96b 18b7920]decoder=OMX.hisi.video.decoder.hevc size=1280x720
+11-03 13:10:10.273 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16cb222e4d 9af96b 18b7920]start rc=0
+11-03 13:10:10.402 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 seq=101128354 width=1280 height=720 stride=2560 format=35 color_result=0 color=8
+11-03 13:10:10.402 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=0 result=50102000 size=0
+11-03 13:10:10.402 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=1 result=50102000 size=0
+11-03 13:10:10.402 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 seq=1577910461 width=1280 height=720 stride=5120 format=12 color_result=0 color=25
+11-03 13:10:10.402 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=0 result=50102000 size=0
+11-03 13:10:10.402 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=1 result=50102000 size=0
+11-03 13:10:10.402 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=1 released=0
+11-03 13:10:10.416 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=2 released=0
+11-03 13:10:10.458 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=3 released=1
+11-03 13:10:10.484 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=4 released=2
+11-03 13:10:11.368 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=30 released=28
+11-03 13:10:12.502 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=60 released=58
+11-03 13:10:13.924 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=90 released=88
+11-03 13:10:15.273 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=120 released=117
+11-03 13:10:16.726 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=150 released=148
+11-03 13:10:18.274 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=180 released=178
+11-03 13:10:20.883 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: drained submitted=180 released=180 outstanding=0
+11-03 13:10:22.089 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16cbdf309d ce3e45 27a737d]decoder=OMX.hisi.video.decoder.hevc size=1280x720
+11-03 13:10:22.102 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16cbdf309d ce3e45 27a737d]start rc=0
+11-03 13:10:22.223 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 seq=101128380 width=1280 height=720 stride=2560 format=35 color_result=0 color=10
+11-03 13:10:22.223 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=0 result=0 size=4
+11-03 13:10:22.223 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: hdr_type=1
+11-03 13:10:22.223 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: key=0 bytes_prefix=01000000 truncated=0
+11-03 13:10:22.223 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=1 result=0 size=48
+11-03 13:10:22.223 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: mastering R=0.708,0.292 G=0.17,0.797 B=0.131,0.046 W=0.3127,0.329 min=0.0001 max=1000 CLL=1000 FALL=198
+11-03 13:10:22.223 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: key=1 bytes_prefix=7d3f353f0681953e7b142e3e31084c3fdd24063e7f6a3c3d371aa03eb072a83e00007a4417b7d13800007a4400004643 truncated=0
+11-03 13:10:22.223 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 seq=1577910641 width=1280 height=720 stride=5120 format=12 color_result=0 color=25
+11-03 13:10:22.223 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=0 result=50102000 size=0
+11-03 13:10:22.223 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=1 result=50102000 size=0
+11-03 13:10:22.224 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=1 released=0
+11-03 13:10:22.265 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=2 released=0
+11-03 13:10:22.278 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=3 released=1
+11-03 13:10:22.322 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=4 released=2
+11-03 13:10:23.213 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=30 released=28
+11-03 13:10:24.230 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=60 released=58
+11-03 13:10:25.547 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=90 released=88
+11-03 13:10:27.053 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=120 released=117
+11-03 13:10:28.565 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=150 released=148
+11-03 13:10:29.931 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=180 released=177
+11-03 13:10:30.339 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: drained submitted=180 released=180 outstanding=0
+11-03 13:10:31.743 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16cc789b29 223187b 1745ff7]decoder=OMX.hisi.video.decoder.avc size=1280x720
+11-03 13:10:31.756 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16cc789b29 223187b 1745ff7]start rc=0
+11-03 13:10:31.889 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 seq=101128406 width=1280 height=720 stride=1280 format=24 color_result=0 color=8
+11-03 13:10:31.889 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=0 result=50102000 size=0
+11-03 13:10:31.889 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=1 result=50102000 size=0
+11-03 13:10:31.889 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 seq=1577910821 width=1280 height=720 stride=5120 format=12 color_result=0 color=25
+11-03 13:10:31.889 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=0 result=50102000 size=0
+11-03 13:10:31.889 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=1 result=50102000 size=0
+11-03 13:10:31.890 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=1 released=0
+11-03 13:10:31.897 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=2 released=0
+11-03 13:10:31.943 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=3 released=1
+11-03 13:10:31.971 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=4 released=2
+11-03 13:10:32.854 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=30 released=28
+11-03 13:10:33.909 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=60 released=58
+11-03 13:10:35.368 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=90 released=88
+11-03 13:10:36.746 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=120 released=117
+11-03 13:10:38.186 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=150 released=148
+11-03 13:10:39.528 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=180 released=178
+11-03 13:10:41.846 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: drained submitted=180 released=180 outstanding=0
+11-03 13:10:43.542 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16cd36214d 252f27 325e754]decoder=OMX.hisi.video.decoder.hevc size=1280x720
+11-03 13:10:43.554 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16cd36214d 252f27 325e754]start rc=0
+11-03 13:10:43.686 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 seq=101128432 width=1280 height=720 stride=2560 format=35 color_result=0 color=10
+11-03 13:10:43.686 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=0 result=0 size=4
+11-03 13:10:43.686 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: hdr_type=1
+11-03 13:10:43.686 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: key=0 bytes_prefix=01000000 truncated=0
+11-03 13:10:43.686 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=1 result=0 size=48
+11-03 13:10:43.686 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: mastering R=0.708,0.292 G=0.17,0.797 B=0.131,0.046 W=0.3127,0.329 min=0.0001 max=1000 CLL=1000 FALL=198
+11-03 13:10:43.686 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: key=1 bytes_prefix=7d3f353f0681953e7b142e3e31084c3fdd24063e7f6a3c3d371aa03eb072a83e00007a4417b7d13800007a4400004643 truncated=0
+11-03 13:10:43.686 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 seq=1577911001 width=1280 height=720 stride=5120 format=12 color_result=0 color=25
+11-03 13:10:43.686 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=0 result=50102000 size=0
+11-03 13:10:43.686 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=1 result=50102000 size=0
+11-03 13:10:43.686 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=1 released=0
+11-03 13:10:43.694 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=2 released=0
+11-03 13:10:43.738 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=3 released=1
+11-03 13:10:43.763 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=4 released=2
+11-03 13:10:44.653 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=30 released=28
+11-03 13:10:45.762 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=60 released=58
+11-03 13:10:47.241 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=90 released=88
+11-03 13:10:48.629 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=120 released=118
+11-03 13:10:50.128 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=150 released=148
+11-03 13:10:51.568 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=180 released=178
+11-03 13:10:53.848 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: drained submitted=180 released=180 outstanding=0
+11-03 13:10:55.942 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16cdfbea2b ab9bc 229571a]decoder=OMX.hisi.video.decoder.hevc size=1280x720
+11-03 13:10:55.953 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16cdfbea2b ab9bc 229571a]start rc=0
+11-03 13:10:56.074 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 seq=101128458 width=1280 height=720 stride=2560 format=35 color_result=0 color=10
+11-03 13:10:56.074 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=0 result=0 size=4
+11-03 13:10:56.074 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: hdr_type=1
+11-03 13:10:56.074 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: key=0 bytes_prefix=01000000 truncated=0
+11-03 13:10:56.074 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=1 result=0 size=48
+11-03 13:10:56.074 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: mastering R=0.708,0.292 G=0.17,0.797 B=0.131,0.046 W=0.3127,0.329 min=0.0001 max=1000 CLL=1000 FALL=198
+11-03 13:10:56.074 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: key=1 bytes_prefix=7d3f353f0681953e7b142e3e31084c3fdd24063e7f6a3c3d371aa03eb072a83e00007a4417b7d13800007a4400004643 truncated=0
+11-03 13:10:56.074 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 seq=1577911181 width=1280 height=720 stride=5120 format=12 color_result=0 color=25
+11-03 13:10:56.074 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=0 result=50102000 size=0
+11-03 13:10:56.074 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=1 result=50102000 size=0
+11-03 13:10:56.074 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=1 released=0
+11-03 13:10:56.096 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=2 released=0
+11-03 13:10:56.138 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=3 released=1
+11-03 13:10:56.163 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=4 released=2
+11-03 13:10:57.042 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=30 released=28
+11-03 13:10:59.001 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: drained submitted=35 released=35 outstanding=0
+11-03 13:10:59.860 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16ce3b79fc 39bb39 3afd616]decoder=OMX.hisi.video.decoder.avc size=1280x720
+11-03 13:10:59.871 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: [a92ab16ce3b79fc 39bb39 3afd616]start rc=0
+11-03 13:10:59.990 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 seq=101128484 width=1280 height=720 stride=1280 format=24 color_result=0 color=8
+11-03 13:10:59.990 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=0 result=50102000 size=0
+11-03 13:10:59.990 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=0 key=1 result=50102000 size=0
+11-03 13:10:59.990 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 seq=1577911216 width=1280 height=720 stride=5120 format=12 color_result=0 color=25
+11-03 13:10:59.990 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=0 result=50102000 size=0
+11-03 13:10:59.990 24077 24077 I A04301/com.miramira8295.lumiebrowser/LumieHdrBuffer: session=1 frame=0 stage=1 key=1 result=50102000 size=0
+11-03 13:10:59.991 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=1 released=0
+11-03 13:11:00.037 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=2 released=0
+11-03 13:11:00.045 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=3 released=0
+11-03 13:11:00.087 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=4 released=2
+11-03 13:11:00.955 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=30 released=28
+11-03 13:11:01.999 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=60 released=57
+11-03 13:11:03.460 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=90 released=88
+11-03 13:11:04.886 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=120 released=117
+11-03 13:11:06.373 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=150 released=148
+11-03 13:11:07.738 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: submitted=180 released=177
+11-03 13:11:08.803 24077 24077 I A03F01/com.miramira8295.lumiebrowser/LumieRealVideo: drained submitted=180 released=180 outstanding=0

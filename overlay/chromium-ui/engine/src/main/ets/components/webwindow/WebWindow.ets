@@ -15,7 +15,7 @@
 
 import display from '@ohos.display';
 import { common } from '@kit.AbilityKit';
-import { dragController, promptAction, window } from '@kit.ArkUI';
+import { dragController, promptAction, window, NodeContent } from '@kit.ArkUI';
 import { unifiedDataChannel, uniformTypeDescriptor } from '@kit.ArkData';
 import { fileIo, fileUri } from '@kit.CoreFileKit';
 import { image } from '@kit.ImageKit';
@@ -243,8 +243,11 @@ export struct WebWindow {
     }
   }
 
+  private overlayContent: NodeContent = new NodeContent();
+  private overlayNative: INativeContext | null = null;
+
   build() {
-    Column() {
+    Stack({ alignContent: Alignment.TopStart }) {
       XComponent({
         id: this.xComponentId,
         // SURFACE gives Chromium its own layer in the system compositor, which
@@ -308,6 +311,13 @@ export struct WebWindow {
         .onKeyEventDispatch((event: KeyEvent): boolean => {
           return this.dispatchKeyEvent(event);
         })
+      Column() {
+        ContentSlot(this.overlayContent)
+      }
+      .width('100%')
+      .height('100%')
+      .clip(true)
+      .hitTestBehavior(HitTestMode.None)
     }
     .width('100%')
     .height('100%')
@@ -322,6 +332,10 @@ export struct WebWindow {
       }
 
       const startupConfig = this.readStartupConfig();
+      if (startupConfig.enableVideoOverlays === true) {
+        this.overlayNative = context as INativeContext;
+        this.overlayNative.AttachOverlayContent?.(this.xComponentId, this.overlayContent);
+      }
       this.updateXComponentMode(startupConfig);
       this.applyDisplayMetrics(startupConfig);
       this.attachUserDataDirectory(startupConfig);
@@ -365,6 +379,8 @@ export struct WebWindow {
   }
 
   private destroyNativeContext(): void {
+    this.overlayNative?.DetachOverlayContent?.(this.xComponentId);
+    this.overlayNative = null;
     if (this.nativeContext) {
       this.setSurfaceReady(false);
       this.surfaceReady = false;

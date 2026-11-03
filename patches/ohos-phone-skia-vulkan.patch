@@ -32,12 +32,21 @@ index 5daede0..34f7b96 100644
  #include "gpu/vulkan/vulkan_device_queue.h"
  #include "gpu/vulkan/vulkan_fence_helper.h"
  #include "gpu/vulkan/vulkan_function_pointers.h"
-@@ -2086,6 +2090,15 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
+@@ -2086,6 +2090,24 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
      return true;
    }
  
 +#if BUILDFLAG(IS_OHOS)
 +  if (ui::IsOhosPhoneGpuChild()) {
++    if (auto presenter = dependency_->CreatePresenter()) {
++      presenter_ = presenter.get();
++      output_device_ = std::make_unique<SkiaOutputDeviceBufferQueue>(
++          std::make_unique<OutputPresenterGL>(std::move(presenter), dependency_),
++          dependency_, shared_image_representation_factory_.get(),
++          shared_gpu_deps_->memory_tracker(), GetDidSwapBuffersCompleteCallback(),
++          GetReleaseOverlaysCallback());
++      return true;
++    }
 +    output_device_ = std::make_unique<SkiaOutputDeviceOhosPhoneVulkan>(
 +        vulkan_context_provider_, dependency_->GetSurfaceHandle(),
 +        shared_gpu_deps_->memory_tracker(), GetDidSwapBuffersCompleteCallback());

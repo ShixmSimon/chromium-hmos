@@ -1,0 +1,74 @@
+diff --git a/components/viz/service/display_embedder/output_presenter_gl.cc b/components/viz/service/display_embedder/output_presenter_gl.cc
+--- a/components/viz/service/display_embedder/output_presenter_gl.cc
++++ b/components/viz/service/display_embedder/output_presenter_gl.cc
+@@ -68,6 +68,26 @@
+   capabilities->present_requires_make_current =
+       !presenter_->SupportsPlaneGpuFences();
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Video underlays retain decoder HDR metadata; webpage text and controls
++  // remain SDR, including when Chromium must composite an ineligible video.
++  capabilities->ohos_output_color_spaces =
++      gfx::DisplayColorSpaces(gfx::ColorSpace::CreateSRGB());
++  for (auto usage : {gfx::ContentColorUsage::kSRGB,
++                     gfx::ContentColorUsage::kWideColorGamut,
++                     gfx::ContentColorUsage::kHDR}) {
++    for (bool alpha : {false, true}) {
++      capabilities->ohos_output_color_spaces->SetOutputColorSpaceAndFormat(
++          usage, alpha, gfx::ColorSpace::CreateSRGB(),
++          SinglePlaneFormat::kRGBA_8888);
++    }
++  }
++  capabilities->sk_color_type_map[SinglePlaneFormat::kRGBA_8888] =
++      kRGBA_8888_SkColorType;
++  capabilities->sk_color_type_map[SinglePlaneFormat::kBGRA_8888] =
++      kBGRA_8888_SkColorType;
++  return;
++#endif
+   // TODO(crbug.com/40141277): only add supported formats base on
+   // platform, driver, etc.
+   capabilities->sk_color_type_map[SinglePlaneFormat::kBGR_565] =
+@@ -125,7 +145,11 @@
+     // properly.
+     LOG_IF(WARNING, overlay_plane_candidate.is_root_render_pass)
+         << "root_render_pass is missing overlay_image.";
++#if !BUILDFLAG(IS_OHOS)
+     return;
++#endif
++    // OHOS must see this missing plane and reject the whole atomic frame.
++    // Skipping just the video would display a primary with an empty hole.
+   }
+ #elif BUILDFLAG(IS_ANDROID)
+   gl::OverlayImage overlay_image =
+diff --git a/components/viz/service/display/overlay_processor_interface.cc b/components/viz/service/display/overlay_processor_interface.cc
+--- a/components/viz/service/display/overlay_processor_interface.cc
++++ b/components/viz/service/display/overlay_processor_interface.cc
+@@ -154,9 +154,13 @@
+     }
+   }
+ 
++  auto available_strategies = renderer_settings.overlay_strategies;
++#if BUILDFLAG(IS_OHOS)
++  // The OHOS presenter implements one video underlay and an alpha webpage.
++  available_strategies = {OverlayStrategy::kUnderlay};
++#endif
+   return std::make_unique<OverlayProcessorOzone>(
+-      std::move(overlay_candidates),
+-      std::move(renderer_settings.overlay_strategies),
++      std::move(overlay_candidates), std::move(available_strategies),
+       std::move(pixmap_provider));
+ 
+ #elif BUILDFLAG(IS_ANDROID)
+diff --git a/gpu/command_buffer/service/shared_image/shared_image_manager.cc b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
+--- a/gpu/command_buffer/service/shared_image/shared_image_manager.cc
++++ b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
+@@ -655,7 +655,8 @@
+   return true;
+ #elif BUILDFLAG(IS_ANDROID)
+   return true;
+-#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
++#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA) || \
++    BUILDFLAG(IS_OHOS)
+   return supports_overlays_on_ozone_;
+ #elif BUILDFLAG(IS_WIN)
+   return gl::DirectCompositionTextureSupported();

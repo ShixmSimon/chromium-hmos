@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
+#include "base/rand_util.h"
+#include "ui/ozone/platform/ohos/ohos_overlay_api.h"
 #include "ui/ozone/platform/ohos/ohos_video_graphite_metadata.h"
 
 #include <IPCKit/ipc_cparcel.h>
@@ -566,6 +568,7 @@ class OhosNativePixmap : public gfx::NativePixmap {
   bool has_direct_buffer() const { return video_window_ != nullptr; }
   void SetVideoMetadataFd(int fd) { video_metadata_fd_ = fd; }
   int video_metadata_fd() const { return video_metadata_fd_; }
+  uint64_t overlay_token = 0;
 
   bool AreDmaBufFdsValid() const override { return fd_ >= 0; }
   int GetDmaBufFd(size_t plane) const override { return fd_; }
@@ -1048,6 +1051,32 @@ scoped_refptr<gfx::NativePixmap> CreateOhosVideoNativePixmap(
       release_on_failure.Release());
 }
 
+uint64_t RegisterOhosVideoOverlay(scoped_refptr<gfx::NativePixmap> pixmap,
+                                  bool pristine) {
+  const auto* api = GetOhosOverlayApi();
+  if (!api)
+    return 0;
+  const uint64_t token = base::RandUint64();
+  auto lease =
+      std::make_unique<scoped_refptr<gfx::NativePixmap>>(std::move(pixmap));
+  if (!api->register_video(
+          token, GetOhosNativeBuffer(**lease),
+          pristine ? OHOS_OVERLAY_SDR_TAGS_PRISTINE : 0, lease.get(),
+          [](void* data) {
+            delete static_cast<scoped_refptr<gfx::NativePixmap>*>(data);
+          }))
+    return 0;
+  lease.release();
+  return token;
+}
+void UnregisterOhosVideoOverlay(uint64_t token) {
+  if (const auto* api = GetOhosOverlayApi())
+    api->unregister_video(token);
+}
+uint64_t GetOhosVideoOverlayToken(const gfx::NativePixmap& pixmap) {
+  return static_cast<const OhosNativePixmap&>(pixmap).overlay_token;
+}
+
 std::optional<uint32_t> GetOhosVideoNativePixmapId(
     const gfx::NativePixmap& pixmap) {
   return static_cast<const OhosNativePixmap&>(pixmap).video_buffer_id();
@@ -1214,6 +1243,7 @@ scoped_refptr<gfx::NativePixmap> ImportOhosVideoNativePixmap(
           },
           window, std::move(handle.ohos_video_release_fd)));
   pixmap->SetVideoMetadataFd(metadata_fd);
+  pixmap->overlay_token = handle.ohos_overlay_token;
   return pixmap;
 }
 

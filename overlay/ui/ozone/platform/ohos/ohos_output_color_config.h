@@ -35,6 +35,11 @@ void SetOhosVerifiedWsiOutput(gfx::AcceleratedWidget widget, bool hdr, bool p3);
 void ResetOhosVerifiedWsiOutputs();
 bool HasOhosVerifiedWsiHdrOutput();
 bool HasOhosVerifiedWsiP3Output();
+// Independent of the primary framebuffer's color: the allowlisted native RS
+// delegate can display original P010 PQ video beneath an SDR webpage primary.
+void SetOhosVerifiedOverlayOutput(gfx::AcceleratedWidget widget, bool hdr);
+void ResetOhosVerifiedOverlayOutputs();
+bool HasOhosVerifiedOverlayHdrOutput();
 // GPU-sequence-only hook for shared GL framebuffers. Initialize before Viz
 // copies capabilities, while the GL context is current. Unregister on Destroy.
 class OhosGlOutputColorClient {

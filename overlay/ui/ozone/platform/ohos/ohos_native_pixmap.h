@@ -87,6 +87,13 @@ scoped_refptr<gfx::NativePixmap> CreateOhosVideoNativePixmap(
     gfx::ColorSpace* color_space,
     base::OnceClosure release);
 
+// Browser decoder only. Unregister after the GPU lease endpoint reaches EOF;
+// a presenter can then keep the original decoder lease alive independently.
+uint64_t RegisterOhosVideoOverlay(scoped_refptr<gfx::NativePixmap> pixmap,
+                                  bool sdr_epoch_pristine);
+void UnregisterOhosVideoOverlay(uint64_t token);
+uint64_t GetOhosVideoOverlayToken(const gfx::NativePixmap& pixmap);
+
 // Stable allocation identity, not the address of a per-acquisition wrapper.
 // Only decoder surface pixmaps have one. Scope it to the decoder's epoch.
 std::optional<uint32_t> GetOhosVideoNativePixmapId(

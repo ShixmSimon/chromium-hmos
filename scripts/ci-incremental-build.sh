@@ -289,6 +289,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-vulkan-cached-upload.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-phone-vulkan-video.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-startup-probes.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-video-overlay-presenter.patch"
   while IFS= read -r -d '' video_saved; do
     video_file="${video_saved#"${video_patch_backup}/"}"
     if cmp -s "${video_saved}" "${src}/${video_file}"; then

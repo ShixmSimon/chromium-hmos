@@ -48,7 +48,8 @@ gfx::DisplayColorSpaces ReadDisplayColorSpaces() {
   gfx::DisplayColorSpaces color_spaces(gfx::ColorSpace::CreateSRGB());
   ApplyOhosDisplayBrightness(color_spaces);
   const bool verified_hdr = HasOhosVerifiedPhoneHdrOutput() ||
-                            HasOhosVerifiedWsiHdrOutput();
+                            HasOhosVerifiedWsiHdrOutput() ||
+                            HasOhosVerifiedOverlayHdrOutput();
   const bool verified_p3 = HasOhosVerifiedPhoneP3Output() ||
                            HasOhosVerifiedWsiP3Output();
   if (OhosRequiresSdrOutput() && !verified_hdr && !verified_p3) {

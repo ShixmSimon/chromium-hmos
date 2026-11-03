@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/files/scoped_file.h"
 #include "base/process/process_handle.h"
 #include "base/time/time.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_shared_transport.h"
@@ -54,6 +55,8 @@ void SetOhosPhoneGpuFrameInterval(uint64_t widget, base::TimeDelta interval);
 // Takes a copy above the inherited FD high-water mark. Call before ChromeMain.
 bool InitializeOhosPhoneGpuChild(int received_fd);
 bool IsOhosPhoneGpuChild();
+base::ScopedFD OpenOhosPhoneOverlayChannel(uint64_t widget);
+bool ReportOhosPhoneOverlayPresented(uint64_t widget);
 int OhosPhoneGpuMinimumBufferFd();
 // Offscreen RGBA/BGRA allocation is brokered by the browser. No window or
 // display color state is consulted, and no pixels cross this channel.

@@ -41,11 +41,13 @@
 #include "ui/ozone/common/egl_util.h"
 #include "ui/ozone/common/gl_ozone_egl.h"
 
+#include "ui/gl/presenter.h"
+#include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
 #include "ui/ozone/platform/ohos/ohos_native_window_registry.h"
-#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
-#include "ui/ozone/platform/ohos/ohos_gpu_child_channel.h"
 #include "ui/ozone/platform/ohos/ohos_output_color_config.h"
+#include "ui/ozone/platform/ohos/ohos_overlay_presenter.h"
+#include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
 #include "ui/ozone/platform/ohos/ohos_screen.h"
 #include "ui/ozone/platform/ohos/ohos_vsync_provider.h"
 
@@ -1291,6 +1293,12 @@ class GLOzoneEGLOhos : public GLOzoneEGL {
  public:
   GLOzoneEGLOhos() = default;
   ~GLOzoneEGLOhos() override = default;
+
+  scoped_refptr<gl::Presenter> CreateSurfacelessViewGLSurface(
+      gl::GLDisplay* display,
+      gfx::AcceleratedWidget widget) override {
+    return CreateOhosOverlayPresenter(widget);
+  }
 
   scoped_refptr<gl::GLSurface> CreateViewGLSurface(
       gl::GLDisplay* display,

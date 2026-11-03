@@ -163,7 +163,8 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   void WaitBrowserFrameLease(uint32_t generation,
                              base::ScopedFD receiver,
                              scoped_refptr<gfx::NativePixmap> pixmap,
-                             scoped_refptr<VideoFrame> frame);
+                             scoped_refptr<VideoFrame> frame,
+                             uint64_t overlay_token);
   void ConvertBrowserFrame(uint32_t generation,
                            scoped_refptr<gfx::NativePixmap> pixmap,
                            gfx::GpuFenceHandle fence,
@@ -232,6 +233,7 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   std::optional<OutputLayout> output_layout_;
 
   bool surface_enabled_ = false;
+  bool surface_overlay_sdr_pristine_ = false;
   class SurfaceVisibilityObserver;
   std::unique_ptr<SurfaceVisibilityObserver> surface_visibility_observer_;
   scoped_refptr<OhosVideoSurface> surface_;

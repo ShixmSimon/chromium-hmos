@@ -46,6 +46,7 @@ clear_directory() {
   find "$1" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 }
 
+require_file "${out_dir}/libohos_video_overlay.so" 'missing video overlay runtime'
 require_file "${out_dir}/liblumie_adblock.so" 'missing adblock-rust runtime'
 require_file "${out_dir}/libweb_engine.so" 'missing libweb_engine.so'
 require_file "${out_dir}/libnweb_render.so" 'missing libnweb_render.so'
@@ -59,7 +60,7 @@ done
 clear_directory "$libs_dir"
 clear_directory "$raw_dir"
 
-cp -a "${out_dir}/libweb_engine.so" "${out_dir}/libnweb_render.so" "${out_dir}/liblumie_adblock.so" "$libs_dir/"
+cp -a "${out_dir}/libweb_engine.so" "${out_dir}/libnweb_render.so" "${out_dir}/liblumie_adblock.so" "${out_dir}/libohos_video_overlay.so" "$libs_dir/"
 
 # ANGLE is a shared library in some configurations and linked statically into
 # libweb_engine.so in others. Copy the .so files when the build produced them;

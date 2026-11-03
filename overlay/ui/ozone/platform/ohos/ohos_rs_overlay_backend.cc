@@ -1,0 +1,730 @@
+// Copyright 2026 The Chromium Authors. All rights reserved.
+// Firmware-pinned RS compatibility boundary. No app-owned C++ object is passed
+// as a system shared_ptr/sptr; only the verified legacy std::function ABI
+// crosses.
+#include "ohos_rs_overlay_backend.h"
+
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <link.h>
+#include <native_buffer/native_buffer.h>
+#include <poll.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <atomic>
+#include <cstring>
+#include <queue>
+#ifdef OHOS_OVERLAY_DIAGNOSTICS
+#include <hilog/log.h>
+#define TRACE(...) \
+  OH_LOG_Print(LOG_APP, LOG_INFO, 0xD003F01, "LumieRealVideo", __VA_ARGS__)
+#else
+#define TRACE(...) ((void)0)
+#endif
+
+#if !defined(__aarch64__)
+#error The RS compatibility backend is restricted to the verified AArch64 ABI.
+#endif
+
+extern "C" void OhosRsSret3(void*, void*, uintptr_t, uintptr_t, uintptr_t);
+__asm__(
+    ".text\n.balign 4\n.global OhosRsSret3\n"
+#if !defined(OHOS_OVERLAY_DIAGNOSTICS)
+    ".hidden OhosRsSret3\n"
+#endif
+    ".type "
+    "OhosRsSret3,%function\n"
+    "OhosRsSret3:\n stp x29,x30,[sp,#-16]!\n mov x29,sp\n mov x8,x0\n mov "
+    "x16,x1\n"
+    "mov x0,x2\n mov x1,x3\n mov x2,x4\n blr x16\n ldp x29,x30,[sp],#16\n ret\n"
+    ".size OhosRsSret3,.-OhosRsSret3\n");
+
+namespace ui::ohos_overlay {
+namespace {
+struct SystemShared {
+  void* object = nullptr;
+  void* control = nullptr;
+};
+static_assert(sizeof(SystemShared) == 16);
+static_assert(sizeof(std::function<void(int)>) == 48);
+uint32_t Hash(const void* ptr, size_t size) {
+  struct Range {
+    uintptr_t address;
+    size_t size;
+    bool valid;
+  } range{reinterpret_cast<uintptr_t>(ptr), size, false};
+  dl_iterate_phdr(
+      [](dl_phdr_info* info, size_t, void* data) {
+        auto& r = *static_cast<Range*>(data);
+        for (unsigned i = 0; i < info->dlpi_phnum; ++i) {
+          const auto& p = info->dlpi_phdr[i];
+          const auto start = info->dlpi_addr + p.p_vaddr;
+          if (p.p_type == PT_LOAD &&
+              (p.p_flags & (PF_R | PF_X)) == (PF_R | PF_X) &&
+              r.address >= start && r.address - start <= p.p_memsz &&
+              r.size <= p.p_memsz - (r.address - start)) {
+            r.valid = true;
+            return 1;
+          }
+        }
+        return 0;
+      },
+      &range);
+  if (!range.valid)
+    return 0;
+  uint32_t hash = 2166136261u;
+  const auto* bytes = static_cast<const uint8_t*>(ptr);
+  for (size_t i = 0; i < size; ++i)
+    hash = (hash ^ bytes[i]) * 16777619u;
+  return hash;
+}
+bool Ready(int fd) {
+  if (fd == -1)
+    return true;
+  if (fd < 0)
+    return false;
+  pollfd poll_fd{fd, POLLIN, 0};
+  return poll(&poll_fd, 1, 0) == 1 && (poll_fd.revents & POLLIN);
+}
+struct Fd {
+  int fd = -1;
+  ~Fd() {
+    if (fd >= 0)
+      close(fd);
+  }
+  Fd() = default;
+  Fd(const Fd&) = delete;
+  Fd& operator=(const Fd&) = delete;
+};
+struct Api {
+  void* rs = nullptr;
+  void* surface = nullptr;
+  void* create = nullptr;
+  void* context_get = nullptr;
+  void* node_get = nullptr;
+  void* get_surface = nullptr;
+  void* marker_get = nullptr;
+  void* manager = nullptr;
+  void (*weak_release)(void*) = nullptr;
+  void (*hardware)(void*, bool, int, bool) = nullptr;
+  bool (*delegate)(void*, bool) = nullptr;
+  void (*add_child)(void*, SystemShared*, int) = nullptr;
+  void (*remove_child)(void*, SystemShared*) = nullptr;
+  void (*bounds)(void*, float, float, float, float) = nullptr;
+  void (*frame)(void*, float, float, float, float) = nullptr;
+  void (*source)(void*, float, float, float, float) = nullptr;
+  void (*destination)(void*, float, float, float, float) = nullptr;
+  void (*gravity)(void*, int) = nullptr;
+  void (*z)(void*, float) = nullptr;
+  void (*visible)(void*, bool) = nullptr;
+  void (*clean)(void*, bool) = nullptr;
+  void (*set_buffer)(void*, void*, void*, const void*) = nullptr;
+  void (*flush)(void*, uint64_t, const void*, bool, uint64_t) = nullptr;
+  void (*vsync)(void*) = nullptr;
+  void (*marker_ctor)(void*, void*) = nullptr;
+  bool (*marker_register)(void*, const void*) = nullptr;
+  void (*marker_dtor)(void*) = nullptr;
+  void (*add_command)(void*, void**, bool, int, uint64_t) = nullptr;
+  void* (*release_instance)() = nullptr;
+  bool (*release_connect)(void*, void*) = nullptr;
+  bool (*release_register)(void*, const void*) = nullptr;
+  int (*release_buffer)(void*, uint32_t, void*) = nullptr;
+  void (*surface_drop)(void*, const void*) = nullptr;
+  int (*background)(void*) = nullptr;
+  template <typename T>
+  bool Get(T& target, const char* symbol, size_t n = 0, uint32_t hash = 0) {
+    void* value = dlsym(rs, symbol);
+    if (!value || (n && Hash(value, n) != hash))
+      return false;
+    target = reinterpret_cast<T>(value);
+    return true;
+  }
+  bool Load() {
+    rs = dlopen("/system/lib64/librender_service_client.z.so",
+                RTLD_NOW | RTLD_NOLOAD);
+    surface = dlopen("/system/lib64/chipset-pub-sdk/libsurface.z.so",
+                     RTLD_NOW | RTLD_NOLOAD);
+    if (!rs || !surface)
+      return false;
+    void* check = nullptr;
+    if (!Get(check,
+             "_ZN4OHOS5Rosen13RSSurfaceNodeC2ERKNS0_"
+             "19RSSurfaceNodeConfigEbNSt3__h10shared_ptrINS0_11RSUIContextEEE",
+             436, 0xe95e87f1) ||
+        !Get(check,
+             "_ZN4OHOS5Rosen13RSSurfaceNode6CreateERKNS0_"
+             "19RSSurfaceNodeConfigENS0_17RSSurfaceNodeTypeEbbNSt3__h10shared_"
+             "ptrINS0_11RSUIContextEEE",
+             2168, 0xea6a36b8) ||
+        !Get(check, "_ZN4OHOS5Rosen13RSSurfaceNodeD2Ev", 1576, 0x7194ed42) ||
+        !Get(check,
+             "_ZN4OHOS5Rosen11RSUIContextC2EmRNS_4sptrINS_13IRemoteObjectEEE",
+             1708, 0x14d660fd) ||
+        !Get(check,
+             "_ZN4OHOS5Rosen13RSSurfaceNode26SetBufferAvailableCallbackENSt3__"
+             "h8functionIFvvEEE",
+             1588, 0x5290b89e))
+      return false;
+    auto identity = dlsym(
+        surface, "_ZN4OHOS17SurfaceBufferImpl27SurfaceBufferToNativeBufferEv");
+    uint32_t instruction = 0;
+    if (identity)
+      std::memcpy(&instruction, identity, sizeof(instruction));
+    if (instruction != 0xd65f03c0)
+      return false;
+#define RESOLVE(field, symbol) \
+  if (!Get(field, symbol))     \
+  return false
+    if (!Get(create,
+             "_ZN4OHOS5Rosen13RSSurfaceNode6CreateERKNS0_"
+             "19RSSurfaceNodeConfigEbNSt3__h10shared_ptrINS0_11RSUIContextEEE",
+             232, 0x801e5a23))
+      return false;
+    RESOLVE(context_get,
+            "_ZNK4OHOS5Rosen18RSUIContextManager14GetRSUIContextEm");
+    RESOLVE(node_get,
+            "_ZNK4OHOS5Rosen11RSNodeMapV27GetNodeINS0_"
+            "6RSNodeEEEKNSt3__h10shared_ptrIT_EEm");
+    void* (*get_manager)() = nullptr;
+    RESOLVE(get_manager,
+            "_ZN4OHOS5Rosen18RSUIContextManager15MutableInstanceEv");
+    manager = get_manager();
+    if (!manager)
+      return false;
+    RESOLVE(weak_release, "_ZNSt3__h19__shared_weak_count14__release_weakEv");
+    RESOLVE(hardware,
+            "_ZN4OHOS5Rosen13RSSurfaceNode18SetHardwareEnabledEbNS0_"
+            "19SelfDrawingNodeTypeEb");
+    RESOLVE(delegate, "_ZN4OHOS5Rosen13RSSurfaceNode15SetDelegateModeEb");
+    RESOLVE(add_child,
+            "_ZN4OHOS5Rosen6RSNode8AddChildENSt3__h10shared_ptrIS1_EEi");
+    if (!Get(remove_child,
+             "_ZN4OHOS5Rosen6RSNode11RemoveChildENSt3__h10shared_ptrIS1_EE",
+             1176, 0xd791aac8))
+      return false;
+    RESOLVE(bounds, "_ZN4OHOS5Rosen6RSNode9SetBoundsEffff");
+    RESOLVE(frame, "_ZN4OHOS5Rosen6RSNode8SetFrameEffff");
+    RESOLVE(source, "_ZN4OHOS5Rosen13RSSurfaceNode18SetDelegateSrcRectEffff");
+    RESOLVE(destination,
+            "_ZN4OHOS5Rosen13RSSurfaceNode18SetDelegateDstRectEffff");
+    RESOLVE(gravity, "_ZN4OHOS5Rosen6RSNode15SetFrameGravityENS0_7GravityE");
+    RESOLVE(z, "_ZN4OHOS5Rosen6RSNode12SetPositionZEf");
+    RESOLVE(visible, "_ZN4OHOS5Rosen6RSNode10SetVisibleEb");
+    if (!Get(clean, "_ZN4OHOS5Rosen13RSSurfaceNode11CleanBufferEb", 20,
+             0x0cd5d9fd))
+      return false;
+    RESOLVE(set_buffer,
+            "_ZN4OHOS5Rosen13RSSurfaceNode9SetBufferENS_4sptrINS_"
+            "13SurfaceBufferEEENS_18UniqueFdAddDeletorINS_"
+            "14DefaultDeleterEEERKNSt3__h8functionIFviEEE");
+    RESOLVE(
+        flush,
+        "_ZN4OHOS5Rosen20RSTransactionHandler24FlushImplicitTransactionEmRKNSt3"
+        "__h12basic_stringIcNS2_11char_traitsIcEENS2_9allocatorIcEEEEbm");
+    RESOLVE(vsync, "_ZN4OHOS5Rosen11RSUIContext20RequestVsyncCallbackEv");
+    if (!Get(marker_ctor,
+             "_ZN4OHOS5Rosen26SurfaceTransactionListenerC2ENS_4sptrINS_"
+             "13IRemoteObjectEEE",
+             228, 0xeeb6d8a9) ||
+        !Get(marker_register,
+             "_ZN4OHOS5Rosen26SurfaceTransactionListener31RegisterCommandComple"
+             "teCallBackENSt3__h8functionIFvmmNS2_5queueImNS2_5dequeImNS2_"
+             "9allocatorImEEEEEEEEE",
+             1452, 0xd110289e))
+      return false;
+    RESOLVE(marker_get,
+            "_ZN4OHOS5Rosen26SurfaceTransactionListener10GetCommandERm");
+    RESOLVE(marker_dtor, "_ZN4OHOS5Rosen26SurfaceTransactionListenerD2Ev");
+    RESOLVE(
+        add_command,
+        "_ZN4OHOS5Rosen20RSTransactionHandler10AddCommandERNSt3__h10unique_"
+        "ptrINS0_9RSCommandENS2_14default_deleteIS4_EEEEbNS0_10FollowTypeEm");
+    RESOLVE(release_instance,
+            "_ZN4OHOS5Rosen32SurfaceNodeBufferReleaseListener11GetInstanceEv");
+    RESOLVE(release_connect,
+            "_ZN4OHOS5Rosen32SurfaceNodeBufferReleaseListener18SetConnectToRend"
+            "erENS_4sptrINS_13IRemoteObjectEEE");
+    RESOLVE(release_register,
+            "_ZN4OHOS5Rosen32SurfaceNodeBufferReleaseListener29RegisterReleaseB"
+            "ufferCallBackENSt3__h8functionIFvNS2_5queueINS0_"
+            "14OnCompletedRetENS2_5dequeIS5_NS2_9allocatorIS5_EEEEEEEEE");
+    RESOLVE(release_buffer,
+            "_ZN4OHOS5Rosen13RSSurfaceNode13ReleaseBufferEjNS_"
+            "4sptrINS_9SyncFenceEEE");
+    if (!Get(get_surface, "_ZNK4OHOS5Rosen13RSSurfaceNode10GetSurfaceEv", 264,
+             0x108d9ce0))
+      return false;
+    surface_drop = reinterpret_cast<decltype(surface_drop)>(
+        dlsym(surface, "_ZN4OHOS7RefBase12DecStrongRefEPKv"));
+    background = reinterpret_cast<decltype(background)>(
+        dlsym(surface, "_ZN4OHOS15ProducerSurface12GoBackgroundEv"));
+    return surface_drop && background &&
+           Hash(reinterpret_cast<void*>(background), 92) == 0x2ef7d186;
+#undef RESOLVE
+  }
+  void Drop(SystemShared& ref) {
+    if (!ref.control)
+      return;
+    void* control = ref.control;
+    ref = {};
+    auto* owners = reinterpret_cast<long*>(static_cast<char*>(control) + 8);
+    if (__atomic_fetch_sub(owners, 1, __ATOMIC_ACQ_REL) == 0) {
+      auto** table = *static_cast<void***>(control);
+      reinterpret_cast<void (*)(void*)>(table[2])(control);
+      weak_release(control);
+    }
+  }
+};
+
+// Shared process dispatcher, installed once without replacing another owner.
+// Routes retain no foreign node; an allocation may be submitted to one node at
+// a time. The routing lock covers the entire system ReleaseBuffer call.
+struct Slot {
+  uint64_t submission = 0, allocation = 0;
+  unsigned plane = 0;
+  uint32_t sequence = 0;
+  void* node = nullptr;
+  void* context = nullptr;
+  Api* api = nullptr;
+  std::atomic<int> fence{-2};
+  bool server_returned = false;
+  std::function<void(int)> callback;
+  ~Slot() {
+    const int fd = fence.load();
+    if (fd >= 0)
+      close(fd);
+  }
+};
+struct ReleaseRecord {
+  uint64_t node_id;
+  int32_t client_pid;
+  uint64_t queue_id;
+  void* fence;
+  uint32_t sequence;
+  bool active_game;
+};
+static_assert(sizeof(ReleaseRecord) == 40);
+pthread_mutex_t route_mutex = PTHREAD_MUTEX_INITIALIZER;
+std::map<uint32_t, Slot*> routes;
+bool dispatcher_registered = false;
+bool RegisterDispatcher(Api& api, void* remote) {
+  pthread_mutex_lock(&route_mutex);
+  if (dispatcher_registered) {
+    pthread_mutex_unlock(&route_mutex);
+    return true;
+  }
+  using Queue = std::queue<ReleaseRecord>;
+  static_assert(sizeof(Queue) == 48);
+  static const std::function<void(Queue)> callback = [](const Queue& borrowed) {
+    Queue copy = borrowed;
+    while (!copy.empty()) {
+      const auto record = copy.front();
+      copy.pop();
+      if ((record.node_id >> 32) != static_cast<uint64_t>(getpid()))
+        continue;
+      TRACE("release_record node=%{public}llu pid=%{public}d seq=%{public}u",
+            static_cast<unsigned long long>(record.node_id), record.client_pid,
+            record.sequence);
+      pthread_mutex_lock(&route_mutex);
+      auto found = routes.find(record.sequence);
+      if (found != routes.end()) {
+        Slot& slot = *found->second;
+        // client_pid is zero in verified delegate-composition notifications.
+        // Bind the record's exact node via its context map; PID/sequence alone
+        // must not route a release for another node using the same allocation.
+        SystemShared recorded_node;
+        OhosRsSret3(&recorded_node, slot.api->node_get,
+                    reinterpret_cast<uintptr_t>(slot.context) + 40,
+                    record.node_id, 0);
+        const bool matches = recorded_node.object == slot.node;
+        slot.api->Drop(recorded_node);
+        if (matches && !slot.server_returned) {
+          void* fence = record.fence;
+          const int rc =
+              slot.api->release_buffer(slot.node, record.sequence, &fence);
+          TRACE("release_forward rc=%{public}d fence=%{public}d", rc,
+                slot.fence.load());
+          slot.server_returned = rc == 0;
+        }
+      }
+      pthread_mutex_unlock(&route_mutex);
+    }
+  };
+  void* listener = api.release_instance();
+  dispatcher_registered = listener && api.release_connect(listener, remote) &&
+                          api.release_register(listener, &callback);
+  pthread_mutex_unlock(&route_mutex);
+  return dispatcher_registered;
+}
+
+struct MarkerState {
+  std::atomic<uint64_t> expected{UINT64_MAX};
+  std::atomic<uint64_t> acknowledged{UINT64_MAX};
+};
+struct Batch : Backend::Prepared {
+  uint64_t submission = 0;
+  unsigned count = 0;
+  struct Item {
+    std::unique_ptr<Slot> slot;
+    OH_NativeBuffer* buffer = nullptr;  // Borrowed from Session's read lease.
+    Rect source, destination;
+    Fd acquire;
+  } items[2];
+};
+
+class RsBackend final : public Backend {
+ public:
+  ~RsBackend() override {
+    if (!slots_.empty())
+      std::abort();
+    if (listener_constructed_)
+      api_.marker_dtor(listener_);
+    api_.Drop(nodes_[0]);
+    api_.Drop(nodes_[1]);
+    if (handler_)
+      Flush();
+    api_.Drop(parent_);
+    api_.Drop(context_);
+    if (api_.surface)
+      dlclose(api_.surface);
+    if (api_.rs)
+      dlclose(api_.rs);
+  }
+  bool Initialize(uint64_t token, uint64_t parent_id) {
+    owner_ = pthread_self();
+    if ((token >> 32) != static_cast<uint64_t>(gettid()) ||
+        (parent_id >> 32) != static_cast<uint64_t>(getpid()) || !api_.Load())
+      return false;
+    OhosRsSret3(&context_, api_.context_get,
+                reinterpret_cast<uintptr_t>(api_.manager), token, 0);
+    if (!context_.object)
+      return false;
+    std::memcpy(&handler_, static_cast<char*>(context_.object) + 120,
+                sizeof(handler_));
+    if (!handler_)
+      return false;
+    OhosRsSret3(&parent_, api_.node_get,
+                reinterpret_cast<uintptr_t>(context_.object) + 40, parent_id,
+                0);
+    if (!parent_.object ||
+        !RegisterDispatcher(api_, static_cast<char*>(context_.object) + 480))
+      return false;
+    marker_ = std::make_shared<MarkerState>();
+    api_.marker_ctor(listener_, static_cast<char*>(context_.object) + 480);
+    listener_constructed_ = true;
+    auto state = marker_;
+    const std::function<void(uint64_t, uint64_t, std::queue<uint64_t>)>
+        callback = [state](uint64_t, uint64_t,
+                           const std::queue<uint64_t>& markers) {
+          auto copy = markers;
+          while (!copy.empty()) {
+            const auto value = copy.front();
+            copy.pop();
+            if (state->expected.load(std::memory_order_acquire) == value) {
+              auto old = state->acknowledged.load(std::memory_order_acquire);
+              while ((old == UINT64_MAX || old < value) &&
+                     !state->acknowledged.compare_exchange_weak(old, value)) {
+              }
+            }
+          }
+        };
+    if (!api_.marker_register(listener_, &callback))
+      return false;
+    for (unsigned i = 0; i < 2; ++i) {
+      alignas(8) uint8_t config[88] = {};
+      const char* name = i ? "LumieVideoLayer" : "LumieWebLayer";
+      const size_t n = std::strlen(name);
+      config[0] = static_cast<uint8_t>(n << 1);
+      std::memcpy(config + 1, name, n);
+      config[48] = 1;
+      config[72] = 1;
+      OhosRsSret3(&nodes_[i], api_.create, reinterpret_cast<uintptr_t>(config),
+                  0, reinterpret_cast<uintptr_t>(&context_));
+      if (!nodes_[i].object)
+        return false;
+      api_.hardware(nodes_[i].object, true, 0, true);
+      if (!api_.delegate(nodes_[i].object, true))
+        return false;
+      api_.gravity(nodes_[i].object, 5);
+      api_.visible(nodes_[i].object, false);
+    }
+    for (auto& node : nodes_)
+      api_.add_child(parent_.object, &node, -1);
+    attached_ = true;
+    Flush();
+    return true;
+  }
+  bool Supports(const Frame& f) const override {
+    if (!OnOwner() || draining_ || destroyed_)
+      return false;
+    return f.primary.lease->BorrowAcquireFence() >= -1 &&
+           (!f.video || f.video->lease->BorrowAcquireFence() >= -1);
+  }
+  bool ReadyForFrame() const override { return video_cleanup_ == 0; }
+  std::unique_ptr<Prepared> Prepare(uint64_t submission,
+                                    const Frame& f) override {
+    if (!Supports(f))
+      return nullptr;
+    auto batch = std::make_unique<Batch>();
+    batch->submission = submission;
+    batch->count = f.video ? 2 : 1;
+    for (unsigned i = 0; i < batch->count; ++i) {
+      const auto& plane = i ? *f.video : f.primary;
+      auto& item = batch->items[i];
+      item.buffer = static_cast<OH_NativeBuffer*>(plane.lease->native_buffer());
+      OH_NativeBuffer_Config config = {};
+      OH_NativeBuffer_GetConfig(item.buffer, &config);
+      const int format = i ? (plane.format == Format::kP010
+                                  ? NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
+                                  : NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP)
+                           : (plane.format == Format::kBgra8
+                                  ? NATIVEBUFFER_PIXEL_FMT_BGRA_8888
+                                  : NATIVEBUFFER_PIXEL_FMT_RGBA_8888);
+      if (config.width != static_cast<int>(plane.width) ||
+          config.height != static_cast<int>(plane.height) ||
+          config.format != format)
+        return nullptr;
+      const int acquire = plane.lease->BorrowAcquireFence();
+      if (acquire >= 0) {
+        item.acquire.fd = fcntl(acquire, F_DUPFD_CLOEXEC, 0);
+        if (item.acquire.fd < 0)
+          return nullptr;
+      }
+      item.source = plane.source;
+      item.destination = plane.destination;
+      if (plane.reuse)
+        continue;
+      item.slot = std::make_unique<Slot>();
+      auto& slot = *item.slot;
+      slot.submission = submission;
+      slot.plane = i;
+      slot.allocation = plane.lease->allocation_id();
+      slot.sequence = OH_NativeBuffer_GetSeqNum(item.buffer);
+      slot.node = nodes_[i].object;
+      slot.context = context_.object;
+      slot.api = &api_;
+      slot.callback = [ptr = &slot](int fence) {
+        int expected = -2;
+        if (!ptr->fence.compare_exchange_strong(expected, fence) && fence >= 0)
+          close(fence);
+      };
+      pthread_mutex_lock(&route_mutex);
+      const bool available = !routes.count(slot.sequence);
+      pthread_mutex_unlock(&route_mutex);
+      if (!available || (i && batch->items[0].slot &&
+                         slot.sequence == batch->items[0].slot->sequence))
+        return nullptr;
+    }
+    return batch;
+  }
+  void Commit(std::unique_ptr<Prepared> prepared) override {
+    if (!OnOwner())
+      std::abort();
+    auto* batch = static_cast<Batch*>(prepared.get());
+    // All bridges run on the same owning UI sequence. Install all routes before
+    // the first command can be observed by an implicit UI flush.
+    pthread_mutex_lock(&route_mutex);
+    for (unsigned i = 0; i < batch->count; ++i) {
+      auto& item = batch->items[i];
+      if (!item.slot)
+        continue;
+      if (routes.count(item.slot->sequence))
+        std::abort();
+      routes.emplace(item.slot->sequence, item.slot.get());
+    }
+    pthread_mutex_unlock(&route_mutex);
+    for (unsigned i = 0; i < batch->count; ++i) {
+      auto& item = batch->items[i];
+      auto* node = nodes_[i].object;
+      const auto& d = item.destination;
+      const auto& s = item.source;
+      api_.bounds(node, d.x, d.y, d.width, d.height);
+      api_.frame(node, d.x, d.y, d.width, d.height);
+      api_.destination(node, d.x, d.y, d.width, d.height);
+      api_.source(node, s.x, s.y, s.width, s.height);
+      // Sibling order inside the owned webpage host, not window-global z.
+      api_.z(node, i ? 0.f : 1.f);
+      api_.visible(node, true);
+      if (!item.slot)
+        continue;  // Same content, geometry-only transaction.
+      void* buffer = item.buffer;
+      OH_NativeBuffer_Reference(item.buffer);
+      api_.set_buffer(node, &buffer, &item.acquire.fd, &item.slot->callback);
+      OH_NativeBuffer_Unreference(item.buffer);
+      slots_.push_back(std::move(item.slot));
+    }
+    if (batch->count == 1) {
+      api_.visible(nodes_[1].object, false);
+      if (video_visible_)
+        video_cleanup_ = 1;
+    }
+    video_visible_ = batch->count == 2;
+    last_submission_ = batch->submission;
+    Marker();
+    Flush();
+  }
+  std::vector<Release> PollReleases() override {
+    if (!OnOwner())
+      std::abort();
+    std::vector<Release> result;
+    pthread_mutex_lock(&route_mutex);
+    for (auto it = slots_.begin(); it != slots_.end();) {
+      auto& slot = **it;
+      if (slot.server_returned &&
+          Ready(slot.fence.load(std::memory_order_acquire))) {
+        result.push_back(
+            {slot.submission, slot.allocation, slot.plane, true, true});
+        routes.erase(slot.sequence);
+        it = slots_.erase(it);
+      } else
+        ++it;
+    }
+    pthread_mutex_unlock(&route_mutex);
+    if (!draining_ && video_cleanup_ == 1 && Acknowledged()) {
+      // The no-hole primary has reached RS before the retained video is
+      // cleaned. Block new frames until this queue epoch has fully drained.
+      api_.clean(nodes_[1].object, true);
+      Flush();
+      Background(nodes_[1]);
+      Marker();
+      Flush();
+      video_cleanup_ = 2;
+    }
+    if (video_cleanup_ == 2 && !drain_failed_ && Acknowledged()) {
+      bool pending = false;
+      for (const auto& slot : slots_)
+        pending |= slot->plane == 1;
+      if (!pending)
+        video_cleanup_ = 0;
+    }
+    return result;
+  }
+  bool CommandsProcessed(uint64_t submission) const override {
+    return submission == last_submission_ && Acknowledged();
+  }
+  void BeginDrain() override {
+    if (!OnOwner() || draining_)
+      std::abort();
+    draining_ = true;
+    for (auto& node : nodes_) {
+      api_.visible(node.object, false);
+      api_.remove_child(parent_.object, &node);
+      api_.clean(node.object, true);
+    }
+    attached_ = false;
+    Flush();
+    for (auto& node : nodes_)
+      Background(node);
+    Marker();
+    Flush();
+  }
+  bool DrainCommandsProcessed() const override {
+    return draining_ && !drain_failed_ && Acknowledged();
+  }
+  void DestroyLayers() override {
+    if (!OnOwner() || attached_ || !slots_.empty())
+      std::abort();
+    for (auto& node : nodes_)
+      api_.Drop(node);
+    Flush();
+    destroyed_ = true;
+  }
+
+ private:
+  void Background(const SystemShared& node) {
+    void* surface = nullptr;
+    OhosRsSret3(&surface, api_.get_surface,
+                reinterpret_cast<uintptr_t>(node.object), 0, 0);
+    if (!surface) {
+      drain_failed_ = true;
+      return;
+    }
+    if (api_.background(surface) != 0)
+      drain_failed_ = true;
+    api_.surface_drop(surface, &surface);
+  }
+  bool OnOwner() const { return pthread_equal(owner_, pthread_self()); }
+  bool Acknowledged() const {
+    const auto expected = marker_->expected.load(std::memory_order_acquire);
+    return expected != UINT64_MAX &&
+           marker_->acknowledged.load(std::memory_order_acquire) == expected;
+  }
+  void Marker() {
+    uint64_t sequence = UINT64_MAX;
+    void* command = nullptr;
+    OhosRsSret3(&command, api_.marker_get,
+                reinterpret_cast<uintptr_t>(listener_),
+                reinterpret_cast<uintptr_t>(&sequence), 0);
+    if (!command || sequence == UINT64_MAX)
+      std::abort();
+    marker_->expected.store(sequence, std::memory_order_release);
+    api_.add_command(handler_, &command, true, 0, 0);
+    if (command)
+      std::abort();
+  }
+  void Flush() {
+    uint64_t empty_string[3] = {};
+    api_.flush(handler_, 0, empty_string, false, 0);
+    api_.vsync(context_.object);
+  }
+  Api api_;
+  pthread_t owner_{};
+  SystemShared context_, parent_, nodes_[2];
+  void* handler_ = nullptr;
+  alignas(16) uint8_t listener_[112] = {};
+  bool listener_constructed_ = false, attached_ = false;
+  bool draining_ = false, destroyed_ = false, drain_failed_ = false;
+  bool video_visible_ = false;
+  unsigned video_cleanup_ = 0;
+  uint64_t last_submission_ = 0;
+  std::shared_ptr<MarkerState> marker_;
+  std::vector<std::unique_ptr<Slot>> slots_;
+};
+}  // namespace
+
+uint64_t ResolveOwnedRenderNode(uint64_t token, void* node) {
+  if (!node || (token >> 32) != static_cast<uint64_t>(gettid()))
+    return 0;
+  auto create = dlsym(RTLD_DEFAULT, "OH_ArkUI_RenderNodeUtils_CreateNode");
+  if (!create || Hash(create, 148) != 0x2d4d8cab)
+    return 0;
+  Api api;
+  if (!api.Load()) {
+    if (api.surface)
+      dlclose(api.surface);
+    if (api.rs)
+      dlclose(api.rs);
+    return 0;
+  }
+  SystemShared context, found, owned;
+  void* impl = nullptr;
+  std::memcpy(&impl, node, sizeof(impl));
+  uint32_t id = 0;
+  if (impl) {
+    std::memcpy(&owned, impl, sizeof(owned));
+    std::memcpy(&id, static_cast<char*>(impl) + 16, sizeof(id));
+  }
+  const uint64_t full_id = (static_cast<uint64_t>(getpid()) << 32) | id;
+  OhosRsSret3(&context, api.context_get,
+              reinterpret_cast<uintptr_t>(api.manager), token, 0);
+  if (context.object && owned.object && owned.control)
+    OhosRsSret3(&found, api.node_get,
+                reinterpret_cast<uintptr_t>(context.object) + 40, full_id, 0);
+  const bool match = found.object && found.object == owned.object &&
+                     found.control == owned.control;
+  api.Drop(found);
+  api.Drop(context);
+  if (api.surface)
+    dlclose(api.surface);
+  if (api.rs)
+    dlclose(api.rs);
+  return match ? full_id : 0;
+}
+std::unique_ptr<Backend> CreateRsOverlayBackend(uint64_t token,
+                                                uint64_t parent) {
+  auto backend = std::make_unique<RsBackend>();
+  if (!backend->Initialize(token, parent))
+    return nullptr;
+  return backend;
+}
+}  // namespace ui::ohos_overlay
