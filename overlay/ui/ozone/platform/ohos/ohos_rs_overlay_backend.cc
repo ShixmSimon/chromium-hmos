@@ -459,22 +459,8 @@ class RsBackend final : public Backend {
     if (!api_.marker_register(listener_, &callback))
       return false;
     for (unsigned i = 0; i < 2; ++i) {
-      alignas(8) uint8_t config[88] = {};
-      const char* name = i ? "LumieVideoLayer" : "LumieWebLayer";
-      const size_t n = std::strlen(name);
-      config[0] = static_cast<uint8_t>(n << 1);
-      std::memcpy(config + 1, name, n);
-      config[48] = 1;
-      config[72] = 1;
-      OhosRsSret3(&nodes_[i], api_.create, reinterpret_cast<uintptr_t>(config),
-                  0, reinterpret_cast<uintptr_t>(&context_));
-      if (!nodes_[i].object)
+      if (!CreateLayer(i))
         return false;
-      api_.hardware(nodes_[i].object, true, 0, true);
-      if (!api_.delegate(nodes_[i].object, true))
-        return false;
-      api_.gravity(nodes_[i].object, 5);
-      api_.visible(nodes_[i].object, false);
     }
     for (auto& node : nodes_)
       api_.add_child(parent_.object, &node, -1);
@@ -628,13 +614,33 @@ class RsBackend final : public Backend {
       Flush();
       video_cleanup_ = 2;
     }
-    if (video_cleanup_ == 2 && !drain_failed_ && Acknowledged()) {
+    if (!draining_ && video_cleanup_ == 2 && !drain_failed_ && Acknowledged()) {
       bool pending = false;
       for (const auto& slot : slots_)
         pending |= slot->plane == 1;
-      if (!pending)
-        video_cleanup_ = 0;
+      if (!pending) {
+        // GoBackground drains the old producer epoch and marks its producer
+        // cache dirty. That state prevents the sequence/fence listener from
+        // acquiring released buffers in the reused delegate queue. Retire
+        // every old read before replacing the node, then use a fresh queue.
+        SystemShared retired = nodes_[1];
+        nodes_[1] = {};
+        if (!CreateLayer(1)) {
+          api_.Drop(nodes_[1]);
+          nodes_[1] = retired;
+          drain_failed_ = true;
+          return result;
+        }
+        api_.remove_child(parent_.object, &retired);
+        api_.Drop(retired);
+        api_.add_child(parent_.object, &nodes_[1], -1);
+        Marker();
+        Flush();
+        video_cleanup_ = 3;
+      }
     }
+    if (!draining_ && video_cleanup_ == 3 && Acknowledged())
+      video_cleanup_ = 0;
     return result;
   }
   bool CommandsProcessed(uint64_t submission) const override {
@@ -669,6 +675,25 @@ class RsBackend final : public Backend {
   }
 
  private:
+  bool CreateLayer(unsigned i) {
+    alignas(8) uint8_t config[88] = {};
+    const char* name = i ? "LumieVideoLayer" : "LumieWebLayer";
+    const size_t n = std::strlen(name);
+    config[0] = static_cast<uint8_t>(n << 1);
+    std::memcpy(config + 1, name, n);
+    config[48] = 1;
+    config[72] = 1;
+    OhosRsSret3(&nodes_[i], api_.create, reinterpret_cast<uintptr_t>(config),
+                0, reinterpret_cast<uintptr_t>(&context_));
+    if (!nodes_[i].object)
+      return false;
+    api_.hardware(nodes_[i].object, true, 0, true);
+    if (!api_.delegate(nodes_[i].object, true))
+      return false;
+    api_.gravity(nodes_[i].object, 5);
+    api_.visible(nodes_[i].object, false);
+    return true;
+  }
   void Background(const SystemShared& node) {
     void* surface = nullptr;
     OhosRsSret3(&surface, api_.get_surface,

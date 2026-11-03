@@ -324,6 +324,7 @@ class Presenter final : public gl::Presenter {
   struct Flight {
     uint64_t sequence = 0, content[2] = {};
     base::TimeTicks queued_at;
+    base::TimeTicks processed_at;
     bool released[2] = {}, sent = false, accepted = false, processed = false;
     gl::OverlayImage images[2];
     std::unique_ptr<WireMessage> message;
@@ -407,6 +408,7 @@ class Presenter final : public gl::Presenter {
       else if (p.operation == WireOp::kProcessed && f.accepted &&
                !f.processed) {
         f.processed = true;
+        f.processed_at = base::TimeTicks::Now();
         const bool video = f.content[1] != 0;
         if (video != video_processed_) {
           LOG(WARNING) << "OHOS overlay: " << (video ? "promotion" : "demotion")
@@ -447,6 +449,7 @@ class Presenter final : public gl::Presenter {
     // buffers; waiting for N-1 here prevents submitting the N+1 that retires it.
     std::vector<SwapCompletionCallback> completions;
     std::vector<PresentationCallback> feedbacks;
+    std::vector<base::TimeTicks> processed_times;
     for (auto& [seq, f] : flights_) {
       if (!f->complete)
         continue;
@@ -463,6 +466,7 @@ class Presenter final : public gl::Presenter {
         break;
       completions.push_back(std::move(f->complete));
       feedbacks.push_back(std::move(f->feedback));
+      processed_times.push_back(f->processed_at);
     }
     for (auto it = flights_.begin(); it != flights_.end();) {
       if (!it->second->complete && it->second->released[0] &&
@@ -474,9 +478,13 @@ class Presenter final : public gl::Presenter {
     for (size_t i = 0; i < completions.size(); ++i) {
       std::move(completions[i])
           .Run(gfx::SwapCompletionResult(gfx::SwapResult::SWAP_ACK));
-      // Command processing / buffer retirement is not a physical latch time.
-      // Do not manufacture presentation timestamps or VSYNC feedback.
-      std::move(feedbacks[i]).Run(gfx::PresentationFeedback::Failure());
+      // Like the phone's shared-buffer GL presenter, report an estimated
+      // software presentation time after system submission was acknowledged.
+      // This is not a measured scanout time: no HWClock, HWCompletion, VSync or
+      // ZeroCopy flags are set. Reporting Failure for every accepted frame
+      // strands successful-presentation callbacks, including shell startup.
+      std::move(feedbacks[i]).Run(
+          gfx::PresentationFeedback(processed_times[i], base::TimeDelta(), 0));
     }
   }
   gfx::AcceleratedWidget widget_;
