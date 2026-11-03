@@ -13,8 +13,10 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <queue>
+#include <hilog/log.h>
 #ifdef OHOS_OVERLAY_DIAGNOSTICS
 #include <hilog/log.h>
 #define TRACE(...) \
@@ -42,6 +44,18 @@ __asm__(
 
 namespace ui::ohos_overlay {
 namespace {
+// This opt-in bridge can stall independently of the GPU's swap queue. Resolve
+// the logger from the application rather than adding an NDK link dependency.
+// Only bounded routing samples and a throttled backlog are recorded; no page
+// data, native pointers or buffer contents are included.
+template <typename... Args>
+void BacklogLog(const char* format, Args... args) {
+  static auto print = reinterpret_cast<decltype(&OH_LOG_Print)>(
+      dlsym(RTLD_DEFAULT, "OH_LOG_Print"));
+  if (print)
+    print(LOG_APP, LOG_WARN, 0xD003F01, "LumieOverlayQueue", format, args...);
+}
+std::atomic<unsigned> release_samples{0};
 struct SystemShared {
   void* object = nullptr;
   void* control = nullptr;
@@ -330,6 +344,10 @@ bool RegisterDispatcher(Api& api, void* remote) {
             record.sequence);
       pthread_mutex_lock(&route_mutex);
       auto found = routes.find(record.sequence);
+      const bool sample = release_samples.fetch_add(1) < 128;
+      if (sample)
+        BacklogLog("release seq=%{public}u routed=%{public}d",
+                   record.sequence, found != routes.end());
       if (found != routes.end()) {
         Slot& slot = *found->second;
         // client_pid is zero in verified delegate-composition notifications.
@@ -340,6 +358,9 @@ bool RegisterDispatcher(Api& api, void* remote) {
                     reinterpret_cast<uintptr_t>(slot.context) + 40,
                     record.node_id, 0);
         const bool matches = recorded_node.object == slot.node;
+        if (sample)
+          BacklogLog("match seq=%{public}u plane=%{public}u node=%{public}d returned=%{public}d",
+                     record.sequence, slot.plane, matches, slot.server_returned);
         slot.api->Drop(recorded_node);
         if (matches && !slot.server_returned) {
           void* fence = record.fence;
@@ -348,6 +369,10 @@ bool RegisterDispatcher(Api& api, void* remote) {
           TRACE("release_forward rc=%{public}d fence=%{public}d", rc,
                 slot.fence.load());
           slot.server_returned = rc == 0;
+          if (sample)
+            BacklogLog("forward seq=%{public}u rc=%{public}d fence=%{public}d ready=%{public}d",
+                       record.sequence, rc, slot.fence.load(),
+                       Ready(slot.fence.load()));
         }
       }
       pthread_mutex_unlock(&route_mutex);
@@ -583,6 +608,16 @@ class RsBackend final : public Backend {
         ++it;
     }
     pthread_mutex_unlock(&route_mutex);
+    const auto now = std::chrono::steady_clock::now();
+    if (slots_.size() >= 4 && now - last_backlog_log_ >= std::chrono::seconds(2)) {
+      last_backlog_log_ = now;
+      pthread_mutex_lock(&route_mutex);
+      for (const auto& slot : slots_)
+        BacklogLog("held seq=%{public}u plane=%{public}u returned=%{public}d fence=%{public}d ready=%{public}d cleanup=%{public}u",
+                   slot->sequence, slot->plane, slot->server_returned,
+                   slot->fence.load(), Ready(slot->fence.load()), video_cleanup_);
+      pthread_mutex_unlock(&route_mutex);
+    }
     if (!draining_ && video_cleanup_ == 1 && Acknowledged()) {
       // The no-hole primary has reached RS before the retained video is
       // cleaned. Block new frames until this queue epoch has fully drained.
@@ -679,6 +714,7 @@ class RsBackend final : public Backend {
   bool draining_ = false, destroyed_ = false, drain_failed_ = false;
   bool video_visible_ = false;
   unsigned video_cleanup_ = 0;
+  std::chrono::steady_clock::time_point last_backlog_log_{};
   uint64_t last_submission_ = 0;
   std::shared_ptr<MarkerState> marker_;
   std::vector<std::unique_ptr<Slot>> slots_;
