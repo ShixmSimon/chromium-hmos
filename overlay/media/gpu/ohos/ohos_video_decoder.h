@@ -173,6 +173,7 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   void AdvanceGeneration();
   DecoderStatus CreateCodec();
   void RenderNextSurfaceOutput();
+  void OnSurfacePresentationVisibilityChanged(uint32_t generation, bool visible);
   void OnSurfacePresentationResumed(uint32_t generation);
   void OnSurfaceFrameAvailable(uint32_t generation);
   bool TryProcessSurfaceFrame(uint32_t generation);
@@ -241,6 +242,8 @@ class MEDIA_GPU_EXPORT OhosVideoDecoder final : public VideoDecoder {
   // Only one rendered buffer awaits acquisition: consumer FIFO and this entry
   // have an unambiguous PTS association, including duplicate timestamps.
   std::optional<SurfaceOutput> rendered_output_;
+  base::OneShotTimer surface_resume_;
+  bool surface_resume_pending_ = false;
   base::OneShotTimer surface_timeout_;
   base::RepeatingTimer surface_poll_;
   base::TimeTicks surface_wait_started_;

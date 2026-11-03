@@ -108,8 +108,8 @@ struct OhosVideoDecoder::CallbackRelay {
 class OhosVideoDecoder::SurfaceVisibilityObserver final
     : public ui::OhosApplicationVisibilityObserver {
  public:
-  explicit SurfaceVisibilityObserver(base::RepeatingClosure resumed)
-      : resumed_(std::move(resumed)) {
+  explicit SurfaceVisibilityObserver(base::RepeatingCallback<void(bool)> changed)
+      : changed_(std::move(changed)) {
     ui::AddOhosApplicationVisibilityObserver(this);
   }
   ~SurfaceVisibilityObserver() override {
@@ -117,15 +117,13 @@ class OhosVideoDecoder::SurfaceVisibilityObserver final
   }
 
   void OnOhosApplicationVisibilityChanged(bool visible) override {
-    if (visible) {
-      // A codec error can unregister and destroy this observer during Run().
-      auto resumed = resumed_;
-      resumed.Run();
-    }
+    // A codec error can unregister and destroy this observer during Run().
+    auto changed = changed_;
+    changed.Run(visible);
   }
 
  private:
-  const base::RepeatingClosure resumed_;
+  const base::RepeatingCallback<void(bool)> changed_;
 };
 
 OhosVideoDecoder::PendingDecode::PendingDecode(
@@ -636,7 +634,7 @@ DecoderStatus OhosVideoDecoder::CreateCodec() {
   if (surface_enabled_ && browser_sii_) {
     surface_visibility_observer_ =
         std::make_unique<SurfaceVisibilityObserver>(base::BindRepeating(
-            &OhosVideoDecoder::OnSurfacePresentationResumed,
+            &OhosVideoDecoder::OnSurfacePresentationVisibilityChanged,
             weak_factory_.GetWeakPtr(), generation_));
   }
   LOG(WARNING) << "OHOS video decoder: selected hardware " << *name
@@ -666,6 +664,8 @@ void OhosVideoDecoder::DestroyCodec() {
   // codec are ignored even if a new codec reuses their indices.
   AdvanceGeneration();
   surface_visibility_observer_.reset();
+  surface_resume_.Stop();
+  surface_resume_pending_ = false;
   surface_timeout_.Stop();
   surface_poll_.Stop();
   free_inputs_.clear();
@@ -1070,6 +1070,24 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
                  << " max_acquired=" << surface_frame_limit_;
   }
   const bool background = browser_sii_ && !ui::IsOhosApplicationVisible();
+  if (background) {
+    surface_resume_pending_ = true;
+    surface_resume_.Stop();
+  } else if (surface_resume_pending_) {
+    // Application visibility precedes AVCodec service restoration. On the
+    // phone, a successful RenderOutputBuffer in that gap was lost while the
+    // service was still suspending/restoring its output buffers. Give that
+    // asynchronous transition one bounded grace period before submitting any
+    // queued output (including submissions triggered by buffer releases).
+    // This does not extend an outstanding frame's ten-second deadline.
+    if (!surface_resume_.IsRunning()) {
+      surface_resume_.Start(
+          FROM_HERE, base::Milliseconds(250),
+          base::BindOnce(&OhosVideoDecoder::OnSurfacePresentationResumed,
+                         weak_factory_.GetWeakPtr(), generation_));
+    }
+    return;
+  }
   // A hidden phone's native producer can return success without a consumer
   // buffer, even with only two acquired frames. Keep codec outputs queued
   // until presentation resumes. Foreground keeps the four-frame budget;
@@ -1124,11 +1142,25 @@ void OhosVideoDecoder::RenderNextSurfaceOutput() {
                          weak_factory_.GetWeakPtr(), generation_));
 }
 
+void OhosVideoDecoder::OnSurfacePresentationVisibilityChanged(
+    uint32_t generation, bool visible) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (generation != generation_)
+    return;
+  if (!visible) {
+    surface_resume_pending_ = true;
+    surface_resume_.Stop();
+    return;
+  }
+  RenderNextSurfaceOutput();
+}
+
 void OhosVideoDecoder::OnSurfacePresentationResumed(uint32_t generation) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (generation != generation_ || !ui::IsOhosApplicationVisible()) {
     return;
   }
+  surface_resume_pending_ = false;
   LOG(WARNING) << "OHOS video surface queue resume: acquired="
                << surface_frames_in_flight_
                << " queued_output=" << surface_outputs_.size()
