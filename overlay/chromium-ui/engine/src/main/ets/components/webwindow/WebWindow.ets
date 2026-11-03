@@ -317,7 +317,10 @@ export struct WebWindow {
       .width('100%')
       .height('100%')
       .clip(true)
-      .hitTestBehavior(HitTestMode.None)
+      // This subtree only presents pixels. None skips the Column itself but
+      // still lets the native ContentSlot child consume hits over XComponent.
+      // Exclude the whole subtree so Chromium keeps touch, mouse and axis input.
+      .hitTestBehavior(HitTestMode.BLOCK_DESCENDANTS)
     }
     .width('100%')
     .height('100%')

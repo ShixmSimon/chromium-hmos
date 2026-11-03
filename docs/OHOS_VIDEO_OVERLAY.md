@@ -635,7 +635,31 @@ Local checks passed:
   shell sources were restored and the normal HAP rebuilt. See
   [host evidence](../scripts/tests/ohos-video-overlay/content-host-evidence.json).
 
-Pending: full 155 kernel build; actual webpage promotion for GL/Vulkan/Graphite; scroll/resize/fullscreen,
+The full 155 kernel build passed at `def4cb0c` (CI run 41614834958,
+attempt 2), and its HAR was installed in Lumie. Device qualification then found
+a viewport-wide input regression: `HitTestMode.None` on the ContentSlot's
+Column excludes only the Column, not its native child. The child still wins
+hit testing over the underlying XComponent. The presentation-only subtree now
+uses `HitTestMode.BLOCK_DESCENDANTS` (API 20, matching the engine minimum SDK).
+This shared ArkTS fix applies to both 154 and 155; no native ABI change is needed.
+
+On the Mate 70 Pro+ with Vulkan and `--ohos-video-overlays` enabled, system-level
+tap/swipe injection into a controlled long webpage produced zero DOM touch
+events and no scrolling before the fix. After rebuilding the HAR and installing
+the shell, the same sequence produced two touch starts/ends, eight touch moves,
+one button click, and a scroll offset of 106.29 CSS pixels. A device screenshot
+confirmed the displayed scroll position and button count. The RS tree still
+contained the visible buffered LumieWebLayer and the hidden LumieVideoLayer;
+the fix did not disable the presenter. Native libraries and runtime assets
+(95 files) remained byte-identical to the CI HAR.
+
+Regression check: with overlays enabled, use a long webpage with a fixed button
+and passive touch counters. Inject taps and swipes through the device input
+system, not CDP Input (which bypasses ArkUI hit testing). Verify DOM event counts,
+scroll offset, and the actual screen, both before and after the shell toolbars
+collapse. Recalculate tap coordinates after the viewport changes.
+
+Pending: actual webpage video promotion for GL/Vulkan/Graphite; video scroll/resize/fullscreen,
 paused controls, CSS effects triggering demotion, re-promotion, live SDR/HDR
 changes, tab close/navigation/background and GPU process loss. The private RS
 compatibility gate remains firmware-specific, and other UI contexts fail closed.
