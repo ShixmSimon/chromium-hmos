@@ -447,6 +447,7 @@ else
       obj/media/gpu/gpu/ohos_video_frame_converter.o
       obj/ui/ozone/platform/ohos/ohos/ohos_native_pixmap.o
       obj/ui/ozone/platform/ohos/ohos/ohos_overlay_presenter.o
+      obj/ui/ozone/platform/ohos/ohos/ozone_platform_ohos.o
       obj/ui/ozone/platform/ohos/ohos/ohos_overlay_transport.o
       obj/ui/ozone/platform/ohos/native_window_registry/ohos_overlay_api.o
       obj/media/gpu/gpu/ohos_video_decoder.o
