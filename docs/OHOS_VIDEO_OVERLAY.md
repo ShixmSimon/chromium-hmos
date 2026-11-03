@@ -569,8 +569,10 @@ The code now connects these stages:
    with an unpredictable acquisition token. NativePixmapHandle/Mojo carries the
    token to the fork GPU. Only registered reads receive SCANOUT usage.
 2. The Ozone candidate oracle requires that original NativePixmap/token, an
-   opaque NV12 or P010 video, supported PQ/SDR color, integral geometry, identity
-   transform, no rounded corners/effects and a contained clip. Chromium's
+   opaque NV12 or P010 video, supported PQ/SDR color, finite geometry, identity
+   transform and no rounded corners/effects. Fractional video geometry is
+   preserved; the destination is intersected with the primary and clip, and
+   the source is cropped proportionally. Chromium's
    underlay strategy creates the webpage hole; ineligible videos stay composed.
 3. `ohos_overlay_presenter` submits the SDR RGBA/BGRA primary and optional video
    together. A dedicated nonblocking SOCK_SEQPACKET transports the primary's
@@ -584,7 +586,7 @@ The code now connects these stages:
 5. Demotion commits a no-hole primary and hides video together, then drains the
    old video queue. Re-promotion waits for drain completion. Paused video can
    change geometry without another SetBuffer or ending its original read.
-   Swap completion waits for replaced RS reads/fences; browser-held decoder
+   Swap completion waits for replaced primary RS reads/fences; browser-held decoder
    leases survive a GPU disconnect. Close is asynchronous with no fake release.
 
 Native video import whitelists accept read-only SCANOUT on Vulkan and Graphite;
@@ -659,7 +661,35 @@ system, not CDP Input (which bypasses ArkUI hit testing). Verify DOM event count
 scroll offset, and the actual screen, both before and after the shell toolbars
 collapse. Recalculate tap coordinates after the viewport changes.
 
-Pending: actual webpage video promotion for GL/Vulkan/Graphite; video scroll/resize/fullscreen,
+Further Vulkan qualification on this phone established actual promotion of an
+800x450-physical-pixel webpage AVC video: both RS layers held buffers and the
+presenter logged processed promotion commands. **Sustained playback failed**,
+so this is not a completed browser-video qualification. In `596a07c1`, swap ACK
+waited for video retirement, preventing the submission RS needed to retire it.
+`80822d6d` removed that dependency while retaining the browser's original read
+lease and the presenter's image until real release. Its CI build passed and was
+installed with all native/runtime bytes verified against the release HAR.
+The sustained test still failed with a completion timeout and decoder error.
+
+The next blocking condition is independently reproduced by the host regression:
+three retained video submissions plus a newer primary exhaust the old four-
+submission budget, blocking a new primary despite space in its own queue.
+`7e7df260` bounds each plane to four live allocations instead. The regression
+failed on the old code and passes under ASan/UBSan on the fix; busy rejection,
+reuse, demotion and real fence retirement remain covered. Its NDK bridge compiled
+and a local validation HAP was built, but the phone disconnected before install.
+This fix has **not** passed device qualification yet.
+
+The live Bilibili video also logged `candidate=video-non-integral-geometry` for
+its approximately 1320x742.5-pixel destination on a 1316-pixel-wide primary.
+The oracle/presenter now share fractional intersection and proportional source
+cropping. A host test covers measured dimensions, all four clipped edges,
+existing source crops, invalid values and 10,000 fractional cases. The device
+script checks 360 advancing frames, then fractional/viewport/left clipping,
+before pause, filter fallback and re-promotion. Neither these geometry changes
+nor successful live Bilibili promotion have been device-validated yet.
+
+Pending: sustained webpage video promotion for GL/Vulkan/Graphite; video scroll/resize/fullscreen,
 paused controls, CSS effects triggering demotion, re-promotion, live SDR/HDR
 changes, tab close/navigation/background and GPU process loss. The private RS
 compatibility gate remains firmware-specific, and other UI contexts fail closed.

@@ -88,6 +88,23 @@ try {
     // buffer alone does not prove that promoted video is still advancing.
     entry.sustained = await waitFor(snapshot, s => !s.error && !s.paused &&
       s.frames >= entry.initial.frames + 360, 'Promoted playback continues', 25000);
+    entry.sustainedLayers = await layers();
+    if (!visible(entry.sustainedLayers, 'Video')) throw Error('Sustained playback lost video layer');
+    entry.geometry = [];
+    for (const [name, css] of [
+      ['fractional', "v.style.left='0.25px';v.style.top='44.25px'"],
+      ['viewport_clip', "v.style.left='0px';v.style.width='377.14288330078125px';v.style.height='212.1428680419922px'"],
+      ['left_clip', "v.style.left='-20.25px'"],
+      ['restore', "v.style.left='0px';v.style.top='0px';v.style.width=(800/devicePixelRatio)+'px';v.style.height=(450/devicePixelRatio)+'px'"],
+    ]) {
+      const before = await snapshot();
+      await evaluate(css);
+      const after = await waitFor(snapshot, s => !s.error && !s.paused &&
+        s.frames >= before.frames + 30, `Playback after ${name}`, 10000);
+      const rows = await waitFor(layers, rows => visible(rows, 'Web') &&
+        visible(rows, 'Video'), `Promotion after ${name}`);
+      entry.geometry.push({name, before, after, layers:rows});
+    }
     events.push(...await logs());
     await evaluate('v.pause();v.style.left=(16/devicePixelRatio)+"px"');
     await sleep(400);

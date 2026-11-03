@@ -98,6 +98,7 @@ source_set("ohos") {
     "ohos_video_graphite_metadata.h",
     "ohos_native_window_adapter.cc",
     "ohos_native_window_adapter.h",
+    "ohos_overlay_geometry.h",
     "ohos_overlay_presenter.cc",
     "ohos_overlay_presenter.h",
     "ohos_overlay_transport.cc",

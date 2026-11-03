@@ -60,8 +60,8 @@ bool Session::Valid(const Frame& f) {
     return false;
   const auto& web = f.primary.destination;
   const auto& video = f.video->destination;
-  // Clipping/rotation is done by the oracle before promotion; reject geometry
-  // that would expose the video outside the submitted primary.
+  // The oracle validates clipping and the presenter applies the source crop.
+  // Reject geometry that would expose video outside the submitted primary.
   return video.x >= web.x && video.y >= web.y &&
          video.x + video.width <= web.x + web.width &&
          video.y + video.height <= web.y + web.height;

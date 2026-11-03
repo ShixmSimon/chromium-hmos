@@ -18,6 +18,7 @@
 #include "ui/gl/presenter.h"
 #include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
 #include "ui/ozone/platform/ohos/ohos_output_color_config.h"
+#include "ui/ozone/platform/ohos/ohos_overlay_geometry.h"
 #include "ui/ozone/platform/ohos/ohos_overlay_transport.h"
 #include "ui/ozone/platform/ohos/ohos_phone_gpu_channel.h"
 #include "ui/ozone/public/overlay_candidates_ozone.h"
@@ -60,6 +61,9 @@ bool Identity(const std::variant<gfx::OverlayTransform, gfx::Transform>& t) {
 OhosOverlayRect Rect(const gfx::RectF& r) {
   return {r.x(), r.y(), r.width(), r.height()};
 }
+std::optional<OhosOverlayRect> ClipRect(const std::optional<gfx::Rect>& clip) {
+  return clip ? std::make_optional(Rect(gfx::RectF(*clip))) : std::nullopt;
+}
 bool VideoFormat(viz::SharedImageFormat f) {
   if (f.PrefersExternalSampler())
     f.ClearPrefersExternalSampler();
@@ -91,20 +95,16 @@ class Candidates final : public OverlayCandidatesOzone {
     const char* rejection = nullptr;
     if (p.color_space.IsHDR() || !Integral(p.display_rect))
       rejection = "primary-color-or-geometry";
-    else if (!Integral(v.display_rect))
-      rejection = "video-non-integral-geometry";
-    else if (!p.display_rect.Contains(v.display_rect))
-      rejection = "video-outside-primary";
+    else if (!ClipVideoGeometry(Rect(p.display_rect), Rect(v.display_rect),
+                                Rect(v.crop_rect), ClipRect(v.clip_rect)))
+      rejection = "video-invalid-or-invisible-geometry";
     else if (!Identity(p.transform) || !Identity(v.transform))
       rejection = "transform";
-    else if (!v.is_opaque || v.opacity != 1 ||
-             !v.rounded_corners.IsEmpty() || v.background_color)
+    else if (!v.is_opaque || v.opacity != 1 || !v.rounded_corners.IsEmpty() ||
+             v.background_color)
       rejection = "video-blending-or-rounded-corners";
     else if (!VideoFormat(v.format))
       rejection = "video-format";
-    else if (v.clip_rect &&
-             !gfx::RectF(*v.clip_rect).Contains(v.display_rect))
-      rejection = "video-clipped";
     else if (v.crop_rect.IsEmpty() ||
              !gfx::RectF(1.f, 1.f).Contains(v.crop_rect))
       rejection = "video-crop";
@@ -183,9 +183,11 @@ class Presenter final : public gl::Presenter {
     const unsigned plane = data.z_order == -1 ? 1 : 0;
     if (!image || (data.z_order != 0 && data.z_order != -1) ||
         scheduled_[plane] || !Identity(data.plane_transform) ||
-        !Integral(data.display_bounds) || data.opacity != 1 ||
-        !data.rounded_corners.IsEmpty() || data.is_solid_color || data.color ||
-        (data.clip_rect &&
+        !(plane ? FiniteOverlayRect(Rect(data.display_bounds))
+                : Integral(data.display_bounds)) ||
+        data.opacity != 1 || !data.rounded_corners.IsEmpty() ||
+        data.is_solid_color || data.color ||
+        (!plane && data.clip_rect &&
          !gfx::RectF(*data.clip_rect).Contains(data.display_bounds)) ||
         (plane && (!VideoFormat(image->GetSharedImageFormat()) ||
                    !GetOhosVideoOverlayToken(*image)))) {
@@ -242,6 +244,20 @@ class Presenter final : public gl::Presenter {
                    item.image->GetBufferSize().height());
       plane.source = Rect(source);
       plane.destination = Rect(item.data.display_bounds);
+      if (i) {
+        // Ozone does not copy an oracle's crop_rect back to Viz. Validate the
+        // same intersection in the oracle and apply the actual source crop
+        // here, once both scheduled planes and the buffer size are known.
+        auto clipped = ClipVideoGeometry(
+            Rect(scheduled_[0]->data.display_bounds), plane.destination,
+            plane.source, ClipRect(item.data.clip_rect));
+        if (!clipped) {
+          invalid_ = true;
+          break;
+        }
+        plane.source = clipped->source;
+        plane.destination = clipped->destination;
+      }
       if (!i && !plane.reuse) {
         auto handle = item.image->ExportHandle();
         if (handle.ohos_buffer_prefix.size() != 14 ||

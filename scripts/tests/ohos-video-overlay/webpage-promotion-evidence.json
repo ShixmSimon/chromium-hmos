@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-03",
+  "device": "HUAWEI Mate 70 Pro+",
+  "backend": "GaneshVulkan",
+  "engine": "80822d6dec680207aa0d9bfd99e7779f63ea612e",
+  "ci_run": 41626729331,
+  "ci_conclusion": "success",
+  "release_har_sha256": "2a0fb9bc8960679bc2c2e3d701748b06e987431a6fa73cbefcc5beee5ccdc95a",
+  "installed_native_and_runtime_match_release": true,
+  "device_qualification_passed": false,
+  "fixture": {
+    "clip": "sdr-avc.mp4",
+    "destination_physical_pixels": [0, 337, 800, 450],
+    "both_rs_layers_visible_and_buffered": true,
+    "promotion_commands_processed": true,
+    "sustained_360_additional_frames_passed": false,
+    "failure_time_seconds": 6,
+    "failure_total_video_frames": 145,
+    "failure": "PipelineStatus::PIPELINE_ERROR_DECODE: OhosVideoDecoder: surface SharedImage conversion failed",
+    "presenter_failure": "completion-timeout",
+    "later_clips_run": false
+  },
+  "bilibili": {
+    "candidate_rejection": "video-non-integral-geometry",
+    "css_video_rectangle": [0, 44.250003814697266, 377.14288330078125, 212.1428680419922],
+    "device_pixel_ratio": 3.5,
+    "primary_width_pixels": 1316,
+    "independent_video_promotion_verified": false
+  },
+  "follow_up": {
+    "per_plane_capacity_fix": "7e7df2609c78c8f398081a5e9322843af9368793",
+    "host_regression_failed_before_fix": true,
+    "host_asan_ubsan_passed_after_fix": true,
+    "local_ndk_bridge_compiled": true,
+    "local_validation_hap_built": true,
+    "local_validation_hap_installed": false,
+    "reason_device_validation_pending": "Device disconnected; user confirmed temporarily unavailable.",
+    "fractional_geometry_host_test_passed": true,
+    "fractional_geometry_device_test_passed": false
+  }
+}

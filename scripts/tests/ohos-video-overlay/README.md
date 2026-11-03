@@ -47,6 +47,10 @@ clang++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -Ioverlay 
 /tmp/overlay-session-test
 ```
 
+Run both lifecycle/backpressure and fractional clipping regressions (ASan/UBSan)
+with `bash scripts/test-ohos-video-overlay.sh`. The existing Adapter CI runs
+these checks; passing them is not a device playback result.
+
 ## RenderService visual and callback probe (2026-11-03)
 
 `rs_api_probe.c`, `rs_buffer_callback.cpp` and `gpu_fence_probe.c` exercise two **visible**
@@ -314,8 +318,9 @@ loss, independently for GL/Vulkan/Graphite. Host checks alone must not change
 the default activation flag.
 
 `webpage_promotion_validation.mjs` uses the minimal `promotion.html` fixture.
-It requires both an advancing video and visible `LumieWebLayer` /
-`LumieVideoLayer` records, checks paused repositioning, forces demotion with a
+It requires 360 additional video frames and visible `LumieWebLayer` /
+`LumieVideoLayer` records, checks fractional geometry and viewport clipping,
+checks paused repositioning, forces demotion with a
 CSS filter, and verifies re-promotion for SDR8, SDR10 and HDR10. It also requires
 presenter command-processing logs; command processing is not physical display
 timing or proof of HDR luminance. Run separately for each backend:
