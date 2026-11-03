@@ -20700,7 +20700,7 @@ index c7763b1f3440c45aa1efec006f544a2bc2b98fdb..e23bbb477d70fe73a7bce081eca354fa
    void SetNeedsMeasureNextDrawLatency() override;
  
 diff --git a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
-index 8b2dfa6736b7136da297ed27662c044736dd324d..f4c6dab73859611bea61bab9fadaa6422b23e1e9 100644
+index 8b2dfa6736b7136da297ed27662c044736dd324d..3fb27d05c654a53a0e34d456ea04329054f926f8 100644
 --- a/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
 +++ b/components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
 @@ -97,6 +97,10 @@
@@ -20728,7 +20728,7 @@ index 8b2dfa6736b7136da297ed27662c044736dd324d..f4c6dab73859611bea61bab9fadaa642
  #include "gpu/vulkan/vulkan_device_queue.h"
  #include "gpu/vulkan/vulkan_fence_helper.h"
  #include "gpu/vulkan/vulkan_function_pointers.h"
-@@ -1903,6 +1914,21 @@
+@@ -1903,6 +1914,21 @@ void SkiaOutputSurfaceImplOnGpu::SetFrameRate(
  }
  #endif
  
@@ -20750,7 +20750,7 @@ index 8b2dfa6736b7136da297ed27662c044736dd324d..f4c6dab73859611bea61bab9fadaa642
  void SkiaOutputSurfaceImplOnGpu::SetCapabilitiesForTesting(
      const OutputSurface::Capabilities& capabilities) {
    // Check that we're using an offscreen surface.
-@@ -2022,6 +2048,13 @@
+@@ -2022,6 +2048,13 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForGL() {
                GetDidSwapBuffersCompleteCallback());
          } else {
            // Used by Android, Linux, and Windows (when DComp has been disabled).
@@ -20764,12 +20764,21 @@ index 8b2dfa6736b7136da297ed27662c044736dd324d..f4c6dab73859611bea61bab9fadaa642
            output_device_ = std::make_unique<SkiaOutputDeviceGL>(
                context_state_.get(), gl_surface_, feature_info_,
                shared_gpu_deps_->memory_tracker(),
-@@ -2061,6 +2094,17 @@
+@@ -2061,6 +2094,26 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
      return true;
    }
  
 +#if BUILDFLAG(IS_OHOS)
 +  if (ui::IsOhosPhoneGpuChild()) {
++    if (auto presenter = dependency_->CreatePresenter()) {
++      presenter_ = presenter.get();
++      output_device_ = std::make_unique<SkiaOutputDeviceBufferQueue>(
++          std::make_unique<OutputPresenterGL>(std::move(presenter), dependency_),
++          dependency_, shared_image_representation_factory_.get(),
++          shared_gpu_deps_->memory_tracker(), GetDidSwapBuffersCompleteCallback(),
++          GetReleaseOverlaysCallback());
++      return true;
++    }
 +    output_device_ = std::make_unique<SkiaOutputDeviceOhosPhoneVulkan>(
 +        vulkan_context_provider_, dependency_->GetSurfaceHandle(),
 +        renderer_settings_.requires_alpha_channel,
@@ -20782,7 +20791,7 @@ index 8b2dfa6736b7136da297ed27662c044736dd324d..f4c6dab73859611bea61bab9fadaa642
  #if BUILDFLAG(IS_ANDROID)
    if (vulkan_context_provider_->GetGrSecondaryCBDrawContext()) {
      output_device_ = std::make_unique<SkiaOutputDeviceVulkanSecondaryCB>(
-@@ -2097,8 +2141,8 @@
+@@ -2097,8 +2150,8 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
    if (!gpu_preferences_.disable_vulkan_surface) {
      output_device = SkiaOutputDeviceVulkan::Create(
          vulkan_context_provider_, dependency_->GetSurfaceHandle(),
@@ -20793,12 +20802,21 @@ index 8b2dfa6736b7136da297ed27662c044736dd324d..f4c6dab73859611bea61bab9fadaa642
    }
    if (MayFallBackToSkiaOutputDeviceX11()) {
  #if BUILDFLAG(SUPPORTS_OZONE_X11)
-@@ -2136,6 +2180,15 @@
+@@ -2136,6 +2189,24 @@ bool SkiaOutputSurfaceImplOnGpu::InitializeForVulkan() {
  
  bool SkiaOutputSurfaceImplOnGpu::InitializeForDawn() {
  #if BUILDFLAG(SKIA_USE_DAWN)
 +#if BUILDFLAG(IS_OHOS)
 +  if (!dependency_->IsOffscreen()) {
++    if (auto presenter = dependency_->CreatePresenter()) {
++      presenter_ = presenter.get();
++      output_device_ = std::make_unique<SkiaOutputDeviceBufferQueue>(
++          std::make_unique<OutputPresenterGL>(std::move(presenter), dependency_),
++          dependency_, shared_image_representation_factory_.get(),
++          shared_gpu_deps_->memory_tracker(), GetDidSwapBuffersCompleteCallback(),
++          GetReleaseOverlaysCallback());
++      return true;
++    }
 +    output_device_ = std::make_unique<SkiaOutputDeviceOhosGraphite>(
 +        context_state_, dependency_->GetSurfaceHandle(),
 +        renderer_settings_.requires_alpha_channel,
@@ -29055,7 +29073,7 @@ index 42b433dccffbde6d3c85b300108b2f37c9a653e0..fae189102f80188e6bc15b048b8b76d4
    bool share_between_threads = IsSharedBetweenThreads(usage);
    for (auto& factory : factories_) {
 diff --git a/gpu/command_buffer/service/shared_image/shared_image_manager.cc b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
-index 597958d75c9ae87172159290c0028636585f65f2..0fb9c0cea738528c8ad7f3c974d6e55185ded988 100644
+index 597958d75c9ae87172159290c0028636585f65f2..5ee55cd8f5d3ae8da2e04c591a3a5a78022320a9 100644
 --- a/gpu/command_buffer/service/shared_image/shared_image_manager.cc
 +++ b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
 @@ -294,7 +294,8 @@ std::unique_ptr<DawnImageRepresentation> SharedImageManager::ProduceDawn(
@@ -29068,7 +29086,17 @@ index 597958d75c9ae87172159290c0028636585f65f2..0fb9c0cea738528c8ad7f3c974d6e551
      return nullptr;
    }
  
-@@ -665,7 +666,7 @@ bool SharedImageManager::SupportsScanoutImages() {
+@@ -655,7 +656,8 @@ bool SharedImageManager::SupportsScanoutImages() {
+   return true;
+ #elif BUILDFLAG(IS_ANDROID)
+   return true;
+-#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
++#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA) || \
++    BUILDFLAG(IS_OHOS)
+   return supports_overlays_on_ozone_;
+ #elif BUILDFLAG(IS_WIN)
+   return gl::DirectCompositionTextureSupported();
+@@ -665,7 +667,7 @@ bool SharedImageManager::SupportsScanoutImages() {
  }
  
  void SharedImageManager::QueryMultiplanarTextureSamplingSupport() {
@@ -29077,7 +29105,7 @@ index 597958d75c9ae87172159290c0028636585f65f2..0fb9c0cea738528c8ad7f3c974d6e551
    auto* ozone_platform = ui::OzonePlatform::GetInstance();
    auto* surface_factory = ozone_platform->GetSurfaceFactoryOzone();
    supports_ycbcr_nv12_sampling_ =
-@@ -678,11 +679,12 @@ void SharedImageManager::QueryMultiplanarTextureSamplingSupport() {
+@@ -678,11 +680,12 @@ void SharedImageManager::QueryMultiplanarTextureSamplingSupport() {
        surface_factory->IsFormatSupportedForTexturing(
            viz::MultiPlaneFormat::kP010);
    is_texture_sampling_queried_ = true;
@@ -29092,7 +29120,7 @@ index 597958d75c9ae87172159290c0028636585f65f2..0fb9c0cea738528c8ad7f3c974d6e551
    AutoLock autolock(this);
    if (!is_texture_sampling_queried_) {
      QueryMultiplanarTextureSamplingSupport();
-@@ -696,7 +698,7 @@ bool SharedImageManager::SupportsNV12TextureSampling() {
+@@ -696,7 +699,7 @@ bool SharedImageManager::SupportsNV12TextureSampling() {
  }
  
  bool SharedImageManager::SupportsP010TextureSampling() {
@@ -38682,10 +38710,10 @@ index d4bdac3034b62d26a25ad1d45ce4970a0c3db0e2..d93a8b21c21ff1f16c71034d0606317c
    FenceStatus status = GetStatusChangeTime(fence_handle_.Peek(), &timestamp);
    DCHECK_EQ(status, FenceStatus::kSignaled);
 diff --git a/ui/gfx/mojom/native_handle_types.mojom b/ui/gfx/mojom/native_handle_types.mojom
-index 28117e1ae6fbfb84220f708e50a0e4d652c6706f..d9a1191cf77255d792b6b4a6738c00774719aa83 100644
+index 28117e1ae6fbfb84220f708e50a0e4d652c6706f..8d983e8db379e6baf31a2fa1f2150da9cd2b834b 100644
 --- a/ui/gfx/mojom/native_handle_types.mojom
 +++ b/ui/gfx/mojom/native_handle_types.mojom
-@@ -22,6 +22,14 @@ struct NativePixmapPlane {
+@@ -22,6 +22,16 @@ struct NativePixmapPlane {
  [EnableIf=supports_native_pixmap]
  struct NativePixmapHandle {
    array<NativePixmapPlane> planes;
@@ -38697,11 +38725,13 @@ index 28117e1ae6fbfb84220f708e50a0e4d652c6706f..d9a1191cf77255d792b6b4a6738c0077
 +  array<handle<platform>> ohos_buffer_fds;
 +  [EnableIf=is_ohos]
 +  handle<platform>? ohos_video_release_fd;
++  [EnableIf=is_ohos]
++  uint64 ohos_overlay_token;
  
    [EnableIf=is_chromeos|is_linux]
    uint64 modifier;
 diff --git a/ui/gfx/mojom/native_handle_types_mojom_traits.cc b/ui/gfx/mojom/native_handle_types_mojom_traits.cc
-index 22313e64a5229c387192475ba6ba8629b1e0f5ed..f1c3ec570004aaa81d50e58e84b4456e748653a0 100644
+index 22313e64a5229c387192475ba6ba8629b1e0f5ed..524c3d9326edf2c992138718eca23330be21a400 100644
 --- a/ui/gfx/mojom/native_handle_types_mojom_traits.cc
 +++ b/ui/gfx/mojom/native_handle_types_mojom_traits.cc
 @@ -84,7 +84,7 @@ bool StructTraits<gfx::mojom::AHardwareBufferHandleDataView,
@@ -38722,7 +38752,7 @@ index 22313e64a5229c387192475ba6ba8629b1e0f5ed..f1c3ec570004aaa81d50e58e84b4456e
    if (!handle.is_fd())
      return false;
    out->fd = handle.TakeFD();
-@@ -141,6 +141,33 @@ bool StructTraits<
+@@ -141,6 +141,34 @@ bool StructTraits<
    out->ram_coherency = data.ram_coherency();
  #endif
  
@@ -38746,6 +38776,7 @@ index 22313e64a5229c387192475ba6ba8629b1e0f5ed..f1c3ec570004aaa81d50e58e84b4456e
 +      return false;
 +    out->ohos_buffer_fds.push_back(h.TakeFD());
 +  }
++  out->ohos_overlay_token = data.ohos_overlay_token();
 +  auto release = data.TakeOhosVideoReleaseFd();
 +  if (release.is_valid()) {
 +    if (!release.is_fd())
@@ -38757,10 +38788,10 @@ index 22313e64a5229c387192475ba6ba8629b1e0f5ed..f1c3ec570004aaa81d50e58e84b4456e
  }
  #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OZONE)
 diff --git a/ui/gfx/mojom/native_handle_types_mojom_traits.h b/ui/gfx/mojom/native_handle_types_mojom_traits.h
-index 6101c5b0e02c7faab24e58bb6d4ef6a1cf656b18..016a17ea8a39e373998589c63b6131f41e2fc2bd 100644
+index 6101c5b0e02c7faab24e58bb6d4ef6a1cf656b18..2f08081ffd70d18da674bb916b7330bfc1e5d72d 100644
 --- a/ui/gfx/mojom/native_handle_types_mojom_traits.h
 +++ b/ui/gfx/mojom/native_handle_types_mojom_traits.h
-@@ -103,6 +103,26 @@ struct COMPONENT_EXPORT(GFX_NATIVE_HANDLE_TYPES_SHARED_MOJOM_TRAITS)
+@@ -103,6 +103,29 @@ struct COMPONENT_EXPORT(GFX_NATIVE_HANDLE_TYPES_SHARED_MOJOM_TRAITS)
    }
  #endif  // BUILDFLAG(IS_FUCHSIA)
  
@@ -38780,6 +38811,9 @@ index 6101c5b0e02c7faab24e58bb6d4ef6a1cf656b18..016a17ea8a39e373998589c63b6131f4
 +      fds.emplace_back(std::move(fd));
 +    return fds;
 +  }
++  static uint64_t ohos_overlay_token(const gfx::NativePixmapHandle& h) {
++    return h.ohos_overlay_token;
++  }
 +  static PlatformHandle ohos_video_release_fd(gfx::NativePixmapHandle& h) {
 +    return PlatformHandle(std::move(h.ohos_video_release_fd));
 +  }
@@ -38788,7 +38822,7 @@ index 6101c5b0e02c7faab24e58bb6d4ef6a1cf656b18..016a17ea8a39e373998589c63b6131f4
                     gfx::NativePixmapHandle* out);
  };
 diff --git a/ui/gfx/native_pixmap_handle.cc b/ui/gfx/native_pixmap_handle.cc
-index 283d48686aa7bcc79b8d3503a3ab64804b7de997..059ea96479b677264739cfc6285c713cd13e3725 100644
+index 283d48686aa7bcc79b8d3503a3ab64804b7de997..56054990097dfff4f0d0096459850ea37eb6e30a 100644
 --- a/ui/gfx/native_pixmap_handle.cc
 +++ b/ui/gfx/native_pixmap_handle.cc
 @@ -13,6 +13,9 @@
@@ -38837,11 +38871,12 @@ index 283d48686aa7bcc79b8d3503a3ab64804b7de997..059ea96479b677264739cfc6285c713c
    clone.modifier = handle.modifier;
    clone.supports_zero_copy_webgpu_import =
        handle.supports_zero_copy_webgpu_import;
-@@ -132,6 +135,22 @@ NativePixmapHandle CloneHandleForIPC(const NativePixmapHandle& handle) {
+@@ -132,6 +135,23 @@ NativePixmapHandle CloneHandleForIPC(const NativePixmapHandle& handle) {
    clone.ram_coherency = handle.ram_coherency;
  #endif
  
 +#if BUILDFLAG(IS_OHOS)
++  clone.ohos_overlay_token = handle.ohos_overlay_token;
 +  clone.ohos_buffer_prefix = handle.ohos_buffer_prefix;
 +  clone.ohos_buffer_tail = handle.ohos_buffer_tail;
 +  for (const auto& fd : handle.ohos_buffer_fds) {
@@ -38861,7 +38896,7 @@ index 283d48686aa7bcc79b8d3503a3ab64804b7de997..059ea96479b677264739cfc6285c713c
  }
  
 diff --git a/ui/gfx/native_pixmap_handle.h b/ui/gfx/native_pixmap_handle.h
-index a0f06338cdd9c87b7c0cfc7794c97814d5e98735..04e0cc5cfff9b96d5f0d0414fed500c0c0568835 100644
+index a0f06338cdd9c87b7c0cfc7794c97814d5e98735..6ec9f38a743eb4f8dee49f28fbaae55e2ceba90e 100644
 --- a/ui/gfx/native_pixmap_handle.h
 +++ b/ui/gfx/native_pixmap_handle.h
 @@ -14,7 +14,7 @@
@@ -38891,7 +38926,7 @@ index a0f06338cdd9c87b7c0cfc7794c97814d5e98735..04e0cc5cfff9b96d5f0d0414fed500c0
    // File descriptor for the underlying memory object (usually dmabuf).
    base::ScopedFD fd;
  #elif BUILDFLAG(IS_FUCHSIA)
-@@ -77,8 +77,18 @@ struct COMPONENT_EXPORT(GFX) NativePixmapHandle {
+@@ -77,8 +77,19 @@ struct COMPONENT_EXPORT(GFX) NativePixmapHandle {
    NativePixmapHandle& operator=(NativePixmapHandle&& other);
  
    std::vector<NativePixmapPlane> planes;
@@ -38904,6 +38939,7 @@ index a0f06338cdd9c87b7c0cfc7794c97814d5e98735..04e0cc5cfff9b96d5f0d0414fed500c0
 +  // Last GPU reference closes this endpoint after Vulkan work completes.
 +  // The browser retains the decoder queue lease until its peer sees EOF.
 +  base::ScopedFD ohos_video_release_fd;
++  uint64_t ohos_overlay_token = 0;
 +#endif
  
 -#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
@@ -39754,3 +39790,66 @@ diff --git a/chrome/browser/devtools/devtools_window.cc b/chrome/browser/devtool
    SessionID inspected_browser_session_id = SessionID::InvalidValue();
  #if BUILDFLAG(IS_ANDROID)
    // Docking is not supported yet.
+diff --git a/components/viz/service/display/overlay_processor_interface.cc b/components/viz/service/display/overlay_processor_interface.cc
+index 9d256f66458446c78dab1185e4a2801482bed79b..d287ef34acb38423a0b2071851fa1647c0fe2696 100644
+--- a/components/viz/service/display/overlay_processor_interface.cc
++++ b/components/viz/service/display/overlay_processor_interface.cc
+@@ -154,9 +154,13 @@ OverlayProcessorInterface::CreateOverlayProcessor(
+     }
+   }
+ 
++  auto available_strategies = renderer_settings.overlay_strategies;
++#if BUILDFLAG(IS_OHOS)
++  // The OHOS presenter implements one video underlay and an alpha webpage.
++  available_strategies = {OverlayStrategy::kUnderlay};
++#endif
+   return std::make_unique<OverlayProcessorOzone>(
+-      std::move(overlay_candidates),
+-      std::move(renderer_settings.overlay_strategies),
++      std::move(overlay_candidates), std::move(available_strategies),
+       std::move(pixmap_provider));
+ 
+ #elif BUILDFLAG(IS_ANDROID)
+diff --git a/components/viz/service/display_embedder/output_presenter_gl.cc b/components/viz/service/display_embedder/output_presenter_gl.cc
+index 95887eaa6e8d65f9c995029af3aae39cb95a946b..657e73c027dd39bf83d982379636cbd00168206a 100644
+--- a/components/viz/service/display_embedder/output_presenter_gl.cc
++++ b/components/viz/service/display_embedder/output_presenter_gl.cc
+@@ -68,6 +68,26 @@ void OutputPresenterGL::InitializeCapabilities(
+   capabilities->present_requires_make_current =
+       !presenter_->SupportsPlaneGpuFences();
+ 
++#if BUILDFLAG(IS_OHOS)
++  // Video underlays retain decoder HDR metadata; webpage text and controls
++  // remain SDR, including when Chromium must composite an ineligible video.
++  capabilities->ohos_output_color_spaces =
++      gfx::DisplayColorSpaces(gfx::ColorSpace::CreateSRGB());
++  for (auto usage : {gfx::ContentColorUsage::kSRGB,
++                     gfx::ContentColorUsage::kWideColorGamut,
++                     gfx::ContentColorUsage::kHDR}) {
++    for (bool alpha : {false, true}) {
++      capabilities->ohos_output_color_spaces->SetOutputColorSpaceAndFormat(
++          usage, alpha, gfx::ColorSpace::CreateSRGB(),
++          SinglePlaneFormat::kRGBA_8888);
++    }
++  }
++  capabilities->sk_color_type_map[SinglePlaneFormat::kRGBA_8888] =
++      kRGBA_8888_SkColorType;
++  capabilities->sk_color_type_map[SinglePlaneFormat::kBGRA_8888] =
++      kBGRA_8888_SkColorType;
++  return;
++#endif
+   // TODO(crbug.com/40141277): only add supported formats base on
+   // platform, driver, etc.
+   capabilities->sk_color_type_map[SinglePlaneFormat::kBGR_565] =
+@@ -125,7 +145,11 @@ void OutputPresenterGL::ScheduleOverlayPlane(
+     // properly.
+     LOG_IF(WARNING, overlay_plane_candidate.is_root_render_pass)
+         << "root_render_pass is missing overlay_image.";
++#if !BUILDFLAG(IS_OHOS)
+     return;
++#endif
++    // OHOS must see this missing plane and reject the whole atomic frame.
++    // Skipping just the video would display a primary with an empty hole.
+   }
+ #elif BUILDFLAG(IS_ANDROID)
+   gl::OverlayImage overlay_image =
