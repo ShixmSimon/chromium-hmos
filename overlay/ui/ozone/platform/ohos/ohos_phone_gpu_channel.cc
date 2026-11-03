@@ -184,6 +184,19 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
           }
           if (surface && surface->window) {
             const bool probe = p.operation == Op::kColorProbe;
+            // Fullscreen controls and other anchored windows need full alpha
+            // precision. Viz can initialize them with requires_alpha=false
+            // before the first transparent reshape. The fork child cannot
+            // infer their role from its surface mirror; classify them in the
+            // browser before allocating or advertising a ten-bit framebuffer.
+            // Unavailable/Dropped keeps this output on SDR8 without poisoning
+            // HDR support or restarting the GPU used by the main video window.
+            const bool sdr_only_probe =
+                probe && p.color.mode != OhosOutputMode::kSdr8 &&
+                IsOhosAnchoredWindow(p.widget);
+            if (sdr_only_probe)
+              LOG(WARNING) << "OHOS phone output: anchored window keeps SDR8 widget="
+                           << p.widget;
             auto active_color = colors.find(p.widget);
             const bool no_pending = std::none_of(
                 leases.begin(), leases.end(), [&p](const auto& item) {
@@ -219,9 +232,10 @@ void ReceiveFrames(std::shared_ptr<Connection> connection) {
             const bool gamut_valid = !probe ||
                 p.color.mode != OhosOutputMode::kP3Sdr10 ||
                 OhosSingleDisplaySupportsP3();
-            if (!color_valid || !hdr_valid || !gamut_valid)
+            if (!sdr_only_probe && (!color_valid || !hdr_valid || !gamut_valid))
               reply.result = static_cast<uint32_t>(phone_gpu::Result::kFailed);
-            if (color_valid && hdr_valid && gamut_valid && leases.size() < 4 &&
+            if (!sdr_only_probe && color_valid && hdr_valid && gamut_valid &&
+                leases.size() < 4 &&
                 phone_gpu::SharedBufferAllocatorReady() &&
                 surface->bounds.width() > 0 && surface->bounds.height() > 0 &&
                 surface->bounds.width() <= 8192 &&
