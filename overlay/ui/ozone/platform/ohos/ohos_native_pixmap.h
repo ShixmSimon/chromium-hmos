@@ -98,6 +98,11 @@ void MarkOhosSoftwareVideoOverlay(gfx::NativePixmap& pixmap);
 bool IsOhosSoftwareVideoOverlay(const gfx::NativePixmap& pixmap);
 void AdvanceOhosSoftwareVideoFrame(gfx::NativePixmap& pixmap, bool has_fence);
 uint64_t GetOhosSoftwareVideoFrame(const gfx::NativePixmap& pixmap);
+// Retain producer resource locks until the browser reports real RS retirement.
+// A lost channel deliberately leaves the read quarantined until context loss.
+bool RetainOhosSoftwareVideoRead(gfx::NativePixmap& pixmap);
+void ReleaseOhosSoftwareVideoRead(gfx::NativePixmap& pixmap);
+bool IsOhosSoftwareVideoInUse(const gfx::NativePixmap& pixmap);
 
 // Stable allocation identity, not the address of a per-acquisition wrapper.
 // Only decoder surface pixmaps have one. Scope it to the decoder's epoch.

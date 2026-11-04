@@ -169,6 +169,39 @@ int main() {
 }
 '''.replace('FORMAT', variable).replace('GUARD', snippet))
 
+    def test_software_buffers_wait_for_every_system_read(self):
+        source = (ROOT / 'overlay/ui/ozone/platform/ohos/ohos_native_pixmap.cc').read_text()
+        functions = '\n'.join(function(source, signature) for signature in (
+            'bool RetainOhosSoftwareVideoRead(', 'void ReleaseOhosSoftwareVideoRead(',
+            'bool IsOhosSoftwareVideoInUse('))
+        compile_run("""
+#include <atomic>
+#include <cassert>
+#include <cstdint>
+#define CHECK_GT(a,b) assert((a) > (b))
+namespace gfx { struct NativePixmap {}; }
+struct OhosNativePixmap : gfx::NativePixmap {
+  bool software_video_overlay = false;
+  std::atomic<uint32_t> software_video_reads{0};
+};
+FUNCTIONS
+int main() {
+  OhosNativePixmap software, hardware;
+  software.software_video_overlay = true;
+  assert(!RetainOhosSoftwareVideoRead(hardware));
+  assert(!IsOhosSoftwareVideoInUse(hardware));
+  assert(RetainOhosSoftwareVideoRead(software));
+  assert(RetainOhosSoftwareVideoRead(software)); // Same paused content, two flights.
+  ReleaseOhosSoftwareVideoRead(software);
+  assert(IsOhosSoftwareVideoInUse(software)); // One RS read still owns pixels.
+  ReleaseOhosSoftwareVideoRead(software);
+  assert(!IsOhosSoftwareVideoInUse(software)); // Producer may now recycle it.
+  assert(RetainOhosSoftwareVideoRead(software));
+  // Channel loss supplies no release proof; retain the read until context loss.
+  assert(IsOhosSoftwareVideoInUse(software));
+}
+""".replace('FUNCTIONS', functions))
+
     def test_uploaded_content_changes_only_after_a_fenced_write(self):
         source = (ROOT / 'overlay/ui/ozone/platform/ohos/ohos_native_pixmap.cc').read_text()
         functions = '\n'.join(function(source, signature) for signature in (

@@ -571,6 +571,7 @@ class OhosNativePixmap : public gfx::NativePixmap {
   uint64_t overlay_token = 0;
   bool software_video_overlay = false;
   std::atomic<uint64_t> software_video_content{0};
+  std::atomic<uint32_t> software_video_reads{0};
 
   bool AreDmaBufFdsValid() const override { return fd_ >= 0; }
   int GetDmaBufFd(size_t plane) const override { return fd_; }
@@ -1106,6 +1107,21 @@ void AdvanceOhosSoftwareVideoFrame(gfx::NativePixmap& pixmap, bool has_fence) {
 }
 uint64_t GetOhosSoftwareVideoFrame(const gfx::NativePixmap& pixmap) {
   return static_cast<const OhosNativePixmap&>(pixmap).software_video_content.load();
+}
+
+bool RetainOhosSoftwareVideoRead(gfx::NativePixmap& pixmap) {
+  auto& native = static_cast<OhosNativePixmap&>(pixmap);
+  if (!native.software_video_overlay)
+    return false;
+  native.software_video_reads.fetch_add(1);
+  return true;
+}
+void ReleaseOhosSoftwareVideoRead(gfx::NativePixmap& pixmap) {
+  auto& native = static_cast<OhosNativePixmap&>(pixmap);
+  CHECK_GT(native.software_video_reads.fetch_sub(1), 0u);
+}
+bool IsOhosSoftwareVideoInUse(const gfx::NativePixmap& pixmap) {
+  return static_cast<const OhosNativePixmap&>(pixmap).software_video_reads.load() != 0;
 }
 
 std::optional<uint32_t> GetOhosVideoNativePixmapId(

@@ -163,3 +163,91 @@ diff --git a/gpu/command_buffer/service/shared_image/shared_image_manager.cc b/g
    return supports_overlays_on_ozone_;
  #elif BUILDFLAG(IS_WIN)
    return gl::DirectCompositionTextureSupported();
+diff --git a/components/viz/service/display_embedder/skia_output_device_buffer_queue.cc b/components/viz/service/display_embedder/skia_output_device_buffer_queue.cc
+--- a/components/viz/service/display_embedder/skia_output_device_buffer_queue.cc
++++ b/components/viz/service/display_embedder/skia_output_device_buffer_queue.cc
+@@ -38,6 +38,9 @@
+ 
+ #if BUILDFLAG(IS_OZONE)
+ #include "ui/ozone/public/ozone_platform.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
++#endif
+ #endif  // BUILDFLAG(IS_OZONE)
+ 
+ namespace {
+@@ -90,6 +93,11 @@
+       return false;
+     }
+     return scoped_read_access_->IsInUseByWindowServer();
++#elif BUILDFLAG(IS_OHOS)
++    if (!scoped_read_access_ || is_root_render_pass_)
++      return false;
++    auto pixmap = scoped_read_access_->GetNativePixmap();
++    return pixmap && ui::IsOhosSoftwareVideoInUse(*pixmap);
+ #else
+     return false;
+ #endif
+@@ -374,7 +382,7 @@
+ 
+     // macOS needs to signal to SkiaRenderer that render pass overlay resources
+     // can be unlocked and returned.
+-#if BUILDFLAG(IS_APPLE)
++#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_OHOS)
+     // The root render pass buffers are managed by SkiaRenderer so we don't need
+     // to explicitly return them via callback.
+     if (!overlay.IsRootRenderPass()) {
+@@ -403,7 +411,10 @@
+ }
+ 
+ void SkiaOutputDeviceBufferQueue::PostReleaseOverlays() {
+-  if (!base::FeatureList::IsEnabled(::features::kDeferredOverlaysRelease) ||
++  if (
++#if !BUILDFLAG(IS_OHOS)
++      !base::FeatureList::IsEnabled(::features::kDeferredOverlaysRelease) ||
++#endif
+       reclaim_overlays_timer_.IsRunning() ||
+       !base::SingleThreadTaskRunner::HasCurrentDefault()) {
+     return;
+diff --git a/components/viz/service/display/skia_renderer.cc b/components/viz/service/display/skia_renderer.cc
+--- a/components/viz/service/display/skia_renderer.cc
++++ b/components/viz/service/display/skia_renderer.cc
+@@ -1356,7 +1356,7 @@
+         std::make_move_iterator(committed_overlay_locks_.end()));
+   }
+ 
+-#if BUILDFLAG(IS_APPLE)
++#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_OHOS)
+   // On macOS, we don't want to release |committed_overlay_locks_| right away
+   // because CoreAnimation can hold the overlay images for potentially several
+   // frames. We depend on the output device to signal the return of overlays via
+@@ -1387,7 +1387,7 @@
+ 
+ void SkiaRenderer::DidReceiveReleasedOverlays(
+     const std::vector<gpu::Mailbox>& released_overlays) {
+-#if BUILDFLAG(IS_APPLE)
++#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_OHOS)
+   DisplayResourceProvider::ScopedBatchReturnResources returner(
+       resource_provider_.get(), /*allow_access_to_gpu_thread=*/true);
+ 
+@@ -4625,7 +4625,7 @@
+ }
+ #endif  // BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_OZONE) || BUILDFLAG(IS_WIN)
+ 
+-#if BUILDFLAG(IS_APPLE)
++#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_OHOS)
+ std::size_t SkiaRenderer::OverlayLockHash::operator()(
+     const OverlayLock& o) const {
+   return std::hash<gpu::Mailbox>{}(o.mailbox());
+diff --git a/components/viz/service/display/skia_renderer.h b/components/viz/service/display/skia_renderer.h
+--- a/components/viz/service/display/skia_renderer.h
++++ b/components/viz/service/display/skia_renderer.h
+@@ -522,7 +522,7 @@
+   base::circular_deque<std::vector<OverlayLock>>
+       read_lock_release_fence_overlay_locks_;
+ 
+-#if BUILDFLAG(IS_APPLE)
++#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_OHOS)
+   struct OverlayLockHash {
+     using is_transparent = void;
+     std::size_t operator()(const OverlayLock& o) const;
