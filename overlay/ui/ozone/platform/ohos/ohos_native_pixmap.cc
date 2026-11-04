@@ -569,6 +569,8 @@ class OhosNativePixmap : public gfx::NativePixmap {
   void SetVideoMetadataFd(int fd) { video_metadata_fd_ = fd; }
   int video_metadata_fd() const { return video_metadata_fd_; }
   uint64_t overlay_token = 0;
+  bool software_video_overlay = false;
+  std::atomic<uint64_t> software_video_content{0};
 
   bool AreDmaBufFdsValid() const override { return fd_ >= 0; }
   int GetDmaBufFd(size_t plane) const override { return fd_; }
@@ -1075,6 +1077,35 @@ void UnregisterOhosVideoOverlay(uint64_t token) {
 }
 uint64_t GetOhosVideoOverlayToken(const gfx::NativePixmap& pixmap) {
   return static_cast<const OhosNativePixmap&>(pixmap).overlay_token;
+}
+
+void MarkOhosSoftwareVideoOverlay(gfx::NativePixmap& pixmap) {
+  auto& native = static_cast<OhosNativePixmap&>(pixmap);
+  const auto format = native.GetSharedImageFormat();
+  native.software_video_overlay = native.has_direct_buffer() &&
+      !native.video_buffer_id() &&
+      (format == viz::SinglePlaneFormat::kRGBA_8888 ||
+       format == viz::SinglePlaneFormat::kBGRA_8888);
+}
+bool IsOhosSoftwareVideoOverlay(const gfx::NativePixmap& pixmap) {
+  return static_cast<const OhosNativePixmap&>(pixmap).software_video_overlay;
+}
+
+void AdvanceOhosSoftwareVideoFrame(gfx::NativePixmap& pixmap, bool has_fence) {
+  auto& native = static_cast<OhosNativePixmap&>(pixmap);
+  if (native.software_video_overlay) {
+    uint64_t content = 0;
+    if (has_fence) {
+      do {
+        content = base::RandUint64();
+      } while (!content);
+    }
+    // An export failure disables promotion; it is not proof of completion.
+    native.software_video_content.store(content);
+  }
+}
+uint64_t GetOhosSoftwareVideoFrame(const gfx::NativePixmap& pixmap) {
+  return static_cast<const OhosNativePixmap&>(pixmap).software_video_content.load();
 }
 
 std::optional<uint32_t> GetOhosVideoNativePixmapId(

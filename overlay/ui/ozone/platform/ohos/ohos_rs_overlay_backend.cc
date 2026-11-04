@@ -514,12 +514,11 @@ class RsBackend final : public Backend {
       item.buffer = static_cast<OH_NativeBuffer*>(plane.lease->native_buffer());
       OH_NativeBuffer_Config config = {};
       OH_NativeBuffer_GetConfig(item.buffer, &config);
-      const int format = i ? (plane.format == Format::kP010
-                                  ? NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
-                                  : NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP)
-                           : (plane.format == Format::kBgra8
-                                  ? NATIVEBUFFER_PIXEL_FMT_BGRA_8888
-                                  : NATIVEBUFFER_PIXEL_FMT_RGBA_8888);
+      const int format = plane.format == Format::kP010
+          ? NATIVEBUFFER_PIXEL_FMT_YCBCR_P010
+          : plane.format == Format::kNv12 ? NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP
+          : plane.format == Format::kBgra8 ? NATIVEBUFFER_PIXEL_FMT_BGRA_8888
+                                          : NATIVEBUFFER_PIXEL_FMT_RGBA_8888;
       if (config.width != static_cast<int>(plane.width) ||
           config.height != static_cast<int>(plane.height) ||
           config.format != format)

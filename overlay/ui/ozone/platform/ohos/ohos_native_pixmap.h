@@ -93,6 +93,11 @@ uint64_t RegisterOhosVideoOverlay(scoped_refptr<gfx::NativePixmap> pixmap,
                                   bool sdr_epoch_pristine);
 void UnregisterOhosVideoOverlay(uint64_t token);
 uint64_t GetOhosVideoOverlayToken(const gfx::NativePixmap& pixmap);
+// GPU-local opt-in by the software VideoResourceUpdater backing only.
+void MarkOhosSoftwareVideoOverlay(gfx::NativePixmap& pixmap);
+bool IsOhosSoftwareVideoOverlay(const gfx::NativePixmap& pixmap);
+void AdvanceOhosSoftwareVideoFrame(gfx::NativePixmap& pixmap, bool has_fence);
+uint64_t GetOhosSoftwareVideoFrame(const gfx::NativePixmap& pixmap);
 
 // Stable allocation identity, not the address of a per-acquisition wrapper.
 // Only decoder surface pixmaps have one. Scope it to the decoder's epoch.

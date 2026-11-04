@@ -190,6 +190,7 @@ else
 
   # The presenter layers over video-import and HDR output patches. Remove it
   # first so their idempotence checks see the prerequisite versions.
+  retire_incremental_patch "${repo_root}/patches/ohos-software-video-overlay.patch"
   retire_incremental_patch "${repo_root}/patches/ohos-video-overlay-presenter.patch"
 
   apply_incremental_patch "${repo_root}/patches/ohos-dawn-instance-diagnostics.patch" \
@@ -338,6 +339,7 @@ else
   # their migrated 155 equivalents. Keep it additive to both baselines.
   apply_incremental_patch "${repo_root}/patches/ohos-phone-fullscreen-hint.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-security-assistants.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-software-video-overlay.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

@@ -19,3 +19,21 @@ trap 'rm -rf "$overlay_tests"' EXIT
   "$overlay_repo/scripts/tests/ohos-video-overlay/rs_abi_test.cc" \
   -o "$overlay_tests/rs-abi"
 "$overlay_tests/rs-abi"
+host_flags=()
+if [[ "$(uname -s)" == Darwin ]]; then
+  # Darwin socketpair lacks these Linux/OHOS creation flags. No blocking I/O
+  # or exec is used by this host-channel test; production uses the NDK flags.
+  host_flags=(-DSOCK_CLOEXEC=0 -DSOCK_NONBLOCK=0)
+fi
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+  "${host_flags[@]}" -I"$overlay_repo/overlay" \
+  "$overlay_repo/scripts/tests/ohos-video-overlay/host_channel_test.cc" \
+  -o "$overlay_tests/host-channel"
+"$overlay_tests/host-channel"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -I"$overlay_repo/overlay" \
+  "$overlay_repo/scripts/tests/ohos-video-overlay/transport_test.cc" \
+  "$overlay_repo/overlay/ui/ozone/platform/ohos/ohos_overlay_transport.cc" \
+  -o "$overlay_tests/transport"
+"$overlay_tests/transport"
+python3 "$overlay_repo/scripts/tests/test-software-video-overlay.py"

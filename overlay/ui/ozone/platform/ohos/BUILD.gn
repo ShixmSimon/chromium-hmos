@@ -175,6 +175,7 @@ action("overlay_bridge") {
     "ohos_overlay_transport.cc",
     "ohos_overlay_transport.h",
     "ohos_overlay_host.cc",
+    "ohos_overlay_host_channel.h",
   ]
   outputs = [ "$root_out_dir/libohos_video_overlay.so" ]
   args = [

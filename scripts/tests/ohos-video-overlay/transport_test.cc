@@ -46,8 +46,47 @@ int main() {
   invalid = source.packet;
   invalid.operation = WireOp::kReleased;
   assert(!ValidWirePacket(invalid, 0));
+  auto software = source.packet;
+  software.video_token = 0;
+  software.video_color = 2;
+  software.video_fd_count = 1;
+  software.video_prefix = software.prefix;
+  software.video.source = {0, 0, 640, 480};
+  assert(ValidWirePacket(software, 2));
+  software.video.has_fence = software.primary.has_fence = 1;
+  assert(ValidWirePacket(software, 4));
+  invalid = software;
+  invalid.video_token = 9;
+  assert(!ValidWirePacket(invalid, 4));
+  invalid = software;
+  invalid.video_prefix[8] = 35;  // HDR/YUV cannot masquerade as an SDR upload.
+  assert(!ValidWirePacket(invalid, 4));
+  invalid = software;
+  invalid.video_color = 3;
+  assert(!ValidWirePacket(invalid, 4));
+  invalid = software;
+  invalid.video_tail_bytes = 1045;
+  assert(!ValidWirePacket(invalid, 4));
+  invalid = software;
+  invalid.video_fd_count = 8;
+  assert(!ValidWirePacket(invalid, 11));
+  assert(!ValidWirePacket(software, 3));  // Missing video acquire fence.
+  software.video.reuse = 1;
+  software.video.has_fence = software.video_fd_count = 0;
+  software.video_prefix = {};
+  assert(ValidWirePacket(software, 2));
+  invalid = software;
+  invalid.video.has_fence = 1;
+  assert(!ValidWirePacket(invalid, 3));
+  invalid = software;
+  invalid.version = 1;
+  assert(!ValidWirePacket(invalid, 2));
   int sockets[2], pipes[2];
+#if defined(__APPLE__)
+  assert(!socketpair(AF_UNIX, SOCK_STREAM, 0, sockets));
+#else
   assert(!socketpair(AF_UNIX, SOCK_SEQPACKET, 0, sockets));
+#endif
   assert(!pipe(pipes));
   source.fds.push_back(pipes[0]);
   assert(SendWireMessage(sockets[0], source));
@@ -61,8 +100,37 @@ int main() {
   dest.CloseFds();
   assert(!ReceiveWireMessage(sockets[1], &dest) &&
          (errno == EAGAIN || errno == EWOULDBLOCK));
+  // Both native parcels precede primary/video fences; each received FD owns
+  // its resource after sender teardown. Exercise the software wire layout.
+  WireMessage upload;
+  Fill(upload.packet);
+  upload.packet.video_token = 0;
+  upload.packet.video_color = 1;
+  upload.packet.video_fd_count = 1;
+  upload.packet.video_prefix = upload.packet.prefix;
+  upload.packet.video.source = {0, 0, 640, 480};
+  upload.packet.primary.has_fence = upload.packet.video.has_fence = 1;
+  int descriptors[4][2];
+  for (auto& pair : descriptors) {
+    assert(!pipe(pair));
+    upload.fds.push_back(pair[0]);
+  }
+  assert(SendWireMessage(sockets[0], upload));
+  assert(ReceiveWireMessage(sockets[1], &dest) && dest.fds.size() == 4);
+  upload.CloseFds();
+  for (unsigned i = 0; i < 4; ++i) {
+    const char value = 'a' + i;
+    assert(write(descriptors[i][1], &value, 1) == 1);
+    assert(read(dest.fds[i], &byte, 1) == 1 && byte == value);
+    close(descriptors[i][1]);
+  }
+  dest.CloseFds();
   // Bypass the sender validator: malformed/truncated input never escapes.
+#if defined(__APPLE__)
+  char garbage[sizeof(WirePacket)]{};  // Stream stand-in has no packet truncation.
+#else
   char garbage[sizeof(WirePacket) + 1]{};
+#endif
   assert(send(sockets[0], garbage, sizeof(garbage), 0) == sizeof(garbage));
   assert(!ReceiveWireMessage(sockets[1], &dest) && errno == EPROTO &&
          dest.fds.empty());

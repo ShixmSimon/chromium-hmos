@@ -75,6 +75,17 @@ int main() {
   bool ready = true;
   int released = 0;
   {
+    auto f = MakeFrame(700, released, ready);
+    f.video->format = Format::kRgba8;
+    assert(Session::Valid(f));
+    f.video->format = Format::kBgra8;
+    assert(Session::Valid(f));
+    f.video->color.transfer = Transfer::kPq;
+    f.video->color.native_space = 1;
+    f.video->color.hdr_type = {1};
+    assert(!Session::Valid(f));  // No HDR-to-RGBA8 relabeling.
+  }
+  {
     FakeBackend b;
     Session s(b);
     auto f = MakeFrame(10, released, ready);

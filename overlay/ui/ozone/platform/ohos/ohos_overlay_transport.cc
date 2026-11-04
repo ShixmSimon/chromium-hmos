@@ -28,13 +28,42 @@ void WireMessage::CloseFds() {
     close(fd);
   fds.clear();
 }
+namespace {
+bool ValidParcel(const WirePlane& plane, uint32_t count, uint32_t tail,
+                 const std::array<uint32_t, 14>& v) {
+  if (plane.reuse) {
+    if (count || tail)
+      return false;
+    for (uint32_t value : v)
+      if (value)
+        return false;
+    return true;
+  }
+  constexpr uint64_t limit = 128 * 1024 * 1024;
+  return count && count <= 7 && v[1] == 1 && v[2] <= 6 && v[3] <= 256 &&
+      v[13] == 1 && count == v[2] + 1 && v[4] && v[6] &&
+      v[4] <= 8192 && v[6] <= 8192 && (v[8] == 12 || v[8] == 20) &&
+      v[5] >= uint64_t{v[4]} * 4 && v[5] <= limit &&
+      v[7] >= uint64_t{v[4]} * v[6] * 4 && v[7] <= limit &&
+      (tail == v[3] * 4 || tail == v[3] * 4 + 20) && tail <= 1044 &&
+      plane.source.x + plane.source.width <= v[4] &&
+      plane.source.y + plane.source.height <= v[6];
+}
+}  // namespace
 bool ValidWirePacket(const WirePacket& p, size_t count) {
-  if (p.magic != kWireMagic || p.version != 1 || !p.sequence ||
-      count > kWireMaxFds || p.has_video > 1 || p.plane > 1)
+  if (p.magic != kWireMagic || p.version != 2 || !p.sequence ||
+      count > kWireMaxFds || p.has_video > 1 || p.plane > 1 || p.video_color > 2)
     return false;
+  if (!p.video_color) {
+    if (p.video_fd_count || p.video_tail_bytes)
+      return false;
+    for (auto value : p.video_prefix)
+      if (value)
+        return false;
+  }
   if (p.operation != WireOp::kFrame) {
     if (count || p.fd_count || p.tail_bytes || p.video_token || p.has_video ||
-        p.primary.content || p.video.content || p.primary.has_fence ||
+        p.video_color || p.primary.content || p.video.content || p.primary.has_fence ||
         p.video.has_fence || p.primary.reuse || p.video.reuse)
       return false;
     switch (p.operation) {
@@ -52,34 +81,17 @@ bool ValidWirePacket(const WirePacket& p, size_t count) {
     }
   }
   if (p.result || p.plane || !PlaneValid(p.primary) ||
-      (p.has_video ? !p.video_token || !PlaneValid(p.video)
+      (p.has_video ? !PlaneValid(p.video) ||
+                         (p.video_color ? p.video_token != 0 : !p.video_token)
                    : p.video_token || p.video.content || p.video.has_fence ||
-                         p.video.reuse) ||
-      p.fd_count > 7 ||
-      count != p.fd_count + p.primary.has_fence + p.video.has_fence)
+                         p.video.reuse || p.video_color) ||
+      p.fd_count > 7 || p.video_fd_count > 7 ||
+      count != p.fd_count + p.video_fd_count +
+                   p.primary.has_fence + p.video.has_fence ||
+      !ValidParcel(p.primary, p.fd_count, p.tail_bytes, p.prefix) ||
+      (p.video_color && !ValidParcel(p.video, p.video_fd_count,
+                                    p.video_tail_bytes, p.video_prefix)))
     return false;
-  const auto& v = p.prefix;
-  if (p.primary.reuse) {
-    if (p.fd_count || p.tail_bytes)
-      return false;
-    for (uint32_t value : v)
-      if (value)
-        return false;
-  } else {
-    // Fresh SDR RGBA/BGRA primary only. The browser tags its own imported
-    // wrapper SRGB; this allocation must never have been a decoder HDR queue.
-    constexpr uint64_t limit = 128 * 1024 * 1024;
-    if (!p.fd_count || v[1] != 1 || v[2] > 6 || v[3] > 256 || v[13] != 1 ||
-        p.fd_count != v[2] + 1 || !v[4] || !v[6] || v[4] > 8192 ||
-        v[6] > 8192 || (v[8] != 12 && v[8] != 20) ||
-        v[5] < uint64_t{v[4]} * 4 || v[5] > limit ||
-        v[7] < uint64_t{v[4]} * v[6] * 4 || v[7] > limit ||
-        (p.tail_bytes != v[3] * 4 && p.tail_bytes != v[3] * 4 + 20) ||
-        p.tail_bytes > p.tail.size() ||
-        p.primary.source.x + p.primary.source.width > v[4] ||
-        p.primary.source.y + p.primary.source.height > v[6])
-      return false;
-  }
   if (p.has_video) {
     const auto& a = p.primary.destination;
     const auto& b = p.video.destination;

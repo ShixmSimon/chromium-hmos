@@ -1,0 +1,111 @@
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.cc
+@@ -46,6 +46,9 @@
+ #include "ui/gfx/gpu_fence.h"
+ #include "ui/gfx/gpu_fence_handle.h"
+ #include "ui/gfx/native_pixmap.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
++#endif
+ #include "ui/gl/buildflags.h"
+ #include "ui/gl/scoped_make_current_unsafe.h"
+ 
+@@ -199,7 +202,7 @@
+   // OH_NativeBuffer YUV images are imported whole, with hardware chroma
+   // sampling. The external-texture shader supplies range/matrix conversion.
+   auto dawn_format = format();
+-  if (dawn_format.is_multi_plane())
++  if (dawn_format.PrefersExternalSampler())
+     dawn_format.ClearPrefersExternalSampler();
+   const bool native_yuv = dawn_format == viz::MultiPlaneFormat::kNV12 ||
+                           dawn_format == viz::MultiPlaneFormat::kP010;
+@@ -485,6 +488,17 @@
+       workarounds_(workarounds),
+       imported_from_exo_(IsExoTexture(si_info.debug_label)) {
+   const auto usage = si_info.usage;
++#if BUILDFLAG(IS_OHOS)
++  // Only the software video uploader opts in. Primary planes and arbitrary
++  // WebGPU/canvas buffers must not become video underlays.
++  if (pixmap_ &&
++      (si_info.debug_label == "VideoResourceUpdater" ||
++       si_info.debug_label.starts_with("VideoResourceUpdater_Pid:")) &&
++      usage == (SHARED_IMAGE_USAGE_SCANOUT | SHARED_IMAGE_USAGE_DISPLAY_READ |
++                SHARED_IMAGE_USAGE_RASTER_WRITE)) {
++    ui::MarkOhosSoftwareVideoOverlay(*pixmap_);
++  }
++#endif
+   bool used_by_skia = usage.HasAny(SHARED_IMAGE_USAGE_RASTER_READ |
+                                    SHARED_IMAGE_USAGE_RASTER_WRITE |
+                                    SHARED_IMAGE_USAGE_DISPLAY_READ);
+@@ -985,6 +999,8 @@
+                                   AccessStream access_stream,
+                                   gfx::GpuFenceHandle fence) {
+ #if BUILDFLAG(IS_OHOS)
++  if (!readonly && pixmap_)
++    ui::AdvanceOhosSoftwareVideoFrame(*pixmap_, !fence.is_null());
+   if (readonly && access_stream == AccessStream::kGL && pixmap_ &&
+       format().PrefersExternalSampler() && fence.is_null()) {
+     // Export failure must never turn an unfinished read into early reuse.
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+@@ -281,7 +281,12 @@
+       SHARED_IMAGE_USAGE_SCANOUT | SHARED_IMAGE_USAGE_DISPLAY_WRITE) &&
+       (format == viz::SinglePlaneFormat::kRGBA_8888 ||
+        format == viz::SinglePlaneFormat::kBGRA_8888);
+-  if (format.is_single_plane() && !overlay_primary &&
++  const bool overlay_software_video =
++      usage == (SHARED_IMAGE_USAGE_SCANOUT | SHARED_IMAGE_USAGE_DISPLAY_READ |
++                SHARED_IMAGE_USAGE_RASTER_WRITE) &&
++      (format == viz::SinglePlaneFormat::kRGBA_8888 ||
++       format == viz::SinglePlaneFormat::kBGRA_8888);
++  if (format.is_single_plane() && !overlay_primary && !overlay_software_video &&
+       gr_context_type != GrContextType::kGraphiteDawn &&
+       !usage.HasAny(SHARED_IMAGE_USAGE_WEBGPU_READ | SHARED_IMAGE_USAGE_WEBGPU_WRITE |
+                       SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE |
+@@ -323,7 +328,7 @@
+   // gaining permission to allocate YUV buffers or access system services.
+   // Keep renderer/CPU allocation requests on their existing rejected path.
+   auto native_format = format;
+-  if (native_format.is_multi_plane())
++  if (native_format.PrefersExternalSampler())
+     native_format.ClearPrefersExternalSampler();
+   bool native_video_reader =
+       gr_context_type == GrContextType::kGL &&
+diff --git a/media/renderers/video_resource_updater.cc b/media/renderers/video_resource_updater.cc
+--- a/media/renderers/video_resource_updater.cc
++++ b/media/renderers/video_resource_updater.cc
+@@ -1180,6 +1180,23 @@
+ 
+   viz::SharedImageFormat output_si_format =
+       GetSoftwareOutputFormat(input_frame_format, bits_per_channel);
++  bool ohos_software_overlay = false;
++#if BUILDFLAG(IS_OHOS)
++  // Stage one: opaque 8-bit SDR YUV. Keep HDR and other primaries on their
++  // existing path; converting those to an SDR RGBA8 buffer loses information.
++  const auto rgb_space = video_frame->ColorSpace().GetAsFullRangeRGB();
++  ohos_software_overlay =
++      !software_compositor() && IsYuvPlanar(input_frame_format) &&
++      IsOpaque(input_frame_format) && bits_per_channel == 8 &&
++      (rgb_space == gfx::ColorSpace::CreateSRGB() ||
++       rgb_space == gfx::ColorSpace::CreateREC709().GetAsFullRangeRGB()) &&
++      context_provider_->SharedImageInterface()->GetCapabilities()
++          .supports_ohos_video_native_buffers &&
++      context_provider_->SharedImageInterface()->GetCapabilities()
++          .supports_scanout_shared_images;
++  if (ohos_software_overlay)
++    output_si_format = PaintCanvasVideoRenderer::GetRGBPixelsOutputFormat();
++#endif
+   gfx::ColorSpace output_color_space = video_frame->ColorSpace();
+   SkAlphaType output_alpha_type =
+       software_compositor() ? kPremul_SkAlphaType : kUnpremul_SkAlphaType;
+@@ -1188,7 +1205,7 @@
+   const bool is_overlay_candidate =
+       !software_compositor() && output_si_format.is_single_plane() &&
+       CanCreateNativeBufferForFormat(output_si_format) &&
+-      use_gpu_memory_buffer_resources_ &&
++      (use_gpu_memory_buffer_resources_ || ohos_software_overlay) &&
+       context_provider_->SharedImageInterface()
+           ->GetCapabilities()
+           .supports_scanout_shared_images;

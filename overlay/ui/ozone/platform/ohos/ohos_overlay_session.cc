@@ -28,7 +28,8 @@ bool ValidPlane(const Plane& p, bool primary) {
            p.color.transfer == Transfer::kSdr && p.color.hdr_type.empty() &&
            p.color.hdr_static.empty();
   }
-  if (p.format != Format::kNv12 && p.format != Format::kP010)
+  if (p.format != Format::kNv12 && p.format != Format::kP010 &&
+      p.format != Format::kRgba8 && p.format != Format::kBgra8)
     return false;
   if (p.color.transfer != Transfer::kSdr && p.color.transfer != Transfer::kPq)
     return false;  // HLG not yet validated.

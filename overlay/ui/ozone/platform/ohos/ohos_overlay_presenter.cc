@@ -67,7 +67,21 @@ std::optional<OhosOverlayRect> ClipRect(const std::optional<gfx::Rect>& clip) {
 bool VideoFormat(viz::SharedImageFormat f) {
   if (f.PrefersExternalSampler())
     f.ClearPrefersExternalSampler();
-  return f == viz::MultiPlaneFormat::kNV12 || f == viz::MultiPlaneFormat::kP010;
+  return f == viz::MultiPlaneFormat::kNV12 || f == viz::MultiPlaneFormat::kP010 ||
+         f == viz::SinglePlaneFormat::kRGBA_8888 ||
+         f == viz::SinglePlaneFormat::kBGRA_8888;
+}
+uint32_t SoftwareVideoColor(const gfx::ColorSpace& color) {
+  if (color == gfx::ColorSpace::CreateSRGB())
+    return 1;
+  if (color == gfx::ColorSpace::CreateREC709().GetAsFullRangeRGB())
+    return 2;
+  return 0;
+}
+bool EligibleVideo(const gfx::NativePixmap& image, const gfx::ColorSpace& color) {
+  return GetOhosVideoOverlayToken(image) ||
+         (IsOhosSoftwareVideoOverlay(image) && GetOhosSoftwareVideoFrame(image) &&
+          SoftwareVideoColor(color));
 }
 class Candidates final : public OverlayCandidatesOzone {
  public:
@@ -111,8 +125,9 @@ class Candidates final : public OverlayCandidatesOzone {
     else if (v.color_space.IsHDR() &&
              v.color_space.GetTransferID() != gfx::ColorSpace::TransferID::PQ)
       rejection = "video-hdr-transfer";
-    // Resolve the original decoder acquisition before punching the hole.
-    else if (!v.native_pixmap || !GetOhosVideoOverlayToken(*v.native_pixmap))
+    // Resolve a decoder lease or an explicitly marked SDR software upload
+    // before punching the hole.
+    else if (!v.native_pixmap || !EligibleVideo(*v.native_pixmap, v.color_space))
       rejection = "video-pixmap-or-token";
     if (rejection) {
       Report(rejection, &v);
@@ -143,7 +158,10 @@ class Candidates final : public OverlayCandidatesOzone {
     LOG(WARNING) << "OHOS overlay: candidate=" << result << " widget=" << widget_
                  << " video=" << (video ? video->display_rect.ToString() : "none")
                  << " crop=" << (video ? video->crop_rect.ToString() : "none")
-                 << " format=" << (video ? video->format.ToString() : "none");
+                 << " format=" << (video ? video->format.ToString() : "none")
+                 << " source=" << (video && video->native_pixmap &&
+                     IsOhosSoftwareVideoOverlay(*video->native_pixmap)
+                         ? "software-upload" : "native-decoder");
   }
   std::string_view last_result_;
   base::TimeTicks last_report_;
@@ -190,7 +208,7 @@ class Presenter final : public gl::Presenter {
         (!plane && data.clip_rect &&
          !gfx::RectF(*data.clip_rect).Contains(data.display_bounds)) ||
         (plane && (!VideoFormat(image->GetSharedImageFormat()) ||
-                   !GetOhosVideoOverlayToken(*image)))) {
+                   !EligibleVideo(*image, data.color_space)))) {
       invalid_ = true;
       return false;
     }
@@ -231,14 +249,24 @@ class Presenter final : public gl::Presenter {
       auto& plane = i ? p.video : p.primary;
       auto& previous = last_[i];
       const uint64_t token = i ? GetOhosVideoOverlayToken(*item.image) : 0;
-      plane.reuse = previous.image && !item.fence &&
-                    (i ? previous.content == token
-                       : previous.image.get() == item.image.get());
-      plane.content = i ? token : (plane.reuse ? previous.content : sequence_);
+      const uint64_t video_content = token ? token :
+          (i ? GetOhosSoftwareVideoFrame(*item.image) : 0);
+      // A software buffer's allocation can be recycled for different pixels.
+      // The backing advances its content ID after every write; a paused frame
+      // may reuse content even when its original acquire fence is re-exported.
+      plane.reuse = previous.image &&
+          (i ? previous.content == video_content
+             : !item.fence && previous.image.get() == item.image.get());
+      if (plane.reuse)
+        item.fence.reset();  // The retained read already waited on this producer.
+      plane.content = i ? video_content :
+          (plane.reuse ? previous.content : sequence_);
       flight->content[i] = plane.content;
       flight->images[i] = item.image;
-      if (i)
+      if (i) {
         p.video_token = token;
+        p.video_color = token ? 0 : SoftwareVideoColor(item.data.color_space);
+      }
       auto source = item.data.crop_rect;
       source.Scale(item.image->GetBufferSize().width(),
                    item.image->GetBufferSize().height());
@@ -258,19 +286,21 @@ class Presenter final : public gl::Presenter {
         plane.source = clipped->source;
         plane.destination = clipped->destination;
       }
-      if (!i && !plane.reuse) {
+      if ((!i || !token) && !plane.reuse) {
         auto handle = item.image->ExportHandle();
         if (handle.ohos_buffer_prefix.size() != 14 ||
             handle.ohos_buffer_tail.size() > p.tail.size()) {
           invalid_ = true;
           break;
         }
+        auto& prefix = i ? p.video_prefix : p.prefix;
+        auto& tail = i ? p.video_tail : p.tail;
         std::copy(handle.ohos_buffer_prefix.begin(),
-                  handle.ohos_buffer_prefix.end(), p.prefix.begin());
+                  handle.ohos_buffer_prefix.end(), prefix.begin());
         std::copy(handle.ohos_buffer_tail.begin(),
-                  handle.ohos_buffer_tail.end(), p.tail.begin());
-        p.tail_bytes = handle.ohos_buffer_tail.size();
-        p.fd_count = handle.ohos_buffer_fds.size();
+                  handle.ohos_buffer_tail.end(), tail.begin());
+        (i ? p.video_tail_bytes : p.tail_bytes) = handle.ohos_buffer_tail.size();
+        (i ? p.video_fd_count : p.fd_count) = handle.ohos_buffer_fds.size();
         for (auto& fd : handle.ohos_buffer_fds)
           flight->message->fds.push_back(fd.release());
       }

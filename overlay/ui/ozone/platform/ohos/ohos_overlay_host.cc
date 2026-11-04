@@ -19,6 +19,7 @@
 #include <mutex>
 #include <string>
 #include "ohos_overlay_transport.h"
+#include "ohos_overlay_host_channel.h"
 #include "ohos_rs_overlay_backend.h"
 
 namespace ui::ohos_overlay {
@@ -45,6 +46,7 @@ struct Buffer {
   OH_NativeBuffer* native = nullptr;
   std::shared_ptr<Video> video;
   uint64_t content = 0;
+  uint32_t color = 0;
   ~Buffer() {
     if (native)
       OH_NativeBuffer_Unreference(native);
@@ -68,10 +70,10 @@ struct Host {
   ArkUI_NativeNodeAPI_1* api = nullptr;
   uv_timer_t timer{};
   OhosOverlayHost* session = nullptr;
-  int pending_socket = -1;  // protected by mutex
+  HostChannel channel;
+  uint64_t owner_token = 0;
+  uint64_t parent = 0;
   bool detached = false;    // protected by mutex
-  bool connected = false;   // protected by mutex
-  int socket = -1;
   bool closing = false;
   bool processed = true;
   uint64_t sequence = 0;
@@ -86,7 +88,7 @@ struct Host {
     std::shared_ptr<Buffer> buffer;
   };
   void Reply(WireOp op, uint64_t seq, unsigned plane = 0, uint32_t result = 0) {
-    if (socket < 0)
+    if (channel.socket() < 0)
       return;
     if (outgoing.size() >= 64) {
       Disconnect();
@@ -104,9 +106,7 @@ struct Host {
     lease->host->Reply(WireOp::kReleased, lease->sequence, lease->plane);
   }
   void Disconnect() {
-    if (socket >= 0)
-      close(socket);
-    socket = -1;
+    channel.Disconnect();
     closing = true;
     outgoing.clear();
     pending.reset();
@@ -114,11 +114,19 @@ struct Host {
     current[1].reset();
     // Close is performed by Tick, outside Session::Poll's lease destructor.
   }
-  std::shared_ptr<Buffer> ImportPrimary(const WireMessage& msg) {
+  std::shared_ptr<Buffer> ImportParcel(const WireMessage& msg, bool video) {
     const auto& p = msg.packet;
-    if (p.primary.reuse)
-      return current[0] && current[0]->content == p.primary.content ? current[0]
-                                                                    : nullptr;
+    const auto& plane = video ? p.video : p.primary;
+    const auto& prefix = video ? p.video_prefix : p.prefix;
+    const auto& tail = video ? p.video_tail : p.tail;
+    const uint32_t count = video ? p.video_fd_count : p.fd_count;
+    const uint32_t bytes = video ? p.video_tail_bytes : p.tail_bytes;
+    const uint32_t first_fd = video ? p.fd_count : 0;
+    const uint32_t color = video ? p.video_color : 1;
+    const auto& previous = current[video ? 1 : 0];
+    if (plane.reuse)
+      return previous && previous->content == plane.content &&
+                     previous->color == color ? previous : nullptr;
     using Reader = int32_t (*)(OHIPCParcel*, OH_NativeBuffer**);
     static Reader reader = [] {
       void* library = dlopen("libnative_buffer.so", RTLD_NOW | RTLD_NOLOAD);
@@ -134,26 +142,28 @@ struct Host {
     Parcel parcel(OH_IPCParcel_Create(), &OH_IPCParcel_Destroy);
     if (!reader || !parcel ||
         OH_IPCParcel_WriteBuffer(
-            parcel.get(), reinterpret_cast<const uint8_t*>(p.prefix.data()),
+            parcel.get(), reinterpret_cast<const uint8_t*>(prefix.data()),
             56))
       return nullptr;
-    for (unsigned i = 0; i < p.fd_count; ++i)
-      if (OH_IPCParcel_WriteFileDescriptor(parcel.get(), msg.fds[i]))
+    for (unsigned i = 0; i < count; ++i)
+      if (OH_IPCParcel_WriteFileDescriptor(parcel.get(), msg.fds[first_fd + i]))
         return nullptr;
-    if (p.tail_bytes &&
-        OH_IPCParcel_WriteBuffer(parcel.get(), p.tail.data(), p.tail_bytes))
+    if (bytes &&
+        OH_IPCParcel_WriteBuffer(parcel.get(), tail.data(), bytes))
       return nullptr;
     auto result = std::make_shared<Buffer>();
     if (reader(parcel.get(), &result->native) || !result->native)
       return nullptr;
     OH_NativeBuffer_Config config{};
     OH_NativeBuffer_GetConfig(result->native, &config);
-    if (config.width != static_cast<int>(p.prefix[4]) ||
-        config.height != static_cast<int>(p.prefix[6]) ||
-        config.format != static_cast<int>(p.prefix[8]) ||
-        OH_NativeBuffer_SetColorSpace(result->native, OH_COLORSPACE_SRGB_FULL))
+    if (config.width != static_cast<int>(prefix[4]) ||
+        config.height != static_cast<int>(prefix[6]) ||
+        config.format != static_cast<int>(prefix[8]) ||
+        OH_NativeBuffer_SetColorSpace(result->native, color == 2 ? OH_COLORSPACE_BT709_FULL
+                                                    : OH_COLORSPACE_SRGB_FULL))
       return nullptr;
-    result->content = p.primary.content;
+    result->content = plane.content;
+    result->color = color;
     return result;
   }
   std::shared_ptr<Buffer> GetVideo(const WirePacket& p) {
@@ -182,8 +192,9 @@ struct Host {
   }
   void Submit() {
     const auto& p = pending->packet;
-    auto primary = ImportPrimary(*pending);
-    auto video = p.has_video ? GetVideo(p) : nullptr;
+    auto primary = ImportParcel(*pending, false);
+    auto video = !p.has_video ? nullptr : p.video_color
+        ? ImportParcel(*pending, true) : GetVideo(p);
     OhosOverlayResult result = OHOS_OVERLAY_UNSUPPORTED;
     if (primary && (!p.has_video || video)) {
       OhosOverlayFrame frame{};
@@ -193,7 +204,7 @@ struct Host {
       auto second =
           video ? std::make_unique<Lease>(Lease{this, p.sequence, 1, video})
                 : nullptr;
-      unsigned fd = p.fd_count;
+      unsigned fd = p.fd_count + p.video_fd_count;
       const auto convert = [&](OhosOverlayPlane& dst, const WirePlane& src,
                                Lease* lease) {
         dst.native_buffer = lease->buffer->native;
@@ -235,21 +246,17 @@ struct Host {
     pending.reset();
   }
   void Tick() {
+    bool should_detach;
     {
       std::lock_guard<std::mutex> lock(mutex);
-      if (detached)
-        closing = true;
-      if (pending_socket >= 0) {
-        socket = pending_socket;
-        pending_socket = -1;
-      }
+      should_detach = detached;
     }
-    if (socket >= 0 && !closing) {
-      pollfd peer{socket, POLLIN, 0};
-      if (poll(&peer, 1, 0) > 0 &&
-          (peer.revents & (POLLHUP | POLLERR | POLLNVAL)))
-        Disconnect();
+    if (should_detach) {
+      channel.Stop();
+      Disconnect();
     }
+    if (channel.PeerLost())
+      Disconnect();
     if (closing) {
       current[0].reset();
       current[1].reset();
@@ -263,16 +270,27 @@ struct Host {
       processed = true;
     }
     if (closing && status.state == 3) {
-      if (socket >= 0)
-        close(socket);
-      socket = -1;
+      channel.Disconnect();
       OhosOverlayDestroy(session);
       session = nullptr;
       {
         std::lock_guard<std::mutex> lock(mutex);
-        connected = false;
-        // A failed GPU channel is not automatically retried: the next output
-        // device falls back to the existing XComponent presenter.
+        if (!detached) {
+          // All RS releases and fences have completed. Recreate only now;
+          // neither new frames nor old callbacks can cross this boundary.
+          session = OhosOverlayCreate(OHOS_OVERLAY_BRIDGE_VERSION,
+                                      owner_token, parent);
+          if (session) {
+            closing = false;
+            processed = true;
+            sequence = video_token = 0;
+            outgoing.clear();
+            HostLog("GPU channel drained; overlay host ready to reconnect");
+            return;
+          }
+          HostLog("overlay host recreation failed; using webpage composition");
+        }
+        channel.Stop();
         hosts.erase(id);
       }
       OH_ArkUI_NodeContent_RemoveNode(content, node);
@@ -284,10 +302,13 @@ struct Host {
                [](uv_handle_t* h) { delete static_cast<Host*>(h->data); });
       return;
     }
-    if (socket < 0 || closing)
+    if (closing)
+      return;
+    channel.Activate();
+    if (channel.socket() < 0)
       return;
     while (!outgoing.empty()) {
-      if (!SendWireMessage(socket, *outgoing.front())) {
+      if (!SendWireMessage(channel.socket(), *outgoing.front())) {
         if (errno != EAGAIN && errno != EWOULDBLOCK)
           Disconnect();
         return;
@@ -298,7 +319,7 @@ struct Host {
       return;
     if (!pending) {
       auto msg = std::make_unique<WireMessage>();
-      if (!ReceiveWireMessage(socket, msg.get())) {
+      if (!ReceiveWireMessage(channel.socket(), msg.get())) {
         if (errno != EAGAIN && errno != EWOULDBLOCK)
           Disconnect();
         return;
@@ -309,7 +330,7 @@ struct Host {
       }
       sequence = msg->packet.sequence;
       if (msg->packet.operation == WireOp::kClose) {
-        closing = true;
+        Disconnect();
         return;
       }
       if (msg->packet.operation != WireOp::kFrame) {
@@ -356,15 +377,9 @@ extern "C" int OhosOverlayConnect(const char* id) {
     return -1;
   std::lock_guard<std::mutex> lock(mutex);
   auto it = hosts.find(id);
-  if (it == hosts.end() || it->second->connected || it->second->detached)
+  if (it == hosts.end() || it->second->detached)
     return -1;
-  int fds[2];
-  if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK | SOCK_CLOEXEC, 0,
-                 fds))
-    return -1;
-  it->second->pending_socket = fds[0];
-  it->second->connected = true;
-  return fds[1];
+  return it->second->channel.Connect();
 }
 extern "C" int OhosOverlayAttachContent(uint32_t version,
                                         const char* id,
@@ -432,6 +447,8 @@ extern "C" int OhosOverlayAttachContent(uint32_t version,
   host->timer.data = host.get();
   const uint64_t token = (static_cast<uint64_t>(gettid()) << 32) | 1;
   const uint64_t parent = ResolveOwnedRenderNode(token, host->render);
+  host->owner_token = token;
+  host->parent = parent;
   host->session = parent ? OhosOverlayCreate(version, token, parent) : nullptr;
   HostLog("attach parent=%{public}llu session=%{public}d",
           static_cast<unsigned long long>(parent), !!host->session);
