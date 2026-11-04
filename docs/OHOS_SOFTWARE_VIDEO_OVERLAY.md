@@ -39,10 +39,25 @@ sync tokens and release callbacks remain responsible for recycling.
 
 Only a backing labelled `VideoResourceUpdater` with the precise scanout,
 display-read and raster-write usage marks an RGBA/BGRA pixmap as software video.
-Each fenced producer write advances an immutable content ID. Missing fences
-disable promotion. Repeated paused-frame reads keep the ID, so geometry-only
+Each producer write with an exported fence advances an immutable content ID.
+A successful Vulkan SYNC_FD export returning fd=-1 also proves completion;
+export errors and missing semaphores do not. This distinction is preserved
+explicitly rather than inferred from an invalid generic semaphore handle.
+See the [Vulkan synchronization specification](https://docs.vulkan.org/spec/latest/chapters/synchronization.html). Repeated paused-frame reads keep the ID, so geometry-only
 updates reuse the retained read even if its acquire fence is exported again.
 An allocation rewritten with new pixels receives a different ID.
+
+Software overlay resource locks are deferred until validated RenderService
+release messages retire every outstanding read. Keeping the native allocation
+alive alone is insufficient: the uploader must also be prevented from rewriting
+it while RS reads it. Channel loss quarantines those reads until context loss;
+a disconnect does not fabricate successful retirement.
+
+Zero-origin software frames allocate only their visible size, excluding decoder
+coded-size padding. Non-zero origins, partial viewport/clip rectangles and
+non-full source UVs use webpage composition. On this device the RS RGB route
+showed coded padding despite the submitted source crop, so these cases are not
+advertised as supported independent layers.
 
 Wire version 2 transports a second native buffer parcel for software video.
 Descriptor order is primary parcel, software-video parcel, primary fence,
@@ -66,10 +81,14 @@ claiming a performance improvement.
   NDK bridge, including host, session, transport and RS backend.
 - Additive patch forward/reverse checked against pinned 154 and the actual
   pinned 155 migrated sources.
-- Chromium 155 incremental build and Adapter CI passed for `3293eef7`.
+- Chromium 155 incremental build and Adapter CI passed for `57ed6316`.
   Its signed Lumie HAP contains 67 engine library/resource payloads verified
   byte-for-byte against the published HAR (SHA-256
-  `44cb0520066a76d0922a3f69984df646cb3899a5a2424c7e4067c688a149da71`).
+  `8421a4752d64778da332d2940cb337b556672b309ed175e491c5b1379c3d22be`). This package is prepared locally but has not been
+  installed: the phone disconnected after testing `77b7bf3f`.
+- Latest local overlay regression suite passes, including the completed/error
+  Vulkan export cases. The new Vulkan representation/header hunks apply to
+  pinned 154 as well; no full 154 build or device result is claimed.
 
 ### Device evidence, 2026-11-04
 
@@ -78,8 +97,11 @@ On Mate 70 Pro+ with `ea96e5c9`, Ganesh Vulkan:
 - Ordinary SDR VP9 (`VpxVideoDecoder`, opaque BT.709 profile 0) played more
   than 600 frames without the former GPU CHECK crash, but did **not** promote.
   The subsequent `0d51c7de`/`3293eef7` fixes address the mappable-pool bypass
-  and browser-sourced false scanout capability. Their device result is pending;
-  the phone disconnected before installation of `3293eef7`.
+  and browser-sourced false scanout capability. `3293eef7` and `77b7bf3f` then promoted software VP9 only after the
+  Vulkan GPU failed scheduling and restarted on Ganesh GL. This is **not** a
+  successful Vulkan result. Resource-retirement protection is included in
+  `77b7bf3f`. The latest `57ed6316` preserves completed Vulkan fence exports and
+  trims software coded padding; its device result is pending.
 - H.264 and HDR10 HEVC promoted to visible, buffered RS video layers. Both
   exceeded 600 frames, passed four position/clip cases, paused movement,
   CSS-blur demotion and re-promotion. GPU crash count remained zero. This is
