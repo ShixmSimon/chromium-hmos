@@ -1,8 +1,13 @@
-# OHOS certificate security component updates
+# OHOS security component updates
 
-The OHOS browser enables **CRLSet** (`hfnkpimlhhgieaddgfemjhofmfblmnib`)
-and **PKI Metadata** (`efniojlnjndmcbiieegkicadnoecjjef`) only. Both are
-platform-independent data signed with Chromium's pinned CRX component keys.
+The OHOS browser enables four platform-independent data components signed
+with Chromium's pinned CRX component keys:
+
+- **CRLSet** (`hfnkpimlhhgieaddgfemjhofmfblmnib`).
+- **PKI Metadata** (`efniojlnjndmcbiieegkicadnoecjjef`).
+- **Safety Tips** (`jflookgnkcckhobaglndicnbbgbonegd`).
+- **Certificate Error Assistant** (`giekcmmlnklenlaomppkphknjmnnpneh`).
+
 This does not enable Google account sync, arbitrary component registration,
 speech/AI models, Widevine, or browser binary updates.
 
@@ -12,7 +17,7 @@ speech/AI models, Widevine, or browser binary updates.
   no longer forces `--disable-component-update` for that opt-in; an explicit
   caller-supplied disable switch is still honored. Other OHOS embedders retain
   their previous disabled default.
-- `RegisterComponentsForUpdate()` registers just these two components on OHOS.
+- `RegisterComponentsForUpdate()` registers just these four components on OHOS.
   The component service also rejects every other ID, including registrations
   attempted later by individual features. SODA installation stays disabled.
 - Existing `disable-background-networking` and sync restrictions remain.
@@ -34,9 +39,54 @@ speech/AI models, Widevine, or browser binary updates.
 - INFO diagnostics report an actually accepted CRLSet sequence or an applied
   root-store update, without certificate subjects, browsing URLs, or user data.
 
-These hooks are carried by the already-applied `ohos-url-protection-updates.patch`
-so the existing incremental and fresh-checkout paths see the same changes.
-No CI workflow or build script changes are required.
+The original certificate hooks are carried by
+`ohos-url-protection-updates.patch` (included in the 155 migration snapshot).
+The existing incremental build applies `ohos-security-assistants.patch` after
+those prerequisites on both 154 and 155. No additional workflow is required.
+
+## Safety Tips and Certificate Error Assistant
+
+Safety Tips uses the upstream installer and pinned publisher key to download
+`safety_tips.pb`. `SetSafetyTipsRemoteConfigProto()` feeds the existing
+`LookalikeUrlService`, which previously skipped checks when this config was
+absent. The primary-navigation throttle can display a lookalike interstitial;
+`SafetyTipWebContentsObserver`, already attached to tabs, can display a warning
+bubble for the applicable heuristic. The existing OHOS page-info anchor places
+that bubble below the shell controls. This is a separate Chromium protection,
+not a downloaded adblock/phishing subscription or a replacement for one.
+
+The assistant installer loads `ssl_error_assistant.pb` through
+`SSLErrorHandler::SetErrorAssistantProto()`. The existing SSL navigation error
+handler uses it for captive-portal, interception-software and dynamic error-page
+diagnostics. It does not grant trust to invalid certificates. Upstream builtin
+configuration comparison and rejection of older/equal active versions remain.
+
+Both installers require HTTPS on OHOS. Successful activation logs contain only
+configuration versions/counts, no visited domains or certificate subjects:
+
+- `OHOS security data: active Safety Tips version=...`
+- `OHOS security data: active Certificate Error Assistant version=...`
+
+An unreadable/malformed Safety Tips file leaves the previous active config in
+place on OHOS. With no valid initial config, lookalike checks retain upstream's
+no-config behavior; a component row alone does not establish protection.
+
+On 2026-11-04, an official update check for OHOS/arm64 advertised Safety Tips
+3092 and Certificate Error Assistant 7. Both HTTPS packages were downloaded,
+matched to the response's SHA-256, and their CRX3 signatures were verified with
+the public-key hashes pinned in the corresponding Chromium 155 installers.
+The payloads contained proto versions 3092 and 7; Safety Tips had 5,371 allowed
+patterns and four heuristic launch configs. Public package metadata is recorded
+in `scripts/tests/fixtures/security-components/assistants-20261104.json`.
+This is host verification, not on-device download/activation or UI acceptance.
+
+Device acceptance for the assistants: trigger updates in `chrome://components`,
+confirm both activation logs, restart and confirm persisted reload. Verify a
+controlled lookalike URL through a local host-resolver mapping (never navigate
+to an arbitrary real typo domain), normal-site/allowlist behavior, warning
+buttons and shell placement on phone/Pad. Exercise certificate error handling
+with a local TLS fixture; component diagnostics must not bypass certificate
+validation. These device checks remain pending for the new build.
 
 ## Offline emergency floor
 
@@ -84,7 +134,7 @@ against the pinned 154.0.8037.97 upstream files plus the platform prerequisites.
 Required CI/device acceptance:
 
 1. Compile through push-triggered CI; package phone and Pad from that HAR.
-2. Inspect `chrome://components`: exactly the two allowed security components
+2. Inspect `chrome://components`: the four allowed security components
    register. Check update failures separately from up-to-date status.
 3. Confirm accepted-sequence/root-store diagnostics, HTTPS transfers and no
    Cookie or separate ping requests. Listing an installed component alone is

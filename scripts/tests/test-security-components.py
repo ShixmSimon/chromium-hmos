@@ -14,6 +14,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PATCH = (ROOT / 'patches/ohos-url-protection-updates.patch').read_text()
+ASSISTANTS = (ROOT / 'patches/ohos-security-assistants.patch').read_text()
 ADDED = '\n'.join(line[1:] for line in PATCH.splitlines()
                   if line.startswith('+') and not line.startswith('+++'))
 FIXTURE = json.loads((ROOT / 'scripts/tests/fixtures/security-components/emudhra-intermediates.json').read_text())
@@ -23,11 +24,23 @@ with tempfile.TemporaryDirectory(prefix='ohos-security-policy-') as directory:
     binary = Path(directory) / 'policy'
     source.write_text(r'''
 #include <cassert>
+#include <string>
 #include "components/component_updater/ohos_security_component_policy.h"
 using component_updater::IsOhosSecurityComponent;
 int main() {
   static_assert(IsOhosSecurityComponent("hfnkpimlhhgieaddgfemjhofmfblmnib"));
   static_assert(IsOhosSecurityComponent("efniojlnjndmcbiieegkicadnoecjjef"));
+  static_assert(IsOhosSecurityComponent("jflookgnkcckhobaglndicnbbgbonegd"));
+  static_assert(IsOhosSecurityComponent("giekcmmlnklenlaomppkphknjmnnpneh"));
+  for (auto id : {"jflookgnkcckhobaglndicnbbgbonegd",
+                  "giekcmmlnklenlaomppkphknjmnnpneh"}) {
+    for (size_t i = 0; i < 32; ++i) {
+      std::string mutated(id);
+      mutated[i] = mutated[i] == 'a' ? 'b' : 'a';
+      assert(!IsOhosSecurityComponent(mutated));
+    }
+    assert(!IsOhosSecurityComponent(std::string(id) + "/../other"));
+  }
   for (auto id : {"", "CRLSet", "PKI Metadata", "widevine",
                   "hfnkpimlhhgieaddgfemjhofmfblmnia",
                   "hfnkpimlhhgieaddgfemjhofmfblmnib/../other",
@@ -125,6 +138,12 @@ registration_patch = PATCH.split('diff --git a/chrome/browser/component_updater/
 registration = '\n'.join(line[1:] for line in registration_patch.splitlines()
                          if line.startswith('+') and not line.startswith('+++'))
 assert re.search(r'RegisterCRLSetComponent\(cus\);\s*MaybeRegisterPKIMetadataComponent\(cus\);\s*#else', registration)
+# Apply the assistant registration hunk to the actual existing OHOS branch.
+assistant_registration = ASSISTANTS.split('diff --git a/chrome/browser/component_updater/registration.cc ', 1)[1].split('\ndiff --git ', 1)[0]
+new_calls = '\n'.join(line[1:] for line in assistant_registration.splitlines()
+                      if line.startswith('+') and not line.startswith('+++'))
+registration = registration.replace('  MaybeRegisterPKIMetadataComponent(cus);',
+                                    '  MaybeRegisterPKIMetadataComponent(cus);\n' + new_calls)
 registration = registration.replace('#else', '#else\n  RegisterDesktopComponent(cus);', 1)
 with tempfile.TemporaryDirectory(prefix='ohos-registration-') as directory:
     source = Path(directory) / 'registration.cc'
@@ -136,20 +155,74 @@ with tempfile.TemporaryDirectory(prefix='ohos-registration-') as directory:
 int registered = 0;
 void RegisterCRLSetComponent(int*) { registered |= 1; }
 void MaybeRegisterPKIMetadataComponent(int*) { registered |= 2; }
-void RegisterDesktopComponent(int*) { registered |= 4; }
+void RegisterSafetyTipsComponent(int*) { registered |= 4; }
+void RegisterSSLErrorAssistantComponent(int*) { registered |= 8; }
+void RegisterDesktopComponent(int*) { registered |= 16; }
 void RegisterComponentsForUpdate() {
   int* cus = nullptr;
 ''' + registration + '''
 }
 int main() {
   RegisterComponentsForUpdate();
-  assert(registered == (OHOS ? 3 : 4));
+  assert(registered == (OHOS ? 15 : 16));
 }
 ''')
         subprocess.run([os.environ.get('CXX', 'clang++'), '-std=c++20', '-Wall',
                         '-Wextra', '-Wunreachable-code-aggressive', '-Werror',
                         f'-DOHOS={ohos}', str(source), '-o', str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
+# Exercise the production Safety Tips setter; null is the installer's failed
+# read/parse result. Keep active data on OHOS, preserve upstream behavior elsewhere.
+config_patch = ASSISTANTS.split('diff --git a/components/lookalikes/core/safety_tips_config.cc ', 1)[1].split('\ndiff --git ', 1)[0]
+postimage = '\n'.join(line[1:] for line in config_patch.splitlines()
+                      if line.startswith((' ', '+')) and not line.startswith('+++'))
+setter = re.search(r'void SetSafetyTipsRemoteConfigProto\(.*?\n}', postimage, re.S)[0]
+unit = r'''
+#include <cassert>
+#include <memory>
+#include <utility>
+#define BUILDFLAG(flag) OHOS
+struct Log { template<class T> Log& operator<<(const T&) { return *this; } };
+#define LOG(level) Log()
+namespace reputation {
+struct SafetyTipsConfig {
+  explicit SafetyTipsConfig(int v) : version(v) {}
+  int version_id() const { return version; }
+  int allowed_pattern_size() const { return 0; }
+  int launch_config_size() const { return 0; }
+  int version;
+};
+}
+struct SafetyTipsConfigSingleton {
+  static SafetyTipsConfigSingleton& GetInstance() { static SafetyTipsConfigSingleton s; return s; }
+  void SetProto(std::unique_ptr<reputation::SafetyTipsConfig> p) { value = std::move(p); }
+  reputation::SafetyTipsConfig* GetProto() { return value.get(); }
+  std::unique_ptr<reputation::SafetyTipsConfig> value;
+};
+PRODUCTION_SETTER
+int main() {
+  auto& s = SafetyTipsConfigSingleton::GetInstance();
+  SetSafetyTipsRemoteConfigProto(nullptr);
+  assert(s.GetProto() == nullptr);
+  SetSafetyTipsRemoteConfigProto(std::make_unique<reputation::SafetyTipsConfig>(1));
+  assert(s.GetProto()->version_id() == 1);
+  SetSafetyTipsRemoteConfigProto(nullptr);
+  if (OHOS) assert(s.GetProto() && s.GetProto()->version_id() == 1);
+  else assert(s.GetProto() == nullptr);
+  SetSafetyTipsRemoteConfigProto(std::make_unique<reputation::SafetyTipsConfig>(2));
+  assert(s.GetProto()->version_id() == 2);
+}
+'''.replace('PRODUCTION_SETTER', setter)
+with tempfile.TemporaryDirectory(prefix='ohos-safety-config-') as directory:
+    source = Path(directory) / 'config.cc'
+    binary = Path(directory) / 'config'
+    source.write_text(unit)
+    for ohos in (0, 1):
+        subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', '-Wall',
+                        '-Wextra', '-Werror', f'-DOHOS={ohos}', str(source),
+                        '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+
 assert 'if (!mutable_command_line->HasSwitch("ohos-security-component-updates"))' in ADDED
 assert 'if (url.SchemeIs("https"))' in ADDED
 assert 'omit separate component telemetry pings' in ADDED

@@ -337,6 +337,7 @@ else
   # Shared touch fullscreen UI, after the 154 fullscreen prerequisites or
   # their migrated 155 equivalents. Keep it additive to both baselines.
   apply_incremental_patch "${repo_root}/patches/ohos-phone-fullscreen-hint.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-security-assistants.patch"
 
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by

@@ -11,7 +11,9 @@ namespace component_updater {
 // to register their own components later in startup.
 inline constexpr bool IsOhosSecurityComponent(std::string_view id) {
   return id == "hfnkpimlhhgieaddgfemjhofmfblmnib" ||  // CRLSet
-         id == "efniojlnjndmcbiieegkicadnoecjjef";    // PKI Metadata
+         id == "efniojlnjndmcbiieegkicadnoecjjef" ||  // PKI Metadata
+         id == "jflookgnkcckhobaglndicnbbgbonegd" ||  // Safety Tips
+         id == "giekcmmlnklenlaomppkphknjmnnpneh";    // Certificate Error Assistant
 }
 }  // namespace component_updater
 
