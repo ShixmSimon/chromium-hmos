@@ -4,6 +4,7 @@
 // crosses.
 #include "ohos_rs_overlay_backend.h"
 #include "ohos_rs_abi.h"
+#include "ohos_overlay_marker_thread.h"
 
 #include <arkui/native_render.h>
 #include <dlfcn.h>
@@ -432,7 +433,7 @@ class RsBackend final : public Backend {
     if (!slots_.empty())
       std::abort();
     if (listener_constructed_)
-      api_.marker_dtor(listener_);
+      OverlayMarkerThread::Get().Run([this] { api_.marker_dtor(listener_); });
     api_.Drop(nodes_[0]);
     api_.Drop(nodes_[1]);
     if (handler_)
@@ -464,7 +465,9 @@ class RsBackend final : public Backend {
         !RegisterDispatcher(api_, static_cast<char*>(context_.object) + 480))
       return false;
     marker_ = std::make_shared<MarkerState>();
-    api_.marker_ctor(listener_, static_cast<char*>(context_.object) + 480);
+    OverlayMarkerThread::Get().Run([this] {
+      api_.marker_ctor(listener_, static_cast<char*>(context_.object) + 480);
+    });
     listener_constructed_ = true;
     auto state = marker_;
     const std::function<void(uint64_t, uint64_t, std::queue<uint64_t>)>
@@ -482,7 +485,11 @@ class RsBackend final : public Backend {
             }
           }
         };
-    if (!api_.marker_register(listener_, &callback))
+    bool registered = false;
+    OverlayMarkerThread::Get().Run([&] {
+      registered = api_.marker_register(listener_, &callback);
+    });
+    if (!registered)
       return false;
     for (unsigned i = 0; i < 2; ++i) {
       if (!CreateLayer(i))
@@ -743,9 +750,11 @@ class RsBackend final : public Backend {
   void Marker() {
     uint64_t sequence = UINT64_MAX;
     void* command = nullptr;
-    OhosRsSret3(&command, api_.marker_get,
-                reinterpret_cast<uintptr_t>(listener_),
-                reinterpret_cast<uintptr_t>(&sequence), 0);
+    OverlayMarkerThread::Get().Run([&] {
+      OhosRsSret3(&command, api_.marker_get,
+                  reinterpret_cast<uintptr_t>(listener_),
+                  reinterpret_cast<uintptr_t>(&sequence), 0);
+    });
     if (!command || sequence == UINT64_MAX)
       std::abort();
     marker_->expected.store(sequence, std::memory_order_release);
