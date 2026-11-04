@@ -106,6 +106,34 @@ int main() {
 }
 """.replace('EXPRESSION', expression))
 
+    def test_scanout_uses_gpu_capability_not_browser_creation_flag(self):
+        patch = (ROOT / 'patches/ohos-software-video-overlay.patch').read_text()
+        added = '\n'.join(line[1:] for line in patch.splitlines()
+                          if line.startswith('+') and not line.startswith('+++'))
+        expression = re.search(r'return (ui::OzonePlatform::GetInstance\(\).*?);', added, re.S)[1]
+        compile_run("""
+#include <cassert>
+namespace ui {
+struct OzonePlatform {
+  struct Properties { bool supports_overlays; } properties{false};
+  static OzonePlatform* GetInstance() { static OzonePlatform p; return &p; }
+  const Properties& GetPlatformRuntimeProperties() { return properties; }
+};
+}
+struct Manager {
+  bool browser_creation_supports_overlays = false;
+  bool SupportsScanout() { return EXPRESSION; }
+};
+int main() {
+  Manager gpu;
+  ui::OzonePlatform::GetInstance()->properties.supports_overlays = true;
+  assert(gpu.SupportsScanout()); // Browser false must not disable GPU uploads.
+  ui::OzonePlatform::GetInstance()->properties.supports_overlays = false;
+  gpu.browser_creation_supports_overlays = true;
+  assert(!gpu.SupportsScanout()); // GPU presenter disabled: no scanout.
+}
+""".replace('EXPRESSION', expression))
+
     def test_ordinary_yuv_does_not_clear_an_unset_external_sampler(self):
         patch = (ROOT / 'patches/ohos-software-video-overlay.patch').read_text()
         # Execute the replacement guard in each actual patch hunk. The stub

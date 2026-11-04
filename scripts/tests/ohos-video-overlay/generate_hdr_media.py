@@ -54,6 +54,7 @@ def frames(hdr, bits):
 
 
 SPECS = [
+    ('sdr-vp9', 'SDR / VP9 profile 0 / 8-bit', 'libvpx-vp9', 8, False, 'mp4'),
     ('sdr-avc', 'SDR / AVC / 8-bit', 'libx264', 8, False, 'mp4'),
     ('sdr-hevc10', 'SDR / HEVC / 10-bit', 'libx265', 10, False, 'mp4'),
     ('hdr10-hevc', 'HDR10 / HEVC / PQ / 10-bit', 'libx265', 10, True, 'mp4'),
@@ -138,9 +139,9 @@ def main():
         elif encoder == 'libx264':
             command += ['-preset', 'fast', '-crf', '12', '-g', '30', '-pix_fmt', 'yuv420p']
         else:
-            command += ['-profile:v', '2', '-crf', '16', '-b:v', '0', '-deadline', 'good', '-cpu-used', '4', '-g', '30']
+            command += ['-profile:v', '2' if bits > 8 else '0', '-crf', '16', '-b:v', '0', '-deadline', 'good', '-cpu-used', '4', '-g', '30']
         if extension == 'mp4':
-            command += ['-movflags', '+faststart']
+            command += ['-movflags', '+faststart+write_colr']
         command.append(str(path))
         if not args.verify_only:
             print(f'Generating {path.name}', flush=True)

@@ -49,7 +49,7 @@ async function waitFor(read, accept, description, timeout = 20000) {
   do {value = await read(); if (accept(value)) return value; await sleep(250);} while (Date.now()<deadline);
   throw Error(`${description}: ${JSON.stringify(value)}`);
 }
-const visible = (rows, plane) => rows.some(line => line.includes(`Name [Lumie${plane}Layer]`) && /Visible: 1\b/.test(line));
+const visible = (rows, plane) => rows.some(line => line.includes(`Name [Lumie${plane}Layer]`) && /Visible: 1\b/.test(line) && /SurfaceNode::hasSurfaceBuffer: 1\b/.test(line));
 const snapshot = () => evaluate(`({time:v.currentTime,frames:v.getVideoPlaybackQuality().totalVideoFrames,paused:v.paused,error:v.error?.message,visibility:document.visibilityState,rect:v.getBoundingClientRect().toJSON(),dpr:devicePixelRatio,hdr:matchMedia('(dynamic-range: high)').matches})`);
 try {
   report.version = await (await fetch(`${endpoint}/json/version`, {signal: AbortSignal.timeout(5000)})).json();
@@ -64,7 +64,7 @@ try {
     return result.result.value;
   };
   await browser.call('Target.activateTarget', {targetId:target});
-  await page.call('Page.navigate', {url});
+  await page.call('Page.navigate', {url:new URL('automation.html',url).href});
   await waitFor(() => evaluate('!!document.querySelector("video")'), Boolean, 'Fixture load');
   await evaluate(`(async()=>{
     window.v=document.querySelector('video'); v.pause(); v.removeAttribute('src'); v.load();
@@ -77,7 +77,7 @@ try {
     try {window.testWakeLock=await navigator.wakeLock.request('screen');return 'acquired';} catch(e) {return String(e)}
   })()`);
   await logs(); // Discard events from previous app sessions.
-  for (const clip of ['sdr-avc.mp4','sdr-hevc10.mp4','hdr10-hevc.mp4']) {
+  for (const clip of ['sdr-vp9.mp4','sdr-avc.mp4','sdr-hevc10.mp4','hdr10-hevc.mp4']) {
     const entry = {clip}; report.cases.push(entry);
     await evaluate(`v.style.filter='none';v.src=${JSON.stringify(new URL('media/'+clip,url).href)};v.play()`);
     await waitFor(snapshot, s => s.time>0.25 && !s.paused && s.visibility==='visible', 'Video advances');
@@ -128,6 +128,9 @@ try {
   report.commandsProcessed = {promotion:events.filter(s=>s.includes('promotion commands processed')).length,
     demotion:events.filter(s=>s.includes('demotion commands processed')).length};
   if (!report.commandsProcessed.promotion || !report.commandsProcessed.demotion || events.some(s=>s.includes('channel/plane rejected'))) throw Error('Presenter promotion/demotion evidence missing or channel rejected');
+  report.finalSystem = await browser.call('SystemInfo.getInfo');
+  if (report.finalSystem.gpu.auxAttributes.processCrashCount !==
+      report.system.gpu.auxAttributes.processCrashCount) throw Error('GPU process crashed during validation');
   report.passed = true;
 } catch(e) {
   report.error=String(e); process.exitCode=1;

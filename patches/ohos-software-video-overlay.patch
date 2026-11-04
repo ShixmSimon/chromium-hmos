@@ -144,3 +144,22 @@ diff --git a/media/mojo/clients/mojo_gpu_video_accelerator_factories.cc b/media/
    if (bit_depth > 8) {
      if (shared_image_capabilities.supports_ycbcr_p010_sampling &&
          bit_depth == 10) {
+diff --git a/gpu/command_buffer/service/shared_image/shared_image_manager.cc b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
+--- a/gpu/command_buffer/service/shared_image/shared_image_manager.cc
++++ b/gpu/command_buffer/service/shared_image/shared_image_manager.cc
+@@ -656,8 +656,13 @@
+   return true;
+ #elif BUILDFLAG(IS_ANDROID)
+   return true;
+-#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA) || \
+-    BUILDFLAG(IS_OHOS)
++#elif BUILDFLAG(IS_OHOS)
++  // OHOS exposes overlays only in the GPU child. GpuHostImpl's creation flag
++  // comes from the browser's Ozone instance, where that capability is false.
++  // Query the local instance so renderer uploads see the presenter's support.
++  return ui::OzonePlatform::GetInstance()
++      ->GetPlatformRuntimeProperties().supports_overlays;
++#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
+   return supports_overlays_on_ozone_;
+ #elif BUILDFLAG(IS_WIN)
+   return gl::DirectCompositionTextureSupported();
