@@ -589,6 +589,10 @@ The code now connects these stages:
    change geometry without another SetBuffer or ending its original read.
    Swap completion waits for replaced primary RS reads/fences; browser-held decoder
    leases survive a GPU disconnect. Close is asynchronous with no fake release.
+   Command completion uses the owning context's normal transaction callback,
+   keyed by a unique `(context token, timestamp)`. No delegate sender-thread
+   identity is registered; native ArkUI transactions keep their normal redraw
+   path. See the November 4 regression and replacement notes below.
 
 Native video import whitelists accept read-only SCANOUT on Vulkan and Graphite;
 the Ozone factory also accepts the presenter's SDR RGBA/BGRA primary. Vulkan
@@ -751,7 +755,7 @@ stale native UI.
 
 The inspected RS source provides the mechanism: `SurfaceTransactionListener`
 captures its constructor's PID/TID, and `GetCommand` requires that thread.
-Processing its marker stores the first sender TID in
+Registering the listener (or processing its marker) stores the first sender TID in
 `surfaceTransactionIdentityInfoMap_`. `PrepareDelegateCompositeCommand` then
 routes **all** transactions from that sender into the delegate queue.
 `RSMainThread` permits web-only direct composition for this identity, bypassing
@@ -771,6 +775,136 @@ separate validated release callback.
 
 The native bridge compiles; the overlay suite passes, including a threaded
 regression for listener affinity, sticky identity, concurrent hosts and command
-construction before enqueue. Device comparison is pending: the phone disconnected
-before the locally rebuilt bridge could be installed. Do not claim scrolling or
-video regression verification from the unit test alone.
+construction before enqueue. However, the subsequent device test **failed**;
+`0ab5a466` is not a qualified scrolling fix.
+
+The published HAR was installed on the Mate 70 Pro+ on 2026-11-04. The short
+launch smoke check passed, but the first submitted frame timed out after ten
+seconds (`sequence=1 accepted=1 processed=0 primary_released=0`). Repeated GPU
+restarts followed, and browser PID 34317 exited at 18:44:44. The completion
+callback did not arrive; its precise cause remains unresolved. Moving only the
+listener while retaining UI-thread transaction submission is not sufficient.
+Do not fabricate completion acknowledgements or release buffers on timeout.
+
+The after trace has no ArkUI batches in the delegate queue, but it overlaps the
+GPU failure loop and cannot establish successful scrolling/video operation.
+Evidence: `/tmp/lumie-settings-fix/overlay-failure.log`,
+`/tmp/lumie-settings-after.trace`, and
+`/tmp/lumie-settings-fix/after-summary.json`.
+
+The device was restored by an in-place installation of `57ed6316`, preserving
+app data. Its 67 HAR payloads were verified against the signed HAP, launch smoke
+passed, and browser PID 37338 remained alive after the failed version's timeout
+window. Installation record:
+`/tmp/lumie-settings-restore-57ed6316/verified.json`.
+The original settings-scroll regression remains unresolved on this baseline.
+
+### Completion failure isolated on the installed system
+
+A startup trace of the published `0ab5a466` package reproduced the first-frame
+failure with browser PID 48327. The timeline is:
+
+1. RS registered the listener with PID 48327 and worker TID 48526.
+2. Worker 48526 created marker sequence 0 at trace time 60285.797793.
+3. UI thread 48327 sent it in transaction `[48327,15]` at 60285.797858.
+4. At wall time 18:57:18.579, RS logged
+   `IsCallingPidValid check failed: callingPid = 48327, commandPid = 0,
+   commandMap = { 0: [(18,1),], }`.
+5. The ordinary queue processed `[48327,15]` at 60285.815045, including the
+   buffer/rectangle commands, but never executed the surface-transaction marker.
+   The completion map remained empty. At 18:57:28.578, the presenter reported
+   `sequence=1 accepted=1 processed=0` and `completion-timeout`.
+
+Disassembly of the device libraries explains the discrepancy with the reference
+source. This firmware's `SurfaceTransactionCommand` constructor takes four
+arguments (`srcId, sequence, pid, tid`), without a node ID. Its vtable's
+`GetNodeId` returns zero; `GetAllNodeIds` wraps that zero in a vector. The command
+type/subtype is `(18,1)`. `CheckNonSystemCommand` compares each node ID's upper
+32 bits to the calling PID, and marks this command invalid. Ordinary
+`RSTransactionData::Process` skips commands with that flag cleared.
+
+The same firmware's delegate `ProcessEachCommandQueue` calls `Process` for every
+non-null command without testing that flag. This explains why the old UI-thread
+listener appeared to work despite the same permission error: the UI-thread
+identity sent its transactions through the delegate queue. Moving only the
+listener removes that routing, exposing rejection of the marker on the normal
+path. Neither a callback event loop nor increasing the timeout fixes this.
+The inspected reference source includes a node-ID-bearing marker and a validity
+check in the delegate loop; those changes are absent from the device binaries.
+Do not assume the reference source precisely describes the installed firmware.
+
+Evidence and library hashes are saved in
+`/tmp/lumie-settings-cause/cause-report.json`; supporting files are
+`startup.trace`, `first-marker.txt`, `failure-evidence.log`, and the downloaded
+system libraries. Device addresses in `librender_service_base.z.so`:
+marker constructor `0x863f44`, vtable `0x98dbb0`, zero-returning node-ID method
+`0x565170`, node-ID list method `0x61a57c`, ownership check `0x815d3c`, normal
+process `0x3d1530`, delegate loop `0x85be90`.
+
+A replacement must separate overlay submissions from ArkUI transactions while
+using a completion mechanism that remains valid under command ownership checks.
+Do not depend on the delegate loop ignoring an invalid-command flag, alter
+system permission checks, or fabricate acknowledgements. The existing marker
+worker test covers thread affinity only and missed this server-side contract.
+The probe was followed by an in-place restore of the archived, verified
+`57ed6316` HAP; launch passed and browser PID 49850 remained alive. No application
+data was removed.
+
+### Replacement: normal transaction completion (2026-11-04)
+
+The replacement removes `SurfaceTransactionListener` and its worker completely.
+`RSRenderInterface::RegisterTransactionDataCallback` supplies the genuine
+after-processing notification without issuing the rejected `(18,1)` command or
+registering a delegate sender identity. Node creation, attachment, submission and
+cleanup remain on the owning ArkUI thread/context. Isolation is by the exact
+callback key, not by moving an ArkUI context or its transaction handler onto a
+foreign thread. Primary/video commands remain in one synchronous batch.
+
+The callback is registered before flushing. Its timestamp is strictly greater
+than both the handler's previous timestamp and this backend's previous callback
+key, so the handler's max-timestamp clamp cannot change it or reuse an older
+ArkUI callback key. Reapplying the owned primary destination rectangle emits a
+legal node command even for otherwise empty cleanup transactions. The normal
+callback is processing evidence only; actual buffer release and signaled fences
+are still required before returning GPU/decoder reads. A startup transaction
+with no pixel buffers must complete before the backend accepts its first frame.
+Callback state has independent shared lifetime for late IPC delivery.
+
+The existing context-constructor fingerprint covers the render interface at
+offset 136. The callback entry point is fingerprinted separately for each client
+profile. Reading the handler timestamp at offset 232 additionally requires the
+inspected base-library flush function's full 1232-byte fingerprint
+`0xeaf28e5e`. An uninspected base build declines the overlay backend rather than
+guessing the layout. The old client profile is retained, but an older base
+library is not claimed compatible without a matching inspected implementation.
+
+The local bridge passed NDK compilation and the overlay regression suite,
+including exact callback keys, stale/out-of-order notifications, timestamp
+clamping/overflow, callback lifetime, and refusing pixel leases while the startup
+probe is pending. The signed HAP contained 67 verified engine payloads: all were
+identical to the known-good `57ed6316` HAR except the intentionally replaced,
+NDK-stripped bridge. Installed verification record:
+`/tmp/lumie-settings-completion/verified.json`.
+
+Device PID 64268 survived startup and video testing with no GPU restart. Its
+startup trace has zero listener identity registrations and zero delegate-command
+batches for this PID. Four video cases completed between 19:10:59 and 19:12:32:
+
+| Clip | Frames during sustained promoted playback | Geometry cases | CSS demotion / re-promotion |
+| --- | --- | --- | --- |
+| SDR software VP9 | 16 → 379 | 4 | passed |
+| SDR H.264 | 23 → 386 | 4 | passed |
+| SDR 10-bit HEVC | 25 → 388 | 4 | passed |
+| HDR10 HEVC | 22 → 384 | 4 | passed |
+
+The test checked real RS video-layer visibility, advancing frames for longer
+than the former 10-second timeout, and completed promotion/demotion notifications
+(21 / 20). GPU crash count remained 0; fixture/tab/wake-lock cleanup completed.
+Report: `/tmp/lumie-settings-completion/video/report.json`.
+
+The user then made the device temporarily unavailable. The matched manual
+settings-scroll capture, subjective scrolling confirmation, and a fresh full
+engine package installation remain pending. Do not treat the startup trace's
+normal redraw activity as a measured before/after settings-scroll result. The
+last installed package is the local normal-completion bridge on `57ed6316`.
+The 154 branch currently has no corresponding RS overlay backend to backport.

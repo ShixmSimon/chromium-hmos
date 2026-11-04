@@ -16,8 +16,7 @@ enum class RsCheckedFunction : size_t {
   kContextSurfaceFactory,
   kRemoveChild,
   kCleanBuffer,
-  kListenerConstructor,
-  kListenerRegister,
+  kTransactionCallbackRegister,
   kGetSurface,
   kGoBackground,
   kCount,
@@ -26,6 +25,11 @@ struct RsFingerprint {
   size_t bytes;
   uint32_t hash;
 };
+// Independently checked render_service_base implementation. This is not
+// inferred from the client-library profile: an uninspected base build must
+// fall back before any handler field below is read.
+inline constexpr RsFingerprint kRsCompletionFlush{1232, 0xeaf28e5eu};
+inline constexpr size_t kRsHandlerTimestampOffset = 232;
 struct RsAbiProfile {
   const char* name;
   uint32_t render_node_create_hash;
@@ -33,7 +37,7 @@ struct RsAbiProfile {
       functions;
 };
 // Both builds use the same inspected boundary layouts: RSUIContext node map
-// +40, transaction handler +120, remote +480; listener storage 112 bytes;
+// +40, transaction handler +120, render interface +136, remote +480;
 // RenderNodeStruct shared_ptr +0 and node id +16. RSSurfaceNode grew by 32
 // bytes in the second build; only its own factory/accessors access that object.
 inline constexpr RsAbiProfile kRsAbiProfiles[] = {
@@ -48,8 +52,7 @@ inline constexpr RsAbiProfile kRsAbiProfiles[] = {
          {232, 0x801e5a23u},   // kContextSurfaceFactory
          {1176, 0xd791aac8u},  // kRemoveChild
          {20, 0x0cd5d9fdu},    // kCleanBuffer
-         {228, 0xeeb6d8a9u},   // kListenerConstructor
-         {1452, 0xd110289eu},  // kListenerRegister
+         {336, 0x02ebbce1u},   // kTransactionCallbackRegister
          {264, 0x108d9ce0u},   // kGetSurface
          {92, 0x2ef7d186u},    // kGoBackground
      }}},
@@ -64,8 +67,7 @@ inline constexpr RsAbiProfile kRsAbiProfiles[] = {
          {232, 0x61a953dfu},   // kContextSurfaceFactory
          {1468, 0x6889bbd2u},  // kRemoveChild
          {20, 0x8964ac72u},    // kCleanBuffer
-         {228, 0xee1d0bdcu},   // kListenerConstructor
-         {1452, 0xdd2178cau},  // kListenerRegister
+         {336, 0xa8cc26c5u},   // kTransactionCallbackRegister
          {264, 0x7659cdadu},   // kGetSurface
          {92, 0xccea5842u},    // kGoBackground
      }}},

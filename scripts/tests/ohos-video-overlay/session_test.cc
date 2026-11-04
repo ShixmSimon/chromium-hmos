@@ -75,6 +75,23 @@ int main() {
   bool ready = true;
   int released = 0;
   {
+    FakeBackend b;
+    b.ready_for_frame = false;  // Startup completion probe still pending.
+    Session s(b);
+    auto f = MakeFrame(800, released, ready);
+    assert(s.Submit(f) == SubmitResult::kBusy);
+    assert(f.primary.lease && f.video->lease);
+    assert(b.preparations == 0 && b.commits == 0 && released == 0);
+    // Closing before that probe completes owns no GPU reads and needs no
+    // fabricated per-frame acknowledgement; real detach completion is enough.
+    s.Close();
+    assert(b.drains == 1 && !s.closed() && released == 0);
+    b.drained = true;
+    s.Poll();
+    assert(s.closed() && b.destroys == 1);
+  }
+  released = 0;
+  {
     auto f = MakeFrame(700, released, ready);
     f.video->format = Format::kRgba8;
     assert(Session::Valid(f));

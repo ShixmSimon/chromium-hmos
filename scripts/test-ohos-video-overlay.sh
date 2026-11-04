@@ -21,9 +21,9 @@ trap 'rm -rf "$overlay_tests"' EXIT
 "$overlay_tests/rs-abi"
 "${CXX:-c++}" -std=c++17 -pthread -Wall -Wextra -Werror -fsanitize=address,undefined \
   -I"$overlay_repo/overlay" \
-  "$overlay_repo/scripts/tests/ohos-video-overlay/marker_thread_test.cc" \
-  -o "$overlay_tests/marker-thread"
-"$overlay_tests/marker-thread"
+  "$overlay_repo/scripts/tests/ohos-video-overlay/completion_test.cc" \
+  -o "$overlay_tests/completion"
+"$overlay_tests/completion"
 host_flags=()
 if [[ "$(uname -s)" == Darwin ]]; then
   # Darwin socketpair lacks these Linux/OHOS creation flags. No blocking I/O

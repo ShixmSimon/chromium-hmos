@@ -11,7 +11,9 @@ namespace ui::ohos_overlay {
 // Caller supplies its own RS UI context token and parent node ID, never a
 // guessed context or another process's node.
 // Creation/submission/poll/destruction run on that context's owning UI
-// transaction thread.
+// transaction thread. Completion uses the normal transaction callback keyed
+// by context/timestamp; never register a delegate compositor sender identity
+// for ArkUI's thread. Buffer retirement remains independently fence-protected.
 std::unique_ptr<Backend> CreateRsOverlayBackend(uint64_t context_token,
                                                 uint64_t parent_node_id);
 // Only accepts an ArkUI RenderNode created/owned by this bridge. Returns zero

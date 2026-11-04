@@ -4,7 +4,7 @@
 // crosses.
 #include "ohos_rs_overlay_backend.h"
 #include "ohos_rs_abi.h"
-#include "ohos_overlay_marker_thread.h"
+#include "ohos_overlay_completion.h"
 
 #include <arkui/native_render.h>
 #include <dlfcn.h>
@@ -14,6 +14,7 @@
 #include <native_buffer/native_buffer.h>
 #include <poll.h>
 #include <pthread.h>
+#include <time.h>
 #include <unistd.h>
 #include <atomic>
 #include <chrono>
@@ -121,7 +122,6 @@ struct Api {
   void* context_get = nullptr;
   void* node_get = nullptr;
   void* get_surface = nullptr;
-  void* marker_get = nullptr;
   void* manager = nullptr;
   void (*weak_release)(void*) = nullptr;
   void (*hardware)(void*, bool, int, bool) = nullptr;
@@ -139,10 +139,7 @@ struct Api {
   void (*set_buffer)(void*, void*, void*, const void*) = nullptr;
   void (*flush)(void*, uint64_t, const void*, bool, uint64_t) = nullptr;
   void (*vsync)(void*) = nullptr;
-  void (*marker_ctor)(void*, void*) = nullptr;
-  bool (*marker_register)(void*, const void*) = nullptr;
-  void (*marker_dtor)(void*) = nullptr;
-  void (*add_command)(void*, void**, bool, int, uint64_t) = nullptr;
+  bool (*transaction_callback)(void*, uint64_t, uint64_t, const void*) = nullptr;
   void* (*release_instance)() = nullptr;
   bool (*release_connect)(void*, void*) = nullptr;
   bool (*release_register)(void*, const void*) = nullptr;
@@ -259,23 +256,19 @@ struct Api {
         "_ZN4OHOS5Rosen20RSTransactionHandler24FlushImplicitTransactionEmRKNSt3"
         "__h12basic_stringIcNS2_11char_traitsIcEENS2_9allocatorIcEEEEbm");
     RESOLVE(vsync, "_ZN4OHOS5Rosen11RSUIContext20RequestVsyncCallbackEv");
-    if (!Get(marker_ctor,
-             "_ZN4OHOS5Rosen26SurfaceTransactionListenerC2ENS_4sptrINS_"
-             "13IRemoteObjectEEE",
-             RsCheckedFunction::kListenerConstructor) ||
-        !Get(marker_register,
-             "_ZN4OHOS5Rosen26SurfaceTransactionListener31RegisterCommandComple"
-             "teCallBackENSt3__h8functionIFvmmNS2_5queueImNS2_5dequeImNS2_"
-             "9allocatorImEEEEEEEEE",
-             RsCheckedFunction::kListenerRegister))
+    if (!Get(transaction_callback,
+             "_ZN4OHOS5Rosen17RSRenderInterface31RegisterTransactionDataCallback"
+             "EmmNSt3__h8functionIFvvEEE",
+             RsCheckedFunction::kTransactionCallbackRegister))
       return false;
-    RESOLVE(marker_get,
-            "_ZN4OHOS5Rosen26SurfaceTransactionListener10GetCommandERm");
-    RESOLVE(marker_dtor, "_ZN4OHOS5Rosen26SurfaceTransactionListenerD2Ev");
-    RESOLVE(
-        add_command,
-        "_ZN4OHOS5Rosen20RSTransactionHandler10AddCommandERNSt3__h10unique_"
-        "ptrINS0_9RSCommandENS2_14default_deleteIS4_EEEEbNS0_10FollowTypeEm");
+    // The timestamp read below is allowed only for this inspected base-library
+    // implementation. Other base builds fail closed, even if the client ABI
+    // matches a known profile. Do not guess the handler layout from OS version.
+    if (Hash(reinterpret_cast<void*>(flush), kRsCompletionFlush.bytes) !=
+        kRsCompletionFlush.hash) {
+      BacklogLog("transaction completion ABI unavailable");
+      return false;
+    }
     RESOLVE(release_instance,
             "_ZN4OHOS5Rosen32SurfaceNodeBufferReleaseListener11GetInstanceEv");
     RESOLVE(release_connect,
@@ -412,10 +405,6 @@ bool RegisterDispatcher(Api& api, void* remote) {
   return dispatcher_registered;
 }
 
-struct MarkerState {
-  std::atomic<uint64_t> expected{UINT64_MAX};
-  std::atomic<uint64_t> acknowledged{UINT64_MAX};
-};
 struct Batch : Backend::Prepared {
   uint64_t submission = 0;
   unsigned count = 0;
@@ -432,8 +421,6 @@ class RsBackend final : public Backend {
   ~RsBackend() override {
     if (!slots_.empty())
       std::abort();
-    if (listener_constructed_)
-      OverlayMarkerThread::Get().Run([this] { api_.marker_dtor(listener_); });
     api_.Drop(nodes_[0]);
     api_.Drop(nodes_[1]);
     if (handler_)
@@ -456,40 +443,17 @@ class RsBackend final : public Backend {
       return false;
     std::memcpy(&handler_, static_cast<char*>(context_.object) + 120,
                 sizeof(handler_));
-    if (!handler_)
+    std::memcpy(&render_interface_, static_cast<char*>(context_.object) + 136,
+                sizeof(render_interface_));
+    if (!handler_ || !render_interface_)
       return false;
+    context_token_ = token;
+    completion_ = std::make_shared<TransactionCompletion>();
     OhosRsSret3(&parent_, api_.node_get,
                 reinterpret_cast<uintptr_t>(context_.object) + 40, parent_id,
                 0);
     if (!parent_.object ||
         !RegisterDispatcher(api_, static_cast<char*>(context_.object) + 480))
-      return false;
-    marker_ = std::make_shared<MarkerState>();
-    OverlayMarkerThread::Get().Run([this] {
-      api_.marker_ctor(listener_, static_cast<char*>(context_.object) + 480);
-    });
-    listener_constructed_ = true;
-    auto state = marker_;
-    const std::function<void(uint64_t, uint64_t, std::queue<uint64_t>)>
-        callback = [state](uint64_t, uint64_t,
-                           const std::queue<uint64_t>& markers) {
-          auto copy = markers;
-          while (!copy.empty()) {
-            const auto value = copy.front();
-            copy.pop();
-            if (state->expected.load(std::memory_order_acquire) == value) {
-              auto old = state->acknowledged.load(std::memory_order_acquire);
-              while ((old == UINT64_MAX || old < value) &&
-                     !state->acknowledged.compare_exchange_weak(old, value)) {
-              }
-            }
-          }
-        };
-    bool registered = false;
-    OverlayMarkerThread::Get().Run([&] {
-      registered = api_.marker_register(listener_, &callback);
-    });
-    if (!registered)
       return false;
     for (unsigned i = 0; i < 2; ++i) {
       if (!CreateLayer(i))
@@ -498,16 +462,26 @@ class RsBackend final : public Backend {
     for (auto& node : nodes_)
       api_.add_child(parent_.object, &node, -1);
     attached_ = true;
-    Flush();
-    return true;
+    // Prove normal transaction completion before accepting any pixel buffers.
+    startup_pending_ = true;
+    ConfirmedFlush();
+    if (drain_failed_) {
+      for (auto& node : nodes_)
+        api_.remove_child(parent_.object, &node);
+      attached_ = false;
+      Flush();
+    }
+    return !drain_failed_;
   }
   bool Supports(const Frame& f) const override {
-    if (!OnOwner() || draining_ || destroyed_)
+    if (!OnOwner() || draining_ || destroyed_ || drain_failed_)
       return false;
     return f.primary.lease->BorrowAcquireFence() >= -1 &&
            (!f.video || f.video->lease->BorrowAcquireFence() >= -1);
   }
-  bool ReadyForFrame() const override { return video_cleanup_ == 0; }
+  bool ReadyForFrame() const override {
+    return !startup_pending_ && video_cleanup_ == 0;
+  }
   std::unique_ptr<Prepared> Prepare(uint64_t submission,
                                     const Frame& f) override {
     if (!Supports(f))
@@ -584,6 +558,8 @@ class RsBackend final : public Backend {
       auto* node = nodes_[i].object;
       const auto& d = item.destination;
       const auto& s = item.source;
+      if (i == 0)
+        primary_destination_ = d;
       api_.bounds(node, d.x, d.y, d.width, d.height);
       api_.frame(node, d.x, d.y, d.width, d.height);
       api_.destination(node, d.x, d.y, d.width, d.height);
@@ -606,12 +582,13 @@ class RsBackend final : public Backend {
     }
     video_visible_ = batch->count == 2;
     last_submission_ = batch->submission;
-    Marker();
-    Flush();
+    ConfirmedFlush();
   }
   std::vector<Release> PollReleases() override {
     if (!OnOwner())
       std::abort();
+    if (startup_pending_ && Acknowledged())
+      startup_pending_ = false;
     std::vector<Release> result;
     pthread_mutex_lock(&route_mutex);
     for (auto it = slots_.begin(); it != slots_.end();) {
@@ -645,8 +622,7 @@ class RsBackend final : public Backend {
       api_.clean(nodes_[1].object, true);
       Flush();
       Background(nodes_[1]);
-      Marker();
-      Flush();
+      ConfirmedFlush();
       video_cleanup_ = 2;
     }
     if (!draining_ && video_cleanup_ == 2 && !drain_failed_ && Acknowledged()) {
@@ -669,8 +645,7 @@ class RsBackend final : public Backend {
         api_.remove_child(parent_.object, &retired);
         api_.Drop(retired);
         api_.add_child(parent_.object, &nodes_[1], -1);
-        Marker();
-        Flush();
+        ConfirmedFlush();
         video_cleanup_ = 3;
       }
     }
@@ -694,8 +669,7 @@ class RsBackend final : public Backend {
     Flush();
     for (auto& node : nodes_)
       Background(node);
-    Marker();
-    Flush();
+    ConfirmedFlush();
   }
   bool DrainCommandsProcessed() const override {
     return draining_ && !drain_failed_ && Acknowledged();
@@ -743,24 +717,48 @@ class RsBackend final : public Backend {
   }
   bool OnOwner() const { return pthread_equal(owner_, pthread_self()); }
   bool Acknowledged() const {
-    const auto expected = marker_->expected.load(std::memory_order_acquire);
-    return expected != UINT64_MAX &&
-           marker_->acknowledged.load(std::memory_order_acquire) == expected;
+    return !drain_failed_ && completion_ && completion_->Complete();
   }
-  void Marker() {
-    uint64_t sequence = UINT64_MAX;
-    void* command = nullptr;
-    OverlayMarkerThread::Get().Run([&] {
-      OhosRsSret3(&command, api_.marker_get,
-                  reinterpret_cast<uintptr_t>(listener_),
-                  reinterpret_cast<uintptr_t>(&sequence), 0);
-    });
-    if (!command || sequence == UINT64_MAX)
-      std::abort();
-    marker_->expected.store(sequence, std::memory_order_release);
-    api_.add_command(handler_, &command, true, 0, 0);
-    if (command)
-      std::abort();
+  void ConfirmedFlush() {
+    // Reapplying the owned primary rectangle always emits a legal node command,
+    // even after GoBackground or for an otherwise empty drain transaction.
+    // No SurfaceTransactionListener is registered: ordinary ArkUI updates must
+    // never acquire the delegate-only sender identity.
+    const auto& d = primary_destination_;
+    api_.destination(nodes_[0].object, d.x, d.y, d.width, d.height);
+    uint64_t handler_timestamp = 0;
+    std::memcpy(&handler_timestamp,
+                static_cast<char*>(handler_) + kRsHandlerTimestampOffset,
+                sizeof(handler_timestamp));
+    timespec now{};
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+      drain_failed_ = true;
+      return;
+    }
+    const uint64_t timestamp = NextCompletionTimestamp(
+        static_cast<uint64_t>(now.tv_sec) * 1000000000u + now.tv_nsec,
+        handler_timestamp, completion_->expected.load());
+    if (!timestamp) {
+      drain_failed_ = true;
+      return;
+    }
+    auto state = completion_;
+    state->expected.store(timestamp, std::memory_order_release);
+    const std::function<void()> callback = [state, timestamp] {
+      state->Acknowledge(timestamp);
+    };
+    // Register before flushing, with a unique key in the existing context.
+    // A callback confirms command processing only; pixel leases still require
+    // their real buffer-release callback and a signaled release fence.
+    if (!api_.transaction_callback(render_interface_, context_token_, timestamp,
+                                   &callback)) {
+      drain_failed_ = true;
+      BacklogLog("transaction completion registration failed");
+      return;
+    }
+    uint64_t empty_string[3] = {};
+    api_.flush(handler_, timestamp, empty_string, false, 0);
+    api_.vsync(context_.object);
   }
   void Flush() {
     uint64_t empty_string[3] = {};
@@ -771,14 +769,16 @@ class RsBackend final : public Backend {
   pthread_t owner_{};
   SystemShared context_, parent_, nodes_[2];
   void* handler_ = nullptr;
-  alignas(16) uint8_t listener_[112] = {};
-  bool listener_constructed_ = false, attached_ = false;
+  void* render_interface_ = nullptr;
+  uint64_t context_token_ = 0;
+  Rect primary_destination_{};
+  bool attached_ = false, startup_pending_ = false;
   bool draining_ = false, destroyed_ = false, drain_failed_ = false;
   bool video_visible_ = false;
   unsigned video_cleanup_ = 0;
   std::chrono::steady_clock::time_point last_backlog_log_{};
   uint64_t last_submission_ = 0;
-  std::shared_ptr<MarkerState> marker_;
+  std::shared_ptr<TransactionCompletion> completion_;
   std::vector<std::unique_ptr<Slot>> slots_;
 };
 }  // namespace
