@@ -334,6 +334,10 @@ else
 
   fi
 
+  # Shared touch fullscreen UI, after the 154 fullscreen prerequisites or
+  # their migrated 155 equivalents. Keep it additive to both baselines.
+  apply_incremental_patch "${repo_root}/patches/ohos-phone-fullscreen-hint.patch"
+
   # ---- sync overlay into the tree -------------------------------------------
   # The overlay holds whole files the adapter adds or replaces. Copying by
   # content (not timestamp) keeps ninja from rebuilding files that did not

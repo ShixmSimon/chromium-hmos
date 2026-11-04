@@ -1,0 +1,281 @@
+Use a compact, localized back-gesture hint for OHOS phone webpage fullscreen.
+Keep origin identity, accessibility, presentation watchdog and hide timers.
+
+diff --git a/components/fullscreen_control/subtle_notification_view.h b/components/fullscreen_control/subtle_notification_view.h
+--- a/components/fullscreen_control/subtle_notification_view.h
++++ b/components/fullscreen_control/subtle_notification_view.h
+@@ -46,6 +46,12 @@
+   void UpdateContent(const std::u16string& instruction_text,
+                      std::vector<std::unique_ptr<views::View>> key_images);
+ 
++  // A compact touch instruction with a separate, width-limited origin line.
++  // Text is literal: origins containing '|' must not become keyboard keycaps.
++  void UpdateCompactContent(const std::u16string& origin,
++                            const std::u16string& instruction,
++                            int max_width);
++
+   // Creates a Widget containing a SubtleNotificationView.
+   static views::Widget* CreatePopupWidget(
+       gfx::NativeView parent_view,
+diff --git a/components/fullscreen_control/subtle_notification_view.cc b/components/fullscreen_control/subtle_notification_view.cc
+--- a/components/fullscreen_control/subtle_notification_view.cc
++++ b/components/fullscreen_control/subtle_notification_view.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "components/fullscreen_control/subtle_notification_view.h"
+ 
++#include <algorithm>
+ #include <memory>
+ 
+ #include "base/feature_list.h"
+@@ -76,6 +77,9 @@
+   InstructionView& operator=(const InstructionView&) = delete;
+ 
+   std::u16string GetText() const;
++  void SetCompactText(const std::u16string& origin,
++                      const std::u16string& instruction,
++                      int max_width);
+   void SetText(const std::u16string& text);
+   void SetTextAndImages(const std::u16string& text,
+                         std::vector<std::unique_ptr<views::View>> key_images);
+@@ -92,6 +96,7 @@
+                       std::unique_ptr<views::View> key_image);
+ 
+   std::u16string text_;
++  bool compact_ = false;
+ };
+ 
+ SubtleNotificationView::InstructionView::InstructionView(
+@@ -117,10 +122,14 @@
+     const std::u16string& text,
+     std::vector<std::unique_ptr<views::View>> key_images) {
+   // Avoid replacing the contents with the same text.
+-  if (text == text_ && key_images.empty())
++  if (!compact_ && text == text_ && key_images.empty())
+     return;
+ 
+   RemoveAllChildViews();
++  compact_ = false;
++  SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kHorizontal, gfx::Insets(),
++      kKeyNameMarginHorizPx));
+ 
+   // Parse |text|, looking for pipe-delimited segment.
+   std::vector<std::u16string> segments = base::SplitString(
+@@ -158,6 +167,32 @@
+   OnPropertyChanged(&text_, views::PropertyEffects::kPaint);
+ }
+ 
++void SubtleNotificationView::InstructionView::SetCompactText(
++    const std::u16string& origin,
++    const std::u16string& instruction,
++    int max_width) {
++  RemoveAllChildViews();
++  compact_ = true;
++  SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kVertical, gfx::Insets(), 2));
++  if (!origin.empty()) {
++    auto* label = AddChildView(std::make_unique<views::Label>(
++        origin, views::style::CONTEXT_LABEL));
++    label->SetEnabledColor(SK_ColorWHITE);
++    label->SetBackgroundColor(GetSubtleNotificationBackgroundColor());
++    label->SetElideBehavior(gfx::ELIDE_HEAD);
++    label->SetMaximumWidthSingleLine(max_width);
++  }
++  auto* label = AddChildView(std::make_unique<views::Label>(
++      instruction, views::style::CONTEXT_LABEL));
++  label->SetEnabledColor(SK_ColorWHITE);
++  label->SetBackgroundColor(GetSubtleNotificationBackgroundColor());
++  label->SetMultiLine(true);
++  label->SetMaximumWidth(max_width);
++  text_ = origin.empty() ? instruction : origin + u"\n" + instruction;
++  OnPropertyChanged(&text_, views::PropertyEffects::kPaint);
++}
++
+ void SubtleNotificationView::InstructionView::AddTextSegment(
+     const std::u16string& text,
+     bool format_as_key,
+@@ -230,6 +265,10 @@
+ 
+ void SubtleNotificationView::UpdateContent(
+     const std::u16string& instruction_text) {
++  SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kHorizontal,
++      gfx::Insets::VH(kOuterPaddingVertPx, kOuterPaddingHorizPx),
++      kMiddlePaddingPx));
+   instruction_view_->SetText(instruction_text);
+   instruction_view_->SetVisible(!instruction_text.empty());
+   DeprecatedLayoutImmediately();
+@@ -238,8 +277,27 @@
+ void SubtleNotificationView::UpdateContent(
+     const std::u16string& instruction_text,
+     std::vector<std::unique_ptr<views::View>> key_images) {
++  SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kHorizontal,
++      gfx::Insets::VH(kOuterPaddingVertPx, kOuterPaddingHorizPx),
++      kMiddlePaddingPx));
+   instruction_view_->SetTextAndImages(instruction_text, std::move(key_images));
+   instruction_view_->SetVisible(!instruction_text.empty());
++  DeprecatedLayoutImmediately();
++}
++
++void SubtleNotificationView::UpdateCompactContent(
++    const std::u16string& origin,
++    const std::u16string& instruction,
++    int max_width) {
++  constexpr int kCompactPadding = 12;
++  SetLayoutManager(std::make_unique<views::BoxLayout>(
++      views::BoxLayout::Orientation::kHorizontal,
++      gfx::Insets::VH(8, kCompactPadding)));
++  instruction_view_->SetCompactText(
++      origin, instruction,
++      std::max(1, max_width - 2 * kCompactPadding - GetInsets().width()));
++  instruction_view_->SetVisible(true);
+   DeprecatedLayoutImmediately();
+ }
+ 
+diff --git a/chrome/browser/ui/views/exclusive_access/exclusive_access_bubble_views.cc b/chrome/browser/ui/views/exclusive_access/exclusive_access_bubble_views.cc
+--- a/chrome/browser/ui/views/exclusive_access/exclusive_access_bubble_views.cc
++++ b/chrome/browser/ui/views/exclusive_access/exclusive_access_bubble_views.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "chrome/browser/ui/views/exclusive_access/exclusive_access_bubble_views.h"
+ 
++#include <algorithm>
+ #include <utility>
+ 
+ #include "base/i18n/case_conversion.h"
+@@ -39,6 +40,11 @@
+ #include "ui/views/widget/widget.h"
+ #include "url/origin.h"
+ 
++#if BUILDFLAG(IS_OHOS)
++#include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"  // nogncheck
++#include "chrome/grit/generated_resources.h"
++#endif
++
+ #if BUILDFLAG(IS_WIN)
+ #include "ui/base/l10n/l10n_util_win.h"
+ #endif
+@@ -47,6 +53,15 @@
+ bool ExclusiveAccessBubbleViews::simulate_gpu_hang_for_testing_ = false;
+ 
+ namespace {
++
++#if BUILDFLAG(IS_OHOS)
++bool UsePhoneFullscreenHint(const ExclusiveAccessBubbleParams& params) {
++  // Download, pointer-lock and keyboard-lock instructions retain their own
++  // semantics. The phone back gesture exits ordinary webpage fullscreen.
++  return chrome::ohos::IsAuraShellMobilePhoneUi() && !params.has_download &&
++         params.type == EXCLUSIVE_ACCESS_BUBBLE_TYPE_FULLSCREEN_EXIT_INSTRUCTION;
++}
++#endif
+ 
+ // Returns whether `type` indicates a tab-initiated fullscreen mode.
+ bool IsTabFullscreenType(ExclusiveAccessBubbleType type) {
+@@ -221,6 +236,13 @@
+ 
+ void ExclusiveAccessBubbleViews::RepositionIfVisible() {
+   if (IsVisible()) {
++#if BUILDFLAG(IS_OHOS)
++    // Reflow the hint when rotation changes the available width.
++    if (UsePhoneFullscreenHint(params_)) {
++      UpdateViewContent(params_.type);
++      view_->SizeToPreferredSize();
++    }
++#endif
+     UpdateBounds();
+   }
+ }
+@@ -273,6 +295,27 @@
+     ExclusiveAccessBubbleType bubble_type) {
+   DCHECK(params_.has_download ||
+          EXCLUSIVE_ACCESS_BUBBLE_TYPE_NONE != bubble_type);
++
++#if BUILDFLAG(IS_OHOS)
++  if (UsePhoneFullscreenHint(params_)) {
++    std::u16string origin;
++    if (!params_.origin.opaque()) {
++      origin = UrlIdentity::CreateFromUrl(
++                   bubble_view_context_->GetExclusiveAccessManager()
++                       ->context()->GetProfile(),
++                   params_.origin.GetURL(), kUrlIdentityAllowedTypes,
++                   kUrlIdentityOptions)
++                   .name;
++    }
++    const int max_width = std::clamp(
++        bubble_view_context_->GetClientAreaBoundsInScreen().width() - 32,
++        1, 420);
++    view_->UpdateCompactContent(
++        origin, l10n_util::GetStringUTF16(IDS_OHOS_FULLSCREEN_BACK_GESTURE),
++        max_width);
++    return;
++  }
++#endif
+ 
+   std::u16string accelerator;
+   bool should_show_browser_acc =
+@@ -388,7 +431,13 @@
+   // Space between top of screen and popup.
+   static constexpr int kPopupTopPx = 45;
+   // |desired_top| is the top of the bubble area including the shadow.
+-  const int desired_top = kPopupTopPx - view_->GetInsets().top();
++  int popup_top = kPopupTopPx;
++#if BUILDFLAG(IS_OHOS)
++  if (UsePhoneFullscreenHint(params_)) {
++    popup_top = 16;
++  }
++#endif
++  const int desired_top = popup_top - view_->GetInsets().top();
+   const int y = top_container_bottom + desired_top;
+ 
+   return gfx::Rect(gfx::Point(x, y), size);
+diff --git a/chrome/app/generated_resources.grd b/chrome/app/generated_resources.grd
+--- a/chrome/app/generated_resources.grd
++++ b/chrome/app/generated_resources.grd
+@@ -1893,6 +1893,11 @@
+       <message name="IDS_CHROME_WHATS_NEW" desc="The text label of the Help menu item which takes the user to the Chrome What's New page.">
+         What's new
+       </message>
++      <if expr="is_ohos">
++        <message name="IDS_OHOS_FULLSCREEN_BACK_GESTURE" desc="Phone fullscreen notification. Use the system back gesture to leave webpage fullscreen. The website identity appears on a separate line.">
++          Use the back gesture to exit full screen
++        </message>
++      </if>
+       <message name="IDS_CLEAR_BROWSING_DATA" desc="The text label for the menu item for deleting of browsing data">
+         &amp;Delete browsing data...
+       </message>
+diff --git a/chrome/app/resources/generated_resources_zh-CN.xtb b/chrome/app/resources/generated_resources_zh-CN.xtb
+--- a/chrome/app/resources/generated_resources_zh-CN.xtb
++++ b/chrome/app/resources/generated_resources_zh-CN.xtb
+@@ -10800,4 +10800,5 @@
+ <translation id="998347228911661591">同步标签页分组</translation>
+ <translation id="998747458861718449">检查(&amp;N)</translation>
+ <translation id="998852291477823323">配置的政策不允许执行此操作。</translation>
++<translation id="2039267497769260274">使用返回手势退出全屏</translation>
+ </translationbundle>
+\ No newline at end of file
+diff --git a/chrome/app/resources/generated_resources_zh-TW.xtb b/chrome/app/resources/generated_resources_zh-TW.xtb
+--- a/chrome/app/resources/generated_resources_zh-TW.xtb
++++ b/chrome/app/resources/generated_resources_zh-TW.xtb
+@@ -10795,4 +10795,5 @@
+ <translation id="998347228911661591">同步處理分頁群組</translation>
+ <translation id="998747458861718449">檢查(&amp;N)</translation>
+ <translation id="998852291477823323">已設定的政策禁止執行這項動作。</translation>
++<translation id="2039267497769260274">使用返回手勢離開全螢幕</translation>
+ </translationbundle>
+\ No newline at end of file
+diff --git a/chrome/browser/ui/views/exclusive_access/BUILD.gn b/chrome/browser/ui/views/exclusive_access/BUILD.gn
+--- a/chrome/browser/ui/views/exclusive_access/BUILD.gn
++++ b/chrome/browser/ui/views/exclusive_access/BUILD.gn
+@@ -39,6 +39,10 @@
+     "//ui/strings:ui_strings_grit",
+     "//ui/views",
+   ]
++
++  if (is_ohos) {
++    deps += [ "//chrome/app:generated_resources" ]
++  }
+ 
+   # exclusive_access_bubble_views.cc includes views/frame/top_container_view.h,
+   # which is still compiled in //chrome/browser/ui:ui. Reach it via
