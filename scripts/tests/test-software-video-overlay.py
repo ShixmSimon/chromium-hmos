@@ -79,6 +79,33 @@ int main() {
 }
 '''.replace('EXPRESSION', expression))
 
+    def test_cpu_pool_preserves_frames_for_the_scanout_uploader(self):
+        patch = (ROOT / 'patches/ohos-software-video-overlay.patch').read_text()
+        added = '\n'.join(line[1:] for line in patch.splitlines()
+                          if line.startswith('+') and not line.startswith('+++'))
+        expression = re.search(r'if \((bit_depth == 8.*?)\) \{', added, re.S)[1]
+        compile_run("""
+#include <cassert>
+#include <initializer_list>
+namespace media {
+bool IsYuvPlanar(int format) { return format != 3; }
+bool IsOpaque(int format) { return format != 2; }
+}
+int main() {
+  for (int bit_depth : {8, 10, 12}) {
+    for (int pixel_format : {1, 2, 3}) {
+      for (bool scanout : {false, true}) {
+        struct { bool supports_scanout_shared_images; }
+          shared_image_capabilities{scanout};
+        const bool preserve_cpu_frame = EXPRESSION;
+        assert(preserve_cpu_frame ==
+               (scanout && bit_depth == 8 && pixel_format == 1));
+      }
+    }
+  }
+}
+""".replace('EXPRESSION', expression))
+
     def test_ordinary_yuv_does_not_clear_an_unset_external_sampler(self):
         patch = (ROOT / 'patches/ohos-software-video-overlay.patch').read_text()
         # Execute the replacement guard in each actual patch hunk. The stub
