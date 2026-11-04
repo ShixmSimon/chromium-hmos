@@ -66,7 +66,34 @@ claiming a performance improvement.
   NDK bridge, including host, session, transport and RS backend.
 - Additive patch forward/reverse checked against pinned 154 and the actual
   pinned 155 migrated sources.
-- Complete kernel compilation and webpage promotion require CI/device checks.
+- Chromium 155 incremental build and Adapter CI passed for `3293eef7`.
+  Its signed Lumie HAP contains 67 engine library/resource payloads verified
+  byte-for-byte against the published HAR (SHA-256
+  `44cb0520066a76d0922a3f69984df646cb3899a5a2424c7e4067c688a149da71`).
+
+### Device evidence, 2026-11-04
+
+On Mate 70 Pro+ with `ea96e5c9`, Ganesh Vulkan:
+
+- Ordinary SDR VP9 (`VpxVideoDecoder`, opaque BT.709 profile 0) played more
+  than 600 frames without the former GPU CHECK crash, but did **not** promote.
+  The subsequent `0d51c7de`/`3293eef7` fixes address the mappable-pool bypass
+  and browser-sourced false scanout capability. Their device result is pending;
+  the phone disconnected before installation of `3293eef7`.
+- H.264 and HDR10 HEVC promoted to visible, buffered RS video layers. Both
+  exceeded 600 frames, passed four position/clip cases, paused movement,
+  CSS-blur demotion and re-promotion. GPU crash count remained zero. This is
+  presentation-path evidence, not a display luminance/calibration measurement.
+- On the earlier `97fd0d09`, an intentional GPU crash reconnected the presenter
+  and recreated RS layers. A newly opened H.264 video then passed promotion and
+  fallback again without restarting Lumie. The already-playing hardware clip
+  hit `PIPELINE_ERROR_DECODE` on context loss and required reloading; seamless
+  playback through GPU death is **not** implemented.
+
+Owned fixtures now include SDR VP9 profile 0 in MP4, generated and checked for
+BT.709 tags, decoded grayscale values and all 180 frames. Automation uses a
+script-free page and requires RS buffers as well as visibility and advancing
+frames. Reports/screenshots are collected separately for each clip.
 
 For the ordinary VP9 test, look for `candidate=supported` together with
 `source=software-upload`, then confirm the owning Lumie `LumieVideoLayer` is
