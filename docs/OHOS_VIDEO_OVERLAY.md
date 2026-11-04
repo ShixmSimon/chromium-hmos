@@ -1,12 +1,13 @@
 # OHOS video overlay: transaction investigation and device probes
 
-Status (2026-11-03): **Chromium webpage promotion is now wired in source behind
-`AuraStartupConfig.enableVideoOverlays: true` (default off).** One Ozone presenter
-serves GL, Vulkan and Graphite initialization, with a browser-owned ContentSlot
-host and a dedicated GPU socket. Full Chromium compilation and end-to-end
-webpage validation are still pending; the earlier real-decoder results below
-validate the shared RS mechanism, not this new browser integration. The user has
-accepted the visible brightness; this work does not change HDR luminance policy.
+Status (2026-11-04): **Chromium webpage promotion is wired behind
+`AuraStartupConfig.enableVideoOverlays: true` and has passed AVC, HEVC Main10 SDR
+and HEVC Main10 HDR promotion/fallback qualification on the Mate 70 Pro+.** The
+2026-11-04 firmware libraries require a second exact ABI profile; the unmodified
+`46845ea5` bridge rejects them and uses normal GL composition. See the firmware
+compatibility section below. Physical HDR luminance/scanout timing remain
+unmeasured. The integration uses a shared presenter, a browser-owned ContentSlot
+host and a dedicated GPU socket.
 
 Earlier experiments: two app-owned RenderService layers visibly render, move,
 hide and reappear on the retail phone; transaction callbacks and allocation-specific
@@ -694,3 +695,44 @@ paused controls, CSS effects triggering demotion, re-promotion, live SDR/HDR
 changes, tab close/navigation/background and GPU process loss. The private RS
 compatibility gate remains firmware-specific, and other UI contexts fail closed.
 The old decoder harness evidence must not be cited as proof of these new stages.
+
+## Firmware compatibility repair (2026-11-04)
+
+The installed `46845ea5` HAR contained the overlay implementation and Lumie
+correctly enabled/attached it. On the currently connected phone, the linked
+`OH_ArkUI_RenderNodeUtils_CreateNode` fingerprint changed from `2d4d8cab` to
+`18270173`. Both native ArkUI nodes were created, but `ResolveOwnedRenderNode`
+rejected the new library, so the host reported `parent=0 session=0`. The GPU
+never connected an overlay presenter. NV12/P010 zero-copy decoder output and
+HDR10 GL submissions still worked; neither proves independent video promotion.
+
+The repair selects one coherent, exact profile from `ohos_rs_abi.h` and checks
+all previously guarded RS/surface functions against that profile. It does not
+accept each function independently from either build. Unknown or mixed library
+versions retain the ordinary compositor fallback. The new profile uses actual
+function lengths: surface constructor 428 bytes (previously 436), RemoveChild
+1468 bytes (previously 1176). The inspected RSSurfaceNode allocation grew from
+1392 to 1424 bytes; the bridge accesses it only through its own system factory
+and accessors. RSUIContext offsets 40/120/480, 112-byte listener storage and the
+RenderNodeStruct identity boundary are unchanged in the reviewed binaries.
+
+Bounded host attach and ABI rejection logs are now included in normal builds,
+so a compatibility fallback is distinguishable from candidate rejection without
+rebuilding a verbose diagnostic library. The GN action tracks the profile header.
+
+Diagnostic-device qualification passed all three codecs: more than 360 additional
+frames per clip, fractional coordinates/viewport clipping, pause/move, CSS blur
+demotion and re-promotion. The observed presenter processed 10 promotions and
+9 demotions; both RS layers were visible during promoted playback. Local
+ASan/UBSan lifecycle, buffer ownership, geometry and ABI profile regressions
+passed. The production-library rerun also passed: 8 promotions, 7 demotions,
+all three codecs and clean test-tab teardown. A separate native node dump
+confirmed P010 (format 35), BT.2020/PQ (4457476), HDR10 metadata type 2 and static
+mastering metadata on the visible LumieVideoLayer. Its separate `HDR` field
+remained 0, as in the earlier native experiment; this is recorded without
+interpreting it as a physical luminance measurement.
+
+[Device/build evidence](../scripts/tests/ohos-video-overlay/firmware-20261104-evidence.json)
+records exact source/library/package hashes. Only the NDK bridge was rebuilt;
+all other packaged engine files were checked against the CI HAR. This is not a
+brightness measurement or a guarantee for unrecognized firmware.

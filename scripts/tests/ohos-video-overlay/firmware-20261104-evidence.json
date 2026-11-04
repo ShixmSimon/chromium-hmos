@@ -1,0 +1,108 @@
+{
+  "date": "2026-11-04",
+  "device": "Mate 70 Pro+",
+  "system": "OpenHarmony-7.0.0.111",
+  "base_kernel": "46845ea5",
+  "installed_build": "CI HAR with only the independently built production overlay bridge replaced",
+  "root_cause": "Firmware library ABI fingerprint mismatch rejected ContentSlot parent resolution before presenter connection",
+  "profiles": {
+    "previous": "2d4d8cab",
+    "current": "18270173"
+  },
+  "system_library_sha256": {
+    "libace_ndk.z.so": "66c84573aa4716d012bcd3090a363477b61bd91c3849b8701742b3b1b40412fd",
+    "librender_service_client.z.so": "b6b0c1fd0161c23a9e0ce30f2538f85759b7d18feb7c268b6c7c457316650d1d",
+    "libsurface.z.so": "2dc435aac571ae802d80e54d2da3eaac905f050d87de67d59d37c8a86c69f7c7"
+  },
+  "source_sha256": {
+    "overlay/ui/ozone/platform/ohos/ohos_rs_abi.h": "9f2e9354b3fe3dec7d193e052e0b493a50bcfba27225ec4a6513239232ec5c50",
+    "overlay/ui/ozone/platform/ohos/ohos_rs_overlay_backend.cc": "40e6225301dfd3da5a07bfee26adcefebdf519f76e6a34b8324b8c097a317290",
+    "overlay/ui/ozone/platform/ohos/ohos_overlay_host.cc": "b0f1e96f1b34686961d70d9979af3006e3cd432a29f1f052a730f66d4b7d8650"
+  },
+  "package": {
+    "base_kernel": "46845ea5",
+    "base_har_sha256": "b30ce9b3674ae6c8b5c60a8caac4af1b7f7aae0453e67b61eedcde721ced0dca",
+    "patched_har_sha256": "98689a0f42c63f0ad18f9e8c96ee8d1d13f3824f49876f92c342ec83bbf90497",
+    "only_changed_entry": "package/libs/arm64-v8a/libohos_video_overlay.so",
+    "bridge_sha256": "ae2b441ceacfd5079a22f16dfbb4f03ecc138d2961067de3d068c55d383e767e",
+    "source_files": {
+      "overlay/ui/ozone/platform/ohos/ohos_rs_overlay_backend.h": "8a0b7390b20257a6faab5f6d95df0f9ae1f5ff588a20d70a8a435a0b11bcb72d",
+      "overlay/ui/ozone/platform/ohos/ohos_rs_abi.h": "9f2e9354b3fe3dec7d193e052e0b493a50bcfba27225ec4a6513239232ec5c50",
+      "overlay/ui/ozone/platform/ohos/ohos_rs_overlay_backend.cc": "40e6225301dfd3da5a07bfee26adcefebdf519f76e6a34b8324b8c097a317290"
+    },
+    "production_hap_sha256": "6052c7ff269c42a2ad7152b517d4f8dd680aa87e9cdf3c432908eb02fee5ffbd",
+    "packaged_bridge_sha256": "9f1aadd5ab2442e6b22cc0472db49a8f7962e05e91b0201b7b685563bd8d6c6d"
+  },
+  "qualification": {
+    "passed": true,
+    "started": "2026-11-04T05:36:53.842Z",
+    "finished": "2026-11-04T05:38:06.567Z",
+    "commands_processed": {
+      "promotion": 8,
+      "demotion": 7
+    },
+    "cleanup_errors": [],
+    "cases": [
+      {
+        "clip": "sdr-avc.mp4",
+        "additional_frames": 365,
+        "geometry_cases": [
+          "fractional",
+          "viewport_clip",
+          "left_clip",
+          "restore"
+        ],
+        "css_demotion": true,
+        "repromotion": true
+      },
+      {
+        "clip": "sdr-hevc10.mp4",
+        "additional_frames": 361,
+        "geometry_cases": [
+          "fractional",
+          "viewport_clip",
+          "left_clip",
+          "restore"
+        ],
+        "css_demotion": true,
+        "repromotion": true
+      },
+      {
+        "clip": "hdr10-hevc.mp4",
+        "additional_frames": 361,
+        "geometry_cases": [
+          "fractional",
+          "viewport_clip",
+          "left_clip",
+          "restore"
+        ],
+        "css_demotion": true,
+        "repromotion": true
+      }
+    ]
+  },
+  "hdr_video_layer": {
+    "name": "LumieVideoLayer",
+    "visible": true,
+    "native_format": 35,
+    "color_space": 4457476,
+    "metadata_type": 2,
+    "static_metadata_present": true,
+    "dump_hdr_flag": 0,
+    "dump_sha256": "90653b69a686c0a0e2116bb8ad6fc6221383144a3335538808bb828bbd425a75"
+  },
+  "validation": [
+    "NDK arm64 production bridge compilation",
+    "ASan/UBSan session ownership/fences/500 reuses/HDR policy",
+    "fractional geometry regression",
+    "ABI profile rejection regression",
+    "Lumie build, overwrite install and smoke passed",
+    "production bridge three-codec webpage promotion/fallback qualification"
+  ],
+  "physical_hdr_luminance": "not-measured",
+  "limitations": [
+    "Only the connected firmware was rerun; the previous profile is retained with unchanged fingerprints.",
+    "HDR metadata reached the independent video layer; dump HDR=0 is retained verbatim and is not proof of physical panel HDR luminance."
+  ],
+  "local_artifacts": "/tmp/lumie-overlay-investigate-20261104"
+}

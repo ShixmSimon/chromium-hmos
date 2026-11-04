@@ -14,3 +14,8 @@ trap 'rm -rf "$overlay_tests"' EXIT
   "$overlay_repo/scripts/tests/ohos-video-overlay/geometry_test.cc" \
   -o "$overlay_tests/geometry"
 "$overlay_tests/geometry"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -I"$overlay_repo/overlay" \
+  "$overlay_repo/scripts/tests/ohos-video-overlay/rs_abi_test.cc" \
+  -o "$overlay_tests/rs-abi"
+"$overlay_tests/rs-abi"

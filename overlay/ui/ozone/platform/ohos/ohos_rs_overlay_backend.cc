@@ -3,10 +3,12 @@
 // as a system shared_ptr/sptr; only the verified legacy std::function ABI
 // crosses.
 #include "ohos_rs_overlay_backend.h"
+#include "ohos_rs_abi.h"
 
 #include <arkui/native_render.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <hilog/log.h>
 #include <link.h>
 #include <native_buffer/native_buffer.h>
 #include <poll.h>
@@ -16,7 +18,6 @@
 #include <chrono>
 #include <cstring>
 #include <queue>
-#include <hilog/log.h>
 #ifdef OHOS_OVERLAY_DIAGNOSTICS
 #include <hilog/log.h>
 #define TRACE(...) \
@@ -112,6 +113,7 @@ struct Fd {
   Fd& operator=(const Fd&) = delete;
 };
 struct Api {
+  const RsAbiProfile* profile = nullptr;
   void* rs = nullptr;
   void* surface = nullptr;
   void* create = nullptr;
@@ -147,16 +149,32 @@ struct Api {
   void (*surface_drop)(void*, const void*) = nullptr;
   int (*background)(void*) = nullptr;
   template <typename T>
-  bool Get(T& target, const char* symbol, size_t n = 0, uint32_t hash = 0) {
+  bool Get(T& target,
+           const char* symbol,
+           RsCheckedFunction function = RsCheckedFunction::kCount) {
     void* value = dlsym(rs, symbol);
-    if (!value || (n && Hash(value, n) != hash)) {
-      TRACE("abi_rejected symbol=%{public}s", symbol);
+    const RsFingerprint* fingerprint =
+        function == RsCheckedFunction::kCount
+            ? nullptr
+            : &RsFunctionFingerprint(*profile, function);
+    if (!value ||
+        (fingerprint && Hash(value, fingerprint->bytes) != fingerprint->hash)) {
+      BacklogLog("abi rejected profile=%{public}s symbol=%{public}s",
+                 profile ? profile->name : "unknown", symbol);
       return false;
     }
     target = reinterpret_cast<T>(value);
     return true;
   }
   bool Load() {
+    const uint32_t render_hash = Hash(
+        reinterpret_cast<void*>(&OH_ArkUI_RenderNodeUtils_CreateNode), 148);
+    profile = SelectRsAbiProfile(render_hash);
+    if (!profile) {
+      BacklogLog("unsupported RenderNode ABI fingerprint=%{public}u",
+                 render_hash);
+      return false;
+    }
     rs = dlopen("/system/lib64/librender_service_client.z.so",
                 RTLD_NOW | RTLD_NOLOAD);
     surface = dlopen("/system/lib64/chipset-pub-sdk/libsurface.z.so",
@@ -167,20 +185,21 @@ struct Api {
     if (!Get(check,
              "_ZN4OHOS5Rosen13RSSurfaceNodeC2ERKNS0_"
              "19RSSurfaceNodeConfigEbNSt3__h10shared_ptrINS0_11RSUIContextEEE",
-             436, 0xe95e87f1) ||
+             RsCheckedFunction::kSurfaceConstructor) ||
         !Get(check,
              "_ZN4OHOS5Rosen13RSSurfaceNode6CreateERKNS0_"
              "19RSSurfaceNodeConfigENS0_17RSSurfaceNodeTypeEbbNSt3__h10shared_"
              "ptrINS0_11RSUIContextEEE",
-             2168, 0xea6a36b8) ||
-        !Get(check, "_ZN4OHOS5Rosen13RSSurfaceNodeD2Ev", 1576, 0x7194ed42) ||
+             RsCheckedFunction::kSurfaceFactory) ||
+        !Get(check, "_ZN4OHOS5Rosen13RSSurfaceNodeD2Ev",
+             RsCheckedFunction::kSurfaceDestructor) ||
         !Get(check,
              "_ZN4OHOS5Rosen11RSUIContextC2EmRNS_4sptrINS_13IRemoteObjectEEE",
-             1708, 0x14d660fd) ||
+             RsCheckedFunction::kContextConstructor) ||
         !Get(check,
              "_ZN4OHOS5Rosen13RSSurfaceNode26SetBufferAvailableCallbackENSt3__"
              "h8functionIFvvEEE",
-             1588, 0x5290b89e))
+             RsCheckedFunction::kBufferCallback))
       return false;
     auto identity = dlsym(
         surface, "_ZN4OHOS17SurfaceBufferImpl27SurfaceBufferToNativeBufferEv");
@@ -195,7 +214,7 @@ struct Api {
     if (!Get(create,
              "_ZN4OHOS5Rosen13RSSurfaceNode6CreateERKNS0_"
              "19RSSurfaceNodeConfigEbNSt3__h10shared_ptrINS0_11RSUIContextEEE",
-             232, 0x801e5a23))
+             RsCheckedFunction::kContextSurfaceFactory))
       return false;
     RESOLVE(context_get,
             "_ZNK4OHOS5Rosen18RSUIContextManager14GetRSUIContextEm");
@@ -217,7 +236,7 @@ struct Api {
             "_ZN4OHOS5Rosen6RSNode8AddChildENSt3__h10shared_ptrIS1_EEi");
     if (!Get(remove_child,
              "_ZN4OHOS5Rosen6RSNode11RemoveChildENSt3__h10shared_ptrIS1_EE",
-             1176, 0xd791aac8))
+             RsCheckedFunction::kRemoveChild))
       return false;
     RESOLVE(bounds, "_ZN4OHOS5Rosen6RSNode9SetBoundsEffff");
     RESOLVE(frame, "_ZN4OHOS5Rosen6RSNode8SetFrameEffff");
@@ -227,8 +246,8 @@ struct Api {
     RESOLVE(gravity, "_ZN4OHOS5Rosen6RSNode15SetFrameGravityENS0_7GravityE");
     RESOLVE(z, "_ZN4OHOS5Rosen6RSNode12SetPositionZEf");
     RESOLVE(visible, "_ZN4OHOS5Rosen6RSNode10SetVisibleEb");
-    if (!Get(clean, "_ZN4OHOS5Rosen13RSSurfaceNode11CleanBufferEb", 20,
-             0x0cd5d9fd))
+    if (!Get(clean, "_ZN4OHOS5Rosen13RSSurfaceNode11CleanBufferEb",
+             RsCheckedFunction::kCleanBuffer))
       return false;
     RESOLVE(set_buffer,
             "_ZN4OHOS5Rosen13RSSurfaceNode9SetBufferENS_4sptrINS_"
@@ -242,12 +261,12 @@ struct Api {
     if (!Get(marker_ctor,
              "_ZN4OHOS5Rosen26SurfaceTransactionListenerC2ENS_4sptrINS_"
              "13IRemoteObjectEEE",
-             228, 0xeeb6d8a9) ||
+             RsCheckedFunction::kListenerConstructor) ||
         !Get(marker_register,
              "_ZN4OHOS5Rosen26SurfaceTransactionListener31RegisterCommandComple"
              "teCallBackENSt3__h8functionIFvmmNS2_5queueImNS2_5dequeImNS2_"
              "9allocatorImEEEEEEEEE",
-             1452, 0xd110289e))
+             RsCheckedFunction::kListenerRegister))
       return false;
     RESOLVE(marker_get,
             "_ZN4OHOS5Rosen26SurfaceTransactionListener10GetCommandERm");
@@ -268,15 +287,18 @@ struct Api {
     RESOLVE(release_buffer,
             "_ZN4OHOS5Rosen13RSSurfaceNode13ReleaseBufferEjNS_"
             "4sptrINS_9SyncFenceEEE");
-    if (!Get(get_surface, "_ZNK4OHOS5Rosen13RSSurfaceNode10GetSurfaceEv", 264,
-             0x108d9ce0))
+    if (!Get(get_surface, "_ZNK4OHOS5Rosen13RSSurfaceNode10GetSurfaceEv",
+             RsCheckedFunction::kGetSurface))
       return false;
     surface_drop = reinterpret_cast<decltype(surface_drop)>(
         dlsym(surface, "_ZN4OHOS7RefBase12DecStrongRefEPKv"));
     background = reinterpret_cast<decltype(background)>(
         dlsym(surface, "_ZN4OHOS15ProducerSurface12GoBackgroundEv"));
+    const auto& background_fingerprint =
+        RsFunctionFingerprint(*profile, RsCheckedFunction::kGoBackground);
     return surface_drop && background &&
-           Hash(reinterpret_cast<void*>(background), 92) == 0x2ef7d186;
+           Hash(reinterpret_cast<void*>(background),
+                background_fingerprint.bytes) == background_fingerprint.hash;
 #undef RESOLVE
   }
   void Drop(SystemShared& ref) {
@@ -346,8 +368,8 @@ bool RegisterDispatcher(Api& api, void* remote) {
       auto found = routes.find(record.sequence);
       const bool sample = release_samples.fetch_add(1) < 128;
       if (sample)
-        BacklogLog("release seq=%{public}u routed=%{public}d",
-                   record.sequence, found != routes.end());
+        BacklogLog("release seq=%{public}u routed=%{public}d", record.sequence,
+                   found != routes.end());
       if (found != routes.end()) {
         Slot& slot = *found->second;
         // client_pid is zero in verified delegate-composition notifications.
@@ -359,8 +381,10 @@ bool RegisterDispatcher(Api& api, void* remote) {
                     record.node_id, 0);
         const bool matches = recorded_node.object == slot.node;
         if (sample)
-          BacklogLog("match seq=%{public}u plane=%{public}u node=%{public}d returned=%{public}d",
-                     record.sequence, slot.plane, matches, slot.server_returned);
+          BacklogLog(
+              "match seq=%{public}u plane=%{public}u node=%{public}d "
+              "returned=%{public}d",
+              record.sequence, slot.plane, matches, slot.server_returned);
         slot.api->Drop(recorded_node);
         if (matches && !slot.server_returned) {
           void* fence = record.fence;
@@ -370,9 +394,11 @@ bool RegisterDispatcher(Api& api, void* remote) {
                 slot.fence.load());
           slot.server_returned = rc == 0;
           if (sample)
-            BacklogLog("forward seq=%{public}u rc=%{public}d fence=%{public}d ready=%{public}d",
-                       record.sequence, rc, slot.fence.load(),
-                       Ready(slot.fence.load()));
+            BacklogLog(
+                "forward seq=%{public}u rc=%{public}d fence=%{public}d "
+                "ready=%{public}d",
+                record.sequence, rc, slot.fence.load(),
+                Ready(slot.fence.load()));
         }
       }
       pthread_mutex_unlock(&route_mutex);
@@ -595,13 +621,16 @@ class RsBackend final : public Backend {
     }
     pthread_mutex_unlock(&route_mutex);
     const auto now = std::chrono::steady_clock::now();
-    if (slots_.size() >= 4 && now - last_backlog_log_ >= std::chrono::seconds(2)) {
+    if (slots_.size() >= 4 &&
+        now - last_backlog_log_ >= std::chrono::seconds(2)) {
       last_backlog_log_ = now;
       pthread_mutex_lock(&route_mutex);
       for (const auto& slot : slots_)
-        BacklogLog("held seq=%{public}u plane=%{public}u returned=%{public}d fence=%{public}d ready=%{public}d cleanup=%{public}u",
-                   slot->sequence, slot->plane, slot->server_returned,
-                   slot->fence.load(), Ready(slot->fence.load()), video_cleanup_);
+        BacklogLog(
+            "held seq=%{public}u plane=%{public}u returned=%{public}d "
+            "fence=%{public}d ready=%{public}d cleanup=%{public}u",
+            slot->sequence, slot->plane, slot->server_returned,
+            slot->fence.load(), Ready(slot->fence.load()), video_cleanup_);
       pthread_mutex_unlock(&route_mutex);
     }
     if (!draining_ && video_cleanup_ == 1 && Acknowledged()) {
@@ -683,8 +712,8 @@ class RsBackend final : public Backend {
     std::memcpy(config + 1, name, n);
     config[48] = 1;
     config[72] = 1;
-    OhosRsSret3(&nodes_[i], api_.create, reinterpret_cast<uintptr_t>(config),
-                0, reinterpret_cast<uintptr_t>(&context_));
+    OhosRsSret3(&nodes_[i], api_.create, reinterpret_cast<uintptr_t>(config), 0,
+                reinterpret_cast<uintptr_t>(&context_));
     if (!nodes_[i].object)
       return false;
     api_.hardware(nodes_[i].object, true, 0, true);
@@ -749,14 +778,6 @@ class RsBackend final : public Backend {
 uint64_t ResolveOwnedRenderNode(uint64_t token, void* node) {
   if (!node || (token >> 32) != static_cast<uint64_t>(gettid()))
     return 0;
-  // This dependency is RTLD_LOCAL in an ArkTS native module; RTLD_DEFAULT
-  // does not necessarily see it. Fingerprint the linked public entry point.
-  auto create = reinterpret_cast<void*>(&OH_ArkUI_RenderNodeUtils_CreateNode);
-  if (!create || Hash(create, 148) != 0x2d4d8cab) {
-    TRACE("render_parent_create_fingerprint=%{public}u",
-          create ? Hash(create, 148) : 0);
-    return 0;
-  }
   Api api;
   if (!api.Load()) {
     if (api.surface)

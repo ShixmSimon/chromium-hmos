@@ -6,6 +6,7 @@
 #include <arkui/native_node.h>
 #include <arkui/native_render.h>
 #include <dlfcn.h>
+#include <hilog/log.h>
 #include <native_buffer/native_buffer.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -19,16 +20,18 @@
 #include <string>
 #include "ohos_overlay_transport.h"
 #include "ohos_rs_overlay_backend.h"
-#ifdef OHOS_OVERLAY_DIAGNOSTICS
-#include <hilog/log.h>
-#define HOST_TRACE(...) \
-  OH_LOG_Print(LOG_APP, LOG_INFO, 0xD003F01, "LumieOverlayHost", __VA_ARGS__)
-#else
-#define HOST_TRACE(...) ((void)0)
-#endif
 
 namespace ui::ohos_overlay {
 namespace {
+// Attach results are bounded startup diagnostics, needed even in release builds
+// to distinguish a safe ABI fallback from a video candidate rejection.
+template <typename... Args>
+void HostLog(const char* format, Args... args) {
+  static auto print = reinterpret_cast<decltype(&OH_LOG_Print)>(
+      dlsym(RTLD_DEFAULT, "OH_LOG_Print"));
+  if (print)
+    print(LOG_APP, LOG_WARN, 0xD003F01, "LumieOverlayHost", format, args...);
+}
 struct Video {
   void* native;
   uint32_t flags;
@@ -404,7 +407,7 @@ extern "C" int OhosOverlayAttachContent(uint32_t version,
   const int add_content =
       !add_render ? OH_ArkUI_NodeContent_AddNode(host->content, host->node)
                   : -1;
-  HOST_TRACE(
+  HostLog(
       "attach node=%{public}d render=%{public}d add_render=%{public}d "
       "add_content=%{public}d",
       !!host->node, !!host->render, add_render, add_content);
@@ -430,8 +433,8 @@ extern "C" int OhosOverlayAttachContent(uint32_t version,
   const uint64_t token = (static_cast<uint64_t>(gettid()) << 32) | 1;
   const uint64_t parent = ResolveOwnedRenderNode(token, host->render);
   host->session = parent ? OhosOverlayCreate(version, token, parent) : nullptr;
-  HOST_TRACE("attach parent=%{public}llu session=%{public}d",
-             static_cast<unsigned long long>(parent), !!host->session);
+  HostLog("attach parent=%{public}llu session=%{public}d",
+          static_cast<unsigned long long>(parent), !!host->session);
   if (!host->session) {
     cleanup();
     uv_close(reinterpret_cast<uv_handle_t*>(&host->timer),
