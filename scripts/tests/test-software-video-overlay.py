@@ -69,7 +69,7 @@ int main() {
             Provider provider{{bool(caps & 1), bool(caps & 2)}};
             Provider* context_provider_ = &provider;
             bool eligible = EXPRESSION;
-            assert(eligible == (!cpu && caps == 3 && bits_per_channel == 8 &&
+            assert(eligible == (!cpu && (caps & 2) && bits_per_channel == 8 &&
                    input_frame_format == 1 && (color == 1 || color == 2)));
           }
         }

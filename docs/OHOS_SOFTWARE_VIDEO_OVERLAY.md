@@ -30,8 +30,8 @@ fallback to webpage composition; no timeout fabricates buffer releases.
 ## Software input
 
 `VideoResourceUpdater` opts opaque 8-bit YUV with sRGB/BT.709 primaries and
-transfer into its existing RGB conversion/upload path when the OHOS native
-video and scanout capabilities are available. Its existing resource pool,
+transfer into its existing RGB conversion/upload path when OHOS scanout is available. External-YUV decoder sampling capability is
+not a requirement for this RGBA path, including with Skia Vulkan. Its existing resource pool,
 sync tokens and release callbacks remain responsible for recycling.
 
 Only a backing labelled `VideoResourceUpdater` with the precise scanout,

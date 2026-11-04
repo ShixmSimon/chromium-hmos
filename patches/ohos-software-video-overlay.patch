@@ -76,7 +76,15 @@ diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory
 diff --git a/media/renderers/video_resource_updater.cc b/media/renderers/video_resource_updater.cc
 --- a/media/renderers/video_resource_updater.cc
 +++ b/media/renderers/video_resource_updater.cc
-@@ -1180,6 +1180,23 @@
+@@ -7,6 +7,7 @@
+ #include <stdint.h>
+ 
+ #include <algorithm>
++#include <atomic>
+ #include <array>
+ #include <string>
+ #include <vector>
+@@ -1180,6 +1181,29 @@
  
    viz::SharedImageFormat output_si_format =
        GetSoftwareOutputFormat(input_frame_format, bits_per_channel);
@@ -91,16 +99,22 @@ diff --git a/media/renderers/video_resource_updater.cc b/media/renderers/video_r
 +      (rgb_space == gfx::ColorSpace::CreateSRGB() ||
 +       rgb_space == gfx::ColorSpace::CreateREC709().GetAsFullRangeRGB()) &&
 +      context_provider_->SharedImageInterface()->GetCapabilities()
-+          .supports_ohos_video_native_buffers &&
-+      context_provider_->SharedImageInterface()->GetCapabilities()
 +          .supports_scanout_shared_images;
++  // The native-decoder capability describes external YUV sampling, not RGBA
++  // upload. Vulkan, GL and Graphite share the presenter's scanout capability.
++  static std::atomic_flag reported = ATOMIC_FLAG_INIT;
++  if (!reported.test_and_set(std::memory_order_relaxed)) {
++    LOG(WARNING) << "OHOS software video: overlay_upload=" << ohos_software_overlay
++                 << " bits=" << bits_per_channel
++                 << " color=" << rgb_space.ToString();
++  }
 +  if (ohos_software_overlay)
 +    output_si_format = PaintCanvasVideoRenderer::GetRGBPixelsOutputFormat();
 +#endif
    gfx::ColorSpace output_color_space = video_frame->ColorSpace();
    SkAlphaType output_alpha_type =
        software_compositor() ? kPremul_SkAlphaType : kUnpremul_SkAlphaType;
-@@ -1188,7 +1205,7 @@
+@@ -1188,7 +1212,7 @@
    const bool is_overlay_candidate =
        !software_compositor() && output_si_format.is_single_plane() &&
        CanCreateNativeBufferForFormat(output_si_format) &&
