@@ -24,12 +24,19 @@ namespace device::fido::ohos {
 void IsUserAuthAvailable(base::OnceCallback<void(bool)> callback);
 
 // Shows the system authentication prompt, bound to `challenge` (the HUKS
-// session challenge), with `title` as its heading. Replies with the AuthToken,
-// or nullopt if the user cancelled or failed.
+// session challenge), with `title` as its heading. request_id must be unique
+// for every operation and allows cancellation without affecting other calls.
+// Replies with the AuthToken, or nullopt if the user cancelled or failed.
 void AuthenticateUser(
+    const std::string& request_id,
     const std::vector<uint8_t>& challenge,
     const std::string& title,
     base::OnceCallback<void(std::optional<std::vector<uint8_t>>)> callback);
+
+// Cancels only this WebAuthn prompt, including when another browser window
+// has become the bridge's dispatcher. Late cancellation cannot affect a newer
+// request or the password manager's separate verification operation.
+void CancelUserAuthentication(const std::string& request_id);
 
 }  // namespace device::fido::ohos
 

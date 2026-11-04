@@ -121,6 +121,7 @@ class COMPONENT_EXPORT(DEVICE_FIDO) OhosPlatformAuthenticator
   // key, so that Cancel() can delete it.
   std::optional<SigningSession> pending_session_;
   std::optional<std::string> pending_new_key_alias_;
+  std::string pending_auth_request_id_;
 
   SEQUENCE_CHECKER(sequence_checker_);
 

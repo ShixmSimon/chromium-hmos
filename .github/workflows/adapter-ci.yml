@@ -61,6 +61,10 @@ jobs:
           node-version: '24'
       - name: Check URL protection policy and SDK boundary
         run: node --test scripts/tests/url-check-service.test.mjs
+      - name: Check passkey persistence and authentication cancellation
+        run: |
+          python3 scripts/tests/test-passkey-store.py
+          node --test scripts/tests/user-auth-service.test.mjs
       - name: Check phishing snapshot packaging
         run: python3 scripts/tests/test-phishing-rules.py
       - name: Check signed phishing update artifacts

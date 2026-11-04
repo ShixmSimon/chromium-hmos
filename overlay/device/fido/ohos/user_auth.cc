@@ -9,6 +9,7 @@
 #include "base/base64.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/values.h"
 #include "components/device_event_log/device_event_log.h"
 #include "components/ohos_system_service/system_service_ohos.h"
@@ -39,10 +40,12 @@ void IsUserAuthAvailable(base::OnceCallback<void(bool)> callback) {
 }
 
 void AuthenticateUser(
+    const std::string& request_id,
     const std::vector<uint8_t>& challenge,
     const std::string& title,
     base::OnceCallback<void(std::optional<std::vector<uint8_t>>)> callback) {
   base::DictValue args;
+  args.Set("requestId", request_id);
   args.Set("challenge", base::Base64Encode(challenge));
   args.Set("title", title);
   ohos_system_service::Call(
@@ -70,6 +73,13 @@ void AuthenticateUser(
             std::move(callback).Run(std::move(decoded));
           },
           std::move(callback)));
+}
+
+void CancelUserAuthentication(const std::string& request_id) {
+  base::DictValue args;
+  args.Set("requestId", request_id);
+  ohos_system_service::Call(kService, "cancelAuthentication", std::move(args),
+                           base::DoNothing());
 }
 
 }  // namespace device::fido::ohos

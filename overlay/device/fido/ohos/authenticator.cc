@@ -15,6 +15,7 @@
 #include "base/no_destructor.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
+#include "base/unguessable_token.h"
 #include "components/device_event_log/device_event_log.h"
 #include "crypto/hash.h"
 #include "crypto/random.h"
@@ -295,8 +296,10 @@ void OhosPlatformAuthenticator::OnCredentialPrepared(
   // The prompt's title names the site. There is no localised Chromium string
   // for it outside macOS, and the system prompt supplies its own wording.
   const std::string title = request.rp.id;
+  authenticator->pending_auth_request_id_ =
+      base::UnguessableToken::Create().ToString();
   AuthenticateUser(
-      challenge, title,
+      authenticator->pending_auth_request_id_, challenge, title,
       base::BindOnce(
           &OhosPlatformAuthenticator::OnMakeCredentialUserAuthenticated,
           authenticator->operation_weak_factory_.GetWeakPtr(),
@@ -310,6 +313,7 @@ void OhosPlatformAuthenticator::OnMakeCredentialUserAuthenticated(
     std::optional<std::vector<uint8_t>> auth_token) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   // From here the posted task owns the session and the key.
+  pending_auth_request_id_.clear();
   pending_session_.reset();
   pending_new_key_alias_.reset();
 
@@ -420,8 +424,10 @@ void OhosPlatformAuthenticator::OnAssertionPrepared(
   authenticator->pending_session_ = prepared->session;
   const std::vector<uint8_t> challenge = prepared->session.challenge;
   const std::string title = request.rp_id;
+  authenticator->pending_auth_request_id_ =
+      base::UnguessableToken::Create().ToString();
   AuthenticateUser(
-      challenge, title,
+      authenticator->pending_auth_request_id_, challenge, title,
       base::BindOnce(
           &OhosPlatformAuthenticator::OnGetAssertionUserAuthenticated,
           authenticator->operation_weak_factory_.GetWeakPtr(),
@@ -434,6 +440,7 @@ void OhosPlatformAuthenticator::OnGetAssertionUserAuthenticated(
     PreparedAssertion prepared,
     std::optional<std::vector<uint8_t>> auth_token) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  pending_auth_request_id_.clear();
   pending_session_.reset();
   if (!auth_token) {
     GetHuksTaskRunner()->PostTask(
@@ -547,13 +554,17 @@ void OhosPlatformAuthenticator::GetPlatformCredentialInfoForRequest(
 
 void OhosPlatformAuthenticator::Cancel() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  // Drops the replies of whatever step is in flight. The system prompt, if
-  // showing, cannot be dismissed from here; its answer is ignored.
+  // Ignore late replies, then cancel the matching system prompt and release
+  // any HUKS operation that has not been handed to the signing task.
   operation_weak_factory_.InvalidateWeakPtrs();
   ReleasePendingOperation();
 }
 
 void OhosPlatformAuthenticator::ReleasePendingOperation() {
+  if (!pending_auth_request_id_.empty()) {
+    CancelUserAuthentication(pending_auth_request_id_);
+    pending_auth_request_id_.clear();
+  }
   if (pending_session_) {
     GetHuksTaskRunner()->PostTask(
         FROM_HERE, base::BindOnce(&AbortSigning, *pending_session_));

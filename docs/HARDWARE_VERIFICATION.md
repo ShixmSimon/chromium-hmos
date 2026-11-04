@@ -100,6 +100,17 @@ CoreSpeechKit 没有暂停功能:`speechSynthesis.pause()` 会直接停止,与 C
 | 点"注册通行密钥" | 弹出**系统**的指纹/人脸/锁屏密码验证;通过后显示 `注册成功 ✓`,`attachment` 为 `platform` |
 | 点"用通行密钥登录" | 再次弹出系统验证;通过后显示 `登录成功 ✓`,`userVerified: true` |
 | 在验证界面点取消 | 显示 `NotAllowedError`,页面不会卡住 |
+| 验证弹窗出现后，网页调用 `AbortController.abort()` | 网页收到 `AbortError`，系统认证弹窗关闭；随后可重新发起验证 |
+
+2026-11-04 在 Mate 70 Pro+、内核 `eb7bca59` 上已验证本机注册、重启应用后登录，
+并使用注册公钥独立验证了 ECDSA 签名、RP ID 哈希、挑战值、来源和 UP/UV 标记。
+同次检查发现取消后系统弹窗残留，以及覆盖凭据时写盘失败会先丢失旧私钥。
+修正将旧密钥清理放到元数据原子提交之后；认证取消使用每次操作的独立编号，
+防止迟到取消影响新请求或密码管理器。修正后的真机结果需另行记录，不能沿用上述正常流程结果。
+
+回归测试：`python3 scripts/tests/test-passkey-store.py` 在实际存储方法的 I/O 边界
+注入失败；`node --test scripts/tests/user-auth-service.test.mjs` 执行实际 ArkTS 服务
+逻辑并模拟系统回调。这些测试不替代真机认证，也不在设备上注入磁盘或密钥库故障。
 
 **也可以用 https://webauthn.io 测试**:注册时选择"平台认证器"。
 

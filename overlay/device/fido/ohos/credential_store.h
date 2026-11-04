@@ -61,12 +61,14 @@ class CredentialStore {
       const std::vector<PublicKeyCredentialDescriptor>& allow_list) const;
 
   // Adds `credential`, replacing any existing credential for the same RP and
-  // user handle, whose HUKS keys are deleted. A relying party that registers
-  // the same account twice expects the new passkey to take over, as on macOS.
+  // user handle. Old HUKS keys are deleted only after metadata is committed;
+  // a failed write leaves the old credentials usable. A relying party that
+  // registers the same account twice expects the new passkey to take over,
+  // as on macOS.
   bool Add(const StoredCredential& credential);
 
-  // Removes the credential with `credential_id` and its key, e.g. after HUKS
-  // reports the key invalidated because the lock screen was removed.
+  // Removes this profile's credential, then its key after a successful write,
+  // e.g. after HUKS invalidates it because the lock screen was removed.
   bool Remove(const std::vector<uint8_t>& credential_id);
 
  private:

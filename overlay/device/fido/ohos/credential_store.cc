@@ -167,16 +167,26 @@ bool CredentialStore::Add(const StoredCredential& credential) {
     return false;
   }
   std::vector<StoredCredential> kept;
+  std::vector<std::vector<uint8_t>> retired;
   for (StoredCredential& existing : *all) {
     if (existing.rp_id == credential.rp_id &&
         existing.user.id == credential.user.id) {
-      DeleteSigningKey(KeyAliasForCredentialId(existing.credential_id));
+      if (existing.credential_id != credential.credential_id)
+        retired.push_back(existing.credential_id);
       continue;
     }
     kept.push_back(std::move(existing));
   }
   kept.push_back(credential);
-  return WriteAll(kept);
+  // Commit the metadata before destroying anything it replaces. A failed
+  // write must leave the previous credentials usable. A crash after this
+  // commit may leave an unreferenced old HUKS key, but never a missing active
+  // key. HUKS deletion failures are logged and do not undo a committed write.
+  if (!WriteAll(kept))
+    return false;
+  for (const auto& id : retired)
+    DeleteSigningKey(KeyAliasForCredentialId(id));
+  return true;
 }
 
 bool CredentialStore::Remove(const std::vector<uint8_t>& credential_id) {
@@ -184,11 +194,16 @@ bool CredentialStore::Remove(const std::vector<uint8_t>& credential_id) {
   if (!all) {
     return false;
   }
-  std::erase_if(*all, [&credential_id](const StoredCredential& credential) {
-    return credential.credential_id == credential_id;
-  });
+  const auto removed = std::erase_if(
+      *all, [&credential_id](const StoredCredential& credential) {
+        return credential.credential_id == credential_id;
+      });
+  if (!removed)
+    return true;  // Do not delete a key this profile does not own.
+  if (!WriteAll(*all))
+    return false;
   DeleteSigningKey(KeyAliasForCredentialId(credential_id));
-  return WriteAll(*all);
+  return true;
 }
 
 bool CredentialStore::WriteAll(
