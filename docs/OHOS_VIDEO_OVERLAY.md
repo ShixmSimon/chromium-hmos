@@ -736,3 +736,41 @@ interpreting it as a physical luminance measurement.
 records exact source/library/package hashes. Only the NDK bridge was rebuilt;
 all other packaged engine files were checked against the CI HAR. This is not a
 brightness measurement or a guarantee for unrecognized firmware.
+
+
+## ArkUI scrolling regression: delegate sender identity (2026-11-04)
+
+On `57ed6316`, a user-triggered settings scroll was captured in
+`/tmp/lumie-settings-manual.trace`. The foreground ArkUI process was 51707.
+The capture contains 620 `ProcessDelegateCompositeCommand: [51707, ...]`
+batches, 649 direct-composition markers and only nine full RS `RenderFrame`
+slices. ArkUI layout/vsync work was generally below 6 ms, while manual fling
+reports included hitch ratios of 192.982 and 215.686 ms/s. One touch-up event
+lasted 21.059 ms; that isolated event alone does not explain the persistently
+stale native UI.
+
+The inspected RS source provides the mechanism: `SurfaceTransactionListener`
+captures its constructor's PID/TID, and `GetCommand` requires that thread.
+Processing its marker stores the first sender TID in
+`surfaceTransactionIdentityInfoMap_`. `PrepareDelegateCompositeCommand` then
+routes **all** transactions from that sender into the delegate queue.
+`RSMainThread` permits web-only direct composition for this identity, bypassing
+normal ArkUI redraw. Constructing the listener on the ArkUI thread therefore
+misclassifies settings/list updates, even when the webpage is covered.
+Unregistering a listener does not clear that identity, so simply hiding a video
+layer or recreating the listener on the same UI thread is insufficient.
+
+`0ab5a466` constructs, registers, obtains markers and destroys listeners on one
+process-lifetime marker worker. Its genuine TID is distinct from every ArkUI
+transaction thread and remains alive, avoiding identity reuse after teardown.
+The worker does not submit RS transactions. Nodes, parent attachment, command
+enqueue and flush remain on their original owning UI thread. A generated marker
+is still appended to the same batch before flush, and only the actual completion
+callback acknowledges it. Pixel-buffer retirement continues to require its
+separate validated release callback.
+
+The native bridge compiles; the overlay suite passes, including a threaded
+regression for listener affinity, sticky identity, concurrent hosts and command
+construction before enqueue. Device comparison is pending: the phone disconnected
+before the locally rebuilt bridge could be installed. Do not claim scrolling or
+video regression verification from the unit test alone.
