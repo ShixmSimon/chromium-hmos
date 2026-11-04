@@ -129,6 +129,11 @@ class Candidates final : public OverlayCandidatesOzone {
     // before punching the hole.
     else if (!v.native_pixmap || !EligibleVideo(*v.native_pixmap, v.color_space))
       rejection = "video-pixmap-or-token";
+    else if (IsOhosSoftwareVideoOverlay(*v.native_pixmap) &&
+             (v.crop_rect != gfx::RectF(1.f, 1.f) ||
+              !p.display_rect.Contains(v.display_rect) ||
+              (v.clip_rect && !gfx::RectF(*v.clip_rect).Contains(v.display_rect))))
+      rejection = "software-crop-fallback";
     if (rejection) {
       Report(rejection, &v);
       return;

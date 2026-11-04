@@ -101,8 +101,10 @@ try {
       await evaluate(css);
       const after = await waitFor(snapshot, s => !s.error && !s.paused &&
         s.frames >= before.frames + 30, `Playback after ${name}`, 10000);
+      const expectOverlay = clip !== 'sdr-vp9.mp4' ||
+        (name !== 'viewport_clip' && name !== 'left_clip');
       const rows = await waitFor(layers, rows => visible(rows, 'Web') &&
-        visible(rows, 'Video'), `Promotion after ${name}`);
+        visible(rows, 'Video') === expectOverlay, `Presentation after ${name}`);
       entry.geometry.push({name, before, after, layers:rows});
     }
     events.push(...await logs());

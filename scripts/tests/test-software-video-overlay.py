@@ -48,6 +48,10 @@ struct ColorSpace {
   bool operator==(ColorSpace other) const { return id == other.id; }
 };
 }
+bool at_origin = true;
+struct Point { bool IsOrigin() const { return at_origin; } };
+struct Rect { Point origin() const { return {}; } };
+struct Frame { Rect visible_rect() const { return {}; } };
 bool IsYuvPlanar(int format) { return format != 3; }
 bool IsOpaque(int format) { return format != 2; }
 struct Caps {
@@ -68,9 +72,13 @@ int main() {
             gfx::ColorSpace rgb_space{color};
             Provider provider{{bool(caps & 1), bool(caps & 2)}};
             Provider* context_provider_ = &provider;
-            bool eligible = EXPRESSION;
-            assert(eligible == (!cpu && (caps & 2) && bits_per_channel == 8 &&
-                   input_frame_format == 1 && (color == 1 || color == 2)));
+            Frame frame; Frame* video_frame = &frame;
+            for (bool origin : {false, true}) {
+              at_origin = origin;
+              bool eligible = EXPRESSION;
+              assert(eligible == (origin && !cpu && (caps & 2) && bits_per_channel == 8 &&
+                     input_frame_format == 1 && (color == 1 || color == 2)));
+            }
           }
         }
       }
@@ -168,6 +176,30 @@ int main() {
   }
 }
 '''.replace('FORMAT', variable).replace('GUARD', snippet))
+
+    def test_vulkan_completed_sync_fd_is_not_an_export_failure(self):
+        patch = (ROOT / 'patches/ohos-software-video-overlay.patch').read_text()
+        added = '\n'.join(line[1:] for line in patch.splitlines()
+                          if line.startswith('+') and not line.startswith('+++'))
+        branch = function(added, 'if (result == VK_SUCCESS && fd >= -1)')
+        compile_run("""
+#include <cassert>
+#include <initializer_list>
+constexpr int VK_SUCCESS = 0;
+namespace base { struct ScopedFD { int value; explicit ScopedFD(int v): value(v) {} }; }
+struct Fence { int value = -1; void Adopt(base::ScopedFD fd) { value=fd.value; } };
+int main() {
+  for (int result : {0, -4}) {
+    for (int fd : {-2, -1, 0, 7}) {
+      bool producer_completed = false;
+      Fence fence;
+      BRANCH
+      assert(producer_completed == (result == VK_SUCCESS && fd == -1));
+      assert(fence.value == (result == VK_SUCCESS && fd >= 0 ? fd : -1));
+    }
+  }
+}
+""".replace('BRANCH', branch))
 
     def test_software_buffers_wait_for_every_system_read(self):
         source = (ROOT / 'overlay/ui/ozone/platform/ohos/ohos_native_pixmap.cc').read_text()

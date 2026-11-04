@@ -38,17 +38,20 @@ diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gp
    bool used_by_skia = usage.HasAny(SHARED_IMAGE_USAGE_RASTER_READ |
                                     SHARED_IMAGE_USAGE_RASTER_WRITE |
                                     SHARED_IMAGE_USAGE_DISPLAY_READ);
-@@ -985,6 +999,14 @@
+@@ -982,7 +996,16 @@
+ void OzoneImageBacking::EndAccess(bool readonly,
                                    AccessStream access_stream,
-                                   gfx::GpuFenceHandle fence) {
+-                                  gfx::GpuFenceHandle fence) {
++                                  gfx::GpuFenceHandle fence,
++                                  bool producer_completed) {
  #if BUILDFLAG(IS_OHOS)
 +  if (!readonly && pixmap_) {
-+    if (ui::IsOhosSoftwareVideoOverlay(*pixmap_) && fence.is_null()) {
++    if (ui::IsOhosSoftwareVideoOverlay(*pixmap_) && fence.is_null() && !producer_completed) {
 +      LOG(ERROR) << "OHOS software video: producer write has no export fence"
 +                 << " stream=" << static_cast<int>(access_stream)
 +                 << " format=" << format().ToString();
 +    }
-+    ui::AdvanceOhosSoftwareVideoFrame(*pixmap_, !fence.is_null());
++    ui::AdvanceOhosSoftwareVideoFrame(*pixmap_, !fence.is_null() || producer_completed);
 +  }
    if (readonly && access_stream == AccessStream::kGL && pixmap_ &&
        format().PrefersExternalSampler() && fence.is_null()) {
@@ -90,7 +93,7 @@ diff --git a/media/renderers/video_resource_updater.cc b/media/renderers/video_r
  #include <array>
  #include <string>
  #include <vector>
-@@ -1180,6 +1181,29 @@
+@@ -1180,6 +1181,30 @@
  
    viz::SharedImageFormat output_si_format =
        GetSoftwareOutputFormat(input_frame_format, bits_per_channel);
@@ -102,6 +105,7 @@ diff --git a/media/renderers/video_resource_updater.cc b/media/renderers/video_r
 +  ohos_software_overlay =
 +      !software_compositor() && IsYuvPlanar(input_frame_format) &&
 +      IsOpaque(input_frame_format) && bits_per_channel == 8 &&
++      video_frame->visible_rect().origin().IsOrigin() &&
 +      (rgb_space == gfx::ColorSpace::CreateSRGB() ||
 +       rgb_space == gfx::ColorSpace::CreateREC709().GetAsFullRangeRGB()) &&
 +      context_provider_->SharedImageInterface()->GetCapabilities()
@@ -257,3 +261,88 @@ diff --git a/components/viz/service/display/skia_renderer.h b/components/viz/ser
    struct OverlayLockHash {
      using is_transparent = void;
      std::size_t operator()(const OverlayLock& o) const;
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.h b/gpu/command_buffer/service/shared_image/ozone_image_backing.h
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing.h
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing.h
+@@ -128,7 +128,8 @@
+                    bool& need_end_fence);
+   void EndAccess(bool readonly,
+                  AccessStream access_stream,
+-                 gfx::GpuFenceHandle fence);
++                 gfx::GpuFenceHandle fence,
++                 bool producer_completed = false);
+ 
+   scoped_refptr<OzoneImageGLTexturesHolder> RetainGLTexturePerContextCache();
+ 
+diff --git a/gpu/command_buffer/service/shared_image/skia_vk_ozone_image_representation.cc b/gpu/command_buffer/service/shared_image/skia_vk_ozone_image_representation.cc
+--- a/gpu/command_buffer/service/shared_image/skia_vk_ozone_image_representation.cc
++++ b/gpu/command_buffer/service/shared_image/skia_vk_ozone_image_representation.cc
+@@ -22,6 +22,9 @@
+ #include "gpu/vulkan/vulkan_image.h"
+ #include "gpu/vulkan/vulkan_implementation.h"
+ #include "gpu/vulkan/vulkan_util.h"
++#if BUILDFLAG(IS_OHOS)
++#include "ui/ozone/platform/ohos/ohos_native_pixmap.h"
++#endif
+ #include "third_party/skia/include/core/SkColorSpace.h"
+ #include "third_party/skia/include/core/SkColorType.h"
+ #include "third_party/skia/include/core/SkSurface.h"
+@@ -236,15 +239,38 @@
+ 
+ void SkiaVkOzoneImageRepresentation::EndAccess(bool readonly) {
+   gfx::GpuFenceHandle fence;
++  bool producer_completed = false;
+   if (end_access_semaphore_ != VK_NULL_HANDLE) {
+-    SemaphoreHandle semaphore_handle = vk_implementation()->GetSemaphoreHandle(
+-        vk_device(), end_access_semaphore_);
+-    fence = std::move(semaphore_handle).ToGpuFenceHandle();
+-    DLOG_IF(ERROR, fence.is_null()) << "Failed to convert the external semaphore to fence.";
++#if BUILDFLAG(IS_OHOS)
++    auto pixmap = ozone_backing()->GetNativePixmap();
++    if (!readonly && pixmap && ui::IsOhosSoftwareVideoOverlay(*pixmap)) {
++      // SYNC_FD export may succeed with -1: the submitted signal is already
++      // complete. Preserve that proof instead of confusing it with an error.
++      VkSemaphoreGetFdInfoKHR info = {};
++      info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR;
++      info.semaphore = end_access_semaphore_;
++      info.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT;
++      int fd = -1;
++      const VkResult result = vkGetSemaphoreFdKHR(vk_device(), &info, &fd);
++      if (result == VK_SUCCESS && fd >= -1) {
++        producer_completed = fd == -1;
++        if (fd >= 0)
++          fence.Adopt(base::ScopedFD(fd));
++      } else {
++        LOG(ERROR) << "OHOS software video: Vulkan sync export failed=" << result;
++      }
++    } else
++#endif
++    {
++      SemaphoreHandle semaphore_handle = vk_implementation()->GetSemaphoreHandle(
++          vk_device(), end_access_semaphore_);
++      fence = std::move(semaphore_handle).ToGpuFenceHandle();
++      DLOG_IF(ERROR, fence.is_null()) << "Failed to convert the external semaphore to fence.";
++    }
+   }
+ 
+   ozone_backing()->EndAccess(readonly, OzoneImageBacking::AccessStream::kVulkan,
+-                             std::move(fence));
++                             std::move(fence), producer_completed);
+ 
+   std::vector<base::RawPtrIfPtrT<VkSemaphore, DanglingUntriaged>> semaphores =
+       std::move(begin_access_semaphores_);
+diff --git a/media/renderers/video_resource_updater.cc b/media/renderers/video_resource_updater.cc
+--- a/media/renderers/video_resource_updater.cc
++++ b/media/renderers/video_resource_updater.cc
+@@ -1214,6 +1214,11 @@
+   // (subplane sizes are handled automatically within shared images) and
+   // create a single multiplanar resource.
+   gfx::Size output_resource_size = video_frame->coded_size();
++  // Software decoders can pad coded width beyond the visible picture. The
++  // uploader already converts only visible pixels; don't export that padding
++  // as part of an independent RGB layer. Non-zero origins stay on fallback.
++  if (ohos_software_overlay)
++    output_resource_size = video_frame->visible_rect().size();
+   if (output_resource_size.IsEmpty() ||
+       output_resource_size.width() > max_resource_size_ ||
+       output_resource_size.height() > max_resource_size_) {
