@@ -217,7 +217,11 @@ class Presenter final : public gl::Presenter {
                  << " rounded=" << !data.rounded_corners.IsEmpty()
                  << " solid=" << data.is_solid_color << " color=" << bool(data.color)
                  << " format=" << (image ? image->GetSharedImageFormat().ToString() : "none")
-                 << " eligible=" << (image && EligibleVideo(*image, data.color_space));
+                 << " eligible=" << (image && EligibleVideo(*image, data.color_space))
+                 << " software=" << (image && IsOhosSoftwareVideoOverlay(*image))
+                 << " content=" << (image ? GetOhosSoftwareVideoFrame(*image) : 0)
+                 << " acquire_fence=" << bool(fence)
+                 << " colorspace=" << data.color_space.ToString();
       invalid_reason_ = "schedule-rejected";
       invalid_ = true;
       return false;

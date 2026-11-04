@@ -38,12 +38,18 @@ diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing.cc b/gp
    bool used_by_skia = usage.HasAny(SHARED_IMAGE_USAGE_RASTER_READ |
                                     SHARED_IMAGE_USAGE_RASTER_WRITE |
                                     SHARED_IMAGE_USAGE_DISPLAY_READ);
-@@ -985,6 +999,8 @@
+@@ -985,6 +999,14 @@
                                    AccessStream access_stream,
                                    gfx::GpuFenceHandle fence) {
  #if BUILDFLAG(IS_OHOS)
-+  if (!readonly && pixmap_)
++  if (!readonly && pixmap_) {
++    if (ui::IsOhosSoftwareVideoOverlay(*pixmap_) && fence.is_null()) {
++      LOG(ERROR) << "OHOS software video: producer write has no export fence"
++                 << " stream=" << static_cast<int>(access_stream)
++                 << " format=" << format().ToString();
++    }
 +    ui::AdvanceOhosSoftwareVideoFrame(*pixmap_, !fence.is_null());
++  }
    if (readonly && access_stream == AccessStream::kGL && pixmap_ &&
        format().PrefersExternalSampler() && fence.is_null()) {
      // Export failure must never turn an unfinished read into early reuse.
