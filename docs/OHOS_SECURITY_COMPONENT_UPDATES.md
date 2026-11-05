@@ -10,6 +10,7 @@ with Chromium's pinned CRX component keys:
 - **File Type Policies** (`khaoiebndkojlmppeemjhbpbandiljpe`).
 - **Origin Trials** (`llkgjffcdpffmhiakmfcdcblohccpfmo`).
 - **Hyphenation** (`jamhcnnkihinmdlkakkaopbjbbcngflc`).
+- **Crowd Deny** (`ggkkehgbnfjpeggfpleeakpidbkibbmn`).
 
 This does not enable Google account sync, arbitrary component registration,
 speech/AI models, Widevine, or browser binary updates.
@@ -165,8 +166,8 @@ upstream. An INFO log reports dynamic-load result and active policy version,
 not filenames or visited URLs. Unknown component IDs still fail closed.
 
 The patch applies against both pinned 154 and migrated 155 sources. Host
-allowlist/security regression tests passed. Full native build and device
-acceptance are pending; registration alone is not proof of active policy.
+allowlist/security regression tests passed. Native 155 build `1ef52ac9` passed the existing Incremental build workflow.
+Device acceptance remains pending; registration alone is not proof of active policy.
 
 ## Origin Trials
 
@@ -192,3 +193,25 @@ the upstream pinned CRX key are required. The ready log reports the version.
 Both pinned branches pass patch forward/reverse checks and host policy checks.
 Native/device acceptance remains pending: update the component, then compare a
 narrow English paragraph with `lang=en; hyphens:auto` against `hyphens:none`.
+
+## Crowd Deny
+
+The additive patch registers the pinned component over HTTPS and reuses the
+upstream protobuf loader, HTTPS-only origin lookup and private-registry-aware
+subdomain matching. A non-blocking local query adds an optional warning to
+OHOS notification permission events. Lumie's permission sheet displays that
+hint, preserving all existing user decisions. No online Safe Browsing request,
+automatic denial or quiet-prompt enforcement is added. UNKNOWN, ACCEPTABLE,
+absent/loading data and unknown future enum values leave the ordinary prompt.
+All four known negative qualities produce an informational warning, including
+warning-only entries. Other permissions do not query notification reputation.
+The load diagnostic reports version and entry count only (zero also covers an
+empty list or load failure); it does not certify that a nonempty list loaded.
+
+Both pinned branches pass forward/reverse patch checks. The host harness
+compiles the actual decision method and tests all enum values, no data and
+loading. It also compiles all eight actual OHOS registration calls. Native
+build and device acceptance remain pending. Device checks must cover a
+controlled listed HTTPS origin, unrelated permissions, unavailable data,
+allow/deny/dismiss behavior and persistence after restart. Do not substitute
+component registration status for these checks.

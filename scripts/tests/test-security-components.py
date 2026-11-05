@@ -35,7 +35,8 @@ int main() {
   static_assert(IsOhosSecurityComponent("khaoiebndkojlmppeemjhbpbandiljpe"));
   static_assert(IsOhosSecurityComponent("llkgjffcdpffmhiakmfcdcblohccpfmo"));
   static_assert(IsOhosSecurityComponent("jamhcnnkihinmdlkakkaopbjbbcngflc"));
-  for (auto id : {"jamhcnnkihinmdlkakkaopbjbbcngflc", "llkgjffcdpffmhiakmfcdcblohccpfmo", "khaoiebndkojlmppeemjhbpbandiljpe", "jflookgnkcckhobaglndicnbbgbonegd",
+  static_assert(IsOhosSecurityComponent("ggkkehgbnfjpeggfpleeakpidbkibbmn"));
+  for (auto id : {"ggkkehgbnfjpeggfpleeakpidbkibbmn", "jamhcnnkihinmdlkakkaopbjbbcngflc", "llkgjffcdpffmhiakmfcdcblohccpfmo", "khaoiebndkojlmppeemjhbpbandiljpe", "jflookgnkcckhobaglndicnbbgbonegd",
                   "giekcmmlnklenlaomppkphknjmnnpneh"}) {
     for (size_t i = 0; i < 32; ++i) {
       std::string mutated(id);
@@ -147,6 +148,18 @@ new_calls = '\n'.join(line[1:] for line in assistant_registration.splitlines()
                       if line.startswith('+') and not line.startswith('+++'))
 registration = registration.replace('  MaybeRegisterPKIMetadataComponent(cus);',
                                     '  MaybeRegisterPKIMetadataComponent(cus);\n' + new_calls)
+# Apply each actual registration hunk, including its build-flag guard.
+for component_patch in ('file-type', 'origin-trials', 'hyphenation', 'crowd-deny'):
+    patch = (ROOT / f'patches/ohos-{component_patch}-component.patch').read_text()
+    hunk = patch.split('diff --git a/chrome/browser/component_updater/registration.cc ', 1)[1].split('\ndiff --git ', 1)[0]
+    registration_hunks = [part for part in re.split(r'^@@.*@@.*$', hunk, flags=re.M)[1:] if 'Register' in part]
+    assert len(registration_hunks) == 1
+    lines = registration_hunks[0].splitlines()
+    # These component patches each carry one small registration hunk.
+    old = '\n'.join(line[1:] for line in lines if line.startswith((' ', '-')) and not line.startswith('---'))
+    new = '\n'.join(line[1:] for line in lines if line.startswith((' ', '+')) and not line.startswith('+++'))
+    assert old in registration, component_patch
+    registration = registration.replace(old, new, 1)
 registration = registration.replace('#else', '#else\n  RegisterDesktopComponent(cus);', 1)
 with tempfile.TemporaryDirectory(prefix='ohos-registration-') as directory:
     source = Path(directory) / 'registration.cc'
@@ -154,20 +167,26 @@ with tempfile.TemporaryDirectory(prefix='ohos-registration-') as directory:
     for ohos in (0, 1):
         source.write_text('''
 #include <cassert>
-#define BUILDFLAG(flag) OHOS
+#define BUILDFLAG(flag) FLAG_##flag
+#define FLAG_IS_OHOS OHOS
+#define FLAG_USE_MINIKIN_HYPHENATION 1
 int registered = 0;
 void RegisterCRLSetComponent(int*) { registered |= 1; }
 void MaybeRegisterPKIMetadataComponent(int*) { registered |= 2; }
 void RegisterSafetyTipsComponent(int*) { registered |= 4; }
 void RegisterSSLErrorAssistantComponent(int*) { registered |= 8; }
-void RegisterDesktopComponent(int*) { registered |= 16; }
+void RegisterFileTypePoliciesComponent(int*) { registered |= 16; }
+void RegisterOriginTrialsComponent(int*) { registered |= 32; }
+void RegisterHyphenationComponent(int*) { registered |= 64; }
+void RegisterCrowdDenyComponent(int*) { registered |= 128; }
+void RegisterDesktopComponent(int*) { registered |= 256; }
 void RegisterComponentsForUpdate() {
   int* cus = nullptr;
 ''' + registration + '''
 }
 int main() {
   RegisterComponentsForUpdate();
-  assert(registered == (OHOS ? 15 : 16));
+  assert(registered == (OHOS ? 255 : 256));
 }
 ''')
         subprocess.run([os.environ.get('CXX', 'clang++'), '-std=c++20', '-Wall',
@@ -233,3 +252,57 @@ runner = (ROOT / 'overlay/arkweb/ohos_nweb/src/aura_shell/ohos_chrome_main_runne
 assert '"--ohos-security-component-updates"' in runner
 assert '"--disable-component-update"' not in runner
 print('Security component allowlist, 16 certificate identities/eight SPKIs, and offline CRLSet format passed.')
+
+# Compile the actual local notification hint with a controlled data lookup.
+# Exercise every protobuf enum, no-data and loading; never wait for a dataset.
+patch = (ROOT / 'patches/ohos-crowd-deny-component.patch').read_text()
+added = '\n'.join(line[1:] for line in patch.splitlines()
+                  if line.startswith('+') and not line.startswith('+++'))
+method = re.search(r'bool CrowdDenyPreloadData::ShouldWarnAboutNotifications\(.*?\n}', added, re.S)[0]
+unit = r''' 
+#include <cassert>
+namespace url { struct Origin {}; }
+struct SiteReputation {
+  enum Quality { UNKNOWN, ACCEPTABLE, UNSOLICITED_PROMPTS, ABUSIVE_PROMPTS,
+                 ABUSIVE_CONTENT, DISRUPTIVE_BEHAVIOR };
+  int quality = UNKNOWN;
+  int notification_ux_quality() const { return quality; }
+};
+struct CrowdDenyPreloadData {
+  bool is_ready_to_use_ = true;
+  const SiteReputation* data = nullptr;
+  mutable int queries = 0;
+  const SiteReputation* GetReputationDataForSite(const url::Origin&) const {
+    ++queries;
+    return data;
+  }
+  bool ShouldWarnAboutNotifications(const url::Origin&) const;
+};
+PRODUCTION_METHOD
+int main() {
+  CrowdDenyPreloadData store;
+  url::Origin origin;
+  assert(!store.ShouldWarnAboutNotifications(origin));
+  SiteReputation reputation;
+  store.data = &reputation;
+  for (int quality = 0; quality <= 6; ++quality) {
+    reputation.quality = quality;
+    assert(store.ShouldWarnAboutNotifications(origin) == (quality >= 2 && quality <= 5));
+  }
+  reputation.quality = SiteReputation::ABUSIVE_CONTENT;
+  store.is_ready_to_use_ = false;
+  int before = store.queries;
+  assert(!store.ShouldWarnAboutNotifications(origin));
+  assert(store.queries == before);
+  store.is_ready_to_use_ = true;
+  assert(store.ShouldWarnAboutNotifications(origin));
+}
+'''.replace('PRODUCTION_METHOD', method)
+with tempfile.TemporaryDirectory(prefix='ohos-crowd-deny-') as directory:
+    source = Path(directory) / 'hint.cc'
+    binary = Path(directory) / 'hint'
+    source.write_text(unit)
+    subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', '-Wall', '-Wextra',
+                    '-Werror', str(source), '-o', str(binary)], check=True)
+    subprocess.run([str(binary)], check=True)
+print('All eight registration calls and local notification reputation decisions passed.')

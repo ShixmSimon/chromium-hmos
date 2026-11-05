@@ -12,6 +12,7 @@
 #include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/values.h"
+#include "chrome/browser/permissions/crowd_deny_preload_data.h"
 #include "chrome/browser/ui/ohos/aura_shell_runtime_bridge.h"
 #include "components/permissions/permission_request.h"
 #include "components/permissions/permission_uma_constants.h"
@@ -19,6 +20,7 @@
 #include "content/public/browser/web_contents.h"
 #include "net/base/is_potentially_trustworthy.h"
 #include "url/gurl.h"
+#include "url/origin.h"
 
 namespace chrome::ohos {
 
@@ -104,6 +106,11 @@ class ShellPermissionPrompt : public permissions::PermissionPrompt {
     // so the shell does not offer "always" there. Enforced again when the
     // answer comes back, in case it does.
     event.Set("isSecure", net::IsUrlPotentiallyTrustworthy(origin));
+    if (std::ranges::find(permissions, "notifications") != permissions.end()) {
+      event.Set("notificationReputationWarning",
+                CrowdDenyPreloadData::GetInstance()->ShouldWarnAboutNotifications(
+                    url::Origin::Create(origin)));
+    }
     event.Set("webPermissions", std::move(names));
     DispatchAuraShellRuntimeEvent(web_contents_, std::move(event));
   }

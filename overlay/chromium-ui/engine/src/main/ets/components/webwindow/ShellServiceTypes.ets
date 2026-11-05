@@ -390,6 +390,8 @@ export interface SitePermissionRequestedEvent extends ShellServiceEvent {
   // What it is asking for. More than one when a site asks for several at
   // once, for example camera and microphone for a call.
   webPermissions: SitePermission[];
+  /** Local signed reputation hint; does not change the permission decision. */
+  notificationReputationWarning?: boolean;
 }
 
 export type SitePermission =

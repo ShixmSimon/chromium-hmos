@@ -346,6 +346,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-file-type-danger-${CHROMIUM_MAJOR:-154}.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-origin-trials-component.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-hyphenation-component.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-crowd-deny-component.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-software-video-overlay.patch"
 
   # ---- sync overlay into the tree -------------------------------------------

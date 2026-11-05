@@ -1,0 +1,72 @@
+Register signed notification reputation data and a non-blocking local UI hint.
+
+diff --git a/chrome/browser/component_updater/registration.cc b/chrome/browser/component_updater/registration.cc
+--- a/chrome/browser/component_updater/registration.cc
++++ b/chrome/browser/component_updater/registration.cc
+@@ -159,2 +159,3 @@
+ #endif
++  RegisterCrowdDenyComponent(cus);
+ #else
+diff --git a/chrome/browser/component_updater/crowd_deny_component_installer.cc b/chrome/browser/component_updater/crowd_deny_component_installer.cc
+--- a/chrome/browser/component_updater/crowd_deny_component_installer.cc
++++ b/chrome/browser/component_updater/crowd_deny_component_installer.cc
+@@ -17,2 +17,3 @@
+ #include "base/logging.h"
++#include "build/build_config.h"
+ #include "base/memory/ref_counted.h"
+@@ -60,3 +61,7 @@
+ bool CrowdDenyComponentInstallerPolicy::RequiresNetworkEncryption() const {
++#if BUILDFLAG(IS_OHOS)
++  return true;
++#else
+   return false;
++#endif
+ }
+diff --git a/chrome/browser/permissions/crowd_deny_preload_data.h b/chrome/browser/permissions/crowd_deny_preload_data.h
+--- a/chrome/browser/permissions/crowd_deny_preload_data.h
++++ b/chrome/browser/permissions/crowd_deny_preload_data.h
+@@ -74,2 +74,7 @@
+ 
++  // Non-blocking local hint for the OHOS permission sheet. This does not
++  // grant/deny permission or trigger an online Safe Browsing request. Data
++  // absent/loading: keep the ordinary prompt instead of delaying it.
++  bool ShouldWarnAboutNotifications(const url::Origin& origin) const;
++
+   // Parses a single instance of chrome_browser_crowd_deny::PreloadData message
+diff --git a/chrome/browser/permissions/crowd_deny_preload_data.cc b/chrome/browser/permissions/crowd_deny_preload_data.cc
+--- a/chrome/browser/permissions/crowd_deny_preload_data.cc
++++ b/chrome/browser/permissions/crowd_deny_preload_data.cc
+@@ -13,2 +13,4 @@
+ #include "base/location.h"
++#include "base/logging.h"
++#include "build/build_config.h"
+ #include "base/no_destructor.h"
+@@ -80,2 +82,20 @@
+ 
++bool CrowdDenyPreloadData::ShouldWarnAboutNotifications(
++    const url::Origin& origin) const {
++  if (!is_ready_to_use_)
++    return false;
++  const SiteReputation* reputation = GetReputationDataForSite(origin);
++  if (!reputation)
++    return false;
++  switch (reputation->notification_ux_quality()) {
++    case SiteReputation::UNSOLICITED_PROMPTS:
++    case SiteReputation::ABUSIVE_PROMPTS:
++    case SiteReputation::ABUSIVE_CONTENT:
++    case SiteReputation::DISRUPTIVE_BEHAVIOR:
++      return true;
++    default:
++      return false;
++  }
++}
++
+ void CrowdDenyPreloadData::LoadFromDisk(const base::FilePath& proto_path,
+@@ -120,2 +140,7 @@
+   is_ready_to_use_ = true;
++#if BUILDFLAG(IS_OHOS)
++  LOG(INFO) << "OHOS component data: Crowd Deny loaded version="
++            << (version_on_disk_ ? version_on_disk_->GetString() : "none")
++            << " entries=" << domain_to_reputation_map_.size();
++#endif
+ 
