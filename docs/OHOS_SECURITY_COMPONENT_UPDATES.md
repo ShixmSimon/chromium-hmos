@@ -8,6 +8,8 @@ with Chromium's pinned CRX component keys:
 - **Safety Tips** (`jflookgnkcckhobaglndicnbbgbonegd`).
 - **Certificate Error Assistant** (`giekcmmlnklenlaomppkphknjmnnpneh`).
 - **File Type Policies** (`khaoiebndkojlmppeemjhbpbandiljpe`).
+- **Origin Trials** (`llkgjffcdpffmhiakmfcdcblohccpfmo`).
+- **Hyphenation** (`jamhcnnkihinmdlkakkaopbjbbcngflc`).
 
 This does not enable Google account sync, arbitrary component registration,
 speech/AI models, Widevine, or browser binary updates.
@@ -178,3 +180,15 @@ force-enable all experimental APIs. The diagnostic reports only staged
 component version/restart requirement. Both pinned branches pass patch
 forward/reverse checks and the allowlist host checks; native/device acceptance
 is still pending.
+
+## Hyphenation
+
+`ohos-hyphenation-component.patch` registers dictionaries behind the existing
+`USE_MINIKIN_HYPHENATION` build flag (already enabled on OHOS). The installer
+publishes its directory to `ChromeContentBrowserClient`'s non-Android dictionary
+service; Blink's Minikin implementation requests and maps language dictionaries
+through that service. No separate renderer downloader is introduced. HTTPS and
+the upstream pinned CRX key are required. The ready log reports the version.
+Both pinned branches pass patch forward/reverse checks and host policy checks.
+Native/device acceptance remains pending: update the component, then compare a
+narrow English paragraph with `lang=en; hyphens:auto` against `hyphens:none`.

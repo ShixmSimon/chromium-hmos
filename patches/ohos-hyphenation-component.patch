@@ -1,0 +1,35 @@
+Register signed dictionaries for the existing non-Android Minikin service.
+
+diff --git a/chrome/browser/component_updater/registration.cc b/chrome/browser/component_updater/registration.cc
+--- a/chrome/browser/component_updater/registration.cc
++++ b/chrome/browser/component_updater/registration.cc
+@@ -156,2 +156,5 @@
+   RegisterOriginTrialsComponent(cus);
++#if BUILDFLAG(USE_MINIKIN_HYPHENATION)
++  RegisterHyphenationComponent(cus);
++#endif
+ #else
+diff --git a/chrome/browser/component_updater/hyphenation_component_installer.cc b/chrome/browser/component_updater/hyphenation_component_installer.cc
+--- a/chrome/browser/component_updater/hyphenation_component_installer.cc
++++ b/chrome/browser/component_updater/hyphenation_component_installer.cc
+@@ -13,2 +13,3 @@
+ #include "base/logging.h"
++#include "build/build_config.h"
+ #include "base/no_destructor.h"
+@@ -94,2 +95,5 @@
+ bool HyphenationComponentInstallerPolicy::RequiresNetworkEncryption() const {
++#if BUILDFLAG(IS_OHOS)
++  return true;
++#else
+   // Update checks and pings associated with this component do not require
+@@ -97,2 +101,3 @@
+   return false;
++#endif
+ }
+@@ -116,2 +121,6 @@
+   hyphenation_directory->Set(install_dir);
++#if BUILDFLAG(IS_OHOS)
++  LOG(INFO) << "OHOS component data: Hyphenation ready version="
++            << version.GetString();
++#endif
+ }

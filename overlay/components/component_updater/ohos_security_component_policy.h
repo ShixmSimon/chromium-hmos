@@ -15,7 +15,8 @@ inline constexpr bool IsOhosSecurityComponent(std::string_view id) {
          id == "jflookgnkcckhobaglndicnbbgbonegd" ||  // Safety Tips
          id == "giekcmmlnklenlaomppkphknjmnnpneh" ||  // Certificate Error Assistant
          id == "khaoiebndkojlmppeemjhbpbandiljpe" ||    // File Type Policies
-         id == "llkgjffcdpffmhiakmfcdcblohccpfmo";  // Origin Trials
+         id == "llkgjffcdpffmhiakmfcdcblohccpfmo" ||  // Origin Trials
+         id == "jamhcnnkihinmdlkakkaopbjbbcngflc";  // Hyphenation
 }
 }  // namespace component_updater
 

@@ -34,7 +34,8 @@ int main() {
   static_assert(IsOhosSecurityComponent("giekcmmlnklenlaomppkphknjmnnpneh"));
   static_assert(IsOhosSecurityComponent("khaoiebndkojlmppeemjhbpbandiljpe"));
   static_assert(IsOhosSecurityComponent("llkgjffcdpffmhiakmfcdcblohccpfmo"));
-  for (auto id : {"llkgjffcdpffmhiakmfcdcblohccpfmo", "khaoiebndkojlmppeemjhbpbandiljpe", "jflookgnkcckhobaglndicnbbgbonegd",
+  static_assert(IsOhosSecurityComponent("jamhcnnkihinmdlkakkaopbjbbcngflc"));
+  for (auto id : {"jamhcnnkihinmdlkakkaopbjbbcngflc", "llkgjffcdpffmhiakmfcdcblohccpfmo", "khaoiebndkojlmppeemjhbpbandiljpe", "jflookgnkcckhobaglndicnbbgbonegd",
                   "giekcmmlnklenlaomppkphknjmnnpneh"}) {
     for (size_t i = 0; i < 32; ++i) {
       std::string mutated(id);
