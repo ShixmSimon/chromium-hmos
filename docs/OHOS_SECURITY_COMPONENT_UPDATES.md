@@ -179,8 +179,7 @@ state. `ChromeBrowserMainParts` already invokes
 Blink at startup, so changes take effect after restarting Lumie. This does not
 force-enable all experimental APIs. The diagnostic reports only staged
 component version/restart requirement. Both pinned branches pass patch
-forward/reverse checks and the allowlist host checks; native/device acceptance
-is still pending.
+forward/reverse checks and the allowlist host checks; native acceptance is recorded below; device acceptance remains pending.
 
 ## Hyphenation
 
@@ -191,7 +190,8 @@ service; Blink's Minikin implementation requests and maps language dictionaries
 through that service. No separate renderer downloader is introduced. HTTPS and
 the upstream pinned CRX key are required. The ready log reports the version.
 Both pinned branches pass patch forward/reverse checks and host policy checks.
-Native/device acceptance remains pending: update the component, then compare a
+Native acceptance is recorded below. Device acceptance remains pending: update
+the component, then compare a
 narrow English paragraph with `lang=en; hyphens:auto` against `hyphens:none`.
 
 ## Crowd Deny
@@ -211,7 +211,8 @@ empty list or load failure); it does not certify that a nonempty list loaded.
 Both pinned branches pass forward/reverse patch checks. The host harness
 compiles the actual decision method and tests all enum values, no data and
 loading. It also compiles all eight actual OHOS registration calls. Native
-build and device acceptance remain pending. Device checks must cover a
+acceptance is recorded below; device acceptance remains pending. Device checks
+must cover a
 controlled listed HTTPS origin, unrelated permissions, unavailable data,
 allow/deny/dismiss behavior and persistence after restart. Do not substitute
 component registration status for these checks.
@@ -233,4 +234,15 @@ bypass is introduced. These are host package checks, not device activation.
 Lumie's optional notification hint and localized permission text passed ArkTS
 checking and full phone/wide packaging using the currently installed engine
 HAR. Older HAR events omit the hint and retain ordinary prompt behavior.
-The new kernel's Adapter CI passed; its Incremental build remains pending.
+The new kernel's Adapter CI and Incremental build both passed.
+
+## Integrated build acceptance
+
+Kernel `e671a9bf` passed Adapter CI and Incremental build
+(run 42019109103), including native rule validation and HAR publication.
+The published HAR was downloaded through the proxy and its SHA-256 verified.
+Lumie's engine cache was refreshed, then both phone and wide signed HAPs built
+successfully with the notification warning consumer (`4d10225`). All 67 engine
+library/resource payloads in the phone HAP matched the HAR byte for byte.
+The packages are prepared, not installed by this component-integration task;
+real-device update/activation and permission/dictionary UI checks remain pending.
