@@ -61,6 +61,8 @@ if [[ "${compatible}" == true ]]; then
   git -C "${checkout}" apply --binary \
     "${project_root}/patches/chromium-154-harmonyos.patch"
   if ! git -C "${checkout}" apply \
+      "${project_root}/patches/ohos-phone-ua-openharmony.patch" \
+      "${project_root}/patches/ohos-standard-user-agent.patch" \
       "${project_root}/patches/ohos-mobile-ua-viewport.patch" 2>"${failure_log}"; then
     compatible=false
   fi

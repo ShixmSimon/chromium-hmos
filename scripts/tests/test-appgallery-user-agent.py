@@ -245,6 +245,27 @@ int main() {
   assert(GoogleUserAgent("Chrome/155 CustomOpenHarmony/7.0") ==
          "Chrome/155 CustomOpenHarmony/7.0");
 
+  // The default identity stays byte-identical through Cloudflare -> Google
+  // -> Cloudflare. Session-bound cookies must not see an OS suffix reappear.
+  for (bool mobile : {false, true}) {
+    phone_ui = mobile;
+    content::WebContents page;
+    page.ua = {mobile ? "Chrome/155 Mobile Safari/537.36"
+                      : "Chrome/155 Safari/537.36",
+               blink::UserAgentMetadata{mobile}};
+    page.pinned = !mobile;
+    const auto baseline = page.ua;
+    Watcher policy(&page);
+    content::NavigationHandle navigation{{"https://dash.cloudflare.com/"}};
+    for (const char* url : {"https://dash.cloudflare.com/",
+                            "https://accounts.google.com/",
+                            "https://dash.cloudflare.com/"}) {
+      navigation.url.value = url;
+      policy.DidStartNavigation(&navigation);
+      assert(page.ua == baseline);
+    }
+  }
+
   // Refresh, navigation between policies and manual mode changes must not
   // replace the original mode with a temporary compatibility UA.
   for (bool phone : {false, true}) {

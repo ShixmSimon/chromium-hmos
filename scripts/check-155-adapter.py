@@ -36,6 +36,8 @@ with (nullcontext(os.environ['ADAPTER_CHECK_WORKDIR']) if os.environ.get('ADAPTE
         result = git('checkout', '-q', '--detach', revision, check=False)
     if result.returncode == 0:
         result = git('apply', '--3way', '--whitespace=nowarn', str(patch), check=False)
+    if result.returncode == 0:
+        result = git('apply', str(ROOT / 'patches/ohos-standard-user-agent.patch'), check=False)
     compatible = result.returncode == 0
     details = result.stdout[-18000:]
     report.write_text(f'# Chromium 155 snapshot compatibility\n\n- Version: `{version}`\n'

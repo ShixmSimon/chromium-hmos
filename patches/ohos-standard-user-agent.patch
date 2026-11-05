@@ -1,0 +1,82 @@
+Remove the automatic OpenHarmony UA product token on all device classes.
+
+Apply after ohos-phone-ua-openharmony.patch on 154, or the native 155 snapshot.
+Keep UA-CH and explicit custom user agents unchanged.
+
+diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedder_support/user_agent_utils.cc
+--- a/components/embedder_support/user_agent_utils.cc
++++ b/components/embedder_support/user_agent_utils.cc
+@@ -8,67 +8,18 @@
+ #error "Name this CPU as Chrome's Linux User-Agent does."
+ #endif
+ 
+-// Every shape below names HarmonyOS with an OpenHarmony product token at the
+-// end, where sites that look for it find it and the platform section stays
+-// Chrome's.
++// Use Chrome's standard platform sections without an OS product suffix.
++// Site-specific UA policies must not change this identity across login redirects.
+ std::string BuildOhosUserAgent(const std::string& product, bool mobile) {
+-  // For example "OpenHarmony-7.0.0.105".
+-  const char* os_full_name = OH_GetOSFullName();
+-  std::string_view os_name = os_full_name ? os_full_name : "";
+-  const size_t separator = os_name.find('-');
+-  std::string version = separator == std::string_view::npos
+-                            ? std::string()
+-                            : std::string(os_name.substr(separator + 1));
+-  std::vector<std::string_view> components = base::SplitStringPiece(
+-      version, ".", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
+-  std::string major_minor =
+-      components.size() >= 2
+-          ? base::StrCat({components[0], ".", components[1]})
+-          : version;
+-
+-  // " OpenHarmony/7.0", or nothing when the system does not say.
+-  const std::string openharmony_token =
+-      major_minor.empty() ? std::string()
+-                          : base::StrCat({" OpenHarmony/", major_minor});
+-
+   if (!mobile) {
+-    // A tablet, a 2in1, an unfolded foldable, or a phone asked for the desktop
+-    // site. No Android token and no Mobile token: with them, Baidu, Taobao,
+-    // JD, Bilibili and Weibo read the UA as an Android tablet and send the
+-    // phone page. Measured across ten large sites at 1280x800; nine switch to
+-    // the desktop page once the token goes, and the tenth (qq.com) serves
+-    // tablets the phone page whatever the UA says.
+-    //
+-    // The platform section is Chrome's own for Linux, "X11; Linux aarch64",
+-    // naming the CPU the device really has, and OpenHarmony follows as a
+-    // product, as on the phone. In the section ArkWeb itself sends,
+-    // "(Tablet; OpenHarmony 7.0) ... ArkWeb/7.0.0.105", Cloudflare Turnstile
+-    // failed with 600010 whenever client hints went with it, as it does for
+-    // ArkWeb: a platform section that matches no Chrome it knows. Measured on
+-    // a tablet with the client hints left as they are: the X11 section passed
+-    // 3/3 with a UA-CH platform of Linux or HarmonyOS; the old shape failed
+-    // every time. No ArkWeb token: this is not ArkWeb. The client hints stay
+-    // HarmonyOS.
++    // Tablets, 2in1s, unfolded foldables and desktop-site mode use Linux.
++    // Android/Mobile tokens make many sites serve their phone layout.
+     return base::StrCat({"Mozilla/5.0 (X11; Linux ", kOhosUserAgentCpu,
+                          ") AppleWebKit/537.36 (KHTML, like Gecko) ", product,
+-                         " Safari/537.36", openharmony_token});
++                         " Safari/537.36"});
+   }
+ 
+-  // A phone. Chrome's own reduced User-Agent, because a UA naming no OS that
+-  // anyone knows gets treated as unclassifiable -- google.com serves its
+-  // no-JavaScript basic page against the token order above -- and because a
+-  // UA mixing OpenHarmony, Android and ArkWeb tokens, with a UA-CH platform
+-  // and navigator.platform matching none of them, read as a spoofed browser
+-  // to bot checks (Cloudflare Turnstile failed with 600010). The platform,
+-  // platform version, navigator.platform and navigator.plugins all follow
+-  // this string; see GetPlatformForUAMetadata() below.
+-  //
+-  // With the OpenHarmony version as a product token at the end, as in
+-  // "... Mobile Safari/537.36 OpenHarmony/7.0": sites that look for HarmonyOS
+-  // find it, and the platform section stays exactly Chrome's -- with
+-  // "OpenHarmony 7.0" inside it, before or after the Android token, the
+-  // phone failed Cloudflare Turnstile. The client hints stay Android.
+   return base::StrCat({"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) ",
+-                       product, " Mobile Safari/537.36", openharmony_token});
++                       product, " Mobile Safari/537.36"});
+ }

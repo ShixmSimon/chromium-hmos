@@ -199,8 +199,9 @@ else
   # A cached Skia shader that fails to compile clears the cache in place
   # rather than crashing the in-process GPU, and the browser with it.
   apply_incremental_patch "${repo_root}/patches/ohos-cached-shader-no-crash.patch"
-  # OpenHarmony/<version> at the end of the phone's User-Agent; inside the
-  # platform section it failed Cloudflare Turnstile.
+  # Unstack the final UA policy before checking its 154 prerequisite.
+  retire_incremental_patch "${repo_root}/patches/ohos-standard-user-agent.patch"
+  # Preserve the standard Android/Linux platform sections.
   apply_incremental_patch "${repo_root}/patches/ohos-phone-ua-openharmony.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-external-protocol-to-shell.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-phone-android-web-prefs.patch"
@@ -334,6 +335,8 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-phone-gl-hdr.patch"
 
   fi
+
+  apply_incremental_patch "${repo_root}/patches/ohos-standard-user-agent.patch"
 
   # Shared touch fullscreen UI, after the 154 fullscreen prerequisites or
   # their migrated 155 equivalents. Keep it additive to both baselines.
