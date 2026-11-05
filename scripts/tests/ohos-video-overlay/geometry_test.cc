@@ -33,6 +33,29 @@ int main() {
   Near(rgb->x, 0);
   Near(rgb->width, 1320);
   Near(rgb->height, 742.5f);
+  // The visible destination fits, but the underlying allocation crosses the
+  // right edge. Reject it before punching a hole (retail RS double-crops it).
+  assert(!RgbVideoFitsPrimary(primary, bili->destination, bili->source,
+                              640, 360));
+  assert(RgbVideoFitsPrimary(primary, fractional, source, 640, 360));
+  assert(RgbVideoFitsPrimary(primary, {0, 0, 1316, 2832}, source, 640, 360));
+  for (const auto outside : {OhosOverlayRect{-20, 80, 800, 450},
+                             OhosOverlayRect{20, -40, 800, 450},
+                             OhosOverlayRect{20, 2600, 1000, 650}}) {
+    const auto visible = ClipVideoGeometry(primary, outside, source,
+                                           std::nullopt);
+    assert(visible);
+    assert(!RgbVideoFitsPrimary(primary, visible->destination, visible->source,
+                                640, 360));
+  }
+  // Cropping within the viewport is still supported; do not reject every
+  // partial source rectangle or every overflow:hidden container.
+  auto inside = ClipVideoGeometry(primary, {50, 50, 1100, 650}, source,
+                                  OhosOverlayRect{100, 80, 900, 500});
+  assert(inside && RgbVideoFitsPrimary(primary, inside->destination,
+                                      inside->source, 640, 360));
+  assert(!RgbVideoFitsPrimary({NAN, 0, 1000, 1000}, fractional, source,
+                              640, 360));
 
   // Clip all four edges, including an existing non-full source crop.
   auto clipped =

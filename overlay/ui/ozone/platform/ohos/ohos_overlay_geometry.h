@@ -26,6 +26,8 @@ struct ClippedVideoGeometry {
 // are the visible destination, and this child rectangle preserves the exact
 // source-to-destination mapping. This also works when source cropping *is*
 // honored, since the submitted RGB source is always the full allocation.
+// This mapping alone is NOT sufficient for promotion: the full allocation
+// must also pass RgbVideoFitsPrimary before the primary hole is punched.
 inline std::optional<OhosOverlayRect> RgbVideoChildGeometry(
     const OhosOverlayRect& destination,
     const OhosOverlayRect& source,
@@ -46,6 +48,27 @@ inline std::optional<OhosOverlayRect> RgbVideoChildGeometry(
   if (!FiniteOverlayRect(child))
     return std::nullopt;
   return child;
+}
+
+// Retail RS may crop the RGB source at the display boundary, then stretch
+// that source over the original node bounds. A clipping parent subsequently
+// crops it again. Keep the entire transformed allocation within the webpage
+// surface so this path cannot reach a display edge; otherwise use Chromium's
+// normal compositor. Checking only the visible destination misses this bug.
+inline bool RgbVideoFitsPrimary(const OhosOverlayRect& primary,
+                                const OhosOverlayRect& destination,
+                                const OhosOverlayRect& source,
+                                float buffer_width,
+                                float buffer_height) {
+  const auto child = RgbVideoChildGeometry(destination, source, buffer_width,
+                                          buffer_height);
+  if (!FiniteOverlayRect(primary) || !child)
+    return false;
+  const double left = double(destination.x) + child->x;
+  const double top = double(destination.y) + child->y;
+  return left >= primary.x && top >= primary.y &&
+         left + child->width <= double(primary.x) + primary.width &&
+         top + child->height <= double(primary.y) + primary.height;
 }
 
 // RS accepts floating-point rectangles. Intersect the visible destination,

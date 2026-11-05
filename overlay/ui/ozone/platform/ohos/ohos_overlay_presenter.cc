@@ -136,10 +136,11 @@ class Candidates final : public OverlayCandidatesOzone {
       auto clipped = ClipVideoGeometry(Rect(p.display_rect), Rect(v.display_rect),
                                        Rect(source), ClipRect(v.clip_rect));
       if (!clipped ||
-          !RgbVideoChildGeometry(clipped->destination, clipped->source,
-                                 v.native_pixmap->GetBufferSize().width(),
-                                 v.native_pixmap->GetBufferSize().height()))
-        rejection = "software-crop-unrepresentable";
+          !RgbVideoFitsPrimary(Rect(p.display_rect), clipped->destination,
+                               clipped->source,
+                               v.native_pixmap->GetBufferSize().width(),
+                               v.native_pixmap->GetBufferSize().height()))
+        rejection = "software-allocation-outside-primary";
     }
     if (rejection) {
       Report(rejection, &v);

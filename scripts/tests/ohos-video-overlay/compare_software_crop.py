@@ -52,7 +52,7 @@ for case in report['cases']:
                         mean=mean, fraction_over_3=bad,
                         passed=mean <= 0.6 and bad <= 0.01))
 output = dict(capture_passed=report.get('passed',False), cases=results,
-              passed=bool(report.get('passed')) and len(results) == 7 and
+              passed=bool(report.get('passed')) and len(results) == (8 if report.get('policy') == 'viewport-fallback' else 7) and
                      all(r['passed'] for r in results))
 (args.directory / 'pixel-comparison.json').write_text(json.dumps(output,indent=2)+'\n')
 print(json.dumps(output,indent=2))

@@ -229,3 +229,29 @@ Local evidence: `/tmp/lumie-software-crop/device-e14ce50e-final/report.json`,
 `presenter.log`, fourteen screenshots and `pixel-comparison.json`. Earlier
 repetitions in `device-e14ce50e`, `device-e14ce50e-repeat` and
 `device-e14ce50e-large` reproduce the failing crops.
+
+
+### Viewport-boundary safety guard, 2026-11-05
+
+A retail RS trace for the left case shows delegate source `(0,0,640,360)`
+becoming `(16,0,624,360)` while the draw destination remains the full
+`800x450` node. The parent then clips the already cropped/stretched image.
+The installed service's `UpdateRectForDelegateMode` reads its computed layer
+source and the original node bounds, unlike current upstream's explicit
+source handling. Changing delegate destination, frame gravity, normal-mode
+flags or fixed-rotation flags did not correct the device captures; those
+experiments are not included in the production implementation.
+
+`RgbVideoFitsPrimary` now checks the entire transformed allocation, not just
+its visible intersection. Both the candidate oracle (before punching a hole)
+and the RS backend reject RGB allocations extending outside the primary.
+Interior source/parent crops remain eligible; viewport-crossing RGB video
+uses Chromium webpage composition. This is a correctness fallback, not a
+claim that viewport-crossing independent-layer promotion has been completed.
+Native YUV/HDR geometry and all release/transaction protocols are unchanged.
+
+The strict seven-case promotion test remains the default. Its explicit
+`--viewport-fallback` mode checks the five viewport-crossing cases use webpage
+composition, while full, cover and a new interior parent crop use independent
+layers. Both paths must advance frames and match the CSS-filter baseline at
+the existing pixel-error thresholds. Device qualification is pending.

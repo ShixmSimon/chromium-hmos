@@ -4,11 +4,13 @@ import fs from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 const exec = promisify(execFile);
-const [endpoint, url, output, serial] = process.argv.slice(2);
+const [endpoint, url, output, serial, policy] = process.argv.slice(2);
+if (policy && policy !== '--viewport-fallback') throw Error('Unknown validation policy');
+const viewportFallback = policy === '--viewport-fallback';
 if (!serial) throw Error('Usage: node software_crop_validation.mjs CDP PAGE OUTPUT SERIAL');
 const hdc = process.env.HDC_BIN || '/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc';
 await fs.mkdir(output, {recursive: false});
-const report = {started: new Date().toISOString(), scope: 'Software SDR crop promotion and screenshot capture', cases: [], cleanupErrors: []};
+const report = {started: new Date().toISOString(), scope: 'Software SDR crop promotion and screenshot capture', policy: viewportFallback ? 'viewport-fallback' : 'all-promoted', cases: [], cleanupErrors: []};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function connect(url) {
   const ws = new WebSocket(url);
@@ -88,21 +90,27 @@ try {
     ['source_cover', '20.25,80.25,1000,500'],
     ['overflow_parent', '-50.25,-30.25,1100,650'],
   ];
+  if (viewportFallback) cases.push(['overflow_inside', '-50,-30,1100,650']);
+  const promotedCases = new Set(['full', 'source_cover', 'overflow_inside']);
   for (const [name, dims] of cases) {
-    const entry={name};report.cases.push(entry);
+    const entry={name,expectedPath:!viewportFallback || promotedCases.has(name)?'independent':'webpage'};report.cases.push(entry);
     try {
       entry.geometry=await evaluate(`(()=>{
         const [x,y,w,h]=[${dims}];const d=devicePixelRatio;
         c.style.cssText='position:fixed;left:0;top:0;width:100%;height:100%;overflow:visible';
-        if(${JSON.stringify(name)}==='overflow_parent')c.style.cssText='position:fixed;left:'+20/d+'px;top:'+80/d+'px;width:'+900/d+'px;height:'+500/d+'px;overflow:hidden';
+        if(['overflow_parent','overflow_inside'].includes(${JSON.stringify(name)}))c.style.cssText='position:fixed;left:'+20/d+'px;top:'+80/d+'px;width:'+900/d+'px;height:'+500/d+'px;overflow:hidden';
+        if(${JSON.stringify(name)}==='overflow_inside')c.style.left=100/d+'px';
         v.style.cssText='position:absolute;max-width:none;max-height:none;left:'+x/d+'px;top:'+y/d+'px;width:'+w/d+'px;height:'+h/d+'px;object-fit:'+(${JSON.stringify(name)}==='source_cover'?'cover':'fill')+';filter:none';
         const r=v.getBoundingClientRect(),p=c.getBoundingClientRect();
         const l=Math.max(0,r.left,p.left),t=Math.max(0,r.top,p.top),rr=Math.min(innerWidth,r.right,p.right),b=Math.min(innerHeight,r.bottom,p.bottom);
         return {viewport:{width:innerWidth,height:innerHeight,visualHeight:visualViewport.height},rect:r.toJSON(),parent:p.toJSON(),dpr:d,roi:[l*d,t*d,rr*d,b*d]};
       })()`);
-      entry.promoted=await waitFor(layers, rows=>visible(rows,'Web')&&visible(rows,'Video'), name+' promoted');
+      entry.actualPath=await waitFor(layers, rows=>visible(rows,'Web')&&(visible(rows,'Video')===(entry.expectedPath==='independent')), name+' '+entry.expectedPath);
+      // A fallback case must remain unpromoted throughout the sustained run.
       const start=await snapshot();
       entry.sustained=await waitFor(snapshot,s=>s.frames>=start.frames+60&&!s.paused&&!s.error,name+' frames');
+      entry.sustainedLayers=await layers();
+      if(visible(entry.sustainedLayers,'Video')!==(entry.expectedPath==='independent'))throw Error('Unexpected path during sustained playback');
       await exec('devecocli',['ui','screenshot','--device',serial,'--path',output+'/'+name+'-promoted.png'],{timeout:15000});
       await evaluate("v.style.filter='blur(0.01px)'");
       entry.demoted=await waitFor(layers,rows=>visible(rows,'Web')&&!visible(rows,'Video'),name+' composited baseline');
@@ -119,7 +127,7 @@ try {
   }
   report.finalSystem=await browser.call('SystemInfo.getInfo');
   if(report.finalSystem.gpu.auxAttributes.processCrashCount!==report.initialSystem.gpu.auxAttributes.processCrashCount)throw Error('GPU restarted');
-  report.passed=report.cases.length===7&&report.cases.every(c=>!c.error);
+  report.passed=report.cases.length===(viewportFallback?8:7)&&report.cases.every(c=>!c.error);
   if(!report.passed)process.exitCode=1;
 } catch(e) {
   report.error=String(e); process.exitCode=1;

@@ -532,7 +532,9 @@ class RsBackend final : public Backend {
       // Validate before emitting any commands, including extreme zoom/crops.
       if (i && (plane.format == Format::kRgba8 ||
                 plane.format == Format::kBgra8) &&
-          !RgbVideoChildGeometry(
+          !RgbVideoFitsPrimary(
+              {f.primary.destination.x, f.primary.destination.y,
+               f.primary.destination.width, f.primary.destination.height},
               {plane.destination.x, plane.destination.y,
                plane.destination.width, plane.destination.height},
               {plane.source.x, plane.source.y, plane.source.width,
