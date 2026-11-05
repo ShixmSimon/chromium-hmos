@@ -259,7 +259,7 @@ patch = (ROOT / 'patches/ohos-crowd-deny-component.patch').read_text()
 added = '\n'.join(line[1:] for line in patch.splitlines()
                   if line.startswith('+') and not line.startswith('+++'))
 method = re.search(r'bool CrowdDenyPreloadData::ShouldWarnAboutNotifications\(.*?\n}', added, re.S)[0]
-unit = r''' 
+unit = r'''
 #include <cassert>
 namespace url { struct Origin {}; }
 struct SiteReputation {

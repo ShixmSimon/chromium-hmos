@@ -1,0 +1,40 @@
+{
+  "checked_at": "2026-11-05",
+  "request_platform": "OHOS",
+  "request_arch": "arm64",
+  "request_prodversion": "155.0.8080.0",
+  "results": [
+    {
+      "id": "khaoiebndkojlmppeemjhbpbandiljpe",
+      "status": "noupdate"
+    },
+    {
+      "id": "llkgjffcdpffmhiakmfcdcblohccpfmo",
+      "status": "noupdate"
+    },
+    {
+      "name": "Hyphenation",
+      "id": "jamhcnnkihinmdlkakkaopbjbbcngflc",
+      "component_version": "120.0.6050.0",
+      "sha256": "c52c62a7c50daf7d3f73ec16977cd4b0ea401710807d5dbe3850941dd1b73a70",
+      "pinned_signature_verified": true,
+      "bytes": 1114805,
+      "dictionary_count": 52,
+      "english_dictionary": true
+    },
+    {
+      "name": "Crowd Deny",
+      "id": "ggkkehgbnfjpeggfpleeakpidbkibbmn",
+      "component_version": "2026.11.2.137",
+      "sha256": "2a975965b3cb0d72523ce38d4858784c7cff7cfd30d0a22cedf851ddd9fac293",
+      "pinned_signature_verified": true,
+      "bytes": 299765,
+      "reputations": 12442,
+      "preload_data_format": 1,
+      "quality_counts": {
+        "2": 254,
+        "5": 12188
+      }
+    }
+  ]
+}

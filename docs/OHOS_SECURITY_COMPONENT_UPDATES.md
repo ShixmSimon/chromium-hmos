@@ -215,3 +215,22 @@ build and device acceptance remain pending. Device checks must cover a
 controlled listed HTTPS origin, unrelated permissions, unavailable data,
 allow/deny/dismiss behavior and persistence after restart. Do not substitute
 component registration status for these checks.
+
+## Official package check, 2026-11-05
+
+An update request identifying OHOS/arm64 advertised Hyphenation 120.0.6050.0
+and Crowd Deny 2026.11.2.137. HTTPS downloads matched their response hashes,
+CRX3 IDs and signatures from the publishers pinned in the 155 installers.
+The dictionary package contains 52 `.hyb` files including English; the Crowd
+Deny format-1 payload contains 12,442 reputation entries. Public metadata is
+in `scripts/tests/fixtures/security-components/additional-20261105.json`.
+The same request returned `noupdate` for File Type Policies and Origin Trials;
+registration does not guarantee that the server currently offers those packages
+to this platform. File Type Policies retains its compiled-in fallback, and
+Origin Trials retains its default configuration. No OS substitution or signature
+bypass is introduced. These are host package checks, not device activation.
+
+Lumie's optional notification hint and localized permission text passed ArkTS
+checking and full phone/wide packaging using the currently installed engine
+HAR. Older HAR events omit the hint and retain ordinary prompt behavior.
+The new kernel's Adapter CI passed; its Incremental build remains pending.
