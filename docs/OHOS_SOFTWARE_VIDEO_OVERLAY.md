@@ -254,4 +254,21 @@ The strict seven-case promotion test remains the default. Its explicit
 `--viewport-fallback` mode checks the five viewport-crossing cases use webpage
 composition, while full, cover and a new interior parent crop use independent
 layers. Both paths must advance frames and match the CSS-filter baseline at
-the existing pixel-error thresholds. Device qualification is pending.
+the existing pixel-error thresholds.
+
+Commit `ad598d07` passed Incremental build `41978867711` and Adapter CI
+`41978867914`. ASan/UBSan ownership/geometry/transport tests, software upload
+regressions and the actual NDK bridge build also passed. The published HAR
+checksum, refreshed engine cache and all 67 HAP payloads were verified. The
+signed package was installed without uninstalling and passed launch smoke.
+The compiled engine contains the new candidate rejection reason.
+
+Before that installation, the full/cover/interior-parent cases all passed
+pixel comparison in a focused device run, confirming the interior mapping;
+this is not qualification of the new guard. The phone disconnected after
+installation, before the eight-case guard regression could connect to CDP.
+No complete device or HDR regression result is claimed for `ad598d07` yet.
+
+Evidence: `/tmp/lumie-install-ad598d07/verified.json`, signed HAP and install
+log; `/tmp/lumie-software-crop/interior-before-guard/` (three-case diagnostic,
+not the complete suite).
