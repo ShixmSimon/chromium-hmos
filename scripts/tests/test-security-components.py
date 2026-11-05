@@ -33,7 +33,8 @@ int main() {
   static_assert(IsOhosSecurityComponent("jflookgnkcckhobaglndicnbbgbonegd"));
   static_assert(IsOhosSecurityComponent("giekcmmlnklenlaomppkphknjmnnpneh"));
   static_assert(IsOhosSecurityComponent("khaoiebndkojlmppeemjhbpbandiljpe"));
-  for (auto id : {"khaoiebndkojlmppeemjhbpbandiljpe", "jflookgnkcckhobaglndicnbbgbonegd",
+  static_assert(IsOhosSecurityComponent("llkgjffcdpffmhiakmfcdcblohccpfmo"));
+  for (auto id : {"llkgjffcdpffmhiakmfcdcblohccpfmo", "khaoiebndkojlmppeemjhbpbandiljpe", "jflookgnkcckhobaglndicnbbgbonegd",
                   "giekcmmlnklenlaomppkphknjmnnpneh"}) {
     for (size_t i = 0; i < 32; ++i) {
       std::string mutated(id);

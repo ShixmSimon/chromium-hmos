@@ -165,3 +165,16 @@ not filenames or visited URLs. Unknown component IDs still fail closed.
 The patch applies against both pinned 154 and migrated 155 sources. Host
 allowlist/security regression tests passed. Full native build and device
 acceptance are pending; registration alone is not proof of active policy.
+
+## Origin Trials
+
+`ohos-origin-trials-component.patch` registers the pinned
+`llkgjffcdpffmhiakmfcdcblohccpfmo` component and requires HTTPS on OHOS.
+The existing Chrome installer writes the manifest configuration to local
+state. `ChromeBrowserMainParts` already invokes
+`SetupOriginTrialsCommandLineAndSettings` and distributes those settings to
+Blink at startup, so changes take effect after restarting Lumie. This does not
+force-enable all experimental APIs. The diagnostic reports only staged
+component version/restart requirement. Both pinned branches pass patch
+forward/reverse checks and the allowlist host checks; native/device acceptance
+is still pending.
