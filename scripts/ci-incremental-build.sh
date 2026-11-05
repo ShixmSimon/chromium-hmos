@@ -342,6 +342,7 @@ else
   # their migrated 155 equivalents. Keep it additive to both baselines.
   apply_incremental_patch "${repo_root}/patches/ohos-phone-fullscreen-hint.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-security-assistants.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-file-type-component.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-software-video-overlay.patch"
 
   # ---- sync overlay into the tree -------------------------------------------

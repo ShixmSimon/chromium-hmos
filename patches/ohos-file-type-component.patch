@@ -1,0 +1,210 @@
+Enable signed download file policies independently of online Safe Browsing.
+
+diff --git a/chrome/browser/component_updater/registration.cc b/chrome/browser/component_updater/registration.cc
+--- a/chrome/browser/component_updater/registration.cc
++++ b/chrome/browser/component_updater/registration.cc
+@@ -107,7 +107,7 @@
+ #include "chrome/browser/component_updater/wasm_tts_engine_component_installer.h"
+ #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+ 
+-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
++#if BUILDFLAG(SAFE_BROWSING_AVAILABLE) || BUILDFLAG(IS_OHOS)
+ #include "chrome/browser/component_updater/file_type_policies_component_installer.h"
+ #endif
+ 
+@@ -152,6 +152,7 @@
+   MaybeRegisterPKIMetadataComponent(cus);
+   RegisterSafetyTipsComponent(cus);
+   RegisterSSLErrorAssistantComponent(cus);
++  RegisterFileTypePoliciesComponent(cus);
+ #else
+ #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+   RegisterRecoveryImprovedComponent(cus, g_browser_process->local_state());
+diff --git a/chrome/browser/component_updater/BUILD.gn b/chrome/browser/component_updater/BUILD.gn
+--- a/chrome/browser/component_updater/BUILD.gn
++++ b/chrome/browser/component_updater/BUILD.gn
+@@ -103,7 +103,7 @@
+     public += [ "pki_metadata_fastpush_component_installer_policy.h" ]
+   }
+ 
+-  if (safe_browsing_mode != 0) {
++  if (safe_browsing_mode != 0 || is_ohos) {
+     public += [ "file_type_policies_component_installer.h" ]
+   }
+ 
+@@ -196,7 +196,7 @@
+     deps +=
+         [ "//components/safe_browsing/android:real_time_url_checks_allowlist" ]
+   }
+-  if (safe_browsing_mode != 0) {
++  if (safe_browsing_mode != 0 || is_ohos) {
+     deps += [ "//components/safe_browsing/content/common:file_type_policies" ]
+   }
+ 
+@@ -303,7 +303,7 @@
+     sources += [ "pki_metadata_fastpush_component_installer_policy.cc" ]
+   }
+ 
+-  if (safe_browsing_mode != 0) {
++  if (safe_browsing_mode != 0 || is_ohos) {
+     sources += [ "file_type_policies_component_installer.cc" ]
+   }
+ 
+diff --git a/components/safe_browsing/content/common/BUILD.gn b/components/safe_browsing/content/common/BUILD.gn
+--- a/components/safe_browsing/content/common/BUILD.gn
++++ b/components/safe_browsing/content/common/BUILD.gn
+@@ -22,7 +22,7 @@
+   }
+ }
+ 
+-if (safe_browsing_mode != 0) {
++if (safe_browsing_mode != 0 || is_ohos) {
+   source_set("file_type_policies") {
+     sources = [
+       "file_type_policies.cc",
+diff --git a/components/resources/BUILD.gn b/components/resources/BUILD.gn
+--- a/components/resources/BUILD.gn
++++ b/components/resources/BUILD.gn
+@@ -105,7 +105,7 @@
+     deps += [ "//components/resources/ssl/ssl_error_assistant:make_ssl_error_assistant_protobuf" ]
+   }
+ 
+-  if (safe_browsing_mode > 0) {
++  if (safe_browsing_mode > 0 || is_ohos) {
+     deps += [
+       "//components/safe_browsing/content/resources:make_file_types_protobuf",
+     ]
+diff --git a/components/resources/safe_browsing_resources.grdp b/components/resources/safe_browsing_resources.grdp
+--- a/components/resources/safe_browsing_resources.grdp
++++ b/components/resources/safe_browsing_resources.grdp
+@@ -3,7 +3,7 @@
+   <if expr="is_android and safe_browsing_mode == '2'">
+     <include name="IDR_REAL_TIME_URL_CHECKS_ALLOWLIST_PB" file="${root_gen_dir}\components\safe_browsing\content\resources\real_time_url_checks_allowlist\real_time_url_checks_allowlist.pb" use_base_dir="false" type="BINDATA" />
+   </if>
+-  <if expr="safe_browsing_mode != 0">
++  <if expr="safe_browsing_mode != 0 or is_ohos">
+     <include name="IDR_DOWNLOAD_FILE_TYPES_PB" file="${root_gen_dir}\components\safe_browsing\content\resources\download_file_types.pb" use_base_dir="false" type="BINDATA" compress="gzip" />
+   </if>
+ </grit-part>
+diff --git a/chrome/browser/download/BUILD.gn b/chrome/browser/download/BUILD.gn
+--- a/chrome/browser/download/BUILD.gn
++++ b/chrome/browser/download/BUILD.gn
+@@ -379,6 +379,10 @@
+     sources += [ "download_crx_util.cc" ]
+   }
+ 
++  if (is_ohos) {
++    deps += [ "//components/safe_browsing/content/common:file_type_policies" ]
++  }
++
+   if (safe_browsing_mode != 0) {
+     deps += [
+       "//components/safe_browsing/content/browser/download:download_stats",
+diff --git a/chrome/browser/download/download_target_determiner.cc b/chrome/browser/download/download_target_determiner.cc
+--- a/chrome/browser/download/download_target_determiner.cc
++++ b/chrome/browser/download/download_target_determiner.cc
+@@ -89,6 +89,9 @@
+ 
+ #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
+ #include "components/safe_browsing/content/browser/download/download_stats.h"
++#endif
++
++#if BUILDFLAG(SAFE_BROWSING_AVAILABLE) || BUILDFLAG(IS_OHOS)
+ #include "components/safe_browsing/content/common/file_type_policies.h"
+ #endif
+ 
+@@ -1280,7 +1283,7 @@
+     return DownloadFileType::NOT_DANGEROUS;
+   }
+ 
+-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
++#if BUILDFLAG(SAFE_BROWSING_AVAILABLE) || BUILDFLAG(IS_OHOS)
+   base::FilePath file_display_name = GetFileDisplayName();
+   DownloadFileType::DangerLevel danger_level =
+       safe_browsing::FileTypePolicies::GetInstance()->GetFileDangerLevel(
+diff --git a/chrome/browser/download/download_prefs.cc b/chrome/browser/download/download_prefs.cc
+--- a/chrome/browser/download/download_prefs.cc
++++ b/chrome/browser/download/download_prefs.cc
+@@ -63,7 +63,7 @@
+ #include "chrome/browser/flags/android/chrome_feature_list.h"
+ #endif
+ 
+-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
++#if BUILDFLAG(SAFE_BROWSING_AVAILABLE) || BUILDFLAG(IS_OHOS)
+ #include "components/safe_browsing/content/common/file_type_policies.h"
+ #endif
+ 
+@@ -71,7 +71,7 @@
+ using content::BrowserThread;
+ using content::DownloadManager;
+ 
+-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
++#if BUILDFLAG(SAFE_BROWSING_AVAILABLE) || BUILDFLAG(IS_OHOS)
+ using safe_browsing::FileTypePolicies;
+ #endif
+ 
+@@ -332,7 +332,7 @@
+         base::FilePath::StringType(1, base::FilePath::kExtensionSeparator) +
+         extension);
+ 
+-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
++#if BUILDFLAG(SAFE_BROWSING_AVAILABLE) || BUILDFLAG(IS_OHOS)
+     // Note that the list of file types that are not allowed to open
+     // automatically can change in the future. When the list is tightened, it is
+     // expected that some entries in the users' auto open list will get dropped
+@@ -524,7 +524,7 @@
+ bool DownloadPrefs::EnableAutoOpenByUserBasedOnExtension(
+     const base::FilePath& file_name) {
+   base::FilePath::StringType extension = file_name.Extension();
+-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
++#if BUILDFLAG(SAFE_BROWSING_AVAILABLE) || BUILDFLAG(IS_OHOS)
+   if (!FileTypePolicies::GetInstance()->IsAllowedToOpenAutomatically(
+           file_name)) {
+     return false;
+diff --git a/chrome/browser/component_updater/file_type_policies_component_installer.cc b/chrome/browser/component_updater/file_type_policies_component_installer.cc
+--- a/chrome/browser/component_updater/file_type_policies_component_installer.cc
++++ b/chrome/browser/component_updater/file_type_policies_component_installer.cc
+@@ -10,6 +10,7 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "build/build_config.h"
+ #include "base/files/file_path.h"
+ #include "base/files/file_util.h"
+ #include "base/functional/bind.h"
+@@ -65,7 +66,11 @@
+ 
+ bool FileTypePoliciesComponentInstallerPolicy::RequiresNetworkEncryption()
+     const {
++#if BUILDFLAG(IS_OHOS)
++  return true;
++#else
+   return false;
++#endif
+ }
+ 
+ update_client::CrxInstaller::Result
+diff --git a/components/safe_browsing/content/common/file_type_policies.cc b/components/safe_browsing/content/common/file_type_policies.cc
+--- a/components/safe_browsing/content/common/file_type_policies.cc
++++ b/components/safe_browsing/content/common/file_type_policies.cc
+@@ -5,6 +5,8 @@
+ #include "components/safe_browsing/content/common/file_type_policies.h"
+ 
+ #include "base/check_op.h"
++#include "base/logging.h"
++#include "build/build_config.h"
+ #include "base/files/file_path.h"
+ #include "base/memory/singleton.h"
+ #include "base/metrics/histogram_functions.h"
+@@ -122,6 +124,11 @@
+   AutoLock lock(lock_);
+   UpdateResult result = PopulateFromBinaryPb(binary_pb);
+   RecordUpdateMetrics(result, "DynamicUpdate");
++#if BUILDFLAG(IS_OHOS)
++  LOG(INFO) << "OHOS component data: File Type Policies result="
++            << static_cast<int>(result)
++            << " active_version=" << (config_ ? config_->version_id() : 0);
++#endif
+ }
+ 
+ FileTypePolicies::UpdateResult FileTypePolicies::PopulateFromBinaryPb(

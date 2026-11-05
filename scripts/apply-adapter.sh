@@ -79,6 +79,8 @@ git -C "${chromium_src}" apply "${project_root}/patches/ohos-phone-vulkan-video.
 git -C "${chromium_src}" apply "${project_root}/patches/ohos-webnn-nnrt.patch"
 git -C "${chromium_src}" apply "${project_root}/patches/ohos-startup-probes.patch"
 git -C "${chromium_src}" apply "${project_root}/patches/ohos-video-overlay-presenter.patch"
+git -C "${chromium_src}" apply "${project_root}/patches/ohos-security-assistants.patch"
+git -C "${chromium_src}" apply "${project_root}/patches/ohos-file-type-component.patch"
 git -C "${chromium_src}" apply "${project_root}/patches/ohos-software-video-overlay.patch"
 while read -r deps_path deps_patch; do
   [[ -z "${deps_path}" || "${deps_path}" == \#* ]] && continue

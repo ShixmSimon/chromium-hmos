@@ -1,12 +1,13 @@
 # OHOS security component updates
 
-The OHOS browser enables four platform-independent data components signed
+The OHOS browser enables an explicit allowlist of data components signed
 with Chromium's pinned CRX component keys:
 
 - **CRLSet** (`hfnkpimlhhgieaddgfemjhofmfblmnib`).
 - **PKI Metadata** (`efniojlnjndmcbiieegkicadnoecjjef`).
 - **Safety Tips** (`jflookgnkcckhobaglndicnbbgbonegd`).
 - **Certificate Error Assistant** (`giekcmmlnklenlaomppkphknjmnnpneh`).
+- **File Type Policies** (`khaoiebndkojlmppeemjhbpbandiljpe`).
 
 This does not enable Google account sync, arbitrary component registration,
 speech/AI models, Widevine, or browser binary updates.
@@ -17,7 +18,7 @@ speech/AI models, Widevine, or browser binary updates.
   no longer forces `--disable-component-update` for that opt-in; an explicit
   caller-supplied disable switch is still honored. Other OHOS embedders retain
   their previous disabled default.
-- `RegisterComponentsForUpdate()` registers just these four components on OHOS.
+- `RegisterComponentsForUpdate()` registers only the explicitly allowed components on OHOS.
   The component service also rejects every other ID, including registrations
   attempted later by individual features. SODA installation stays disabled.
 - Existing `disable-background-networking` and sync restrictions remain.
@@ -134,7 +135,7 @@ against the pinned 154.0.8037.97 upstream files plus the platform prerequisites.
 Required CI/device acceptance:
 
 1. Compile through push-triggered CI; package phone and Pad from that HAR.
-2. Inspect `chrome://components`: the four allowed security components
+2. Inspect `chrome://components`: the allowed security components
    register. Check update failures separately from up-to-date status.
 3. Confirm accepted-sequence/root-store diagnostics, HTTPS transfers and no
    Cookie or separate ping requests. Listing an installed component alone is
@@ -147,3 +148,20 @@ Required CI/device acceptance:
 6. With no existing profile data and networking disabled, verify the builtin
    emergency block already applies. A test run using an existing downloaded
    CRLSet does not establish this first-run guarantee.
+
+
+## Additional data components: File Type Policies
+
+The additive `ohos-file-type-component.patch` enables the local file-type
+policy library, built-in data resource and signed updater even when
+`safe_browsing_mode=0`. It does not enable online Safe Browsing checks.
+`DownloadTargetDeterminer::GetDangerLevel` and DownloadPrefs auto-open checks
+consume the active policy on OHOS; existing dangerous-download events and
+keep/discard UI remain responsible for user decisions. The installer requires
+HTTPS; package/hash/pinned CRX verification and protobuf version checks stay
+upstream. An INFO log reports dynamic-load result and active policy version,
+not filenames or visited URLs. Unknown component IDs still fail closed.
+
+The patch applies against both pinned 154 and migrated 155 sources. Host
+allowlist/security regression tests passed. Full native build and device
+acceptance are pending; registration alone is not proof of active policy.
