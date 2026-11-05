@@ -154,3 +154,25 @@ visible and has a buffer. A candidate log alone does not prove presentation.
 Pause/scroll, resume, fullscreen/exit, navigation, and an isolated GPU restart
 must preserve controls and restore the layer. Use H264/HEVC as decoder-path
 regressions and 10-bit VP9 as a non-promoted software HDR control.
+
+## RGB crop implementation (2026-11-05; device qualification pending)
+
+The candidate gate now accepts visible source/viewport/clip intersections for
+software SDR video when the resulting full-allocation geometry is representable.
+A context-owned RSCanvasNode clips the video child. For RGB buffers, its bounds
+are the visible destination; the child displays the full allocation translated
+and scaled so the requested source rectangle maps exactly into those bounds.
+The submitted delegate source is the full RGB allocation, avoiding dependence
+on whether a particular firmware honors RGB delegate source cropping. There is
+no additional pixel copy. Native YUV keeps its prior source/destination mapping
+under an origin-aligned full-primary clipping parent.
+
+The clipping parent survives video queue recreation and is removed on drain.
+It uses the existing UI context, paired transaction completion and buffer lease
+retirement. Its factory has independently inspected full-function fingerprints
+for both retained client-library profiles. Unknown implementations fail closed.
+The shared geometry tests cover the measured 1320-to-1316 viewport intersection,
+non-full source rectangles, all clipped edges, fractional positions, invalid
+inputs and extreme enlargement. Full Chromium build and screenshot comparisons
+are required before claiming device support; older validation above still
+reflects the previous cropped-software fallback policy.

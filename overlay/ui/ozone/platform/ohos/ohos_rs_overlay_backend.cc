@@ -5,6 +5,7 @@
 #include "ohos_rs_overlay_backend.h"
 #include "ohos_rs_abi.h"
 #include "ohos_overlay_completion.h"
+#include "ohos_overlay_geometry.h"
 
 #include <arkui/native_render.h>
 #include <dlfcn.h>
@@ -119,6 +120,7 @@ struct Api {
   void* rs = nullptr;
   void* surface = nullptr;
   void* create = nullptr;
+  void* canvas_create = nullptr;
   void* context_get = nullptr;
   void* node_get = nullptr;
   void* get_surface = nullptr;
@@ -135,6 +137,7 @@ struct Api {
   void (*gravity)(void*, int) = nullptr;
   void (*z)(void*, float) = nullptr;
   void (*visible)(void*, bool) = nullptr;
+  void (*clip_to_bounds)(void*, bool) = nullptr;
   void (*clean)(void*, bool) = nullptr;
   void (*set_buffer)(void*, void*, void*, const void*) = nullptr;
   void (*flush)(void*, uint64_t, const void*, bool, uint64_t) = nullptr;
@@ -214,6 +217,10 @@ struct Api {
              "19RSSurfaceNodeConfigEbNSt3__h10shared_ptrINS0_11RSUIContextEEE",
              RsCheckedFunction::kContextSurfaceFactory))
       return false;
+    if (!Get(canvas_create,
+             "_ZN4OHOS5Rosen12RSCanvasNode6CreateEbbNSt3__h10shared_ptrINS0_11RSUIContextEEE",
+             RsCheckedFunction::kCanvasFactory))
+      return false;
     RESOLVE(context_get,
             "_ZNK4OHOS5Rosen18RSUIContextManager14GetRSUIContextEm");
     RESOLVE(node_get,
@@ -244,6 +251,7 @@ struct Api {
     RESOLVE(gravity, "_ZN4OHOS5Rosen6RSNode15SetFrameGravityENS0_7GravityE");
     RESOLVE(z, "_ZN4OHOS5Rosen6RSNode12SetPositionZEf");
     RESOLVE(visible, "_ZN4OHOS5Rosen6RSNode10SetVisibleEb");
+    RESOLVE(clip_to_bounds, "_ZN4OHOS5Rosen6RSNode15SetClipToBoundsEb");
     if (!Get(clean, "_ZN4OHOS5Rosen13RSSurfaceNode11CleanBufferEb",
              RsCheckedFunction::kCleanBuffer))
       return false;
@@ -423,6 +431,7 @@ class RsBackend final : public Backend {
       std::abort();
     api_.Drop(nodes_[0]);
     api_.Drop(nodes_[1]);
+    api_.Drop(video_clip_);
     if (handler_)
       Flush();
     api_.Drop(parent_);
@@ -459,15 +468,23 @@ class RsBackend final : public Backend {
       if (!CreateLayer(i))
         return false;
     }
-    for (auto& node : nodes_)
-      api_.add_child(parent_.object, &node, -1);
+    OhosRsSret3(&video_clip_, api_.canvas_create, 0, 0,
+                reinterpret_cast<uintptr_t>(&context_));
+    if (!video_clip_.object)
+      return false;
+    api_.clip_to_bounds(video_clip_.object, true);
+    api_.z(video_clip_.object, 0.f);
+    api_.add_child(parent_.object, &nodes_[0], -1);
+    api_.add_child(parent_.object, &video_clip_, -1);
+    api_.add_child(video_clip_.object, &nodes_[1], -1);
     attached_ = true;
     // Prove normal transaction completion before accepting any pixel buffers.
     startup_pending_ = true;
     ConfirmedFlush();
     if (drain_failed_) {
-      for (auto& node : nodes_)
-        api_.remove_child(parent_.object, &node);
+      api_.remove_child(video_clip_.object, &nodes_[1]);
+      api_.remove_child(parent_.object, &video_clip_);
+      api_.remove_child(parent_.object, &nodes_[0]);
       attached_ = false;
       Flush();
     }
@@ -512,6 +529,15 @@ class RsBackend final : public Backend {
       }
       item.source = plane.source;
       item.destination = plane.destination;
+      // Validate before emitting any commands, including extreme zoom/crops.
+      if (i && (plane.format == Format::kRgba8 ||
+                plane.format == Format::kBgra8) &&
+          !RgbVideoChildGeometry(
+              {plane.destination.x, plane.destination.y,
+               plane.destination.width, plane.destination.height},
+              {plane.source.x, plane.source.y, plane.source.width,
+               plane.source.height}, plane.width, plane.height))
+        return nullptr;
       if (plane.reuse)
         continue;
       item.slot = std::make_unique<Slot>();
@@ -560,10 +586,41 @@ class RsBackend final : public Backend {
       const auto& s = item.source;
       if (i == 0)
         primary_destination_ = d;
-      api_.bounds(node, d.x, d.y, d.width, d.height);
-      api_.frame(node, d.x, d.y, d.width, d.height);
-      api_.destination(node, d.x, d.y, d.width, d.height);
-      api_.source(node, s.x, s.y, s.width, s.height);
+      auto bounds = d;
+      auto source = s;
+      auto destination = d;
+      if (i) {
+        OH_NativeBuffer_Config config{};
+        OH_NativeBuffer_GetConfig(item.buffer, &config);
+        const bool rgb = config.format == NATIVEBUFFER_PIXEL_FMT_RGBA_8888 ||
+                         config.format == NATIVEBUFFER_PIXEL_FMT_BGRA_8888;
+        if (rgb) {
+          const auto child = RgbVideoChildGeometry(
+              {d.x, d.y, d.width, d.height}, {s.x, s.y, s.width, s.height},
+              config.width, config.height);
+          if (!child)
+            std::abort();  // Prepare validated this immutable geometry.
+          api_.bounds(video_clip_.object, d.x, d.y, d.width, d.height);
+          api_.frame(video_clip_.object, d.x, d.y, d.width, d.height);
+          bounds = {child->x, child->y, child->width, child->height};
+          source = {0, 0, float(config.width), float(config.height)};
+          destination = {d.x + bounds.x, d.y + bounds.y, bounds.width,
+                         bounds.height};
+        } else {
+          // Native YUV already honors delegate cropping; keep its existing
+          // global geometry under an origin-aligned, full-primary parent.
+          const auto& root = batch->items[0].destination;
+          api_.bounds(video_clip_.object, 0, 0, root.x + root.width,
+                      root.y + root.height);
+          api_.frame(video_clip_.object, 0, 0, root.x + root.width,
+                     root.y + root.height);
+        }
+      }
+      api_.bounds(node, bounds.x, bounds.y, bounds.width, bounds.height);
+      api_.frame(node, bounds.x, bounds.y, bounds.width, bounds.height);
+      api_.destination(node, destination.x, destination.y, destination.width,
+                       destination.height);
+      api_.source(node, source.x, source.y, source.width, source.height);
       // Sibling order inside the owned webpage host, not window-global z.
       api_.z(node, i ? 0.f : 1.f);
       api_.visible(node, true);
@@ -642,9 +699,9 @@ class RsBackend final : public Backend {
           drain_failed_ = true;
           return result;
         }
-        api_.remove_child(parent_.object, &retired);
+        api_.remove_child(video_clip_.object, &retired);
         api_.Drop(retired);
-        api_.add_child(parent_.object, &nodes_[1], -1);
+        api_.add_child(video_clip_.object, &nodes_[1], -1);
         ConfirmedFlush();
         video_cleanup_ = 3;
       }
@@ -660,11 +717,13 @@ class RsBackend final : public Backend {
     if (!OnOwner() || draining_)
       std::abort();
     draining_ = true;
-    for (auto& node : nodes_) {
+    for (unsigned i = 0; i < 2; ++i) {
+      auto& node = nodes_[i];
       api_.visible(node.object, false);
-      api_.remove_child(parent_.object, &node);
+      api_.remove_child(i ? video_clip_.object : parent_.object, &node);
       api_.clean(node.object, true);
     }
+    api_.remove_child(parent_.object, &video_clip_);
     attached_ = false;
     Flush();
     for (auto& node : nodes_)
@@ -679,6 +738,7 @@ class RsBackend final : public Backend {
       std::abort();
     for (auto& node : nodes_)
       api_.Drop(node);
+    api_.Drop(video_clip_);
     Flush();
     destroyed_ = true;
   }
@@ -767,7 +827,7 @@ class RsBackend final : public Backend {
   }
   Api api_;
   pthread_t owner_{};
-  SystemShared context_, parent_, nodes_[2];
+  SystemShared context_, parent_, nodes_[2], video_clip_;
   void* handler_ = nullptr;
   void* render_interface_ = nullptr;
   uint64_t context_token_ = 0;

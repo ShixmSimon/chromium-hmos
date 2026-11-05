@@ -129,11 +129,18 @@ class Candidates final : public OverlayCandidatesOzone {
     // before punching the hole.
     else if (!v.native_pixmap || !EligibleVideo(*v.native_pixmap, v.color_space))
       rejection = "video-pixmap-or-token";
-    else if (IsOhosSoftwareVideoOverlay(*v.native_pixmap) &&
-             (v.crop_rect != gfx::RectF(1.f, 1.f) ||
-              !p.display_rect.Contains(v.display_rect) ||
-              (v.clip_rect && !gfx::RectF(*v.clip_rect).Contains(v.display_rect))))
-      rejection = "software-crop-fallback";
+    else if (IsOhosSoftwareVideoOverlay(*v.native_pixmap)) {
+      auto source = v.crop_rect;
+      source.Scale(v.native_pixmap->GetBufferSize().width(),
+                   v.native_pixmap->GetBufferSize().height());
+      auto clipped = ClipVideoGeometry(Rect(p.display_rect), Rect(v.display_rect),
+                                       Rect(source), ClipRect(v.clip_rect));
+      if (!clipped ||
+          !RgbVideoChildGeometry(clipped->destination, clipped->source,
+                                 v.native_pixmap->GetBufferSize().width(),
+                                 v.native_pixmap->GetBufferSize().height()))
+        rejection = "software-crop-unrepresentable";
+    }
     if (rejection) {
       Report(rejection, &v);
       return;

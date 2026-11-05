@@ -28,6 +28,11 @@ int main() {
   Near(bili->destination.width, 1316);
   Near(bili->source.width, 640.f * 1316 / 1320);
   Near(bili->source.height, 360);
+  auto rgb = RgbVideoChildGeometry(bili->destination, bili->source, 640, 360);
+  assert(rgb);
+  Near(rgb->x, 0);
+  Near(rgb->width, 1320);
+  Near(rgb->height, 742.5f);
 
   // Clip all four edges, including an existing non-full source crop.
   auto clipped =
@@ -42,6 +47,21 @@ int main() {
   Near(clipped->source.y, 65);
   Near(clipped->source.width, 180);
   Near(clipped->source.height, 270);
+  // The visible top-left samples (60,65) of a full 640x720 allocation,
+  // without stretching the clipped 90x90 destination to the whole buffer.
+  auto rgb_crop = RgbVideoChildGeometry(clipped->destination, clipped->source,
+                                       640, 720);
+  assert(rgb_crop);
+  Near(rgb_crop->x, -30);
+  Near(rgb_crop->y, -65.f / 3);
+  Near(rgb_crop->width, 320);
+  Near(rgb_crop->height, 240);
+  assert(!RgbVideoChildGeometry(clipped->destination, {0, 0, 641, 360},
+                                640, 360));
+  assert(!RgbVideoChildGeometry(clipped->destination, {NAN, 0, 10, 10},
+                                640, 360));
+  // Reject extreme enlargement rather than submit out-of-range RS bounds.
+  assert(!RgbVideoChildGeometry(primary, {0, 0, 0.01f, 0.01f}, 640, 360));
 
   for (const auto invalid :
        {OhosOverlayRect{1316, 0, 10, 10}, OhosOverlayRect{0, 0, 0, 10},
@@ -71,6 +91,15 @@ int main() {
     Near(src.y, (out.y - d.y) * 360 / d.height);
     Near(src.width, out.width * 640 / d.width);
     Near(src.height, out.height * 360 / d.height);
+    auto child = RgbVideoChildGeometry(out, src, 640, 360);
+    if (!child)
+      continue;  // Extreme full-allocation enlargement is intentionally gated.
+    const double sx = double(child->width) / 640;
+    const double sy = double(child->height) / 360;
+    assert(std::abs(child->x + src.x * sx) < 0.005);
+    assert(std::abs(child->y + src.y * sy) < 0.005);
+    assert(std::abs(src.width * sx - out.width) < 0.005);
+    assert(std::abs(src.height * sy - out.height) < 0.005);
   }
   puts(
       "PASS fractional geometry, Bilibili viewport clipping, source mapping "

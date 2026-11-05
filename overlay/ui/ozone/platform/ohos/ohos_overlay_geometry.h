@@ -21,6 +21,33 @@ struct ClippedVideoGeometry {
   OhosOverlayRect source;
 };
 
+// RGB surface composition on some firmware ignores DelegateSrcRect. Place
+// the entire allocation below a clipping parent instead: the parent's bounds
+// are the visible destination, and this child rectangle preserves the exact
+// source-to-destination mapping. This also works when source cropping *is*
+// honored, since the submitted RGB source is always the full allocation.
+inline std::optional<OhosOverlayRect> RgbVideoChildGeometry(
+    const OhosOverlayRect& destination,
+    const OhosOverlayRect& source,
+    float buffer_width,
+    float buffer_height) {
+  const OhosOverlayRect allocation{0, 0, buffer_width, buffer_height};
+  if (!FiniteOverlayRect(destination) || !FiniteOverlayRect(source) ||
+      !FiniteOverlayRect(allocation) || source.x < 0 || source.y < 0 ||
+      source.x + source.width > buffer_width ||
+      source.y + source.height > buffer_height)
+    return std::nullopt;
+  const double scale_x = double(destination.width) / source.width;
+  const double scale_y = double(destination.height) / source.height;
+  OhosOverlayRect child{float(-source.x * scale_x),
+                        float(-source.y * scale_y),
+                        float(buffer_width * scale_x),
+                        float(buffer_height * scale_y)};
+  if (!FiniteOverlayRect(child))
+    return std::nullopt;
+  return child;
+}
+
 // RS accepts floating-point rectangles. Intersect the visible destination,
 // preserving the source-to-destination mapping instead of rounding position or
 // stretching a clipped video. Source may be normalized or in buffer pixels.

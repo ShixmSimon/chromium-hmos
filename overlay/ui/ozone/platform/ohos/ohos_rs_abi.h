@@ -19,6 +19,7 @@ enum class RsCheckedFunction : size_t {
   kTransactionCallbackRegister,
   kGetSurface,
   kGoBackground,
+  kCanvasFactory,
   kCount,
 };
 struct RsFingerprint {
@@ -55,6 +56,7 @@ inline constexpr RsAbiProfile kRsAbiProfiles[] = {
          {336, 0x02ebbce1u},   // kTransactionCallbackRegister
          {264, 0x108d9ce0u},   // kGetSurface
          {92, 0x2ef7d186u},    // kGoBackground
+         {1468, 0x208e5be6u},  // kCanvasFactory
      }}},
     {"retail-20261104",
      0x18270173u,
@@ -70,6 +72,7 @@ inline constexpr RsAbiProfile kRsAbiProfiles[] = {
          {336, 0xa8cc26c5u},   // kTransactionCallbackRegister
          {264, 0x7659cdadu},   // kGetSurface
          {92, 0xccea5842u},    // kGoBackground
+         {1468, 0x58c8badcu},  // kCanvasFactory
      }}},
 };
 inline const RsAbiProfile* SelectRsAbiProfile(

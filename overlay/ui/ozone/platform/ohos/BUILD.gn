@@ -170,6 +170,7 @@ action("overlay_bridge") {
     "ohos_rs_overlay_backend.cc",
     "ohos_rs_overlay_backend.h",
     "ohos_overlay_completion.h",
+    "ohos_overlay_geometry.h",
     "ohos_rs_abi.h",
     "ohos_overlay_bridge.cc",
     "ohos_overlay_bridge.h",
