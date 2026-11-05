@@ -337,3 +337,26 @@ retains filtered test-layer records and presenter logs, not other windows'
 trees. Screenshots, scroll/fullscreen, navigation/background and GPU-loss
 checks remain separate qualification steps. Syntax checking the script is
 not a device result.
+
+For software RGB crop qualification, generate the asymmetric static fixture,
+then run the seven-case capture and pixel comparison (Pillow and NumPy):
+
+```sh
+python3 scripts/tests/ohos-video-overlay/generate_crop_media.py \
+  docs/test-pages/video-overlay-hdr/media/software-crop.mp4
+node scripts/tests/ohos-video-overlay/software_crop_validation.mjs \
+  http://127.0.0.1:19222 http://127.0.0.1:18880/video-overlay-hdr/ \
+  /tmp/lumie-software-crop-validation DEVICE_SERIAL
+python3 scripts/tests/ohos-video-overlay/compare_software_crop.py \
+  /tmp/lumie-software-crop-validation
+```
+
+The fixture server and device-to-host HTTP / host-to-device CDP forwards must
+already be running. Tests use a new tab, release their wake lock, and close only
+that tab. Cases include full visibility, a four-pixel viewport overflow, left,
+top and bottom clipping, object-fit source cropping, and an overflow-hidden
+parent. Real RS video/web buffers and advancing video frames are required.
+Screenshots are compared against near-zero-blur composited fallback using an
+independent viewport marker. The fixed two-dimensional source catches scale,
+translation and edge errors that a one-dimensional grayscale pattern misses.
+Capture success alone is insufficient; the separate comparison must also pass.

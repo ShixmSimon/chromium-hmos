@@ -176,3 +176,16 @@ non-full source rectangles, all clipped edges, fractional positions, invalid
 inputs and extreme enlargement. Full Chromium build and screenshot comparisons
 are required before claiming device support; older validation above still
 reflects the previous cropped-software fallback policy.
+
+Implementation `db9beeaa` passed Adapter CI and the full Chromium 155
+incremental build (runs 41953801090 / 41953801043). The NDK bridge and the
+ASan/UBSan overlay suite also passed locally. The generated asymmetric VP9
+fixture and `software_crop_validation.mjs` / `compare_software_crop.py` provide
+seven crop cases and independent pixel comparisons. The comparator was checked
+with both identical screenshots and an intentional one-pixel displacement.
+
+Device qualification was postponed at the user's request. An attempted
+old-package baseline was interrupted during its initial full-visibility case
+when the app became hidden; it did not reach a cropped case. Its test tab,
+media and wake lock were cleaned up. No cropped-software device success or
+visual correctness is claimed for this implementation yet.
