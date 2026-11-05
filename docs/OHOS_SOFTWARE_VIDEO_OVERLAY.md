@@ -155,7 +155,7 @@ Pause/scroll, resume, fullscreen/exit, navigation, and an isolated GPU restart
 must preserve controls and restore the layer. Use H264/HEVC as decoder-path
 regressions and 10-bit VP9 as a non-promoted software HDR control.
 
-## RGB crop implementation (2026-11-05; device qualification pending)
+## RGB crop implementation (2026-11-05; device qualification failed)
 
 The candidate gate now accepts visible source/viewport/clip intersections for
 software SDR video when the resulting full-allocation geometry is representable.
@@ -189,3 +189,43 @@ old-package baseline was interrupted during its initial full-visibility case
 when the app became hidden; it did not reach a cropped case. Its test tab,
 media and wake lock were cleaned up. No cropped-software device success or
 visual correctness is claimed for this implementation yet.
+
+### Device crop qualification, 2026-11-05
+
+Installed full Chromium 155 build `e14ce50e` (includes `db9beeaa`) on Mate 70
+Pro+, Ganesh Vulkan. HAR checksum, engine cache, and all 67 packaged native/raw
+payloads were verified; installation and launch smoke passed. Default runtime
+UA no longer includes the OpenHarmony product suffix.
+
+All seven final cases showed visible RS webpage/video buffers, advancing video
+(at least 60 additional frames per promoted case), and successful CSS-filter
+fallback. GPU process crash count stayed 0; test media, tab and wake lock were
+cleaned up. **Presentation success did not establish crop correctness.**
+
+Pixel comparisons against ordinary webpage composition failed overall:
+
+| Case | Pixel result | Mean absolute RGB error (0–255) |
+| --- | --- | ---: |
+| Unclipped control | Pass | 0.0036 |
+| Right viewport overflow | Fail | 1.3772 |
+| Left viewport crop | Fail | 6.8744 |
+| Top viewport crop | Pass | 0.0074 |
+| Bottom viewport crop | Fail | 39.8924 |
+| Object-fit cover | Pass | 0.0001 |
+| Overflow-hidden parent | Fail | 42.6651 |
+
+The parent crop captures visibly select/scale a different part of the test
+pattern. The RSCanvasNode parent workaround is therefore not qualified on this
+firmware; do not describe general software crop promotion as complete. These
+captures localize a source/destination mapping failure but do not yet identify
+the exact RS command/property responsible.
+
+Initial small-visible-region bottom/cover/parent cases did not promote despite
+advancing playback. Enlarging those regions permitted promotion, so the final
+suite uses larger cases to exercise actual crop presentation. The runner now
+records per-case failures and continues instead of suppressing later cases.
+
+Local evidence: `/tmp/lumie-software-crop/device-e14ce50e-final/report.json`,
+`presenter.log`, fourteen screenshots and `pixel-comparison.json`. Earlier
+repetitions in `device-e14ce50e`, `device-e14ce50e-repeat` and
+`device-e14ce50e-large` reproduce the failing crops.

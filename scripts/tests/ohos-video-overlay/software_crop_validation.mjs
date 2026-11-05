@@ -5,7 +5,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 const exec = promisify(execFile);
 const [endpoint, url, output, serial] = process.argv.slice(2);
-if (!serial) throw Error('Usage: node webpage_promotion_validation.mjs CDP PAGE OUTPUT SERIAL');
+if (!serial) throw Error('Usage: node software_crop_validation.mjs CDP PAGE OUTPUT SERIAL');
 const hdc = process.env.HDC_BIN || '/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc';
 await fs.mkdir(output, {recursive: false});
 const report = {started: new Date().toISOString(), scope: 'Software SDR crop promotion and screenshot capture', cases: [], cleanupErrors: []};
@@ -77,40 +77,50 @@ try {
     v.src=${JSON.stringify(new URL('media/software-crop.mp4',url).href)};await v.play();
   })()`);
   await logs();
+  // Keep a sufficiently large visible video region: promotion heuristics can
+  // legitimately keep tiny clipped videos in the normal compositor.
   const cases = [
     ['full', '20.25,80.25,800,450'],
     ['viewport_right_4px', '0,80,innerWidth*devicePixelRatio+4,742'],
     ['left', '-20.25,80.25,800,450'],
     ['top', '20.25,-40.25,800,450'],
-    ['bottom', '20.25,innerHeight*devicePixelRatio-100.25,800,450'],
-    ['source_cover', '20.25,80.25,800,260'],
-    ['overflow_parent', '-50.25,-30.25,800,450'],
+    ['bottom', '20.25,innerHeight*devicePixelRatio-400.25,1000,650'],
+    ['source_cover', '20.25,80.25,1000,500'],
+    ['overflow_parent', '-50.25,-30.25,1100,650'],
   ];
   for (const [name, dims] of cases) {
     const entry={name};report.cases.push(entry);
-    entry.geometry=await evaluate(`(()=>{
-      const [x,y,w,h]=[${dims}];const d=devicePixelRatio;
-      c.style.cssText='position:fixed;left:0;top:0;width:100%;height:100%;overflow:visible';
-      if(${JSON.stringify(name)}==='overflow_parent')c.style.cssText='position:fixed;left:'+20/d+'px;top:'+80/d+'px;width:'+600/d+'px;height:'+300/d+'px;overflow:hidden';
-      v.style.cssText='position:absolute;max-width:none;max-height:none;left:'+x/d+'px;top:'+y/d+'px;width:'+w/d+'px;height:'+h/d+'px;object-fit:'+(${JSON.stringify(name)}==='source_cover'?'cover':'fill')+';filter:none';
-      const r=v.getBoundingClientRect(),p=c.getBoundingClientRect();
-      const l=Math.max(0,r.left,p.left),t=Math.max(0,r.top,p.top),rr=Math.min(innerWidth,r.right,p.right),b=Math.min(innerHeight,r.bottom,p.bottom);
-      return {rect:r.toJSON(),parent:p.toJSON(),dpr:d,roi:[l*d,t*d,rr*d,b*d]};
-    })()`);
-    entry.promoted=await waitFor(layers, rows=>visible(rows,'Web')&&visible(rows,'Video'), name+' promoted');
-    const start=await snapshot();
-    entry.sustained=await waitFor(snapshot,s=>s.frames>=start.frames+60&&!s.paused&&!s.error,name+' frames');
-    await exec('devecocli',['ui','screenshot','--device',serial,'--path',output+'/'+name+'-promoted.png'],{timeout:15000});
-    await evaluate("v.style.filter='blur(0.01px)'");
-    entry.demoted=await waitFor(layers,rows=>visible(rows,'Web')&&!visible(rows,'Video'),name+' composited baseline');
-    await sleep(300);
-    await exec('devecocli',['ui','screenshot','--device',serial,'--path',output+'/'+name+'-composited.png'],{timeout:15000});
-    events.push(...await logs());
+    try {
+      entry.geometry=await evaluate(`(()=>{
+        const [x,y,w,h]=[${dims}];const d=devicePixelRatio;
+        c.style.cssText='position:fixed;left:0;top:0;width:100%;height:100%;overflow:visible';
+        if(${JSON.stringify(name)}==='overflow_parent')c.style.cssText='position:fixed;left:'+20/d+'px;top:'+80/d+'px;width:'+900/d+'px;height:'+500/d+'px;overflow:hidden';
+        v.style.cssText='position:absolute;max-width:none;max-height:none;left:'+x/d+'px;top:'+y/d+'px;width:'+w/d+'px;height:'+h/d+'px;object-fit:'+(${JSON.stringify(name)}==='source_cover'?'cover':'fill')+';filter:none';
+        const r=v.getBoundingClientRect(),p=c.getBoundingClientRect();
+        const l=Math.max(0,r.left,p.left),t=Math.max(0,r.top,p.top),rr=Math.min(innerWidth,r.right,p.right),b=Math.min(innerHeight,r.bottom,p.bottom);
+        return {viewport:{width:innerWidth,height:innerHeight,visualHeight:visualViewport.height},rect:r.toJSON(),parent:p.toJSON(),dpr:d,roi:[l*d,t*d,rr*d,b*d]};
+      })()`);
+      entry.promoted=await waitFor(layers, rows=>visible(rows,'Web')&&visible(rows,'Video'), name+' promoted');
+      const start=await snapshot();
+      entry.sustained=await waitFor(snapshot,s=>s.frames>=start.frames+60&&!s.paused&&!s.error,name+' frames');
+      await exec('devecocli',['ui','screenshot','--device',serial,'--path',output+'/'+name+'-promoted.png'],{timeout:15000});
+      await evaluate("v.style.filter='blur(0.01px)'");
+      entry.demoted=await waitFor(layers,rows=>visible(rows,'Web')&&!visible(rows,'Video'),name+' composited baseline');
+      await sleep(300);
+      await exec('devecocli',['ui','screenshot','--device',serial,'--path',output+'/'+name+'-composited.png'],{timeout:15000});
+      events.push(...await logs());
+    } catch(e) {
+      entry.error=String(e);
+      entry.failureSnapshot=await snapshot().catch(()=>null);
+      entry.failureLayers=await layers().catch(()=>[]);
+      events.push(...await logs().catch(()=>[]));
+    }
     await fs.writeFile(`${output}/report.json`,JSON.stringify(report,null,2));
   }
   report.finalSystem=await browser.call('SystemInfo.getInfo');
   if(report.finalSystem.gpu.auxAttributes.processCrashCount!==report.initialSystem.gpu.auxAttributes.processCrashCount)throw Error('GPU restarted');
-  report.passed=true;
+  report.passed=report.cases.length===7&&report.cases.every(c=>!c.error);
+  if(!report.passed)process.exitCode=1;
 } catch(e) {
   report.error=String(e); process.exitCode=1;
   report.failureLayers = await layers().catch(()=>[]);
