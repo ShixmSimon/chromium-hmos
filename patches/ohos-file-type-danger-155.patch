@@ -1,0 +1,14 @@
+Enable local type-policy danger evaluation on OHOS.
+
+diff --git a/chrome/browser/download/download_target_determiner.cc b/chrome/browser/download/download_target_determiner.cc
+--- a/chrome/browser/download/download_target_determiner.cc
++++ b/chrome/browser/download/download_target_determiner.cc
+@@ -1280,7 +1280,7 @@
+     return DownloadFileType::NOT_DANGEROUS;
+   }
+ 
+-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
++#if BUILDFLAG(SAFE_BROWSING_AVAILABLE) || BUILDFLAG(IS_OHOS)
+   base::FilePath file_display_name = GetFileDisplayName();
+   DownloadFileType::DangerLevel danger_level =
+       safe_browsing::FileTypePolicies::GetInstance()->GetFileDangerLevel(
