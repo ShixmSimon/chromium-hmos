@@ -1,0 +1,209 @@
+diff --git a/third_party/blink/renderer/bindings/core/v8/script_streamer.cc b/third_party/blink/renderer/bindings/core/v8/script_streamer.cc
+--- a/third_party/blink/renderer/bindings/core/v8/script_streamer.cc
++++ b/third_party/blink/renderer/bindings/core/v8/script_streamer.cc
+@@ -13,6 +13,7 @@
+ #include "base/check_op.h"
+ #include "base/containers/heap_array.h"
+ #include "base/containers/span.h"
++#include "base/feature_list.h"
+ #include "base/logging.h"
+ #include "base/memory/ptr_util.h"
+ #include "base/memory/raw_ptr.h"
+@@ -82,6 +83,41 @@
+ 
+ namespace {
+ 
++// Opt-in experiment: prefer the existing non-streaming module cache consumer
++// only when metadata has the current V8 cache tag. This is not background
++// module deserialization; V8 and the cache handler still validate on consumption.
++BASE_FEATURE(kOhosModuleCodeCache, base::FEATURE_DISABLED_BY_DEFAULT);
++
++bool HasModuleCodeCache(mojo_base::BigBuffer& data,
++                        const TextEncoding& encoding) {
++  scoped_refptr<CachedMetadata> metadata =
++      CachedMetadata::CreateFromSerializedData(data);
++  if (!metadata) {
++    if (data.size() < sizeof(CachedMetadataHeaderWithHash)) {
++      return false;
++    }
++    const auto* header =
++        reinterpret_cast<const CachedMetadataHeaderWithHash*>(data.data());
++    if (header->marker !=
++        CachedMetadataHandler::kSingleEntryWithHashAndPadding) {
++      return false;
++    }
++    metadata = CachedMetadata::CreateFromSerializedData(
++        data, sizeof(CachedMetadataHeaderWithHash));
++    if (!metadata) {
++      return false;
++    }
++  }
++  const bool has_code_cache =
++      V8CodeCache::HasCodeCache(*metadata, encoding.GetName());
++  // CreateFromSerializedData moves the buffer. Restore it byte-for-byte,
++  // including the hash envelope; the main-thread handler must check the hash.
++  auto serialized = std::move(*metadata).DrainSerializedData();
++  CHECK(std::holds_alternative<mojo_base::BigBuffer>(serialized));
++  data = std::move(std::get<mojo_base::BigBuffer>(serialized));
++  return has_code_cache;
++}
++
+ v8::ScriptType ScriptTypeForStreamingTask(ScriptResource* script_resource) {
+   switch (script_resource->GetInitialRequestScriptType()) {
+     case mojom::blink::ScriptType::kModule:
+@@ -1878,6 +1914,29 @@
+   if (!RuntimeEnabledFeatures::ServiceWorkerCodeCacheEnabled() &&
+       head->was_fetched_via_service_worker) {
+     cached_metadata.reset();
++  }
++
++  if (!is_valid_wasm_mime_type &&
++      details_->script_type == v8::ScriptType::kModule && cached_metadata &&
++      base::FeatureList::IsEnabled(kOhosModuleCodeCache)) {
++    TextEncoding encoding = details_->encoding;
++    if (!head->charset.empty()) {
++      TextEncoding response_encoding(String(head->charset));
++      if (response_encoding.IsValid()) {
++        encoding = response_encoding;
++      }
++    }
++    if (HasModuleCodeCache(*cached_metadata, encoding)) {
++      TRACE_EVENT_INSTANT("v8,devtools.timeline",
++                          "OhosModuleCodeCache::PreferCache", "url",
++                          details_->script_url_string.Utf8());
++      // Return ownership unchanged to the normal response loader. Do not use
++      // kHasCodeCacheBackground: with the background decoder enabled that
++      // reason requires a decoded Result, which this path does not create.
++      PostResultToMainThread(/*result=*/nullptr,
++                             NotStreamingReason::kHasCodeCache);
++      return false;
++    }
+   }
+ 
+   if (is_valid_wasm_mime_type) {
+diff --git a/third_party/blink/renderer/bindings/core/v8/script_streamer_test.cc b/third_party/blink/renderer/bindings/core/v8/script_streamer_test.cc
+--- a/third_party/blink/renderer/bindings/core/v8/script_streamer_test.cc
++++ b/third_party/blink/renderer/bindings/core/v8/script_streamer_test.cc
+@@ -1378,6 +1378,122 @@
+ };
+ int BackgroundResourceScriptStreamerTestBase::url_counter_ = 0;
+ 
++// Exercise the complete background response handoff with the experiment both
++// enabled and disabled. Keep the background decoder enabled to catch accidental
++// use of kHasCodeCacheBackground with a null Result.
++class OhosModuleCodeCacheTest
++    : public BackgroundResourceScriptStreamerTestBase,
++      public testing::WithParamInterface<bool> {
++ public:
++  OhosModuleCodeCacheTest() {
++    const std::string background =
++        "BackgroundResourceFetch:background-script-response-processor/true/"
++        "background-code-cache-decoder-start/true";
++    feature_list_.InitFromCommandLine(
++        background + (GetParam() ? ",OhosModuleCodeCache" : ""),
++        GetParam() ? "" : "OhosModuleCodeCache");
++  }
++
++ protected:
++  void RunModule(std::optional<mojo_base::BigBuffer> metadata,
++                 bool has_code_cache,
++                 const std::string& charset = "utf-8") {
++    V8TestingScope scope;
++    Init(scope.GetIsolate(), /*is_module_script=*/true);
++    std::optional<std::vector<uint8_t>> original;
++    if (metadata) {
++      original.emplace(metadata->begin(), metadata->end());
++    }
++    const bool prefer_cache = GetParam() && has_code_cache;
++    RunInBackgroundThread(base::BindLambdaForTesting([&]() {
++      auto head = CreateURLResponseHead();
++      head->charset = charset;
++      EXPECT_EQ(!prefer_cache,
++                background_response_processor_->MaybeStartProcessingResponse(
++                    head, consumer_handle_, metadata,
++                    background_resource_fetch_task_runner_,
++                    &background_response_processor_client_));
++      EXPECT_EQ(prefer_cache, !!head);
++      EXPECT_EQ(prefer_cache, !!consumer_handle_);
++      if (prefer_cache) {
++        ASSERT_TRUE(metadata);
++        EXPECT_THAT(*metadata, testing::ElementsAreArray(*original));
++      }
++    }));
++    AppendData(kLargeEnoughScript);
++    producer_handle_.reset();
++    if (!prefer_cache) {
++      background_response_processor_client_.WaitUntilFinished();
++      std::optional<base::span<const uint8_t>> expected;
++      if (original) {
++        expected = base::span<const uint8_t>(*original);
++      }
++      background_response_processor_client_.CheckResultOfFinishCallback(
++          base::span_from_cstring(kLargeEnoughScript), expected);
++    }
++    Finish();
++    RunUntilResourceLoaded();
++    if (prefer_cache) {
++      CheckNotStreamingReason(ScriptStreamer::NotStreamingReason::kHasCodeCache,
++                              mojom::blink::ScriptType::kModule);
++    } else {
++      EXPECT_TRUE(TakeScriptStreamer(mojom::blink::ScriptType::kModule));
++    }
++  }
++};
++
++INSTANTIATE_TEST_SUITE_P(All, OhosModuleCodeCacheTest, testing::Bool());
++
++TEST_P(OhosModuleCodeCacheTest, TaggedCachePreservesOwnership) {
++  RunModule(CreateDummyCodeCacheData(), true);
++}
++
++TEST_P(OhosModuleCodeCacheTest, HashEnvelopePreservedForValidation) {
++  RunModule(CreateDummyCodeCacheDataWithHash(
++                base::span_from_cstring(kLargeEnoughScript)),
++            true);
++}
++
++TEST_P(OhosModuleCodeCacheTest, DifferentHashStillRequiresConsumerValidation) {
++  // Selecting this path is not cache acceptance. Preserve the mismatched hash
++  // so the normal cache handler can reject it after loading the source.
++  RunModule(CreateDummyCodeCacheDataWithHash(
++                base::span_from_cstring("different source")),
++            true);
++}
++
++TEST_P(OhosModuleCodeCacheTest, NoMetadataKeepsStreaming) {
++  RunModule(std::nullopt, false);
++}
++
++TEST_P(OhosModuleCodeCacheTest, TimestampKeepsStreaming) {
++  RunModule(CreateDummyTimeStampData(), false);
++}
++
++TEST_P(OhosModuleCodeCacheTest, EncodingMismatchKeepsStreaming) {
++  RunModule(CreateDummyCodeCacheData(), false, "windows-1252");
++}
++
++TEST_P(OhosModuleCodeCacheTest, TruncatedMetadataKeepsStreaming) {
++  const uint8_t invalid[] = {0, 0};
++  RunModule(mojo_base::BigBuffer(base::span(invalid)), false);
++}
++
++TEST_P(OhosModuleCodeCacheTest, TruncatedHashEnvelopeKeepsStreaming) {
++  auto metadata = CreateDummyCodeCacheDataWithHash(
++      base::span_from_cstring(kLargeEnoughScript));
++  RunModule(mojo_base::BigBuffer(base::span<const uint8_t>(metadata).first(
++                sizeof(CachedMetadataHeaderWithHash) - 1)),
++            false);
++}
++
++TEST_P(OhosModuleCodeCacheTest, InvalidInnerHashMetadataKeepsStreaming) {
++  auto metadata = CreateDummyCodeCacheDataWithHash(
++      base::span_from_cstring(kLargeEnoughScript));
++  metadata.data()[sizeof(CachedMetadataHeaderWithHash)] ^= 0xff;
++  RunModule(std::move(metadata), false);
++}
++
+ class BackgroundResourceScriptStreamerTest
+     : public BackgroundResourceScriptStreamerTestBase,
+       public testing::WithParamInterface<bool> {

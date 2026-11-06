@@ -908,3 +908,44 @@ engine package installation remain pending. Do not treat the startup trace's
 normal redraw activity as a measured before/after settings-scroll result. The
 last installed package is the local normal-completion bridge on `57ed6316`.
 The 154 branch currently has no corresponding RS overlay backend to backport.
+
+### Full engine and settings-scroll verification (2026-11-05)
+
+The CI build of `e240585a7a83c6f6b1438d998cfabab98fb28572` was downloaded,
+SHA256-verified, and installed over the existing app on the Mate 70 Pro+.
+All 67 engine payloads in the signed HAP matched the published HAR. Installation
+and launch passed; browser PID 3463 remained alive throughout the tests.
+Artifacts and installation checks are under `/tmp/lumie-install-e240585a/`.
+
+Two settings captures each exercised four alternating vertical swipes at
+1800 and 3200 px/s, once before and once after the video regression:
+
+| Capture | App delegate batches | Full RS render frames | UI Vsync tasks | UI task max / p95 |
+| --- | --- | --- | --- | --- |
+| Before videos | 0 | 539 | 190 | 5.001 / 2.074 ms |
+| After videos | 0 | 691 | 697 | 3.155 / 2.010 ms |
+
+Both traces contain zero `RegisterSurfaceTransactionListener` registrations.
+UI task statistics count the outer `UIVsyncTask` spans with an `instanceID`,
+excluding nested input-handling spans. These are automated scroll observations,
+not a matched manual before/after benchmark or end-to-end display latency.
+They establish that the former delegate routing is absent, including after
+video promotion; subjective scrolling confirmation is still pending.
+See `settings-summary.json` and `settings-after-video-summary.json`.
+
+The full engine also passed all four promoted-video cases:
+
+| Clip | Frames during sustained promoted playback | Geometry cases | CSS demotion / re-promotion |
+| --- | --- | --- | --- |
+| SDR software VP9 | 17 → 378 | 4 | passed |
+| SDR H.264 | 20 → 386 | 4 | passed |
+| SDR 10-bit HEVC | 23 → 390 | 4 | passed |
+| HDR10 HEVC | 22 → 385 | 4 | passed |
+
+Actual RS video/web layers were visible, 24 promotion and 23 demotion
+processing notifications were observed, and GPU crash count stayed at 0.
+Test tab, media and wake-lock cleanup succeeded. This verifies HDR10 playback
+through the independent layer, not a new photometric measurement of HDR output.
+The report is `video/report.json`; the installed signed HAP is archived beside
+`verified.json`. The installed package is now the full CI engine `e240585a`,
+superseding the local bridge-only package described above.

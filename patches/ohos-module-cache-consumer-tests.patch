@@ -1,0 +1,196 @@
+diff --git a/third_party/blink/renderer/bindings/core/v8/v8_script_runner_test.cc b/third_party/blink/renderer/bindings/core/v8/v8_script_runner_test.cc
+--- a/third_party/blink/renderer/bindings/core/v8/v8_script_runner_test.cc
++++ b/third_party/blink/renderer/bindings/core/v8/v8_script_runner_test.cc
+@@ -3,6 +3,8 @@
+ // found in the LICENSE file.
+ 
+ #include "third_party/blink/renderer/bindings/core/v8/v8_script_runner.h"
++
++#include <optional>
+ 
+ #include "base/location.h"
+ #include "base/test/metrics/histogram_tester.h"
+@@ -16,6 +18,7 @@
+ #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_testing.h"
+ #include "third_party/blink/renderer/bindings/core/v8/v8_code_cache.h"
+ #include "third_party/blink/renderer/core/execution_context/execution_context.h"
++#include "third_party/blink/renderer/core/loader/modulescript/module_script_creation_params.h"
+ #include "third_party/blink/renderer/core/loader/resource/script_resource.h"
+ #include "third_party/blink/renderer/core/script/classic_script.h"
+ #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+@@ -210,6 +213,175 @@
+ 
+ int V8ScriptRunnerTest::counter_ = 0;
+ 
++// Verify the existing non-streaming module consumer independently of the
++// background handoff tests. Real V8 payloads keep metadata-tag selection from
++// being mistaken for successful deserialization.
++class OhosModuleCacheTrackingHandler final
++    : public ScriptCachedMetadataHandler {
++ public:
++  OhosModuleCacheTrackingHandler()
++      : ScriptCachedMetadataHandler(Utf8Encoding(), nullptr) {}
++
++  void DidUseCodeCache(bool was_rejected) override {
++    ++consume_calls;
++    rejected = was_rejected;
++  }
++
++  void ClearCachedMetadata(CodeCacheHost* host, ClearCacheType type) override {
++    if (type == kClearPersistentStorage) {
++      ++persistent_clears;
++    }
++    ScriptCachedMetadataHandler::ClearCachedMetadata(host, type);
++  }
++
++  ServingSource GetServingSource() const override {
++    return ServingSource::kOther;
++  }
++
++  int consume_calls = 0;
++  int persistent_clears = 0;
++  std::optional<bool> rejected;
++
++ protected:
++  // The test keeps metadata in memory and never writes to the browser cache.
++  void CommitToPersistentStorage(CodeCacheHost*) override {}
++};
++
++class OhosModuleCodeCacheConsumerTest : public V8ScriptRunnerTest {
++ protected:
++  String ModuleSource() const {
++    return StrCat(
++        {"globalThis.__lumieModuleCacheValue = 42; "
++         "export const result = 42; // ",
++         Code()});
++  }
++
++  v8::MaybeLocal<v8::Module> CompileModule(
++      V8TestingScope& scope,
++      const String& code,
++      CachedMetadataHandler* handler,
++      v8::ScriptCompiler::CompileOptions options) {
++    ModuleScriptCreationParams params(
++        Url(), Url(), ScriptSourceLocationType::kExternalFile,
++        ResolvedModuleType::kJavaScript, ParkableString(code.Impl()), handler,
++        network::mojom::ReferrerPolicy::kDefault, String());
++    return V8ScriptRunner::CompileModule(
++        scope.GetIsolate(), params, TextPosition::MinimumPosition(), options,
++        v8::ScriptCompiler::kNoCacheNoReason,
++        ReferrerScriptInfo(Url(), ScriptFetchOptions()));
++  }
++
++  Vector<uint8_t> CreateModuleCache() {
++    V8TestingScope scope;
++    v8::Local<v8::Module> module;
++    if (!CompileModule(scope, ModuleSource(), nullptr,
++                       v8::ScriptCompiler::kNoCompileOptions)
++             .ToLocal(&module)) {
++      ADD_FAILURE() << "Cannot compile the cache producer module";
++      return {};
++    }
++    std::unique_ptr<v8::ScriptCompiler::CachedData> cache(
++        v8::ScriptCompiler::CreateCodeCache(module->GetUnboundModuleScript()));
++    if (!cache || cache->length <= 0) {
++      ADD_FAILURE() << "V8 did not produce module code cache";
++      return {};
++    }
++    return Vector<uint8_t>(ToSpan(*cache));
++  }
++
++  void ConsumeAndExecute(const Vector<uint8_t>& payload,
++                         const String& source,
++                         bool expect_rejection,
++                         int expected_value = 42) {
++    V8TestingScope scope;
++    auto* handler = MakeGarbageCollected<OhosModuleCacheTrackingHandler>();
++    auto metadata =
++        CachedMetadata::Create(TagForCodeCache(handler), base::span(payload));
++    handler->SetSerializedCachedMetadata(
++        mojo_base::BigBuffer(metadata->SerializedData()));
++    ASSERT_TRUE(V8CodeCache::HasCodeCache(handler));
++
++    v8::Local<v8::Module> module;
++    ASSERT_TRUE(CompileModule(scope, source, handler,
++                              v8::ScriptCompiler::kConsumeCodeCache)
++                    .ToLocal(&module));
++    ASSERT_EQ(1, handler->consume_calls);
++    ASSERT_TRUE(handler->rejected.has_value());
++    EXPECT_EQ(expect_rejection, *handler->rejected);
++    EXPECT_EQ(expect_rejection ? 1 : 0, handler->persistent_clears);
++    EXPECT_EQ(!expect_rejection, V8CodeCache::HasCodeCache(handler));
++
++    // Successful compilation alone is insufficient: execute the fallback and
++    // inspect its export as well as the observable top-level side effect.
++    ASSERT_TRUE(
++        module
++            ->InstantiateModule(
++                scope.GetContext(),
++                [](v8::Local<v8::Context>, v8::Local<v8::String>,
++                   v8::Local<v8::FixedArray>,
++                   v8::Local<v8::Module>) -> v8::MaybeLocal<v8::Module> {
++                  ADD_FAILURE() << "Unexpected dependency";
++                  return {};
++                })
++            .FromMaybe(false));
++    v8::Local<v8::Value> evaluation;
++    ASSERT_TRUE(module->Evaluate(scope.GetContext()).ToLocal(&evaluation));
++    ASSERT_TRUE(evaluation->IsPromise());
++    EXPECT_EQ(v8::Promise::kFulfilled, evaluation.As<v8::Promise>()->State());
++    v8::Local<v8::Value> result;
++    ASSERT_TRUE(
++        module->GetModuleNamespace()
++            .As<v8::Object>()
++            ->Get(scope.GetContext(), V8String(scope.GetIsolate(), "result"))
++            .ToLocal(&result));
++    EXPECT_EQ(expected_value,
++              result->Int32Value(scope.GetContext()).FromMaybe(-1));
++    ASSERT_TRUE(
++        scope.GetContext()
++            ->Global()
++            ->Get(scope.GetContext(),
++                  V8String(scope.GetIsolate(), "__lumieModuleCacheValue"))
++            .ToLocal(&result));
++    EXPECT_EQ(expected_value,
++              result->Int32Value(scope.GetContext()).FromMaybe(-1));
++  }
++};
++
++TEST_F(OhosModuleCodeCacheConsumerTest, ValidModuleCacheIsAccepted) {
++  const auto payload = CreateModuleCache();
++  ASSERT_GT(payload.size(), 4u);
++  ConsumeAndExecute(payload, ModuleSource(), false);
++}
++
++TEST_F(OhosModuleCodeCacheConsumerTest,
++       CorruptV8HeaderFallsBackAndClearsCache) {
++  auto payload = CreateModuleCache();
++  ASSERT_GT(payload.size(), 4u);
++  // Preserve Blink's valid tag and metadata envelope; corrupt only V8 bytes.
++  payload[0] ^= 0xff;
++  ConsumeAndExecute(payload, ModuleSource(), true);
++}
++
++TEST_F(OhosModuleCodeCacheConsumerTest,
++       TruncatedV8PayloadFallsBackAndClearsCache) {
++  const auto payload = CreateModuleCache();
++  ASSERT_GT(payload.size(), 4u);
++  ConsumeAndExecute(Vector<uint8_t>(base::span(payload).first(size_t{1})),
++                    ModuleSource(), true);
++}
++
++TEST_F(OhosModuleCodeCacheConsumerTest, DifferentSourceLengthFallsBack) {
++  const auto payload = CreateModuleCache();
++  ASSERT_GT(payload.size(), 4u);
++  // A different source length forces V8's source-length rejection. Source
++  // hashing/HTTP invalidation is covered separately, not inferred from this.
++  ConsumeAndExecute(payload,
++                    StrCat({"globalThis.__lumieModuleCacheValue = 43; "
++                            "export const result = 43; // updated source ",
++                            Code()}),
++                    true, 43);
++}
++
+ TEST_F(V8ScriptRunnerTest, resourcelessShouldPass) {
+   V8TestingScope scope;
+   ClassicScript* classic_script =

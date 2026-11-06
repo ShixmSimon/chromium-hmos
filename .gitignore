@@ -51,3 +51,7 @@ build-status/
 # Private device captures, experimental probes, signed test packages and caches.
 /artifacts/
 /overlay/chromium-ui/.cache/
+
+# Python diagnostic bytecode is local-only.
+__pycache__/
+*.py[cod]
