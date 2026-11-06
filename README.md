@@ -2,9 +2,46 @@
 
 [中文说明](README_ZH.md)
 
-This branch targets the Chromium 155 HarmonyOS migration. The stable 154
-build stays on `hmos-154-adapter`. It is an independent, unofficial project and is not
-endorsed by Google, Chromium, Huawei, or the OpenHarmony project.
+A Chromium adaptation for HarmonyOS that provides the browser engine used by
+[Lumie](https://github.com/miramira8295/Lumie). This repository contains native
+platform patches, integration sources, the engine bridge and build tooling;
+Lumie's application UI is maintained in its own repository.
+
+The active branch is **`hmos-155-adapter`**, based on Chromium **155**.
+`hmos-154-adapter` retains the earlier 154 adaptation. This is an independent,
+unofficial project, not endorsed by Google, Chromium, Huawei or OpenHarmony.
+
+[Build guide](BUILDING.md) · [Engine downloads](https://github.com/miramira8295/chromium-hmos/releases) · [Native build CI](https://github.com/miramira8295/chromium-hmos/actions/workflows/incremental-build.yml) · [Third-party notices](OPEN_SOURCE_NOTICES.md)
+
+## Capabilities and status
+
+| Area | Integration |
+| --- | --- |
+| Devices and UI | Phone, tablet and 2in1 routes; ArkUI shell bridge and Chromium Aura/Views integration. |
+| JavaScript and WebAssembly | Runtime executable-memory probing selects JIT or JITless; DrumBrake provides WebAssembly in JITless mode. |
+| Graphics and media | OpenGL/Vulkan adaptations, HarmonyOS media decoding and HDR integration. Format and HDR availability depend on the device, system and selected rendering path. |
+| Developer tools | Chromium DevTools and local CDP access; Lumie provides the mobile menu and expandable floating entry. |
+| Content protection | Native ad filtering, local phishing-rule integration and signed Chromium data-component updates. |
+| Distribution | CI publishes an unsigned `engine.har`, native symbols and checksums; downstream apps package and sign the engine. |
+
+### Chromium data components
+
+`chrome://components/` exposes an explicit allowlist: CRLSet, PKI Metadata,
+Safety Tips, Certificate Error Assistant, File Type Policies, Origin Trials,
+Hyphenation and Crowd Deny. Updates retain HTTPS and Chromium's pinned CRX
+publisher verification. Origin Trials changes are read at browser restart;
+Crowd Deny supplies a local notification-permission warning in Lumie.
+
+Registration does not establish download or activation. The 2026-11-05 official
+OHOS update check offered Hyphenation and Crowd Deny, while File Type Policies
+and Origin Trials returned no update and retained builtin/default behavior.
+The integrated 155 native build and Lumie packaging passed; device-level
+activation checks are tracked in the [component notes](docs/OHOS_SECURITY_COMPONENT_UPDATES.md).
+
+Independent video-layer promotion remains experimental; Lumie currently keeps
+it disabled and uses Chromium's webpage compositor for video. See the
+[video-layer notes](docs/OHOS_VIDEO_OVERLAY.md). Widevine CDM is not included;
+codec and DRM boundaries are described in [media policy](docs/DRM_AND_MEDIA.md).
 
 ## Baseline
 

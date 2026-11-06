@@ -2,7 +2,30 @@
 
 [English](README.md)
 
-本分支用于 Chromium 155 的 HarmonyOS 适配迁移。154 稳定构建保留在 `hmos-154-adapter`。它是独立、非官方项目，不代表 Google、Chromium、华为或 OpenHarmony 官方立场。
+面向 HarmonyOS 的 Chromium 适配层，为 [Lumie 浏览器](https://github.com/miramira8295/Lumie)提供内核。本仓库维护原生平台补丁、系统集成源码、引擎桥接及构建工具；Lumie 的应用界面在独立仓库维护。
+
+当前主用分支为 **`hmos-155-adapter`**，基于 Chromium **155**；`hmos-154-adapter` 保留早期 154 适配。这是独立、非官方项目，不代表 Google、Chromium、华为或 OpenHarmony 官方立场。
+
+[构建指南](BUILDING.md) · [引擎下载](https://github.com/miramira8295/chromium-hmos/releases) · [原生构建 CI](https://github.com/miramira8295/chromium-hmos/actions/workflows/incremental-build.yml) · [第三方许可](OPEN_SOURCE_NOTICES.md)
+
+## 能力与当前状态
+
+| 方向 | 集成内容 |
+| --- | --- |
+| 设备与界面 | 手机、平板及 2in1 路由，ArkUI 外壳桥接和 Chromium Aura/Views 集成。 |
+| JavaScript 与 WebAssembly | 启动时探测可执行内存能力，选择 JIT 或 JITless；JITless 下通过 DrumBrake 执行 WebAssembly。 |
+| 图形与媒体 | OpenGL/Vulkan 适配、HarmonyOS 媒体解码与 HDR 接入；格式和 HDR 可用性取决于设备、系统及渲染路径。 |
+| 开发者工具 | Chromium DevTools 与本机 CDP 调试；Lumie 提供手机菜单和可展开、收起的悬浮入口。 |
+| 内容防护 | 原生广告过滤、本地防钓鱼规则集成及 Chromium 签名数据组件更新。 |
+| 引擎分发 | CI 发布未签名 `engine.har`、原生符号及校验清单，由下游应用打包签名。 |
+
+### Chromium 数据组件
+
+`chrome://components/` 按明确白名单接入八项组件：CRLSet、PKI Metadata、Safety Tips、Certificate Error Assistant、File Type Policies、Origin Trials、Hyphenation 和 Crowd Deny。更新保留 HTTPS 和 Chromium 固定发布者密钥的 CRX 签名校验。Origin Trials 更新后在重启时读取；Crowd Deny 为 Lumie 的通知权限询问提供本地风险提醒。
+
+组件已注册不代表数据已下载或生效。2026-11-05 的官方 OHOS 更新检查提供了 Hyphenation 和 Crowd Deny；File Type Policies、Origin Trials 返回“无更新”，保留内置策略和默认配置。集成后的 155 原生构建及 Lumie 打包已通过，真机激活验证状态见[组件说明](docs/OHOS_SECURITY_COMPONENT_UPDATES.md)。
+
+独立视频图层提升仍属实验能力，Lumie 当前关闭此路径，视频由 Chromium 网页合成器合成。详见[视频图层说明](docs/OHOS_VIDEO_OVERLAY.md)。内核不包含 Widevine CDM，编解码及 DRM 边界见[媒体说明](docs/DRM_AND_MEDIA.md)。
 
 ## 基线
 
