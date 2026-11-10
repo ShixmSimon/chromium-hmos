@@ -176,8 +176,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="build-${GITHUB_SHA::8}"
-          gh release create "$tag" --prerelease --notes-file build-status/latest.json \
-            --title "build ${GITHUB_SHA::8}" 2>/dev/null || true
+          gh release create "$tag" --target "$GITHUB_SHA" --prerelease \
+            --notes-file build-status/latest.json \
+            --title "Chromium ${CHROMIUM_VERSION} · ${GITHUB_REF_NAME} · ${GITHUB_SHA::8}" 2>/dev/null || true
 
           # The HAP when there is one, the HAR always. Both are named by a
           # file the build wrote, and a build that made neither never gets
