@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/ohos/shell_extensions_ohos.h"
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -272,6 +273,7 @@ void SetEnabled(gfx::AcceleratedWidget widget,
 class SyncWebstoreInstall : public extensions::WebstoreInstallWithPrompt {
  public:
   using WebstoreInstallWithPrompt::WebstoreInstallWithPrompt;
+  bool finished() const { return finished_; }
   void Cancel() {
     if (!finished_) { finished_ = true; AbortInstall(); }
   }
@@ -287,6 +289,7 @@ class SyncWebstoreInstall : public extensions::WebstoreInstallWithPrompt {
   bool CheckRequestorAlive() const override {
     return !finished_ && WebstoreInstallWithPrompt::CheckRequestorAlive();
   }
+  bool ShouldShowPostInstallUI() const override { return false; }
   bool finished_ = false;
 };
 
@@ -386,6 +389,11 @@ void ApplyExtensionSync(gfx::AcceleratedWidget widget,
              extensions::webstore_install::Result) {
             if (!browser) { return; }
             auto* profile = browser->GetProfile();
+            // CompleteInstall still owns its BeginInstall reference until the
+            // callback returns. Release finished prompts without retaining
+            // their WebContents for the lifetime of a long-running session.
+            std::erase_if(SyncSession(profile)->installs,
+                          [](const auto& install) { return install->finished(); });
             if (!ExtensionSyncReady(profile) || SyncSession(profile)->token != token) {
               ExtensionSyncReply(widget, request_id, false);
               return;

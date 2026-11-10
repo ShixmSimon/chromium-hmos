@@ -1391,3 +1391,24 @@ changes do not create new translation requests. Native device acceptance is pend
 ### 图片默认加载策略
 
 `imageLoading` 是字符串偏好，读取 JSON `{ "mode": "allow" | "block", "managed": boolean }`，写入 `{ "mode": "allow" | "block" }`。使用当前 Profile 的 IMAGES 默认内容设置，仅接受注册表允许的默认值；策略或扩展控制时拒写。保留站点例外，不改 Cookie、JavaScript 或媒体权限。未注册或旧 HAR 缺键时不可用；外壳保存后必须读回确认。修改后重新加载页面，已加载图片不保证立即移除；不代表阻止所有媒体或所有图片相关流量。
+
+
+### 插件同步 v1
+
+普通 Profile 就绪后，`getExtensionsForSync { requestId }` 返回
+`extensionSyncSnapshot { requestId, protocolVersion: 1, ok, items }`。
+`items` 是完整的用户插件清单（含停用、异常终止，排除内置与策略插件）；
+每项包含 `id, name, source: "webstore" | "local", enabled`。
+`enabled` 表示用户是否关闭，安全策略导致的停用不跨设备传播。失败时 `ok: false`，
+调用方不能把失败或超时当作空清单生成卸载记录。
+
+`extensionSyncSession { token }` 设置同步会话，空 token 撤销会话。改变会话会取消
+原会话未完成的安装请求。外壳须在关闭同步、账号切换和窗口解绑时撤销。
+`applyExtensionForSync { requestId, token, id, source, enabled, removed }` 每次应用一条，
+返回 `extensionSyncApplied { requestId, ok }`。只有成功回执才能确认云端记录；
+失败、取消或超时应保留远端状态等待重试。
+
+缺少的 `webstore` 插件由 Chromium 商店安装器验证并下载，沿用权限确认界面，
+不接受云端下发任意下载 URL。`local` 插件缺包时由外壳显示手动安装提示并延后确认。
+已有插件的启停与卸载沿用 Chromium 管理策略检查；安全停用原因不会通过同步获得授权。
+不包含插件内部存储、规则、脚本、网站访问授权或安装包上传。
