@@ -15,6 +15,7 @@
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "extensions/browser/api/storage/storage_frontend.h"
+#include "extensions/browser/api/storage/storage_area_namespace.h"
 #include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
 #include "base/scoped_observation.h"

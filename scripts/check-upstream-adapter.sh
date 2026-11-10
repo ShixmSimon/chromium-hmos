@@ -136,6 +136,10 @@ if [[ "${compatible}" == true ]]; then
     compatible=false
   fi
   if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
+      "${project_root}/patches/ohos-extension-settings-sync.patch" 2>"${failure_log}"; then
+    compatible=false
+  fi
+  if [[ "${compatible}" == true ]] && ! git -C "${checkout}" apply \
       "${project_root}/patches/ohos-adblock-rust.patch" \
       "${project_root}/patches/ohos-adblock-execution.patch" \
       "${project_root}/patches/ohos-viewport-translation.patch" 2>"${failure_log}"; then

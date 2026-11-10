@@ -1412,3 +1412,26 @@ changes do not create new translation requests. Native device acceptance is pend
 不接受云端下发任意下载 URL。`local` 插件缺包时由外壳显示手动安装提示并延后确认。
 已有插件的启停与卸载沿用 Chromium 管理策略检查；安全停用原因不会通过同步获得授权。
 不包含插件内部存储、规则、脚本、网站访问授权或安装包上传。
+
+### 扩展设置云同步（storage.sync）
+
+扩展清单成功回执新增 `storageSyncVersion: 1` 能力字段。旧内核未声明此字段时仅同步清单。
+普通 Profile 的非空 `extensionSyncSession` token 同时授权以下命令：
+
+- `getExtensionSettingsForSync { requestId, token, id }` 返回
+  `extensionSettingsSnapshot { requestId, protocolVersion: 1, ok, items: [{storageKey, value}] }`。
+  value 是 JSON 文本；读取失败不是空存储。
+- `applyExtensionSettingForSync { requestId, token, id, storageKey, value, removed }`
+  逐项写入或删除，返回 `extensionSettingApplied { requestId, ok }`。
+- `extensionSettingsChanged` 仅作失效通知，不携带设置值。
+
+仅操作 Chromium StorageFrontend 的 kSync 区域，保留配额校验和插件 onChanged 通知。
+local/session、IndexedDB、Cookie 不在此协议范围。拒绝访客、隐身、组件、策略扩展及无效会话。
+尚未安装插件的云端设置由外壳暂存，安装完成后恢复；卸载本机插件不等于删除云端设置。
+同一设置的并发远端变更由云端记录合并结果决定，不合并 JSON 值内部字段。
+
+外壳云表 `extension_setting` 使用字段：
+`id String`（SHA256(extensionId/key 的 JSON 数组)，端侧去重主键）、
+`extensionId String`、`storageKey Encrypted String`、`value Encrypted String`、
+`modified Integer`、`deleted Integer`。
+新增表须部署到签名对应环境后，才能进行端云验收。

@@ -172,6 +172,7 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-secure-dns-ech.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-https-first-warning.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-shell-preloading.patch"
+  apply_incremental_patch "${repo_root}/patches/ohos-extension-settings-sync.patch"
 
   if [[ "${CHROMIUM_MAJOR:-154}" == 155 ]]; then
     say "155 uses the complete migrated native snapshot"
@@ -318,7 +319,6 @@ else
   apply_incremental_patch "${repo_root}/patches/ohos-url-protection-updates.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-rule-sources.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-extension-updates.patch"
-  apply_incremental_patch "${repo_root}/patches/ohos-extension-settings-sync.patch"
   apply_incremental_patch "${repo_root}/patches/ohos-extensions-mobile-ui.patch"
   # Migrate the first translation patch before checking its prerequisites:
   # that version inserted lines inside their added hunks. The new version
