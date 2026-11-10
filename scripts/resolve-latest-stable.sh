@@ -4,7 +4,18 @@ set -euo pipefail
 
 readonly release_url='https://chromiumdash.appspot.com/fetch_releases?channel=Stable&platform=Linux&num=1'
 readonly chromium_remote='https://github.com/chromium/chromium.git'
-readonly baseline_version='154.0.8037.97'
+readonly project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+baseline_version="$(python3 - "$project_root" <<'PY_BASELINE'
+import os, runpy, subprocess, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+branch = (os.environ.get('GITHUB_BASE_REF') or os.environ.get('GITHUB_REF_NAME')
+          or subprocess.check_output(['git', '-C', str(root), 'branch', '--show-current'], text=True).strip())
+selection = runpy.run_path(str(root / 'scripts/select-ci-engine.py'))
+print(selection['select'](branch)['CHROMIUM_VERSION'])
+PY_BASELINE
+)"
+readonly baseline_version
 
 release_json="$(curl --fail --location --silent --show-error "${release_url}")"
 stable_version="$(python3 -c \
