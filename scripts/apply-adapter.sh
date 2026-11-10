@@ -45,6 +45,7 @@ git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-rule-sources.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-extension-updates.patch"
+git -C "${chromium_src}" apply "${project_root}/patches/ohos-extension-settings-sync.patch"
 git -C "${chromium_src}" apply \
   "${project_root}/patches/ohos-adblock-rust.patch" \
   "${project_root}/patches/ohos-adblock-execution.patch" \

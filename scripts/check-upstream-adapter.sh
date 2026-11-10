@@ -26,6 +26,7 @@ grep '^diff --git ' "${project_root}/patches/chromium-154-harmonyos.patch" \
   "${project_root}/patches/ohos-url-protection-updates.patch" \
   "${project_root}/patches/ohos-rule-sources.patch" \
   "${project_root}/patches/ohos-extension-updates.patch" \
+  "${project_root}/patches/ohos-extension-settings-sync.patch" \
   "${project_root}/patches/ohos-adblock-rust.patch" \
   "${project_root}/patches/ohos-adblock-execution.patch" \
   "${project_root}/patches/ohos-viewport-translation.patch" \

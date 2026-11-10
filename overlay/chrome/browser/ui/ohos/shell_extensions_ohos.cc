@@ -12,6 +12,9 @@
 #include <utility>
 
 #include "base/functional/bind.h"
+#include "base/json/json_reader.h"
+#include "base/json/json_writer.h"
+#include "extensions/browser/api/storage/storage_frontend.h"
 #include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
 #include "base/scoped_observation.h"
@@ -197,6 +200,7 @@ void SendExtensionSyncSnapshot(gfx::AcceleratedWidget widget,
   event.Set("event", "extensionSyncSnapshot");
   event.Set("requestId", command.FindInt("requestId").value_or(0));
   event.Set("protocolVersion", 1);
+  event.Set("storageSyncVersion", 1);
   event.Set("ok", ExtensionSyncReady(profile));
   base::ListValue items;
   if (ExtensionSyncReady(profile)) {
@@ -301,6 +305,7 @@ class ExtensionSyncSession : public base::SupportsUserData::Data {
     installs.clear();
     token = std::move(next);
   }
+  base::CallbackListSubscription settings_subscription;
   std::string token;
   std::vector<scoped_refptr<SyncWebstoreInstall>> installs;
 };
@@ -314,6 +319,121 @@ ExtensionSyncSession* SyncSession(Profile* profile) {
     profile->SetUserData(&kExtensionSyncSessionKey, std::move(state));
   }
   return static_cast<ExtensionSyncSession*>(data);
+}
+
+// The cloud bridge only accesses the area extensions explicitly chose for
+// synchronization. Never export local/session storage, cookies or IndexedDB.
+bool SettingsSyncAllowed(Profile* profile, const std::string& token,
+                         const std::string& id) {
+  if (!ExtensionSyncReady(profile) || token.empty() ||
+      SyncSession(profile)->token != token || !crx_file::id_util::IdIsValid(id)) {
+    return false;
+  }
+  const auto* extension = FindExtension(profile, id);
+  return extension && extensions::ui_util::ShouldDisplayInExtensionSettings(*extension) &&
+      !extensions::Manifest::IsComponentLocation(extension->location()) &&
+      !extensions::Manifest::IsPolicyLocation(extension->location());
+}
+
+void SettingsReply(gfx::AcceleratedWidget widget, int request_id,
+                   std::string_view event_name, bool ok,
+                   base::ListValue items = {}) {
+  base::DictValue event;
+  event.Set("event", event_name);
+  event.Set("requestId", request_id);
+  event.Set("protocolVersion", 1);
+  event.Set("ok", ok);
+  event.Set("items", std::move(items));
+  DispatchAuraShellRuntimeEventToWidget(widget, std::move(event));
+}
+
+void GetExtensionSettings(gfx::AcceleratedWidget widget,
+                          BrowserWindowInterface* browser,
+                          const base::DictValue& command) {
+  const int request_id = command.FindInt("requestId").value_or(0);
+  const auto* id = command.FindString("id");
+  const auto* token = command.FindString("token");
+  auto* profile = browser->GetProfile();
+  if (!id || !token || !SettingsSyncAllowed(profile, *token, *id)) {
+    SettingsReply(widget, request_id, "extensionSettingsSnapshot", false);
+    return;
+  }
+  auto* frontend = extensions::StorageFrontend::Get(profile);
+  if (!frontend || !frontend->IsStorageEnabled(extensions::settings_namespace::SYNC)) {
+    SettingsReply(widget, request_id, "extensionSettingsSnapshot", false);
+    return;
+  }
+  frontend->GetValues(base::WrapRefCounted(FindExtension(profile, *id)),
+      extensions::StorageAreaNamespace::kSync, std::nullopt,
+      base::BindOnce([](base::WeakPtr<BrowserWindowInterface> browser,
+                       gfx::AcceleratedWidget widget, int request_id,
+                       std::string token, std::string id,
+                       extensions::StorageFrontend::GetResult result) {
+        if (!browser) { return; }
+        bool ok = SettingsSyncAllowed(browser->GetProfile(), token, id) &&
+            result.status.success && result.data.has_value();
+        base::ListValue items;
+        if (ok) {
+          for (const auto entry : *result.data) {
+            auto json = base::WriteJson(entry.second);
+            if (!json || entry.first.size() + json->size() > 8192) {
+              ok = false; break;
+            }
+            base::DictValue item;
+            item.Set("storageKey", entry.first);
+            item.Set("value", *json);
+            items.Append(std::move(item));
+          }
+        }
+        SettingsReply(widget, request_id, "extensionSettingsSnapshot", ok,
+                      ok ? std::move(items) : base::ListValue());
+      }, browser->GetWeakPtr(), widget, request_id, *token, *id));
+}
+
+void ApplyExtensionSetting(gfx::AcceleratedWidget widget,
+                           BrowserWindowInterface* browser,
+                           const base::DictValue& command) {
+  const int request_id = command.FindInt("requestId").value_or(0);
+  const auto* id = command.FindString("id");
+  const auto* token = command.FindString("token");
+  const auto* key = command.FindString("storageKey");
+  const auto* json = command.FindString("value");
+  const auto removed = command.FindBool("removed");
+  auto* profile = browser->GetProfile();
+  if (!id || !token || !key || !json || !removed ||
+      key->size() + json->size() > 8192 ||
+      !SettingsSyncAllowed(profile, *token, *id)) {
+    SettingsReply(widget, request_id, "extensionSettingApplied", false);
+    return;
+  }
+  auto* frontend = extensions::StorageFrontend::Get(profile);
+  if (!frontend || !frontend->IsStorageEnabled(extensions::settings_namespace::SYNC)) {
+    SettingsReply(widget, request_id, "extensionSettingApplied", false);
+    return;
+  }
+  auto value = base::JSONReader::Read(*json, base::JSON_PARSE_RFC);
+  if (!*removed && !value) {
+    SettingsReply(widget, request_id, "extensionSettingApplied", false);
+    return;
+  }
+  auto callback = base::BindOnce(
+      [](base::WeakPtr<BrowserWindowInterface> browser,
+         gfx::AcceleratedWidget widget, int request_id, std::string token,
+         std::string id, extensions::StorageFrontend::ResultStatus result) {
+        if (!browser) { return; }
+        SettingsReply(widget, request_id, "extensionSettingApplied",
+            result.success && SettingsSyncAllowed(browser->GetProfile(), token, id));
+      }, browser->GetWeakPtr(), widget, request_id, *token, *id);
+  auto extension = base::WrapRefCounted(FindExtension(profile, *id));
+  if (*removed) {
+    frontend->Remove(extension, extensions::StorageAreaNamespace::kSync,
+                     {*key}, std::move(callback));
+  } else {
+    base::DictValue values;
+    values.Set(*key, std::move(*value));
+    frontend->Set(extension, extensions::StorageAreaNamespace::kSync,
+                  std::move(values), std::move(callback));
+  }
 }
 
 void ExtensionSyncReply(gfx::AcceleratedWidget widget, int request_id, bool ok) {
@@ -745,8 +865,26 @@ bool HandleShellExtensionCommand(std::string_view name,
   if (name == "extensionSyncSession") {
     if (ExtensionSyncReady(profile)) {
       const auto* token = command.FindString("token");
-      SyncSession(profile)->Reset(token ? *token : std::string());
+      auto* session = SyncSession(profile);
+      session->Reset(token ? *token : std::string());
+      session->settings_subscription = {};
+      if (!session->token.empty()) {
+        auto* frontend = extensions::StorageFrontend::Get(profile);
+        if (frontend) {
+          session->settings_subscription = frontend->ObserveSettingsChanges(
+              base::BindRepeating([](Profile* profile, const extensions::ExtensionId& id,
+                                    extensions::StorageAreaNamespace area) {
+                if (area == extensions::StorageAreaNamespace::kSync) {
+                  Notify(profile, "extensionSettingsChanged");
+                }
+              }, profile));
+        }
+      }
     }
+  } else if (name == "getExtensionSettingsForSync") {
+    GetExtensionSettings(widget, browser, command);
+  } else if (name == "applyExtensionSettingForSync") {
+    ApplyExtensionSetting(widget, browser, command);
   } else if (name == "applyExtensionForSync") {
     ApplyExtensionSync(widget, browser, command);
   } else if (name == "getExtensionsForSync") {

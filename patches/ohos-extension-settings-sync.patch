@@ -1,0 +1,55 @@
+diff --git a/extensions/browser/api/storage/storage_frontend.h b/extensions/browser/api/storage/storage_frontend.h
+--- a/extensions/browser/api/storage/storage_frontend.h
++++ b/extensions/browser/api/storage/storage_frontend.h
+@@ -9,6 +9,7 @@
+ #include <memory>
+ #include <string>
+ 
++#include "base/callback_list.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "base/memory/weak_ptr.h"
+@@ -151,6 +152,10 @@
+              StorageAreaNamespace storage_area,
+              base::OnceCallback<void(ResultStatus)> callback);
+ 
++  // Observes storage mutations without exposing values to the embedder.
++  base::CallbackListSubscription ObserveSettingsChanges(
++      base::RepeatingCallback<void(const ExtensionId&, StorageAreaNamespace)> callback);
++
+   // Gets the Settings change callback.
+   SettingsChangedCallback GetObserver();
+ 
+@@ -214,6 +219,8 @@
+   // Maps a known namespace to its corresponding ValueStoreCache. The caches
+   // are owned by this object.
+   CacheMap caches_;
++  base::RepeatingCallbackList<void(const ExtensionId&, StorageAreaNamespace)>
++      settings_change_observers_;
+ 
+   base::WeakPtrFactory<StorageFrontend> weak_factory_{this};
+ };
+diff --git a/extensions/browser/api/storage/storage_frontend.cc b/extensions/browser/api/storage/storage_frontend.cc
+--- a/extensions/browser/api/storage/storage_frontend.cc
++++ b/extensions/browser/api/storage/storage_frontend.cc
+@@ -615,6 +615,12 @@
+   }
+ }
+ 
++base::CallbackListSubscription StorageFrontend::ObserveSettingsChanges(
++    base::RepeatingCallback<void(const ExtensionId&, StorageAreaNamespace)> callback) {
++  DCHECK_CURRENTLY_ON(BrowserThread::UI);
++  return settings_change_observers_.Add(std::move(callback));
++}
++
+ SettingsChangedCallback StorageFrontend::GetObserver() {
+   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+   return base::BindRepeating(&StorageFrontend::OnSettingsChanged,
+@@ -658,6 +664,7 @@
+                 std::size(extension_id_str));
+   base::debug::Alias(extension_id_str);
+ 
++  settings_change_observers_.Notify(extension_id, storage_area);
+   const std::string namespace_string = StorageAreaToString(storage_area);
+   EventRouter* event_router = EventRouter::Get(browser_context_);
+ 
