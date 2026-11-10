@@ -48,6 +48,8 @@ if [[ ! -f "$root/.seed-complete" ]]; then
     rmdir "$root/git-seed"
   fi
   cp /root/chromium-157/.gclient "$root/.gclient"
+  mkdir -p "$root/sdk-links"
+  rsync -a "$seed/ohos_sdk/" "$root/sdk-links/"
   # Chromium itself is available on the official GitHub mirror; all DEPS
   # revisions remain exactly those declared by the pinned Chromium version.
   git -C "$src" remote set-url origin https://github.com/chromium/chromium.git
@@ -101,6 +103,9 @@ mkdir -p "$src/ohos_sdk"
 # Existing SDK links are sufficient on the stable checkout. Do not rewrite
 # them or depend on a retired engine path on every build.
 for sdk_entry in llvm native ohos-sdk openharmony rust-toolchain; do
+  if [[ ! -e "$src/ohos_sdk/$sdk_entry" && -L "$root/sdk-links/$sdk_entry" ]]; then
+    cp -a "$root/sdk-links/$sdk_entry" "$src/ohos_sdk/$sdk_entry"
+  fi
   [[ -e "$src/ohos_sdk/$sdk_entry" ]] || {
     echo "Stable 155 SDK link missing: $sdk_entry" >&2; exit 1;
   }
