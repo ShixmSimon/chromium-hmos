@@ -2,7 +2,7 @@ name: Inspect runtime sources
 
 on:
   push:
-    branches: [hmos-154-adapter, hmos-155-adapter]
+    branches: [hmos-157-adapter, hmos-155-adapter]
     paths: ['.github/workflows/inspect-runtime.yml']
   workflow_dispatch:
 
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   snapshot:
-    if: github.ref == 'refs/heads/hmos-154-adapter' || github.ref == 'refs/heads/hmos-155-adapter'
+    if: github.ref == 'refs/heads/hmos-157-adapter' || github.ref == 'refs/heads/hmos-155-adapter'
     runs-on: [self-hosted, harmonyos-chromium]
     timeout-minutes: 5
     steps:

@@ -2,9 +2,9 @@ name: Adapter CI
 
 on:
   push:
-    branches: [hmos-154-adapter, hmos-155-adapter]
+    branches: [hmos-157-adapter, hmos-155-adapter]
   pull_request:
-    branches: [hmos-154-adapter, hmos-155-adapter]
+    branches: [hmos-157-adapter, hmos-155-adapter]
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   verify-publication:
-    if: github.ref == 'refs/heads/hmos-154-adapter' || github.ref == 'refs/heads/hmos-155-adapter' || github.base_ref == 'hmos-154-adapter' || github.base_ref == 'hmos-155-adapter'
+    if: github.ref == 'refs/heads/hmos-157-adapter' || github.ref == 'refs/heads/hmos-155-adapter' || github.base_ref == 'hmos-157-adapter' || github.base_ref == 'hmos-155-adapter'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   compatibility:
-    if: github.ref == 'refs/heads/hmos-154-adapter' || github.ref == 'refs/heads/hmos-155-adapter'
+    if: github.ref == 'refs/heads/hmos-157-adapter' || github.ref == 'refs/heads/hmos-155-adapter'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.upstream.outputs.version }}

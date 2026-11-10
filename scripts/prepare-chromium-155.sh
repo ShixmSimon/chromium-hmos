@@ -8,7 +8,7 @@ readonly repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly root=/root/chromium-155
 readonly src="${root}/src"
 [[ "${CHROMIUM_SRC:-}" == "$src" ]] || { echo '155 source path mismatch' >&2; exit 1; }
-readonly seed=/root/chromium-154/src
+readonly seed=/root/chromium-157/src
 readonly revision="${CHROMIUM_REVISION:?Pinned revision is required}"
 mkdir -p "$root" "$repo_root/build-status"
 exec > >(tee -a "$repo_root/build-status/preparation-155.log") 2>&1
@@ -47,7 +47,7 @@ if [[ ! -f "$root/.seed-complete" ]]; then
     mv "$root/git-seed/.git" "$src/.git"
     rmdir "$root/git-seed"
   fi
-  cp /root/chromium-154/.gclient "$root/.gclient"
+  cp /root/chromium-157/.gclient "$root/.gclient"
   # Chromium itself is available on the official GitHub mirror; all DEPS
   # revisions remain exactly those declared by the pinned Chromium version.
   git -C "$src" remote set-url origin https://github.com/chromium/chromium.git
@@ -98,7 +98,13 @@ fi
 # Restore the link directory after sync; never write through those links or
 # alter the licensed SDK used by the stable 154 checkout.
 mkdir -p "$src/ohos_sdk"
-rsync -a "$seed/ohos_sdk/" "$src/ohos_sdk/"
+# Existing SDK links are sufficient on the stable checkout. Do not rewrite
+# them or depend on a retired engine path on every build.
+for sdk_entry in llvm native ohos-sdk openharmony rust-toolchain; do
+  [[ -e "$src/ohos_sdk/$sdk_entry" ]] || {
+    echo "Stable 155 SDK link missing: $sdk_entry" >&2; exit 1;
+  }
+done
 
 python3 "$repo_root/scripts/apply-155-snapshot.py" "$src" \
   2>&1 | tee "$repo_root/build-status/migration-155.log"

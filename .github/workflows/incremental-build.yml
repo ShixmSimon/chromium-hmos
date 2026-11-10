@@ -6,7 +6,7 @@ name: Incremental build
 
 on:
   push:
-    branches: [hmos-154-adapter, hmos-155-adapter]
+    branches: [hmos-157-adapter, hmos-155-adapter]
     paths:
       - 'overlay/**'
       - 'patches/**'
@@ -45,7 +45,7 @@ permissions:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/hmos-154-adapter' || github.ref == 'refs/heads/hmos-155-adapter'
+    if: github.ref == 'refs/heads/hmos-157-adapter' || github.ref == 'refs/heads/hmos-155-adapter'
     runs-on: [self-hosted, harmonyos-chromium]
     timeout-minutes: 1440
     strategy:

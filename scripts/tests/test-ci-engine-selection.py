@@ -14,14 +14,14 @@ spec.loader.exec_module(module)
 
 class EngineSelectionTest(unittest.TestCase):
     def test_release_paths_are_distinct_and_pinned(self):
-        for major in (154, 155):
+        for major in (155, 157):
             config = module.select(f'hmos-{major}-adapter')
             self.assertEqual(config['CHROMIUM_SRC'], f'/root/chromium-{major}/src')
             self.assertEqual(config['CHROMIUM_MAJOR'], str(major))
             self.assertEqual(len(config['CHROMIUM_REVISION']), 40)
 
     def test_other_refs_cannot_fall_back_to_154(self):
-        for ref in ('', 'main', 'hmos-154-dev', 'hmos-150-adapter', 'build-results',
+        for ref in ('', 'main', 'hmos-154-adapter', 'hmos-154-dev', 'hmos-150-adapter', 'build-results',
                     'codex/phone-fork-renderers', 'build-5834ccdf'):
             with self.subTest(ref=ref), self.assertRaises(ValueError):
                 module.select(ref)

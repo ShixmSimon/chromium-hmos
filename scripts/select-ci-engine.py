@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def select(branch):
-    branches = {'hmos-154-adapter': 154, 'hmos-155-adapter': 155}
+    branches = {'hmos-155-adapter': 155, 'hmos-157-adapter': 157}
     if branch not in branches:
         raise ValueError(f'Native CI is restricted to {", ".join(branches)}; got {branch!r}')
     major = branches[branch]
