@@ -63,6 +63,7 @@ struct WeakFactory {
 };
 struct TextInputClient {
   enum class InsertTextCursorBehavior { kMoveCursorAfterText };
+  explicit TextInputClient(std::vector<std::string>* log) : events(log) {}
   std::u16string text;
   std::vector<std::string>* events;
   std::function<void()> after_edit;
@@ -84,7 +85,7 @@ struct TextInputClient {
 class OhosInputMethod {
  public:
   std::vector<std::string> events;
-  TextInputClient first{.events = &events}, second{.events = &events};
+  TextInputClient first{&events}, second{&events};
   TextInputClient* current = &first;
   bool type_none = false;
   WeakFactory weak_factory_;
