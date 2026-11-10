@@ -34,6 +34,8 @@ jobs:
           python3 scripts/tests/test-v8-context-snapshot.py
       - name: Check JIT startup opt-in and interpreter fallback
         run: scripts/test-jit-startup.sh
+      - name: Check IME edit key events and focus lifetime
+        run: python3 scripts/tests/test-ime-key-events.py
       - name: Check incremental patches in Chromium and DEPS checkouts
         run: python3 scripts/tests/test-incremental-patches.py
       - name: Check AppGallery UA compatibility and mobile viewport wiring

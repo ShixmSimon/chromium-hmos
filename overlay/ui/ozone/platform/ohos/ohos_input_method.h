@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <string>
 
+#include "base/functional/callback_forward.h"
 #include "base/memory/weak_ptr.h"
 #include "inputmethod/inputmethod_controller_capi.h"
 #include "ui/base/ime/input_method_minimal.h"
@@ -85,6 +86,7 @@ class OhosInputMethod : public InputMethodMinimal {
   void RefreshTextSnapshot(bool notify_input_method);
   void NotifyCursorRect();
   void DispatchSyntheticKey(KeyboardCode key_code, int flags = 0);
+  void DispatchImeEdit(base::OnceCallback<void(TextInputClient*)> edit);
 
   void HandleInsertText(std::u16string text);
   void HandleDelete(size_t before, size_t after);

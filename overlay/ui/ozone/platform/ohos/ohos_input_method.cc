@@ -560,23 +560,59 @@ void OhosInputMethod::DispatchSyntheticKey(KeyboardCode key_code, int flags) {
   InputMethodMinimal::DispatchKeyEvent(&released);
 }
 
-void OhosInputMethod::HandleInsertText(std::u16string text) {
-  if (text.empty() || IsTextInputTypeNone() || !GetTextInputClient()) {
+void OhosInputMethod::DispatchImeEdit(
+    base::OnceCallback<void(TextInputClient*)> edit) {
+  TextInputClient* client = GetTextInputClient();
+  if (IsTextInputTypeNone() || !client) {
     return;
   }
-  GetTextInputClient()->InsertText(
-      text, TextInputClient::InsertTextCursorBehavior::kMoveCursorAfterText);
+
+  // Like Chromium's Android IME, bracket committed text and deletion with
+  // Process key events (229). Legacy forms often validate only on keyup.
+  // Dispatch post-IME: InputMethodMinimal would also try to insert a character.
+  const auto weak_this = weak_factory_.GetWeakPtr();
+  KeyEvent pressed(EventType::kKeyPressed, VKEY_PROCESSKEY, 0);
+  const auto pressed_details = DispatchKeyEventPostIME(&pressed);
+  if (!weak_this || pressed_details.dispatcher_destroyed ||
+      pressed_details.target_destroyed || GetTextInputClient() != client ||
+      IsTextInputTypeNone()) {
+    return;
+  }
+
+  std::move(edit).Run(client);
+  if (!weak_this || GetTextInputClient() != client || IsTextInputTypeNone()) {
+    return;
+  }
+
+  KeyEvent released(EventType::kKeyReleased, VKEY_PROCESSKEY, 0);
+  const auto released_details = DispatchKeyEventPostIME(&released);
+  if (!weak_this || released_details.dispatcher_destroyed ||
+      released_details.target_destroyed || GetTextInputClient() != client ||
+      IsTextInputTypeNone()) {
+    return;
+  }
   RefreshTextSnapshot(true);
   NotifyCursorRect();
 }
 
-void OhosInputMethod::HandleDelete(size_t before, size_t after) {
-  if (IsTextInputTypeNone() || !GetTextInputClient()) {
+void OhosInputMethod::HandleInsertText(std::u16string text) {
+  if (text.empty()) {
     return;
   }
-  GetTextInputClient()->ExtendSelectionAndDelete(before, after);
-  RefreshTextSnapshot(true);
-  NotifyCursorRect();
+  DispatchImeEdit(base::BindOnce(
+      [](std::u16string text, TextInputClient* client) {
+        client->InsertText(
+            text, TextInputClient::InsertTextCursorBehavior::kMoveCursorAfterText);
+      },
+      std::move(text)));
+}
+
+void OhosInputMethod::HandleDelete(size_t before, size_t after) {
+  DispatchImeEdit(base::BindOnce(
+      [](size_t before, size_t after, TextInputClient* client) {
+        client->ExtendSelectionAndDelete(before, after);
+      },
+      before, after));
 }
 
 void OhosInputMethod::HandleEnterKey() {
