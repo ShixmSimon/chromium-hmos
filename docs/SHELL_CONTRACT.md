@@ -1430,7 +1430,7 @@ local/session、IndexedDB、Cookie 不在此协议范围。拒绝访客、隐身
 尚未安装插件的云端设置由外壳暂存，安装完成后恢复；卸载本机插件不等于删除云端设置。
 同一设置的并发远端变更由云端记录合并结果决定，不合并 JSON 值内部字段。
 
-外壳云表 `extension_setting` 使用字段：
+外壳云表 `extensionSetting` 使用字段：
 `id String`（SHA256(extensionId/key 的 JSON 数组)，端侧去重主键）、
 `extensionId String`、`storageKey Encrypted String`、`value Encrypted String`、
 `modified Integer`、`deleted Integer`。
