@@ -14,6 +14,9 @@
 #include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
 #include "base/scoped_observation.h"
+#include "base/supports_user_data.h"
+#include "chrome/browser/extensions/webstore_install_with_prompt.h"
+#include "components/crx_file/id_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
@@ -177,6 +180,47 @@ const Extension* FindExtension(Profile* profile, const std::string& id) {
                   : nullptr;
 }
 
+// Sync snapshots deliberately include disabled and terminated extensions. The
+// toolbar action list is not an authoritative inventory.
+bool ExtensionSyncReady(Profile* profile) {
+  auto* system = extensions::ExtensionSystem::Get(profile);
+  return !profile->IsOffTheRecord() && !profile->IsGuestSession() &&
+         !profile->IsSystemProfile() && !profile->ShutdownStarted() &&
+         system && system->is_ready();
+}
+
+void SendExtensionSyncSnapshot(gfx::AcceleratedWidget widget,
+                               Profile* profile,
+                               const base::DictValue& command) {
+  base::DictValue event;
+  event.Set("event", "extensionSyncSnapshot");
+  event.Set("requestId", command.FindInt("requestId").value_or(0));
+  event.Set("protocolVersion", 1);
+  event.Set("ok", ExtensionSyncReady(profile));
+  base::ListValue items;
+  if (ExtensionSyncReady(profile)) {
+    auto* prefs = extensions::ExtensionPrefs::Get(profile);
+    for (const auto& extension :
+         ExtensionRegistry::Get(profile)->GenerateInstalledExtensionsSet()) {
+      if (!extensions::ui_util::ShouldDisplayInExtensionSettings(*extension) ||
+          extensions::Manifest::IsComponentLocation(extension->location()) ||
+          extensions::Manifest::IsPolicyLocation(extension->location())) {
+        continue;
+      }
+      base::DictValue item;
+      item.Set("id", extension->id());
+      item.Set("name", extension->name());
+      item.Set("source", extension->from_webstore() ? "webstore" : "local");
+      // Security/policy disable reasons are local, not a user preference.
+      item.Set("enabled", !prefs->GetDisableReasons(extension->id()).contains(
+                              extensions::disable_reason::DISABLE_USER_ACTION));
+      items.Append(std::move(item));
+    }
+  }
+  event.Set("items", std::move(items));
+  DispatchAuraShellRuntimeEventToWidget(widget, std::move(event));
+}
+
 // --- setExtensionEnabled. -------------------------------------------------
 
 // The same checks chrome.management.setEnabled makes for the extensions
@@ -220,6 +264,137 @@ void SetEnabled(gfx::AcceleratedWidget widget,
         *id, {extensions::disable_reason::DISABLE_USER_ACTION});
   }
   Notify(profile, "extensionActionsChanged");
+}
+
+// A sync session is scoped to the normal profile and revoked when the shell
+// switches accounts, disables sync, or detaches. Outstanding prompts/downloads
+// must not carry the old account's work into a new session.
+class SyncWebstoreInstall : public extensions::WebstoreInstallWithPrompt {
+ public:
+  using WebstoreInstallWithPrompt::WebstoreInstallWithPrompt;
+  void Cancel() {
+    if (!finished_) { finished_ = true; AbortInstall(); }
+  }
+ private:
+  ~SyncWebstoreInstall() override = default;
+  void CompleteInstall(extensions::webstore_install::Result result,
+                       const std::string& error) override {
+    if (finished_) { return; }
+    finished_ = true;
+    WebstoreInstallWithPrompt::CompleteInstall(result, error);
+  }
+  void OnProfileWillBeDestroyed(Profile*) override { Cancel(); }
+  bool CheckRequestorAlive() const override {
+    return !finished_ && WebstoreInstallWithPrompt::CheckRequestorAlive();
+  }
+  bool finished_ = false;
+};
+
+class ExtensionSyncSession : public base::SupportsUserData::Data {
+ public:
+  ~ExtensionSyncSession() override { Reset(""); }
+  void Reset(std::string next) {
+    for (auto& install : installs) { install->Cancel(); }
+    installs.clear();
+    token = std::move(next);
+  }
+  std::string token;
+  std::vector<scoped_refptr<SyncWebstoreInstall>> installs;
+};
+
+constexpr char kExtensionSyncSessionKey[] = "ohos-extension-sync-session";
+ExtensionSyncSession* SyncSession(Profile* profile) {
+  auto* data = profile->GetUserData(&kExtensionSyncSessionKey);
+  if (!data) {
+    auto state = std::make_unique<ExtensionSyncSession>();
+    data = state.get();
+    profile->SetUserData(&kExtensionSyncSessionKey, std::move(state));
+  }
+  return static_cast<ExtensionSyncSession*>(data);
+}
+
+void ExtensionSyncReply(gfx::AcceleratedWidget widget, int request_id, bool ok) {
+  base::DictValue event;
+  event.Set("event", "extensionSyncApplied");
+  event.Set("requestId", request_id);
+  event.Set("ok", ok);
+  DispatchAuraShellRuntimeEventToWidget(widget, std::move(event));
+}
+
+bool SyncSetEnabled(gfx::AcceleratedWidget widget, Profile* profile,
+                    const std::string& id, bool enabled) {
+  base::DictValue command;
+  command.Set("id", id);
+  command.Set("enabled", enabled);
+  SetEnabled(widget, profile, command);
+  auto* registry = ExtensionRegistry::Get(profile);
+  return enabled ? (registry->enabled_extensions().Contains(id) ||
+                    registry->terminated_extensions().Contains(id))
+                 : extensions::ExtensionPrefs::Get(profile)->GetDisableReasons(id)
+                       .contains(extensions::disable_reason::DISABLE_USER_ACTION);
+}
+
+void ApplyExtensionSync(gfx::AcceleratedWidget widget,
+                        BrowserWindowInterface* browser,
+                        const base::DictValue& command) {
+  auto* profile = browser->GetProfile();
+  const int request_id = command.FindInt("requestId").value_or(0);
+  const std::string* id = command.FindString("id");
+  const std::string* token = command.FindString("token");
+  const auto enabled = command.FindBool("enabled");
+  const auto removed = command.FindBool("removed");
+  if (!ExtensionSyncReady(profile) || !id || !crx_file::id_util::IdIsValid(*id) ||
+      !token || token->empty() || *token != SyncSession(profile)->token ||
+      !enabled || !removed) {
+    ExtensionSyncReply(widget, request_id, false);
+    return;
+  }
+  const Extension* extension = FindExtension(profile, *id);
+  if (extension && (!extensions::ui_util::ShouldDisplayInExtensionSettings(*extension) ||
+      extensions::Manifest::IsComponentLocation(extension->location()) ||
+      extensions::Manifest::IsPolicyLocation(extension->location()))) {
+    ExtensionSyncReply(widget, request_id, false);
+    return;
+  }
+  if (*removed) {
+    std::u16string error;
+    const bool ok = !extension ||
+        extensions::ExtensionRegistrar::Get(profile)->UninstallExtension(
+            *id, extensions::UNINSTALL_REASON_USER_INITIATED, &error);
+    ExtensionSyncReply(widget, request_id, ok);
+    return;
+  }
+  if (extension) {
+    ExtensionSyncReply(widget, request_id,
+                       SyncSetEnabled(widget, profile, *id, *enabled));
+    return;
+  }
+  const std::string* source = command.FindString("source");
+  BrowserView* view = BrowserView::GetBrowserViewForBrowser(browser);
+  if (!source || *source != "webstore" || !view || !view->GetWidget()) {
+    ExtensionSyncReply(widget, request_id, false);
+    return;
+  }
+  // Chromium fetches the signed package and presents its normal permission
+  // prompt. Never accept a cloud-provided download URL or bypass new grants.
+  auto installer = base::MakeRefCounted<SyncWebstoreInstall>(
+      *id, profile, view->GetWidget()->GetNativeWindow(),
+      base::BindOnce(
+          [](base::WeakPtr<BrowserWindowInterface> browser,
+             gfx::AcceleratedWidget widget, int request_id, std::string token,
+             std::string id, bool enabled, bool success, const std::string&,
+             extensions::webstore_install::Result) {
+            if (!browser) { return; }
+            auto* profile = browser->GetProfile();
+            if (!ExtensionSyncReady(profile) || SyncSession(profile)->token != token) {
+              ExtensionSyncReply(widget, request_id, false);
+              return;
+            }
+            ExtensionSyncReply(widget, request_id,
+                success && SyncSetEnabled(widget, profile, id, enabled));
+          }, browser->GetWeakPtr(), widget, request_id, *token, *id, *enabled));
+  SyncSession(profile)->installs.push_back(installer);
+  installer->BeginInstall();
 }
 
 // --- uninstallExtension. --------------------------------------------------
@@ -559,7 +734,16 @@ bool HandleShellExtensionCommand(std::string_view name,
     return false;
   }
   EnsureRegistryWatcher(profile);
-  if (name == "setExtensionEnabled") {
+  if (name == "extensionSyncSession") {
+    if (ExtensionSyncReady(profile)) {
+      const auto* token = command.FindString("token");
+      SyncSession(profile)->Reset(token ? *token : std::string());
+    }
+  } else if (name == "applyExtensionForSync") {
+    ApplyExtensionSync(widget, browser, command);
+  } else if (name == "getExtensionsForSync") {
+    SendExtensionSyncSnapshot(widget, profile, command);
+  } else if (name == "setExtensionEnabled") {
     SetEnabled(widget, profile, command);
   } else if (name == "uninstallExtension") {
     Uninstall(widget, browser, command);

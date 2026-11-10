@@ -221,6 +221,7 @@ export interface BrowserRuntimeEvent {
     'pageFullscreenChanged' | 'pullToRefresh' |
     'extensionDetails' | 'extensionCommandFailed' |
     'extensionUpdateCapabilities' | 'extensionUpdateProgress' |
+    'extensionSyncSnapshot' | 'extensionSyncApplied' |
     'pageDragStarted' | 'pageDragEnded' |
     'recentlyClosed' | 'recentlyClosedChanged' | 'extensionActions' |
     'recentBookmarks' |
